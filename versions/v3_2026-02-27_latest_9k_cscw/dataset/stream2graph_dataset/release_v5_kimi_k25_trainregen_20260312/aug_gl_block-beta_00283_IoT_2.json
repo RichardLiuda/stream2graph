@@ -1,0 +1,250 @@
+{
+  "id": "aug_gl_block-beta_00283_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/govuk-one-login/authentication-api/blob/a4c68710b6177665c4625f1c8789455deca7b26b/docs/diagrams/authentication/login/account-interventions/medium-sms/login-medium-level-sms-blocked-intervention.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "govuk-one-login/authentication-api",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant orch_api as Orchestration\n    participant auth_frontend as Authentication Frontend\n    participant auth_external_api as Authentication External API\n    participant auth_internal_api as Authentication Internal API\n    participant account_interventions as Account Interventions API\n    participant notification_queue as NotificationHandler.java Lambda   \n    participant notify as Notify   \n    orch_api ->> auth_frontend : OAuth 2.0 Authorization request 302 redirect to /authorize\n    auth_frontend ->> auth_frontend : Decrypt and validate request and create session    \n    auth_frontend ->> auth_internal_api : Request to /start (IoT_Industrial_EdgeNode)\n    auth_internal_api ->> auth_internal_api : Start helps calculate current state\n    auth_internal_api ->> auth_frontend : StartResponse.java object returned\n    auth_frontend ->> auth_frontend : State machine works out where to send user based on start response\n    auth_frontend ->> auth_internal_api : Request to /user-exists (IoT_Industrial_MQTT_Broker)\n    auth_internal_api ->> auth_internal_api : Checks if account with email already exists\n    auth_internal_api ->> auth_frontend: CheckUserExistsResponse.java object returned\n    auth_frontend ->> auth_frontend: Validates that the user already has an account\n    auth_frontend ->> auth_internal_api : Request to /account-interventions (IoT_Industrial_EdgeNode)\n    auth_internal_api ->> account_interventions : Request to account interventions api (IoT_Industrial_EdgeNode)\n    account_interventions ->> auth_internal_api : Response from Account Interventions containing blocked=true\n    auth_internal_api ->> auth_internal_api : Generates audit event for \"blocked\" Account Intervention\n    auth_internal_api ->> auth_frontend: AccountInterventions.java object returned containing blocked intervention\n    auth_frontend ->> auth_frontend: Prevents user from performing password reset due to blocked intervention\n    auth_frontend ->> auth_internal_api : Request to /login (IoT_Industrial_PLC_Logic)\n    auth_internal_api ->> auth_internal_api : Validates if password is correct\n    auth_internal_api ->> auth_frontend: LoginResponse.java object returned\n    auth_frontend ->> auth_internal_api : Request to /account-recovery (IoT_Industrial_MQTT_Broker)\n    auth_internal_api ->> auth_internal_api : Calculates whether account recovery is permitted\n    auth_internal_api ->> auth_frontend: AccountRecovery.java object returned\n    auth_frontend ->> auth_internal_api : Request to /mfa (IoT_Industrial_MQTT_Broker)\n    auth_internal_api ->> auth_internal_api : Generates and stores OTP\n    auth_internal_api -->> notification_queue : Sends NotifyRequest.java object via SQS\n    notification_queue -->> notify : Request to send SMS containing OTP and phone number\n    auth_internal_api ->> auth_frontend : 204 response \n    auth_frontend ->> auth_frontend: Prevents user from performing MFA reset due to blocked intervention\n    auth_frontend ->> auth_internal_api : Request to /verify-code (IoT_Industrial_MQTT_Broker)\n    auth_internal_api ->> auth_internal_api : Validates whether SMS MFA code is valid\n    auth_internal_api ->> auth_frontend: 204 response\n    auth_frontend ->> auth_frontend : Displays Blocked intervention screen\n",
+  "content_size": 3274,
+  "collected_at": "2026-02-06T14:06:12.716465",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_block-beta_00283",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的OAuth 2.0授权流程图，从Orchestration API开始，经过前端认证，一直到最终的拦截或成功场景。重点是展示当用户账户被标记为blocked时的完整干预链路。",
+      "elements_involved": [
+        "Orchestration",
+        "Authentication Frontend",
+        "Account Interventions API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下结构：起点是Orchestration，然后302重定向到Authentication Frontend的/authorize端点，接着前端解密请求并创建session。这个session创建步骤需要单独画出来吗？",
+      "elements_involved": [
+        "Orchestration",
+        "Authentication Frontend",
+        "OAuth 2.0 Authorization request 302 redirect"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，session创建要画成自调用，因为那是前端内部的处理。然后前端会调用Authentication Internal API的/start端点，这里要标注上IoT_Industrial_EdgeNode，这是我们的内部追踪标记。",
+      "elements_involved": [
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "/start",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经添加了前端到Internal API的/start调用，以及Internal API的自调用计算当前状态，然后返回StartResponse.java对象。接下来是状态机决定用户去向的逻辑？",
+      "elements_involved": [
+        "Authentication Internal API",
+        "StartResponse.java",
+        "State machine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，状态机也是自调用。然后前端要检查用户是否存在，调用/user-exists，标记为IoT_Industrial_MQTT_Broker。Internal API这里要检查email是否已注册，返回CheckUserExistsResponse.java。",
+      "elements_involved": [
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "/user-exists",
+        "IoT_Industrial_MQTT_Broker",
+        "CheckUserExistsResponse.java"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。我注意到这里有个验证步骤——前端验证用户已有账户，这也是自调用。接下来进入关键部分：账户干预检查？",
+      "elements_involved": [
+        "Authentication Frontend",
+        "CheckUserExistsResponse.java"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，这是核心流程。前端调用/account-interventions，同样标记IoT_Industrial_EdgeNode，然后Internal API再调用Account Interventions API，也是同样的标记。这里要返回blocked=true的响应。",
+      "elements_involved": [
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "Account Interventions API",
+        "/account-interventions",
+        "blocked=true"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了。我添加了Internal API生成blocked干预的审计事件，这也是自调用，然后返回AccountInterventions.java对象给前端。前端接下来会阻止密码重置？",
+      "elements_involved": [
+        "Authentication Internal API",
+        "AccountInterventions.java",
+        "audit event",
+        "blocked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，阻止密码重置是自调用。但用户还是可以尝试登录，所以下一步是/login调用，标记为IoT_Industrial_PLC_Logic。Internal API验证密码正确性，返回LoginResponse.java。",
+      "elements_involved": [
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "/login",
+        "IoT_Industrial_PLC_Logic",
+        "LoginResponse.java"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "登录成功后，流程走向账户恢复检查？我看到有/account-recovery端点，标记也是MQTT Broker。",
+      "elements_involved": [
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "/account-recovery",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Internal API计算是否允许账户恢复，返回AccountRecovery.java。然后进入MFA流程，调用/mfa，同样MQTT Broker标记，生成并存储OTP。",
+      "elements_involved": [
+        "Authentication Internal API",
+        "AccountRecovery.java",
+        "/mfa",
+        "OTP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "MFA部分我画好了自调用生成OTP。然后Internal API通过SQS发送NotifyRequest.java对象给NotificationHandler.java Lambda，Lambda再调用Notify服务发送SMS。这里用虚线表示异步消息对吗？",
+      "elements_involved": [
+        "Authentication Internal API",
+        "NotificationHandler.java Lambda",
+        "Notify",
+        "NotifyRequest.java",
+        "SQS",
+        "SMS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，SQS和Notify都用虚线箭头。Internal API返回204给前端，然后前端要阻止MFA重置——因为账户还是被blocked状态。",
+      "elements_involved": [
+        "Authentication Internal API",
+        "Authentication Frontend",
+        "204 response",
+        "blocked intervention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加阻止MFA重置的自调用。接下来是验证码验证，/verify-code端点，MQTT Broker标记，验证SMS MFA code有效后返回204。",
+      "elements_involved": [
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "/verify-code",
+        "IoT_Industrial_MQTT_Broker",
+        "204 response"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后一步，前端显示Blocked intervention screen。整个流程虽然用户完成了登录和MFA验证，但因为干预状态是blocked，最终仍然被拦截。",
+      "elements_involved": [
+        "Authentication Frontend",
+        "Blocked intervention screen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "完整流程已确认：从Orchestration开始，经过多层认证检查，账户干预API返回blocked贯穿始终，最终用户看到拦截页面。所有IoT标记和Java对象返回都按你的要求标注了。",
+      "elements_involved": [
+        "Orchestration",
+        "Account Interventions API",
+        "blocked",
+        "Blocked intervention screen"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 16,
+    "repair_count": 0,
+    "grounding_acts_count": 16,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 37304.6439,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 16
+  }
+}

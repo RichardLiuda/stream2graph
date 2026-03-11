@@ -1,0 +1,370 @@
+{
+  "id": "ot_stateDiagram_00265",
+  "source": "other",
+  "source_url": "https://github.com/Coregentis/MPLP-Protocol/blob/52719b884a395ab1579588e03e6a6cac9a797ccf/docs/docs/specification/profiles/diagrams/sa-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Coregentis/MPLP-Protocol",
+  "diagram_type": "stateDiagram",
+  "code": "%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90d9', 'primaryTextColor': '#fff', 'primaryBorderColor': '#2d5a87', 'lineColor': '#333', 'secondaryColor': '#f4f4f4', 'tertiaryColor': '#eef' }}}%%\n%% MPLP SA Profile Lifecycle State Machine\n%% Version: 1.0.0 | Frozen: 2025-12-03\n%% Schema Reference: schemas/v2/invariants/sa-invariants.yaml\n\nstateDiagram-v2\n    direction TB\n    \n    %% States\n    [*] --> Initialize: Boot Runtime\n    Initialize --> LoadContext: SA Created (sa_id generated)\n    LoadContext --> EvaluatePlan: Context Valid (status=active)\n    EvaluatePlan --> ExecuteStep: DAG Resolved\n    ExecuteStep --> EmitTrace: Step Done\n    EmitTrace --> ExecuteStep: More Steps\n    EmitTrace --> Complete: All Steps Done\n    Complete --> [*]: Terminate\n    \n    %% Error handling\n    LoadContext --> Failed: Context Invalid\n    EvaluatePlan --> Failed: Plan Invalid\n    ExecuteStep --> HandleError: Step Error\n    HandleError --> ExecuteStep: Retry\n    HandleError --> Failed: Fatal Error\n    Failed --> [*]: Terminate\n    \n    %% State descriptions\n    state Initialize {\n        [*] --> CreateSAInstance\n        CreateSAInstance --> GenerateSAId\n        GenerateSAId --> EmitSAInitialized\n        EmitSAInitialized --> [*]\n    }\n    \n    state LoadContext {\n        [*] --> ValidateContextId\n        ValidateContextId --> CheckContextStatus\n        CheckContextStatus --> EmitSAContextLoaded\n        EmitSAContextLoaded --> [*]\n        \n        note right of ValidateContextId\n            sa_requires_context:\n            context_id must be UUID v4\n        end note\n        \n        note right of CheckContextStatus\n            sa_context_must_be_active:\n            context.status == 'active'\n        end note\n    }\n    \n    state EvaluatePlan {\n        [*] --> ValidatePlanBinding\n        ValidatePlanBinding --> ParseSteps\n        ParseSteps --> ResolveDependencies\n        ResolveDependencies --> BuildExecutionDAG\n        BuildExecutionDAG --> EmitSAPlanEvaluated\n        EmitSAPlanEvaluated --> [*]\n        \n        note right of ValidatePlanBinding\n            sa_plan_context_binding:\n            plan.context_id == context.context_id\n        end note\n        \n        note right of ParseSteps\n            sa_plan_has_steps:\n            steps.length >= 1\n            sa_steps_agent_role_if_present:\n            if agent_role present, non-empty\n        end note\n    }\n    \n    state ExecuteStep {\n        [*] --> SelectExecutor\n        SelectExecutor --> RunExecution\n        RunExecution --> UpdateStepStatus\n        UpdateStepStatus --> [*]\n        \n        note right of SelectExecutor\n            Match agent_role to executor\n            (tool/LLM/agent)\n        end note\n    }\n    \n    state EmitTrace {\n        [*] --> WriteSegment\n        WriteSegment --> RecordOutcome\n        RecordOutcome --> EmitSATraceEmitted\n        EmitSATraceEmitted --> [*]\n        \n        note right of WriteSegment\n            sa_trace_context_binding:\n            trace.context_id == context.context_id\n            sa_trace_plan_binding:\n            trace.plan_id == plan.plan_id\n        end note\n    }\n    \n    state Complete {\n        [*] --> FinalizeTrace\n        FinalizeTrace --> EmitSACompleted\n        EmitSACompleted --> [*]\n    }\n    \n    state HandleError {\n        [*] --> ClassifyError\n        ClassifyError --> DecideAction\n        DecideAction --> [*]\n    }\n",
+  "content_size": 3394,
+  "collected_at": "2026-02-06T10:39:54.536966",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为MPLP的SA Profile设计一个完整的状态机，描述从启动到完成的整个生命周期。首先考虑整体结构：从初始状态进入Initialize，然后经过LoadContext、EvaluatePlan、ExecuteStep，最终到Complete。",
+      "elements_involved": [
+        "Initialize",
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "Complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个垂直流向的状态机。我注意到你提到了ExecuteStep，这个阶段如果有多步骤需要循环处理，应该怎么表示？还有错误处理的路径需要现在考虑吗？",
+      "elements_involved": [
+        "ExecuteStep",
+        "EmitTrace"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好问题。ExecuteStep执行完后进入EmitTrace记录轨迹，然后从EmitTrace有两个出口：如果还有步骤就回到ExecuteStep继续执行，如果所有步骤都完成了就进入Complete。错误处理必须并行设计，每个关键状态都可能失败。",
+      "elements_involved": [
+        "ExecuteStep",
+        "EmitTrace",
+        "Complete",
+        "Failed",
+        "HandleError"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经画出了主流程和循环结构。现在补充错误分支：LoadContext可能因上下文无效进入Failed，EvaluatePlan可能因计划无效失败，ExecuteStep出错则进入HandleError处理。HandleError之后可以重试或判定为致命错误。",
+      "elements_involved": [
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "Failed",
+        "HandleError"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这个结构正确。接下来我需要展开每个复合状态的内部细节。先从Initialize开始：它包含创建SA实例、生成sa_id、然后发出SAInitialized事件。",
+      "elements_involved": [
+        "Initialize",
+        "CreateSAInstance",
+        "GenerateSAId",
+        "EmitSAInitialized"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Initialize内部结构已添加。现在处理LoadContext：我设计了验证context_id、检查context状态为active、然后发出SAContextLoaded事件。这里需要标注约束条件。",
+      "elements_involved": [
+        "LoadContext",
+        "ValidateContextId",
+        "CheckContextStatus",
+        "EmitSAContextLoaded"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，LoadContext的约束很重要。context_id必须是UUID v4格式，而且context.status必须等于'active'。这些要作为note标注在对应节点旁边。",
+      "elements_involved": [
+        "ValidateContextId",
+        "CheckContextStatus"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "约束注释已添加。继续展开EvaluatePlan：验证plan与context的绑定关系、解析步骤、解析依赖、构建执行DAG，最后发出SAPlanEvaluated事件。",
+      "elements_involved": [
+        "EvaluatePlan",
+        "ValidatePlanBinding",
+        "ParseSteps",
+        "ResolveDependencies",
+        "BuildExecutionDAG",
+        "EmitSAPlanEvaluated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "EvaluatePlan的约束也需要标注：plan.context_id必须与context.context_id一致，而且plan必须至少有一个步骤。如果存在agent_role字段，必须非空。",
+      "elements_involved": [
+        "ValidatePlanBinding",
+        "ParseSteps",
+        "BuildExecutionDAG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EvaluatePlan的约束注释已补充。现在看ExecuteStep内部：选择执行器、运行执行、更新步骤状态。这里执行器匹配逻辑需要说明——根据agent_role匹配到tool、LLM或agent。",
+      "elements_involved": [
+        "ExecuteStep",
+        "SelectExecutor",
+        "RunExecution",
+        "UpdateStepStatus"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，SelectExecutor的注释要写明匹配agent_role到执行器。接下来是EmitTrace：写入轨迹段、记录结果、发出SATraceEmitted事件。这个状态也有绑定约束。",
+      "elements_involved": [
+        "EmitTrace",
+        "WriteSegment",
+        "RecordOutcome",
+        "EmitSATraceEmitted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EmitTrace结构已完成。我添加了约束注释：trace.context_id必须等于context.context_id，trace.plan_id必须等于plan.plan_id。现在处理Complete状态？",
+      "elements_involved": [
+        "Complete",
+        "FinalizeTrace",
+        "EmitSACompleted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Complete相对简单：FinalizeTrace整理轨迹，然后EmitSACompleted发出完成事件。最后是HandleError的内部结构：ClassifyError分类错误，DecideAction决定重试或放弃。",
+      "elements_involved": [
+        "Complete",
+        "FinalizeTrace",
+        "EmitSACompleted",
+        "HandleError",
+        "ClassifyError",
+        "DecideAction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有复合状态的内部结构都已展开。我检查一下整体连接：Initialize之后是LoadContext，条件是SA Created且sa_id已生成；LoadContext到EvaluatePlan需要status=active。这些转移条件需要确认。",
+      "elements_involved": [
+        "Initialize",
+        "LoadContext",
+        "EvaluatePlan",
+        "sa_id",
+        "status=active"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "转移条件正确。EvaluatePlan到ExecuteStep的条件是DAG Resolved，ExecuteStep到EmitTrace是Step Done，EmitTrace回到ExecuteStep是More Steps，到Complete是All Steps Done。",
+      "elements_involved": [
+        "EvaluatePlan",
+        "ExecuteStep",
+        "EmitTrace",
+        "Complete",
+        "DAG Resolved",
+        "Step Done",
+        "More Steps",
+        "All Steps Done"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我发现HandleError有两个出口：Retry回到ExecuteStep，Fatal Error进入Failed。但DecideAction如何区分这两种情况？需要在注释里说明吗？",
+      "elements_involved": [
+        "HandleError",
+        "DecideAction",
+        "ExecuteStep",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "DecideAction的内部逻辑不需要展开太多，保持抽象即可。重试或判定致命错误由错误分类结果决定。现在检查整体：所有终止状态都要回到[*]，包括Complete和Failed。",
+      "elements_involved": [
+        "DecideAction",
+        "Complete",
+        "Failed",
+        "Terminate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "终止连接已确认。我注意到EvaluatePlan里的BuildExecutionDAG，这个节点名称在代码里可能需要调整长度，我先用完整名称，如果渲染有问题再缩短。",
+      "elements_involved": [
+        "BuildExecutionDAG",
+        "EvaluatePlan"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，BuildExecutionDAG名称太长可能影响布局，而且我注意到ParseSteps的约束注释里有个拼写问题——应该是steps.length = 1而不是= 1，还有agent_role的约束描述需要更精确。另外CheckContextStatus的节点名在图里显示不完整，应该是CheckContextStatus而不是CheckConte。",
+      "elements_involved": [
+        "BuildExecutionDAG",
+        "ParseSteps",
+        "CheckContextStatus",
+        "steps.length",
+        "agent_role"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正：BuildExecutionDAG保持完整名称但调整布局；ParseSteps约束改为steps.length = 1（按你之前说的至少一步，但这里严格等于1是单步计划的特例，需要确认）；CheckContextStatus名称已补全。还有其他节点名需要检查吗？",
+      "elements_involved": [
+        "BuildExecutionDAG",
+        "ParseSteps",
+        "CheckContextStatus",
+        "ValidatePlanBinding"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "再看一下：ValidatePlanBinding显示成了ValidatePlan，需要完整；ClassifyError显示成了ClassifyErr；DecideAction显示成了DecideActi；EmitSAContextLoaded显示成了EmitsAC...这些截断都要修复。还有几个emitsa开头的节点都有类似问题。",
+      "elements_involved": [
+        "ValidatePlanBinding",
+        "ClassifyError",
+        "DecideAction",
+        "EmitSAContextLoaded",
+        "EmitSAInitialized",
+        "EmitSAPlanEvaluated",
+        "EmitSATraceEmitted",
+        "EmitSACompleted"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "所有节点名称已修复为完整形式：ValidatePlanBinding、ClassifyError、DecideAction、EmitSAContextLoaded、EmitSAInitialized、EmitSAPlanEvaluated、EmitSATraceEmitted、EmitSACompleted。现在名称都正确显示了。",
+      "elements_involved": [
+        "ValidatePlanBinding",
+        "ClassifyError",
+        "DecideAction",
+        "EmitSAContextLoaded",
+        "EmitSAInitialized",
+        "EmitSAPlanEvaluated",
+        "EmitSATraceEmitted",
+        "EmitSACompleted"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，现在结构完整了。最后确认一下版本信息：这是MPLP SA Profile Lifecycle State Machine，版本1.0.0，冻结日期2025-12-03，引用schema路径schemas/v2/invariants/sa-invariants.yaml。",
+      "elements_involved": [
+        "MPLP SA Profile Lifecycle State Machine",
+        "version",
+        "schema reference"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有元数据已添加到图表头部。最终检查完成：主流程7个状态，5个复合状态内部展开，9条错误处理路径，6条约束注释，方向为TB垂直布局。状态机可以定稿了。",
+      "elements_involved": [
+        "stateDiagram-v2",
+        "direction TB",
+        "Initialize",
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "EmitTrace",
+        "Complete",
+        "Failed",
+        "HandleError"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 24,
+    "repair_count": 4,
+    "grounding_acts_count": 24,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:44Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:39Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:39Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 59370.4028,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 24
+  }
+}

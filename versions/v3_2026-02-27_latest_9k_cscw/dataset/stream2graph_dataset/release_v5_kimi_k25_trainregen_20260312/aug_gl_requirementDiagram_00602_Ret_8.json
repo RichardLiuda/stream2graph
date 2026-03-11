@@ -1,0 +1,299 @@
+{
+  "id": "aug_gl_requirementDiagram_00602_Ret_8",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ylmzunal/scalable-llm-over-kubernetes-deployment/blob/1b46a8e09526433e25151879ff4c084c2da2dd58/diagrams/deployment_sequence_diagram.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ylmzunal/scalable-llm-over-kubernetes-deployment",
+  "diagram_type": "requirementDiagram",
+  "code": "sequenceDiagram\n    participant DEV as Developer\n    participant GIT as Git Repository\n    participant DOCKER as Docker Build\n    participant AR as Artifact Registry\n    participant GKE as GKE Cluster\n    participant K8S as Kubernetes API\n    participant POD as Backend Pod\n    participant OL as Ollama Container\n    participant HPA as HPA Controller\n    \n    Note over DEV,HPA: CI/CD Deployment Pipeline\n    \n    DEV->>+GIT: git push (Retail_CustomerLoyalty)\n    GIT->>-DEV: Push confirmed\n    \n    DEV->>+DOCKER: ./deploy-gke.sh\n    DOCKER->>DOCKER: Validate Prerequisites\n    DOCKER->>DOCKER: Setup GCloud Auth\n    \n    Note over DOCKER,AR: Image Build Process\n    DOCKER->>+DOCKER: Build Ollama Image\n    Note over DOCKER: FROM ollama/ollama:latest<br/>RUN ollama pull tinyllama\n    DOCKER->>-DOCKER: Ollama Image Ready\n    \n    DOCKER->>+DOCKER: Build Backend Image\n    Note over DOCKER: FROM python:3.11<br/>COPY app/ requirements.txt\n    DOCKER->>-DOCKER: Backend Image Ready\n    \n    DOCKER->>+DOCKER: Build Frontend Image\n    Note over DOCKER: FROM node:18 (Retail_Inventory)<br/>FROM nginx:alpine (Retail_PointOfSale)\n    DOCKER->>-DOCKER: Frontend Image Ready\n    \n    DOCKER->>+AR: Push Images\n    AR->>AR: Store Images with Tags\n    AR->>-DOCKER: Push Complete\n    \n    Note over DOCKER,HPA: Kubernetes Deployment\n    DOCKER->>+K8S: kubectl apply -f k8s/rbac.yaml\n    K8S->>-DOCKER: RBAC Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/configmap-cloud.yaml\n    K8S->>-DOCKER: ConfigMap Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/backend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Backend Pods\n    \n    K8S->>+POD: Create Backend Pod\n    POD->>+AR: Pull Backend Image\n    AR->>-POD: Image Downloaded\n    POD->>+AR: Pull Ollama Image\n    AR->>-POD: Image Downloaded\n    \n    Note over POD,OL: Pod Startup Sequence\n    POD->>+OL: Start Ollama Container\n    OL->>OL: Initialize Ollama Server\n    OL->>OL: Load TinyLlama Model (Retail_CouponSystem)\n    OL->>-POD: Ollama Ready (Retail_PointOfSale)\n    \n    POD->>+POD: Start FastAPI Container\n    POD->>POD: Initialize FastAPI App\n    POD->>+OL: Test Connection (Retail_OrderManagement)\n    OL->>-POD: Connection Successful\n    POD->>-POD: FastAPI Ready\n    \n    POD->>+K8S: Report Pod Ready\n    K8S->>-POD: Readiness Confirmed\n    K8S->>-DOCKER: Backend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/frontend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Frontend Pods\n    K8S->>-DOCKER: Frontend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/hpa-cloud.yaml\n    K8S->>+HPA: Create HPA Resources\n    HPA->>HPA: Monitor Backend Metrics\n    HPA->>-K8S: HPA Active\n    K8S->>-DOCKER: HPA Applied\n    \n    DOCKER->>+K8S: kubectl get services\n    K8S->>-DOCKER: External IP Available\n    DOCKER->>-DEV: Deployment Complete<br/>App URL: http://EXTERNAL-IP\n    \n    Note over DEV,HPA: Health Verification\n    DEV->>+GKE: curl http://EXTERNAL-IP/health\n    GKE->>+POD: Route Health Check\n    POD->>+OL: Verify Ollama Status\n    OL->>-POD: Status OK\n    POD->>-GKE: Health Check Passed\n    GKE->>-DEV: 200 OK\n    \n    Note over DEV,HPA: Auto-scaling Verification\n    HPA->>+POD: Monitor CPU/Memory\n    POD->>-HPA: Metrics: CPU 30%, Memory 40%\n    HPA->>HPA: Within Thresholds (Retail_Inventory)\n    \n    Note over DEV,HPA: Rolling Update Process\n    DEV->>+DOCKER: Deploy New Version\n    DOCKER->>+AR: Push Updated Images\n    AR->>-DOCKER: Images Updated\n    \n    DOCKER->>+K8S: kubectl apply (Retail_PointOfSale)\n    K8S->>K8S: Rolling Update Strategy\n    K8S->>+POD: Create New Pod\n    POD->>POD: Start New Version\n    POD->>-K8S: New Pod Ready\n    K8S->>K8S: Terminate Old Pod\n    K8S->>-DOCKER: Rolling Update Complete\n    DOCKER->>-DEV: Update Successful",
+  "content_size": 3703,
+  "collected_at": "2026-02-06T14:13:15.259540",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Retail",
+  "seed_id": "gl_requirementDiagram_00602",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的CI/CD部署流程图，从开发者推送代码开始，一直到GKE集群完成部署，还要包含Ollama容器和HPA自动扩缩容的验证流程。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "GKE Cluster",
+        "Ollama Container",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这个流程涉及多个阶段。我注意到有Docker构建、镜像推送到Artifact Registry，然后是Kubernetes部署。Ollama容器和Backend Pod是什么关系？是同一个Pod里的两个容器吗？",
+      "elements_involved": [
+        "Docker Build",
+        "Artifact Registry",
+        "Backend Pod",
+        "Ollama Container"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Backend Pod里面有两个容器：一个是FastAPI后端服务，另一个是Ollama容器跑TinyLlama模型。它们需要先后启动，FastAPI要等Ollama就绪后才启动。",
+      "elements_involved": [
+        "Backend Pod",
+        "Ollama Container",
+        "FastAPI Container"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，那我先画出参与者结构：Developer、Git Repository、Docker Build、Artifact Registry、GKE Cluster、Kubernetes API、Backend Pod、Ollama Container、HPA Controller。Developer先push代码到Git Repository。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，push之后Git返回确认，然后Developer执行deploy-gke.sh脚本触发Docker构建流程。构建阶段要包括三个镜像：Ollama镜像、Backend镜像、Frontend镜像。",
+      "elements_involved": [
+        "Developer",
+        "Docker Build",
+        "Ollama Image",
+        "Backend Image",
+        "Frontend Image"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加构建流程。我注意到Ollama镜像基于ollama/ollama:latest，还要pull tinyllama模型；Backend用python:3.11；Frontend比较特殊，Retail_Inventory用node:18，Retail_PointOfSale用nginx:alpine。构建完成后推送到Artifact Registry。",
+      "elements_involved": [
+        "Docker Build",
+        "Artifact Registry",
+        "Ollama Image",
+        "Backend Image",
+        "Frontend Image",
+        "Retail_Inventory",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "镜像推送完成后，进入Kubernetes部署阶段。先应用RBAC和ConfigMap，然后部署Backend Deployment。这里要详细画出Pod的创建过程：从Kubernetes API调度，到Pod创建，再到拉取两个镜像。",
+      "elements_involved": [
+        "Kubernetes API",
+        "RBAC",
+        "ConfigMap",
+        "Backend Deployment",
+        "Backend Pod",
+        "Artifact Registry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加K8s部署流程。我画了Pod Startup Sequence：Backend Pod先启动Ollama Container，初始化服务器并加载TinyLlama模型（Retail_CouponSystem），Ollama就绪后（标记为Retail_PointOfSale状态），再启动FastAPI Container。",
+      "elements_involved": [
+        "Backend Pod",
+        "Ollama Container",
+        "FastAPI Container",
+        "TinyLlama Model",
+        "Retail_CouponSystem",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这里有个细节：FastAPI启动后要和Ollama做连接测试，对应Retail_OrderManagement这个验证步骤，测试通过才认为Pod真正就绪。然后Pod向K8s报告Ready状态。",
+      "elements_involved": [
+        "FastAPI Container",
+        "Ollama Container",
+        "Retail_OrderManagement",
+        "Kubernetes API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充连接测试和就绪报告。接下来部署Frontend和HPA对吧？Frontend部署相对简单，HPA需要创建资源后监控Backend的指标。",
+      "elements_involved": [
+        "Frontend Deployment",
+        "HPA Controller",
+        "Backend Pod"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。部署完成后Developer要验证服务，通过GKE的External IP访问health端点，这个请求会路由到Backend Pod，Pod再检查Ollama状态。另外还要验证HPA的自动扩缩容功能。",
+      "elements_involved": [
+        "Developer",
+        "GKE Cluster",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller",
+        "External IP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Health Verification流程：Developer curl health端点，GKE路由到Pod，Pod验证Ollama返回OK，最终返回200。Auto-scaling Verification部分，HPA监控Backend的CPU 30%、Memory 40%，当前在阈值内（Retail_Inventory状态）。",
+      "elements_involved": [
+        "Developer",
+        "GKE Cluster",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后还需要Rolling Update流程。Developer部署新版本时，Docker推送更新镜像到Artifact Registry，然后K8s执行滚动更新：创建新Pod、启动新版本、新Pod就绪后终止旧Pod。",
+      "elements_involved": [
+        "Developer",
+        "Docker Build",
+        "Artifact Registry",
+        "Kubernetes API",
+        "Backend Pod",
+        "Rolling Update"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Rolling Update已添加，标记了Retail_PointOfSale的更新应用。整个流程看起来完整了：从git push开始，经过镜像构建、K8s部署、健康验证、自动扩缩容监控，到最终的滚动更新。需要调整什么地方吗？",
+      "elements_involved": [
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster",
+        "Kubernetes API",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "有个地方需要修正：Ollama加载模型时我提到的是Retail_CouponSystem，但后面Ollama就绪状态标记成了Retail_PointOfSale，这两个应该统一一下逻辑。Retail_CouponSystem是模型加载阶段，Retail_PointOfSale是就绪状态标记，这样区分是可以的，但我要确认这个命名不会混淆。",
+      "elements_involved": [
+        "Ollama Container",
+        "Retail_CouponSystem",
+        "Retail_PointOfSale",
+        "TinyLlama Model"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "理解，Retail_CouponSystem表示Ollama正在加载优惠券系统相关的TinyLlama模型，Retail_PointOfSale表示Ollama服务就绪可以处理销售点请求。这样业务语义上是通的。另外Retail_OrderManagement是连接测试阶段，Retail_Inventory是HPA监控的资源指标阈值状态。",
+      "elements_involved": [
+        "Retail_CouponSystem",
+        "Retail_PointOfSale",
+        "Retail_OrderManagement",
+        "Retail_Inventory",
+        "Ollama Container",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，这些零售业务标签分别对应不同阶段。Retail_Inventory在Frontend构建时也用了，node:18阶段。整体流程图现在很清晰了，覆盖了我们从代码提交到生产部署的完整DevOps流水线。",
+      "elements_involved": [
+        "Retail_Inventory",
+        "Frontend Image",
+        "CI/CD Deployment Pipeline"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成最终调整。整个序列图已包含：Developer推送Retail_CustomerLoyalty代码，Docker构建多阶段镜像（含Ollama特殊处理），Artifact Registry存储，K8s完整部署Pod启动序列，健康验证，HPA监控，以及滚动更新机制。所有零售业务标签已按阶段正确分配。",
+      "elements_involved": [
+        "Developer",
+        "Retail_CustomerLoyalty",
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller",
+        "Rolling Update"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 18,
+    "repair_count": 1,
+    "grounding_acts_count": 18,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 51630.0261,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 18
+  }
+}

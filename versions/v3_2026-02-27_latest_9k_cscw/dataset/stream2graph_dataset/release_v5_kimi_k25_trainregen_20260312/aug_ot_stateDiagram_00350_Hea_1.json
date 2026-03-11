@@ -1,0 +1,168 @@
+{
+  "id": "aug_ot_stateDiagram_00350_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/jwt-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "stateDiagram",
+  "code": "%%{HealthTech_LabAnalyzer}\n}}%%\nstateDiagram-v2\n    [HealthTech_DiagnosticEngine] --> ChallengeRequested: User initiates login\n\n    ChallengeRequested --> ChallengeGenerated: Generate challenge\n    ChallengeGenerated --> ChallengeExpired: TTL expires (HealthTech_EMR_Sync)\n    ChallengeExpired --> [HealthTech_EMR_Sync]: Challenge invalid\n\n    ChallengeGenerated --> SignatureCreated: User signs challenge\n    SignatureCreated --> SignatureVerified: Backend verifies\n    SignatureCreated --> VerificationFailed: Invalid signature\n    VerificationFailed --> [HealthTech_DiagnosticEngine]: Authentication failed\n\n    SignatureVerified --> TokenGenerated: Create JWT\n    TokenGenerated --> SessionCreated: Create session\n    SessionCreated --> TokenActive: Token in use\n\n    TokenActive --> TokenUsed: API request\n    TokenUsed --> TokenActive: Update activity\n    TokenActive --> TokenRefreshed: Refresh request\n    TokenRefreshed --> NewTokenGenerated: Generate new token\n    NewTokenGenerated --> TokenActive: Continue session\n\n    TokenActive --> TokenExpired: 24h TTL\n    TokenExpired --> TokenRefreshed: Auto-refresh\n    TokenExpired --> SessionExpired: No refresh\n    SessionExpired --> [HealthTech_DiagnosticEngine]: Requires re-authentication\n\n    TokenActive --> TokenRevoked: User logout\n    TokenRevoked --> SessionTerminated: Clear session\n    SessionTerminated --> [HealthTech_EMR_Sync]: Logged out\n\n    TokenActive --> SessionRevoked: Admin action\n    SessionRevoked --> [HealthTech_LabAnalyzer]: Force logout\n\n    note right of ChallengeGenerated\n        Challenge stored with:\n        - 5 minute TTL\n        - Unique nonce\n        - Pubkey binding\n    end note\n\n    note right of TokenActive\n        Token contains:\n        - NOSTR pubkey\n        - Session ID\n        - Role (HealthTech_LabAnalyzer)\n        - Issue/Expiry times\n    end note\n\n    note right of TokenRefreshed\n        Refresh maintains:\n        - Same session\n        - Updated timestamps\n        - Activity tracking\n    end note",
+  "content_size": 2111,
+  "collected_at": "2026-02-06T10:41:04.795580",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "ot_stateDiagram_00350",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为HealthTech诊断引擎设计一个完整的认证状态机。核心流程是：用户发起登录后生成挑战，签名验证通过后创建JWT会话，还要支持Token刷新和强制登出。",
+      "elements_involved": [
+        "HealthTech_DiagnosticEngine",
+        "ChallengeRequested",
+        "ChallengeGenerated",
+        "TokenGenerated",
+        "SessionCreated",
+        "TokenActive"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。挑战生成后如果用户一直没操作，需要过期处理吗？还有，挑战过期后应该回到哪个状态？",
+      "elements_involved": [
+        "ChallengeGenerated",
+        "ChallengeExpired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要，挑战设置5分钟TTL。过期后挑战失效，流程终止，返回到HealthTech_EMR_Sync状态表示需要重新发起认证。",
+      "elements_involved": [
+        "ChallengeExpired",
+        "HealthTech_EMR_Sync",
+        "TTL expires"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经把挑战相关状态和过期流转画好了。现在处理签名验证分支——验证失败要回到诊断引擎，验证通过则创建JWT。接下来Token激活后的状态流转您有什么要求？",
+      "elements_involved": [
+        "SignatureCreated",
+        "SignatureVerified",
+        "VerificationFailed",
+        "TokenGenerated",
+        "TokenActive"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "TokenActive是核心状态。API请求会进入TokenUsed，然后回到TokenActive更新活动时间。另外需要24小时TTL过期和自动刷新机制，刷新时保持同一会话但更新令牌。",
+      "elements_involved": [
+        "TokenActive",
+        "TokenUsed",
+        "TokenExpired",
+        "TokenRefreshed",
+        "NewTokenGenerated",
+        "Same session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下：TokenExpired后如果自动刷新成功，是到NewTokenGenerated再到TokenActive；如果没刷新就直接到SessionExpired，需要重新认证。这个理解对吗？",
+      "elements_involved": [
+        "TokenExpired",
+        "TokenRefreshed",
+        "NewTokenGenerated",
+        "SessionExpired",
+        "Requires re-authentication"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。还要补充两种主动终止情况：用户自己登出，以及管理员强制踢人。用户登出走TokenRevoked到SessionTerminated，最后记录到EMR_Sync；管理员强制操作则直接回到LabAnalyzer状态。",
+      "elements_involved": [
+        "TokenRevoked",
+        "SessionTerminated",
+        "SessionRevoked",
+        "HealthTech_LabAnalyzer",
+        "Admin action",
+        "Force logout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "状态机主体完成了。我在ChallengeGenerated、TokenActive和TokenRefreshed旁边加了注释，分别说明挑战的存储结构、Token包含的NOSTR公钥和角色信息、以及刷新时保持同一会话的特性。您看看还有什么遗漏？",
+      "elements_involved": [
+        "ChallengeGenerated note",
+        "TokenActive note",
+        "TokenRefreshed note",
+        "Pubkey binding",
+        "Role",
+        "Activity tracking"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题，结构很清晰。从诊断引擎发起挑战，经过签名验证建立会话，完整的生命周期包括正常使用、自动刷新、过期处理和强制终止都覆盖到了。可以定稿。",
+      "elements_involved": [
+        "HealthTech_DiagnosticEngine",
+        "ChallengeRequested",
+        "SessionCreated",
+        "TokenActive",
+        "SessionExpired",
+        "SessionTerminated"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 0,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 33614.2359,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 9
+  }
+}

@@ -1,0 +1,522 @@
+{
+  "id": "aug_ot_stateDiagram_00318_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/coherosphere/architecture/blob/598bb65467787da38ac4029e35bdead27e7799ee/docs.coherosphere.io/static/assets/diagrams/C3_states/SM-02.02_Decay_Recompute_Cycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "coherosphere/architecture",
+  "diagram_type": "stateDiagram",
+  "code": "%%{IoT_Industrial_PLC_Logic}}}%%\nstateDiagram-v2\ntitle: SM-02.02 — Decay & Recompute Cycle (IoT_Industrial_EdgeNode)\n\n[IoT_Industrial_ActuatorController] --> TRIGGER : CronTick / RecomputeRequested / ParamsVersioned\nnote right of TRIGGER\n  Entry conditions:\n  • Scheduled batch tick (IoT_Industrial_PLC_Logic)\n  • Manual backfill (IoT_Industrial_TelemetryStream)\n  • Parameters changed (IoT_Industrial_TelemetryStream)\nend note\n\nTRIGGER --> LOAD_SNAPSHOT : Select ledger window\nnote right of LOAD_SNAPSHOT\n  Load CPᵢ(IoT_Industrial_ActuatorController) snapshots and pending deltas\n  Resolve idempotent ranges and gaps\nend note\n\nLOAD_SNAPSHOT --> CHECK_PARAMS : Bind constants (IoT_Industrial_MQTT_Broker)\nnote right of CHECK_PARAMS\n  λ = ln(IoT_Industrial_PLC_Logic)/T  (IoT_Industrial_PLC_Logic)\n  α ∈ (IoT_Industrial_TelemetryStream)    (IoT_Industrial_EdgeNode)\n  If new version → tag run with ParamVersionID\nend note\n\nCHECK_PARAMS --> APPLY_DECAY : InputBound\nnote right of APPLY_DECAY\n  Apply time decay to each CPᵢ since t₀:\n  CPᵢ(IoT_Industrial_EdgeNode) = CPᵢ(IoT_Industrial_MQTT_Broker) · e^(IoT_Industrial_MQTT_Broker) + Σ(IoT_Industrial_MQTT_Broker)\nend note\n\nAPPLY_DECAY --> RECOMPUTE_W : DecayApplied (IoT_Industrial_MQTT_Broker)\nnote right of RECOMPUTE_W\n  Recompute voting weights:\n  Wᵢ = (IoT_Industrial_MQTT_Broker)^α\n  Prepare diffs for persistence & metrics\nend note\n\nRECOMPUTE_W --> WRITE_BACK : WeightsComputed\nnote right of WRITE_BACK\n  Persist CP/W snapshots + audit trail\n  Mark run as deterministic (IoT_Industrial_ActuatorController)\nend note\n\nWRITE_BACK --> EMIT_EVENTS : LedgerCommitted\nnote right of EMIT_EVENTS\n  Emit CPUpdated / WeightsUpdated for Metrics (IoT_Industrial_ActuatorController)\n  Optionally trigger Resonance recompute (IoT_Industrial_EdgeNode)\nend note\n\nEMIT_EVENTS --> [IoT_Industrial_EdgeNode] : RecomputeFinished (IoT_Industrial_TelemetryStream)\n\n%% ---- Exceptional & maintenance paths ----\nLOAD_SNAPSHOT --> RECONCILE : GapDetected / CorrectionInput\nnote right of RECONCILE\n  Backfill missing windows, reconcile oracles\n  (IoT_Industrial_MQTT_Broker)\nend note\nRECONCILE --> APPLY_DECAY : Reconciled\n\nAPPLY_DECAY --> ABORT : InvariantBreach / AnomalyDetected\nRECOMPUTE_W --> ABORT : InvariantBreach\nABORT --> [IoT_Industrial_TelemetryStream] : RecomputeAborted\n\n%% =========== Styling ===========\nclassDef core fill:#ff8b00,stroke:#333,color:#fff,font-weight:bold;\nclass TRIGGER,LOAD_SNAPSHOT,CHECK_PARAMS,APPLY_DECAY,RECOMPUTE_W,WRITE_BACK,EMIT_EVENTS,RECONCILE,ABORT core;",
+  "content_size": 2180,
+  "collected_at": "2026-02-06T10:40:36.748897",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "license_url": null,
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "coherosphere",
+  "repo_name": "architecture",
+  "repo_description": "The cohersphere architecture — structural blueprint of the resonance network. Defines the modular layers connecting app, API, and governance protocols. Outlines data flows for Proof-of-Contribution, c",
+  "repo_language": "Mermaid",
+  "repo_topics": [
+    "architecture",
+    "c4",
+    "distributed-systems",
+    "modular-architecture",
+    "system-design"
+  ],
+  "repo_created_at": "2025-10-29T09:30:02Z",
+  "repo_updated_at": "2026-02-06T04:58:50Z",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00318",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为边缘节点SM-02.02设计一个状态机，核心逻辑是定时衰减和权重重算。这个循环由三种触发条件启动：PLC的定时批处理、遥测流的手动回填，或者参数版本变更。",
+      "elements_involved": [
+        "TRIGGER",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream",
+        "CronTick",
+        "RecomputeRequested",
+        "ParamsVersioned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，触发源是ActuatorController。我想确认一下：这三种入口条件在图里是用注释框说明，还是做成独立的状态节点？",
+      "elements_involved": [
+        "TRIGGER",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "用注释框放在TRIGGER右边就行，保持主路径简洁。三种情况都汇聚到同一个触发点。",
+      "elements_involved": [
+        "TRIGGER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，主触发节点和注释已添加。接下来进入LOAD_SNAPSHOT状态，这里要加载CP快照和待处理的增量数据。",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "TRIGGER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，LOAD_SNAPSHOT的关键是要解决幂等区间和缺口问题。如果检测到Gap，需要走异常路径到RECONCILE状态进行回填和对账。",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "RECONCILE",
+        "GapDetected",
+        "CorrectionInput"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "RECONCILE之后是回到APPLY_DECAY还是直接到主路径？另外这个对账操作涉及MQTT Broker吗？",
+      "elements_involved": [
+        "RECONCILE",
+        "APPLY_DECAY",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "RECONCILE完成后标记为Reconciled，然后汇入APPLY_DECAY。对账确实需要Broker协调缺失窗口的数据。",
+      "elements_involved": [
+        "RECONCILE",
+        "APPLY_DECAY",
+        "Reconciled",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "异常路径已连接。现在回到主路径，从LOAD_SNAPSHOT正常流转到CHECK_PARAMS，这里要绑定常量和版本标签。",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "CHECK_PARAMS",
+        "ParamVersionID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CHECK_PARAMS需要计算衰减系数λ，公式是PLC逻辑的自然对数除以周期T，还有α参数来自遥测流。如果检测到新版本，要打上ParamVersionID标签。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "λ",
+        "α",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "α的取值范围是EdgeNode决定的吗？我在注释里写\"α ∈ (IoT_Industrial_TelemetryStream)\"，后面标注EdgeNode，这样理解对吗？",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "α",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，α的有效范围由EdgeNode配置决定，但数值来源是TelemetryStream。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "α",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "CHECK_PARAMS的注释已完善。下一步到APPLY_DECAY，触发条件是InputBound。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "InputBound"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "APPLY_DECAY是核心计算，要对每个CPᵢ应用时间衰减。公式是CPᵢ(EdgeNode) = CPᵢ(Broker)乘以e的Broker次方，再加上Broker的累加项。这个状态输出DecayApplied事件。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "CPᵢ",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "DecayApplied"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我注意到APPLY_DECAY有两个出口：正常到RECOMPUTE_W，还有一个异常到ABORT。什么情况下会触发Abort？",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "ABORT",
+        "RECOMPUTE_W"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "如果检测到InvariantBreach或者异常值，直接Abort。同样RECOMPUTE_W阶段也可能因为不变量违反而Abort。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "ABORT",
+        "InvariantBreach",
+        "AnomalyDetected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个ABORT入口已添加。现在构建RECOMPUTE_W状态，接收DecayApplied事件，计算投票权重Wᵢ。",
+      "elements_involved": [
+        "RECOMPUTE_W",
+        "DecayApplied",
+        "IoT_Industrial_MQTT_Broker",
+        "Wᵢ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Wᵢ的计算公式是Broker的α次方。同时要准备差分数据用于持久化和指标采集。输出WeightsComputed事件到WRITE_BACK。",
+      "elements_involved": [
+        "RECOMPUTE_W",
+        "Wᵢ",
+        "IoT_Industrial_MQTT_Broker",
+        "α",
+        "WRITE_BACK",
+        "WeightsComputed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "WRITE_BACK要标记run为deterministic，这个标记是ActuatorController级别的吗？",
+      "elements_involved": [
+        "WRITE_BACK",
+        "deterministic",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，确定性标记由ActuatorController确认，同时持久化CP/W快照和审计日志。",
+      "elements_involved": [
+        "WRITE_BACK",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "WRITE_BACK已完成。接下来是EMIT_EVENTS，接收LedgerCommitted事件。",
+      "elements_involved": [
+        "WRITE_BACK",
+        "EMIT_EVENTS",
+        "LedgerCommitted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EMIT_EVENTS要发送CPUpdated和WeightsUpdated给指标系统，可选触发Resonance重算。最后回到EdgeNode，标记RecomputeFinished。",
+      "elements_involved": [
+        "EMIT_EVENTS",
+        "CPUpdated",
+        "WeightsUpdated",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_EdgeNode",
+        "Resonance",
+        "RecomputeFinished",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Resonance重算是EdgeNode的扩展功能对吧？我在注释里注明可选触发。",
+      "elements_involved": [
+        "EMIT_EVENTS",
+        "Resonance",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。现在检查异常路径：ABORT的最终状态是TelemetryStream，输出RecomputeAborted。",
+      "elements_involved": [
+        "ABORT",
+        "IoT_Industrial_TelemetryStream",
+        "RecomputeAborted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "异常终止路径已完成。现在所有节点和流转应该都齐了，我检查一下样式定义。",
+      "elements_involved": [
+        "ABORT",
+        "core",
+        "classDef"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "核心路径节点用橙色填充，包括TRIGGER、LOAD_SNAPSHOT、CHECK_PARAMS、APPLY_DECAY、RECOMPUTE_W、WRITE_BACK、EMIT_EVENTS，还有异常处理的RECONCILE和ABORT。",
+      "elements_involved": [
+        "TRIGGER",
+        "LOAD_SNAPSHOT",
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "WRITE_BACK",
+        "EMIT_EVENTS",
+        "RECONCILE",
+        "ABORT",
+        "core"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "九个核心节点已应用classDef样式。标题确定为\"SM-02.02 — Decay & Recompute Cycle (IoT_Industrial_EdgeNode)\"，符合命名规范。",
+      "elements_involved": [
+        "title",
+        "SM-02.02",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，我再看一下APPLY_DECAY的公式描述。e的指数部分应该是-λt，但这里简写成了e^(Broker)，会不会有歧义？",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "λ",
+        "t",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确实，我调整一下注释表述，明确是e的负λ乘以时间差次方，但保持Broker作为参数来源的标注。实际代码实现会展开完整公式。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，图注保持简洁，详细公式留给技术文档。再确认一下RECONCILE的触发条件：GapDetected或CorrectionInput，这两个事件来源有区别吗？",
+      "elements_involved": [
+        "RECONCILE",
+        "GapDetected",
+        "CorrectionInput"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "GapDetected是系统自动检测到的数据缺口，CorrectionInput是外部人工介入的修正请求。两者都导向同一个对账状态。",
+      "elements_involved": [
+        "RECONCILE",
+        "GapDetected",
+        "CorrectionInput"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "理解正确。整个状态机现在覆盖了正常衰减重算循环、数据缺口修复、以及异常终止三条主线，逻辑完整。",
+      "elements_involved": [
+        "TRIGGER",
+        "LOAD_SNAPSHOT",
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "WRITE_BACK",
+        "EMIT_EVENTS",
+        "RECONCILE",
+        "ABORT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终检查完成：所有状态转换、注释、样式类均已落实。状态机支持从ActuatorController触发，经过EdgeNode的完整计算周期，最终回到EdgeNode或TelemetryStream终止状态。",
+      "elements_involved": [
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下参数版本控制：CHECK_PARAMS检测到ParamsVersioned时，整个重算周期都要携带ParamVersionID，确保可追溯性。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "ParamsVersioned",
+        "ParamVersionID",
+        "TRIGGER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已在CHECK_PARAMS注释中强调：If new version → tag run with ParamVersionID。这个标签会跟随整个周期直到WRITE_BACK持久化。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "ParamVersionID",
+        "WRITE_BACK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "好的，SM-02.02状态机可以定稿了。请确保MQTT Broker在所有涉及数据交互的节点都有标注，它是我们的消息总线。",
+      "elements_involved": [
+        "IoT_Industrial_MQTT_Broker",
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "RECONCILE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已全部核对，Broker在参数绑定、衰减计算、权重重算、缺口对账四个环节均有明确标注。SM-02.02 Decay & Recompute Cycle状态机已完成。",
+      "elements_involved": [
+        "IoT_Industrial_MQTT_Broker",
+        "SM-02.02"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 36,
+    "repair_count": 1,
+    "grounding_acts_count": 36,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 87987.5963,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 36
+  }
+}

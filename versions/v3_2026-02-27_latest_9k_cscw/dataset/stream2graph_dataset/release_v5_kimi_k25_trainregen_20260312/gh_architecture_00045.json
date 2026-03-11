@@ -1,0 +1,463 @@
+{
+  "id": "gh_architecture_00045",
+  "source": "github",
+  "source_url": "https://github.com/GSA-TTS/dns/blob/0ea34be0f2463ee3165f03b6de079a0186eecf25/doc/bootstrap.mmd",
+  "github_repo": "GSA-TTS/dns",
+  "github_file_path": "doc/bootstrap.mmd",
+  "diagram_type": "architecture",
+  "code": "graph TD\n    %% Define main resources\n    User(\"CircleCI User\")\n    MainS3[\"S3 Bucket<br>tts-dns-terraform-state<br>(Main)\"]\n    LogsS3[\"S3 Bucket<br>tts-dns-terraform-state-logs<br>(Logs)\"]\n    LogsLogsS3[\"S3 Bucket<br>tts-dns-terraform-state-logs-logs<br>(Logs of Logs)\"]\n    ReplicaS3[\"S3 Bucket<br>tts-dns-terraform-state-replica<br>(DR Replica)\"]\n    ReplicaLogsS3[\"S3 Bucket<br>tts-dns-terraform-state-replica-logs<br>(DR Logs)\"]\n    \n    %% KMS Keys\n    KMSKey[\"KMS Key<br>terraform-state-key<br>(East)\"]\n    KMSKeyWest[\"KMS Key<br>terraform-state-key-west<br>(West)\"]\n    \n    %% SNS Topics\n    SNSMain[\"SNS Topic<br>terraform-state-bucket-events\"]\n    SNSLogs[\"SNS Topic<br>terraform-logs-bucket-events\"]\n    SNSReplica[\"SNS Topic<br>terraform-replica-bucket-events\"]\n    \n    %% IAM Resources\n    IAMUser[\"IAM User<br>circleci-deployer\"]\n    IAMPolicy[\"IAM Policy<br>route53-deployment\"]\n    IAMRole[\"IAM Role<br>terraform-state-replication-role\"]\n    IAMReplication[\"IAM Policy<br>terraform-state-replication-policy\"]\n    \n    %% Email Notifications\n    Email[\"Email Notifications<br><a href='mailto:devops+dns@gsa.gov'>notification_email</a>\"]\n    \n    %% Security configurations\n    PABMain[\"Public Access Block<br>(Main Bucket)\"]\n    PABLogs[\"Public Access Block<br>(Logs Bucket)\"]\n    PABLogsLogs[\"Public Access Block<br>(Logs of Logs Bucket)\"]\n    PABReplica[\"Public Access Block<br>(Replica Bucket)\"]\n    PABReplicaLogs[\"Public Access Block<br>(Replica Logs Bucket)\"]\n\n    %% Define regions\n    subgraph \"US-EAST-1 (Primary Region)\"\n        MainS3\n        LogsS3\n        LogsLogsS3\n        KMSKey\n        SNSMain\n        SNSLogs\n        IAMUser\n        IAMPolicy\n        IAMRole\n        IAMReplication\n        PABMain\n        PABLogs\n        PABLogsLogs\n    end\n\n    subgraph \"US-WEST-2 (DR Region)\"\n        ReplicaS3\n        ReplicaLogsS3\n        KMSKeyWest\n        SNSReplica\n        PABReplica\n        PABReplicaLogs\n    end\n    \n    %% Define relationships\n    User -->|Uses| IAMUser\n    IAMUser -->|Has| IAMPolicy\n    IAMPolicy -->|Manages| MainS3\n    IAMPolicy -->|Uses| KMSKey\n    \n    MainS3 -->|Replicated to| ReplicaS3\n    MainS3 -->|Logs to| LogsS3\n    LogsS3 -->|Logs to| LogsLogsS3\n    ReplicaS3 -->|Logs to| ReplicaLogsS3\n    \n    MainS3 -->|Encrypted by| KMSKey\n    LogsS3 -->|Encrypted by| KMSKey\n    LogsLogsS3 -->|Encrypted by| KMSKey\n    ReplicaS3 -->|Encrypted by| KMSKeyWest\n    ReplicaLogsS3 -->|Encrypted by| KMSKeyWest\n    \n    MainS3 -->|Notifies| SNSMain\n    LogsS3 -->|Notifies| SNSLogs\n    ReplicaS3 -->|Notifies| SNSReplica\n    \n    SNSMain -->|Sends to| Email\n    SNSLogs -->|Sends to| Email\n    SNSReplica -->|Sends to| Email\n    \n    IAMRole -->|Assumes| IAMReplication\n    IAMReplication -->|Allows| MainS3\n    IAMReplication -->|To| ReplicaS3\n    \n    MainS3 --- PABMain\n    LogsS3 --- PABLogs\n    LogsLogsS3 --- PABLogsLogs\n    ReplicaS3 --- PABReplica\n    ReplicaLogsS3 --- PABReplicaLogs\n    ",
+  "content_size": 2946,
+  "collected_at": "2026-02-06T01:24:39.092585",
+  "compilation_status": "success",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 \"CircleCI User\" 和 \"S3 Bucket<br>tts-dns-terraform-state<br>(Main。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不，其实叫 \"CircleCI User\"处理 会更准确一点。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 3,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"CircleCI User\"处理'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "User",
+        "MainS3"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"S3 Bucket<br>tts-dns-terraform-state-logs<br>(Logs 和 \"S3 Bucket<br>tts-dns-terraform-state-logs-logs<br>(Logs of Logs 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我重新想了一下，应该是 \"S3 Bucket<br>tts-dns-terraform-state-logs<br>(Logs处理 才对。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"S3 Bucket<br>tts-dns-terraform-state-logs<br>(Logs处理'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "LogsS3",
+        "LogsLogsS3"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"S3 Bucket<br>tts-dns-terraform-state-replica<br>(DR Replica 和 \"S3 Bucket<br>tts-dns-terraform-state-replica-logs<br>(DR Logs 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"S3 Bucket<br>tts-dns-terraform-state-replica<br>(DR Replica 和 \"S3 Bucket<br>tts-dns-terraform-state-replica-logs<br>(DR Logs'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "ReplicaS3",
+        "ReplicaLogsS3"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"KMS Key<br>terraform-state-key<br>(East 和 \"KMS Key<br>terraform-state-key-west<br>(West 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"KMS Key<br>terraform-state-key<br>(East 和 \"KMS Key<br>terraform-state-key-west<br>(West'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "KMSKey",
+        "KMSKeyWest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"SNS Topic<br>terraform-state-bucket-events\" 和 \"SNS Topic<br>terraform-logs-bucket-events\" 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"SNS Topic<br>terraform-state-bucket-events\" 和 \"SNS Topic<br>terraform-logs-bucket-events\"'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "SNSMain",
+        "SNSLogs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"SNS Topic<br>terraform-replica-bucket-events\" 和 \"IAM User<br>circleci-deployer\" 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"SNS Topic<br>terraform-replica-bucket-events\" 和 \"IAM User<br>circleci-deployer\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "SNSReplica",
+        "IAMUser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"IAM Policy<br>route53-deployment\" 和 \"IAM Role<br>terraform-state-replication-role\" 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"IAM Policy<br>route53-deployment\" 和 \"IAM Role<br>terraform-state-replication-role\"'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "IAMPolicy",
+        "IAMRole"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"IAM Policy<br>terraform-state-replication-policy\" 和 \"Email Notifications<br><a href='mailto:devops+dns@gsa.gov'>notification_email</a>\" 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"IAM Policy<br>terraform-state-replication-policy\" 和 \"Email Notifications<br><a href='mailto:devops+dns@gsa.gov'>notification_email</a>\"'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "IAMReplication",
+        "Email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"Public Access Block<br>(Main Bucket 和 \"Public Access Block<br>(Logs Bucket 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"Public Access Block<br>(Main Bucket 和 \"Public Access Block<br>(Logs Bucket'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "PABMain",
+        "PABLogs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"Public Access Block<br>(Logs of Logs Bucket 和 \"Public Access Block<br>(Replica Bucket 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"Public Access Block<br>(Logs of Logs Bucket 和 \"Public Access Block<br>(Replica Bucket'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "PABLogsLogs",
+        "PABReplica"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"Public Access Block<br>(Replica Logs Bucket 和 Primary Region 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"Public Access Block<br>(Replica Logs Bucket 和 Primary Region'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "PABReplicaLogs",
+        "1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 DR Region。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'DR Region'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "2"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 50,
+    "repair_count": 2,
+    "grounding_acts_count": 24,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "license": "other",
+  "repaired_at": "2026-03-11T04:48:39Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:37Z",
+  "dialogue_regen": {
+    "enabled": false,
+    "frozen_from_source": true
+  }
+}

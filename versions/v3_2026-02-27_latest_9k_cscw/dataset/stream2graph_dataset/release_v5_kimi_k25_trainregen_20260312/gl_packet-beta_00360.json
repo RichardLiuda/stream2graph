@@ -1,0 +1,519 @@
+{
+  "id": "gl_packet-beta_00360",
+  "source": "gitlab",
+  "source_url": "https://github.com/llai-harmonicinc/cDS-Session-Management/blob/034fa5d6ac3372256af047d7e02f454dd09526d5/cDS%20Session%20Routing.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "llai-harmonicinc/cDS-Session-Management",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\nparticipant P as Player\nparticipant Boot as Bootstrap\nparticipant LD as DNS resolver\nparticipant AD as Authoritative DNS server\n\nparticipant SM as cDS::Session Management\nparticipant sNA as cDS::Node-A\nparticipant sNB as cDS::Node-B\nparticipant TC as cDS::TC\nparticipant NA as cDS::Node-C\nparticipant CS as cDS::Content Steering Servers\nparticipant TE as cDS::Telemetry\n\nautonumber\n    P->>Boot: get session bootstrap\n    Boot->>P: Bootstrap details e.g. endpoint, ad serving parameters, etc\n\n    %% resolve Session Management server domain name\n    P->>LD: query cDS::Session Management domain name\n    LD->>AD: query cDS::Session Management domain name\n    AD->>LD:  cDS::Session Management Server IP for that DNS resolver\n    LD->>P: cDS::Session Mangement Server IP\n\n    %% request master manifest from Session Management server\n    Note over P, SM: request master manifest from cDS::Session Management\n    P->>SM: GET /master manifest\n    Note over P, SM: #35;EXTM3U<br/> #35;EXT-X-VERSION:3<br>#35;EXT-X-CONTENT-STEERING:SERVER-URI=\"https://cs.harmonic.com/\"<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::Node-A\"<br>https://nodeA.harmonic.com/01.m3u8<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::Node-B\"<br>http://nodeB.harmonic.com/01.m3u8<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::TC\"<br>https://tc.harmonic.com/01.m3u8.....\n    SM->>P: 200 OK\\n(master manifest) \n    \n    %% request steering manifest from Content Steering server\n    Note over P, CS: request steering manifest from cDS: Content Steering\n    P->>LD: query cDS::Content Steering domain name\n    LD->>AD: query cDS::Content Steering domain name\n    AD->>LD:  cDS::Content Steering Server IP for that DNS resolver\n    LD->>P: cDS::Content Steering Server IP\n\n    P->>CS: GET /steering manifest\n    Note over CS, P: {<br>\"VERSION\": 1,<br>\"TTL\": 300,<br>\"PATHWAY-PRIORITY: [\"cDS::Node-A\", \"cDS::Node-B\", \"cDS::TC\"]<br>}\n    CS->>P: 200 OK\\n(steering manifest)\n    \n    Note over P, sNA: request variant manifest from cDS::Node A\n    P->>LD: query cDS::Node A domain name\n    LD->>AD: query cDS::Node A domain name\n    AD->>LD:  cDS::Node A IP for that DNS resolver\n    LD->>P: cDS::Node A IP\n    P->>sNA: TCP SYN\n    Note over P, sNA: cDS::Node A is down<br>TCP retransmission timer timeout<br>Player fail over to cDS::Node B\n    Note over TE: cDS::Telemetry detect cDS::Node A is down\n    par \n        TE->>CS: update routing decision (remove cDS::Node A)\n    and \n        TE->>SM: update routing decision (remove cDS::Node A)\n    end\n\n    Note over P, sNB: Player fail over to cDS::Node B\n    P->>LD: query cDS::Node B domain name\n    LD->>AD: query cDS::Node B domain name\n    AD->>LD:  cDS::Node B IP for that DNS resolver\n    LD->>P: cDS::Node B IP\n    Note over P, sNB: GET /variant manifest \n    P->>sNB: TCP SYN\n    sNB->>P: ACK, SYN\n    P->>sNB: SYN\n    Note over P, sNB: #35;EXTM3U<br>#35;EXT-X-TARGETDURATION:4<br>#35;EXT-X-MEDIA-SEQUENCE:432137172<br>#35;EXT-X-VERSION:3<br>#35;EXT-X-PROGRAM-DATE-TIME:2024-10-10T08:24:48.831Z<br>#35;EXTINF:3,<br>20240927T075714-01-432137172.ts<br>#35;EXT-X-PROGRAM-DATE-TIME:2024-10-10T08:24:52.031Z<br>EXTINF:5,<br>20240927T075714-01-432137173.ts<br>#35;.........\n    sNB->>P: 200 OK\\n(variant manifest)\n\n    %% establish TCP connection, 3 way handshake\n    Note over P, sNB: request video segments\n    P->>sNB: GET /20240927T075714-01-432137172.ts\n\n    %% cDS:: Node start to push video segment\n    Note over sNB, P: server start pushing video segments\n    sNB->>P: TCP segment (seq_num = 0)\n    sNB->>P: TCP segment (seq_num = 100)\n    P->>sNB: ACK (seq_num = 101)\n\n    %% packet start missing and player request retransmission\n    sNB->>P: TCP segment(seq_num = 200)\n    sNB->>P: TCP segment(seq_num = 300)\n    Note over sNB, P: packet loss, retransmission timer timeout, send duplicate ACK to request retransmission\n    P->>sNB: ACK (seq_num = 101)\n    sNB->>P: reset connection\n    \n    sNB->>TE: report packet loss\n    par\n        TE->>CS: update routing decision (remove cDS::Node B)\n    and \n        TE->>SM: update routing decision (remove cDS::Node B)\n    end\n\n    %% player fail over to cDS::TC\n    Note over P, TC: Player fail over to cDS::TC\n    P->>LD: query cDS::TC domain name\n    LD->>AD: query cDS::TC  domain name\n    AD->>LD:  cDS::TC IP for that DNS resolver\n    LD->>P: cDS::TC IP\n\n    P->> TC: GET /variant manifest\n    TC->>P: 302 Found\\nLocation: cDS::Node C\n   \n    P->>LD: query cDS::Node C domain name\n    LD->>AD: query cDS::Node C domain name\n    AD->>LD:  cDS::Node C IP for that DNS resolver\n    LD->>P: cDS::Node C IP\n\n    P->>NA: GET /variant manifest\n    NA->>P: 200 OK\\n(variant manifest)\n\n    loop\n        P->>NA: GET video/audio segments\n        NA->>P: 200 OK\\n(video/audio segments)\n    end\n    \n    Note over P, CS: steering manifest expire, request an updated steering manifest\n    P->>CS: GET /steering manifest\n    Note over CS, P: cDS::Node A and cDS::Node B are removed from the list<br>{<br>\"VERSION\": 1,<br>\"TTL\": 300,<br>\"PATHWAY-PRIORITY: [\"cDS::TC\"]<br>}\n    CS->>P: 200 OK\\n(steering manifest)\n",
+  "content_size": 5274,
+  "collected_at": "2026-02-06T14:08:15.440859",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的cDS直播会话流程图，重点展示Player怎么从Bootstrap开始，一路拿到视频流，还要包含故障切换的逻辑。先确认一下参与方：Player、Bootstrap、DNS resolver、Authoritative DNS server，然后是cDS内部的几大模块。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Session Management",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C",
+        "cDS::Content Steering Servers",
+        "cDS::Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，cDS内部模块比较多，我列一下：Session Management负责下发master manifest，Node-A和Node-B是边缘节点，TC是流量控制节点，Node-C是备用节点，Content Steering Servers做调度决策，Telemetry负责监控上报。这个理解对吗？",
+      "elements_involved": [
+        "cDS::Session Management",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C",
+        "cDS::Content Steering Servers",
+        "cDS::Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，而且TC和Node-C的关系要注意——TC收到请求会302跳转到Node-C，这是关键 failover 路径。我们先从Player启动开始画。",
+      "elements_involved": [
+        "cDS::TC",
+        "cDS::Node-C"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先画第一步：Player向Bootstrap发起get session bootstrap，Bootstrap返回endpoint和广告参数这些Bootstrap details。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是DNS解析环节。Player需要知道Session Management的IP，所以先查DNS resolver，resolver再去问Authoritative DNS server，拿到IP后返回给Player。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：Player→LD查询cDS::Session Management域名，LD→AD查询，AD返回IP，LD再把IP给Player。然后Player向SM发起GET /master manifest。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "master manifest的内容要体现清楚，里面要有EXT-X-CONTENT-STEERING标签指向Content Steering Server，还有三条STREAM-INF分别对应Node-A、Node-B和TC的pathway。",
+      "elements_involved": [
+        "master manifest",
+        "cDS::Content Steering Servers",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在Note里标注了master manifest的详细内容：#EXTM3U、VERSION:3、SERVER-URI指向cs.harmonic.com，三条PATHWAY-ID分别是cDS::Node-A、cDS::Node-B、cDS::TC，带宽都是2297761。SM返回200 OK。",
+      "elements_involved": [
+        "master manifest",
+        "cDS::Session Management",
+        "Player"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Player拿到master manifest后，要去Content Steering Server拿steering manifest决定优先走哪个节点。这里又要走一遍DNS解析流程。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Content Steering Servers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画：Player→LD→AD→LD→P的DNS流程，然后Player向CS发起GET /steering manifest。CS返回的JSON里VERSION为1，TTL 300秒，PATHWAY-PRIORITY顺序是Node-A、Node-B、TC。",
+      "elements_involved": [
+        "steering manifest",
+        "cDS::Content Steering Servers",
+        "Player",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在Player按优先级先连Node-A。再画一轮DNS解析拿到Node-A的IP，然后TCP三次握手。但这里要设计故障场景——Node-A挂了，Player超时后failover到Node-B。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Node-A",
+        "cDS::Node-B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了Player查询Node-A域名、拿到IP、发TCP SYN，然后在Note里标注\"cDS::Node A is down，TCP retransmission timer timeout，Player fail over to cDS::Node B\"。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "TCP SYN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "同时Telemetry要检测到Node-A故障，并行通知Content Steering和Session Management，把Node-A从调度列表里摘掉。用par块表示并行。",
+      "elements_involved": [
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "cDS::Node-A"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了Note\"cDS::Telemetry detect cDS::Node A is down\"，然后par块里两条线：TE→CS和TE→SM，都是update routing decision (remove cDS::Node A)。",
+      "elements_involved": [
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "cDS::Node-A"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Player切到Node-B，再走一遍DNS解析，拿到Node-B的IP。这次TCP三次握手成功，然后GET variant manifest。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Node-B",
+        "variant manifest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了完整的Node-B DNS流程，TCP SYN、ACK-SYN、SYN三次握手成功。然后Player发GET /variant manifest，我在Note里详细写了variant manifest内容：TARGETDURATION 4、MEDIA-SEQUENCE、PROGRAM-DATE-TIME、两个ts片段20240927T075714-01-432137172.ts和173.ts。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "variant manifest",
+        "TCP SYN",
+        "ACK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "variant manifest返回200 OK。接下来Player开始请求视频片段，Node-B主动推送TCP segment，这里要展示seq num和ACK的交互，然后设计丢包重传场景。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "video/audio segments",
+        "seq num = 0",
+        "seq num = 100",
+        "seq num = 101",
+        "seq num = 200",
+        "seq num = 300"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了Player GET第一个ts片段，Note标注\"server start pushing video segments\"。然后Node-B→Player推送TCP segment (seq_num = 0)、(seq_num = 100)，Player回ACK (seq_num = 101)。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "seq num = 0",
+        "seq num = 100",
+        "seq num = 101",
+        "ACK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "继续：Node-B再发seq_num = 200和300，但这里丢包了。我加Note\"packet loss, retransmission timer timeout, send duplicate ACK to request retransmission\"，Player重发ACK (seq_num = 101)。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "seq num = 200",
+        "seq num = 300",
+        "ACK",
+        "packet loss",
+        "retransmission"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "丢包严重，Node-B直接reset连接，同时Telemetry上报丢包事件，再次并行通知CS和SM把Node-B也摘掉。这是第二次故障切换。",
+      "elements_involved": [
+        "cDS::Node-B",
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "reset connection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了Node-B→Player reset connection，Node-B→TE report packet loss。然后par块：TE→CS和TE→SM都是update routing decision (remove cDS::Node B)。",
+      "elements_involved": [
+        "cDS::Node-B",
+        "Player",
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "reset connection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在Node-A和Node-B都不可用了，Player只能failover到TC。再走DNS解析流程，Player向TC请求variant manifest，TC返回302 Found，Location指向Node-C。",
+      "elements_involved": [
+        "Player",
+        "cDS::TC",
+        "cDS::Node-C",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "302 Found"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了完整的TC DNS流程，Player→TC GET /variant manifest，TC→Player 302 Found，Location: cDS::Node C。",
+      "elements_involved": [
+        "Player",
+        "cDS::TC",
+        "cDS::Node-C",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "302 Found",
+        "variant manifest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Player收到302后，再解析Node-C的域名，拿到IP后直接请求Node-C的variant manifest，这次200 OK成功返回。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-C",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "variant manifest",
+        "200 OK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了Node-C的DNS流程，Player→NA GET /variant manifest，NA→Player 200 OK (variant manifest)。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-C",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "variant manifest",
+        "200 OK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后画一个循环：Player持续从Node-C获取音视频片段，用loop块表示。然后还要体现steering manifest过期后的更新逻辑。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-C",
+        "video/audio segments",
+        "steering manifest",
+        "cDS::Content Steering Servers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了loop块，里面Player→NA GET video/audio segments，NA→Player 200 OK (video/audio segments)。然后Note标注\"steering manifest expire, request an updated steering manifest\"。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-C",
+        "video/audio segments",
+        "steering manifest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Player→CS GET /steering manifest，返回的JSON里PATHWAY-PRIORITY只剩cDS::TC了，Node-A和Node-B已经被移除。CS→Player 200 OK (steering manifest)。",
+      "elements_involved": [
+        "Player",
+        "cDS::Content Steering Servers",
+        "steering manifest",
+        "cDS::TC",
+        "cDS::Node-A",
+        "cDS::Node-B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，我需要确认一下TC和Node-C的关系。TC是调度层，Node-C是实际服务节点，302跳转后Player是直接和Node-C通信，不再经过TC，对吗？",
+      "elements_involved": [
+        "cDS::TC",
+        "cDS::Node-C",
+        "Player",
+        "302 Found"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对的，302之后Player直接连Node-C，后续所有segment请求都是P-NA，没有再走TC。这个逻辑图里已经体现清楚了。",
+      "elements_involved": [
+        "Player",
+        "cDS::TC",
+        "cDS::Node-C",
+        "302 Found"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：master manifest里的SERVER-URI是https://cs.harmonic.com/，这个和后面steering manifest的请求要对上。另外，所有DNS解析流程都要保持一致的交互模式。",
+      "elements_involved": [
+        "master manifest",
+        "cDS::Content Steering Servers",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "Player"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "检查了，CS域名cs.harmonic.com在master manifest的SERVER-URI里，后续Player查询cDS::Content Steering domain name、LD→AD查询、返回IP的流程都画全了。所有DNS环节都是P-LD-AD-LD-P的四步模式。",
+      "elements_involved": [
+        "master manifest",
+        "cDS::Content Steering Servers",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "Player",
+        "LD",
+        "AD"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，整个流程完整了：从Bootstrap启动，到DNS解析、master manifest、steering manifest、Node-A故障切换、Node-B丢包切换、最终TC 302到Node-C，还有Telemetry驱动的动态调度更新。可以定稿了。",
+      "elements_involved": [
+        "Bootstrap",
+        "DNS resolver",
+        "master manifest",
+        "steering manifest",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C",
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "Player"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 33,
+    "repair_count": 0,
+    "grounding_acts_count": 33,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 72456.4309,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 33
+  }
+}

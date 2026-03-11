@@ -1,0 +1,533 @@
+{
+  "id": "gh_sequence_00981",
+  "source": "github",
+  "source_url": "https://github.com/AdasRakieta/Site_proj/blob/94c158d0e04d4807cd0a144d3e2468f2a17c7473/Inzynierka/In%C5%BCynierka_01/12_ZALACZNIKI/diagramy/sekwencje_automation.mmd",
+  "github_repo": "AdasRakieta/Site_proj",
+  "github_file_path": "Inzynierka/Inżynierka_01/12_ZALACZNIKI/diagramy/sekwencje_automation.mmd",
+  "diagram_type": "sequence",
+  "code": "﻿---\nconfig:\n  theme: dark\n---\nsequenceDiagram\n    actor User\n    participant UI as Browser UI\n    participant Flask as Flask App\n    participant Socket as Socket.IO Server\n    participant Routes as RoutesManager\n    participant Executor as AutomationExecutor\n    participant MultiDB as MultiHomeDBManager\n    participant PG as PostgreSQL\n    participant Redis as Redis Cache\n    \n    Note over User,Redis: Użytkownik zmienia stan urządzenia (wyzwalacz automatyzacji)\n    \n    User->>UI: Click device toggle/button\n    UI->>Socket: emit('toggle_button', device_data)\n    Socket->>Routes: handle_toggle_button()\n    Routes->>MultiDB: update_device(device_id, state)\n    MultiDB->>PG: UPDATE devices SET state=...\n    PG-->>MultiDB: rows affected\n    MultiDB-->>Routes: success\n    \n    Note over Routes,Redis: Invalidacja cache dla zmienionego urządzenia\n    Routes->>Redis: delete cache_key(home_id, devices)\n    \n    Note over Routes,Executor: Sprawdzenie automatyzacji dla tego urządzenia\n    Routes->>Executor: process_device_trigger(device_id, room, name, state, home_id, user_id)\n    \n    Executor->>MultiDB: get_home_automations(home_id, user_id)\n    MultiDB->>PG: SELECT * FROM home_automations WHERE home_id=... AND enabled=true\n    PG-->>MultiDB: automations list\n    MultiDB-->>Executor: automations[]\n    \n    Note over Executor: Filtrowanie automatyzacji według triggera\n    loop Each automation\n        Executor->>Executor: Check if trigger.type=='device'\n        Executor->>Executor: Check if trigger.device matches device_key\n        Executor->>Executor: Check if trigger.state matches new_state\n    end\n    \n    alt Automation matched\n        Note over Executor: Wykonanie automatyzacji\n        Executor->>Executor: _execute_automation(automation, home_id, user_id, trigger_data)\n        \n        loop Each action in actions_config\n            alt action.type == 'device'\n                Executor->>MultiDB: get_home_devices(home_id, user_id, 'button')\n                MultiDB->>PG: SELECT devices WHERE device_type='button'\n                PG-->>MultiDB: devices[]\n                MultiDB-->>Executor: target_device\n                \n                Executor->>Executor: Calculate new_state (on/off/toggle)\n                Executor->>MultiDB: update_device(target_device_id, user_id, state=new_state)\n                MultiDB->>PG: UPDATE devices SET state=...\n                PG-->>MultiDB: rows affected\n                \n                Executor->>Socket: emit('update_button', {room, name, state, device_id})\n                Socket-->>UI: Update button UI\n                Executor->>Socket: emit('sync_button_states', state_map)\n                Socket-->>UI: Sync all buttons\n                \n            else action.type == 'thermostat_control'\n                Executor->>MultiDB: get_home_devices(home_id, user_id, 'temperature_control')\n                MultiDB->>PG: SELECT devices WHERE device_type='temperature_control'\n                PG-->>MultiDB: devices[]\n                MultiDB-->>Executor: thermostat_device\n                \n                Executor->>MultiDB: update_device(thermostat_id, user_id, state=new_state)\n                MultiDB->>PG: UPDATE devices SET state=...\n                Executor->>Socket: emit('update_temperature', {room, name, state, temp})\n                Socket-->>UI: Update thermostat UI\n                \n            else action.type == 'set_temperature'\n                Executor->>MultiDB: get_home_devices(home_id, user_id, 'temperature_control')\n                Executor->>MultiDB: update_device(thermostat_id, user_id, temperature=target_temp)\n                MultiDB->>PG: UPDATE devices SET temperature=...\n                Executor->>Socket: emit('update_temperature', data)\n                Socket-->>UI: Update temperature display\n                \n            else action.type == 'notification'\n                Note over Executor: Email notification (future)\n                Executor->>Executor: _execute_notification_action()\n            end\n        end\n        \n        Note over Executor: Logowanie wykonania automatyzacji\n        Executor->>Executor: Calculate execution_time_ms\n        Executor->>Executor: _log_execution(automation_id, status, trigger_data, actions_executed)\n        Executor->>MultiDB: log_automation_execution(...)\n        MultiDB->>PG: INSERT INTO automation_executions (...)\n        PG-->>MultiDB: execution_id\n        \n        Executor->>MultiDB: update_automation_stats(automation_id, execution_count++)\n        MultiDB->>PG: UPDATE home_automations SET execution_count=execution_count+1, last_executed=NOW()\n        \n        Executor-->>Routes: execution_result{status, actions_executed, errors, execution_time_ms}\n    end\n    \n    Note over Routes,Socket: Broadcast zaktualizowanego stanu do wszystkich klientów\n    Routes->>Socket: emit('update_button', device_state)\n    Socket-->>UI: Real-time update for all connected clients\n    Routes->>Socket: emit('sync_button_states', all_states)\n    Socket-->>UI: Synchronize all device states\n    \n    Routes-->>Socket: success response\n    Socket-->>UI: Confirm toggle\n    UI-->>User: Visual feedback (updated state)\n    \n    Note over User,Redis: Automatyzacja zakończona - urządzenia zaktualizowane w czasie rzeczywistym\n",
+  "content_size": 5265,
+  "collected_at": "2026-02-06T01:51:29.067240",
+  "compilation_status": "success",
+  "compilation_error": "",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 wyzwalacz automatyzacji 和 'toggle_button', device_data 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'wyzwalacz automatyzacji 和 'toggle_button', device_data'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "urządzenia",
+        "emit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 device_id, state 和 home_id, devices 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我重新想了一下，应该是 device_id, state处理 才对。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 7,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'device_id, state处理'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "update_device",
+        "cache_key"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 device_id, room, name, state, home_id, user_id 和 home_id, user_id 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'device_id, room, name, state, home_id, user_id 和 home_id, user_id'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "process_device_trigger",
+        "get_home_automations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 automation, home_id, user_id, trigger_data 和 home_id, user_id, 'button' 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'automation, home_id, user_id, trigger_data 和 home_id, user_id, 'button''？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "_execute_automation",
+        "get_home_devices"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 on/off/toggle 和 target_device_id, user_id, state=new_state 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'on/off/toggle 和 target_device_id, user_id, state=new_state'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "new_state",
+        "update_device"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 'update_button', {room, name, state, device_id 和 'sync_button_states', state_map。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 ''update_button', {room, name, state, device_id 和 'sync_button_states', state_map'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "emit",
+        "emit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 home_id, user_id, 'temperature_control' 和 thermostat_id, user_id, state=new_state 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'home_id, user_id, 'temperature_control' 和 thermostat_id, user_id, state=new_state'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "get_home_devices",
+        "update_device"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 'update_temperature', {room, name, state, temp 和 home_id, user_id, 'temperature_control' 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 ''update_temperature', {room, name, state, temp 和 home_id, user_id, 'temperature_control''，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "emit",
+        "get_home_devices"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 thermostat_id, user_id, temperature=target_temp 和 'update_temperature', data 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'thermostat_id, user_id, temperature=target_temp 和 'update_temperature', data'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "update_device",
+        "emit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 future 和 automation_id, status, trigger_data, actions_executed 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'future 和 automation_id, status, trigger_data, actions_executed'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "notification",
+        "_log_execution"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 ... 和 ... 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '... 和 ...'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "log_automation_execution",
+        "automation_executions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 automation_id, execution_count++ 和 status, actions_executed, errors, execution_time_ms 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'automation_id, execution_count++ 和 status, actions_executed, errors, execution_time_ms'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "update_automation_stats",
+        "execution_result"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 'update_button', device_state 和 'sync_button_states', all_states 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 ''update_button', device_state 和 'sync_button_states', all_states'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "emit",
+        "emit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 updated state 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'updated state'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "feedback"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 57,
+    "repair_count": 1,
+    "grounding_acts_count": 28,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": false,
+    "frozen_from_source": true
+  }
+}

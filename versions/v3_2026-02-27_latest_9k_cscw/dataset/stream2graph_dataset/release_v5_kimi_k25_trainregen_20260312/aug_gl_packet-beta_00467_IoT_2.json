@@ -1,0 +1,707 @@
+{
+  "id": "aug_gl_packet-beta_00467_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sean-galloway/RTLDesignSherpa/blob/47f8a16641658f570a69c3af3c9724b29ea39187/projects/components/stream/docs/stream_mas/assets/mermaid/16_monbus_axil_group_block.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sean-galloway/RTLDesignSherpa",
+  "diagram_type": "packet-beta",
+  "code": "graph TB\n    subgraph \"monbus_axil_group\"\n        subgraph \"Monitor Bus Input\"\n            MON_IN[IoT_Industrial_MQTT_Broker] --> PARSE[IoT_Industrial_MQTT_Broker]\n        end\n\n        subgraph \"Per-Protocol Filtering\"\n            PARSE --> FILTER[IoT_Industrial_EdgeNode]\n            AXI_MASK[IoT_Industrial_MQTT_Broker] --> FILTER\n            AXIS_MASK[IoT_Industrial_EdgeNode] --> FILTER\n            CORE_MASK[IoT_Industrial_TelemetryStream] --> FILTER\n        end\n\n        subgraph \"Routing Decision\"\n            FILTER --> DROP{IoT_Industrial_EdgeNode}\n            DROP --> |No| ERR_CHK{IoT_Industrial_EdgeNode}\n            DROP --> |Yes| DISCARD[IoT_Industrial_TelemetryStream]\n            ERR_CHK --> |Yes| ERR_PATH[IoT_Industrial_EdgeNode]\n            ERR_CHK --> |No| WR_PATH[IoT_Industrial_ActuatorController]\n        end\n\n        subgraph \"Error/Interrupt Path\"\n            ERR_PATH --> ERR_FIFO[IoT_Industrial_EdgeNode]\n            ERR_FIFO --> AXIL_S[IoT_Industrial_ActuatorController]\n            ERR_FIFO --> IRQ[IoT_Industrial_TelemetryStream]\n        end\n\n        subgraph \"Master Write Path\"\n            WR_PATH --> WR_FIFO[IoT_Industrial_EdgeNode]\n            WR_FIFO --> ADDR_GEN[IoT_Industrial_MQTT_Broker]\n            CFG_BASE[IoT_Industrial_EdgeNode] --> ADDR_GEN\n            ADDR_GEN --> AXIL_M[IoT_Industrial_TelemetryStream]\n        end\n    end\n\n    AXIL_S --> S_AR[IoT_Industrial_ActuatorController]\n    AXIL_S --> S_R[IoT_Industrial_MQTT_Broker]\n    AXIL_M --> M_AW[IoT_Industrial_EdgeNode]\n    AXIL_M --> M_W[IoT_Industrial_TelemetryStream]\n    AXIL_M --> M_B[IoT_Industrial_MQTT_Broker]\n\n    style FILTER fill:#bbf,stroke:#333,stroke-width:2px\n    style ERR_FIFO fill:#fbb,stroke:#333,stroke-width:3px\n    style WR_FIFO fill:#bfb,stroke:#333,stroke-width:3px\n    style ADDR_GEN fill:#ffb,stroke:#333,stroke-width:2px\n    style IRQ fill:#f9f,stroke:#333,stroke-width:3px\n",
+  "content_size": 1801,
+  "collected_at": "2026-02-06T14:10:17.639470",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 8,
+  "repo_forks": 1,
+  "repo_owner": "sean-galloway",
+  "repo_name": "RTLDesignSherpa",
+  "repo_description": "This site is hopefully a springboard for others to learn about coding in System Verilog and experimenting with FPGAs.",
+  "repo_language": "C++",
+  "repo_topics": [
+    "amba-apb",
+    "amba-axi",
+    "cocotb",
+    "crossbar",
+    "dma"
+  ],
+  "repo_created_at": "2023-06-15T21:56:48Z",
+  "repo_updated_at": "2026-02-06T00:19:01Z",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_packet-beta_00467",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个工业物联网场景下的监控总线AXIL分组架构。核心是从MQTT Broker进来的数据流，经过解析和过滤后，分发给不同的处理路径。",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE",
+        "FILTER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以入口是IoT_Industrial_MQTT_Broker作为MON_IN，然后进入PARSE节点。PARSE之后直接连到FILTER吗？",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE",
+        "FILTER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，PARSE解析完协议后直接送到FILTER。不过FILTER需要支持多种协议掩码过滤，包括AXI、AXIS和CORE三种掩码配置。",
+      "elements_involved": [
+        "PARSE",
+        "FILTER",
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在Per-Protocol Filtering子图里加上了FILTER节点，并把AXI_MASK、AXIS_MASK、CORE_MASK三个掩码都连到FILTER作为过滤条件。AXI_MASK也是MQTT Broker，AXIS_MASK是EdgeNode，CORE_MASK是TelemetryStream。",
+      "elements_involved": [
+        "FILTER",
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "过滤之后需要路由决策。FILTER输出到DROP判断节点，如果决定丢弃就走DISCARD路径，否则进入错误检查ERR_CHK。",
+      "elements_involved": [
+        "FILTER",
+        "DROP",
+        "DISCARD",
+        "ERR_CHK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "DROP是一个判断节点对吧？我需要用菱形表示。DROP的No分支到ERR_CHK，Yes分支到DISCARD。ERR_CHK之后也有分支吗？",
+      "elements_involved": [
+        "DROP",
+        "ERR_CHK",
+        "DISCARD"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，ERR_CHK也是判断节点。如果发现错误走ERR_PATH，正常的话走WR_PATH写入路径。",
+      "elements_involved": [
+        "ERR_CHK",
+        "ERR_PATH",
+        "WR_PATH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Routing Decision子图完成了。DROP连到ERR_CHK和DISCARD，ERR_CHK分叉到ERR_PATH和WR_PATH。ERR_PATH是EdgeNode，WR_PATH是ActuatorController。",
+      "elements_involved": [
+        "DROP",
+        "ERR_CHK",
+        "ERR_PATH",
+        "WR_PATH",
+        "DISCARD"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "错误路径需要进一步细化。ERR_PATH后面要接一个错误FIFO缓存，然后分成两路：一路通过AXIL_S接口，另一路触发IRQ中断。",
+      "elements_involved": [
+        "ERR_PATH",
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Error/Interrupt Path子图已添加。ERR_FIFO是EdgeNode，输出到AXIL_S和IRQ。AXIL_S是ActuatorController，IRQ是TelemetryStream。",
+      "elements_involved": [
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "写入路径这边，WR_PATH后面接WR_FIFO，然后是地址生成器ADDR_GEN。ADDR_GEN需要CFG_BASE配置基址作为输入。",
+      "elements_involved": [
+        "WR_PATH",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "CFG_BASE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "WR_FIFO是EdgeNode，CFG_BASE也是EdgeNode对吧？ADDR_GEN生成地址后输出到哪里？",
+      "elements_involved": [
+        "WR_FIFO",
+        "ADDR_GEN",
+        "CFG_BASE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，ADDR_GEN是MQTT Broker，它输出到AXIL_M主接口，AXIL_M是TelemetryStream。",
+      "elements_involved": [
+        "ADDR_GEN",
+        "AXIL_M"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Master Write Path子图完成。WR_FIFO、CFG_BASE都连到ADDR_GEN，ADDR_GEN输出到AXIL_M。",
+      "elements_involved": [
+        "WR_FIFO",
+        "CFG_BASE",
+        "ADDR_GEN",
+        "AXIL_M"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在需要把AXIL_S和AXIL_M的外部接口展开。AXIL_S应该分出S_AR和S_R两个从机通道。",
+      "elements_involved": [
+        "AXIL_S",
+        "S_AR",
+        "S_R"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。AXIL_S连出S_AR和S_R，S_AR是ActuatorController，S_R是MQTT Broker。",
+      "elements_involved": [
+        "AXIL_S",
+        "S_AR",
+        "S_R"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "AXIL_M主接口需要展开完整的写通道：M_AW地址写、M_W数据写、M_B响应。",
+      "elements_involved": [
+        "AXIL_M",
+        "M_AW",
+        "M_W",
+        "M_B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "AXIL_M的三个通道已添加：M_AW是EdgeNode，M_W是TelemetryStream，M_B是MQTT Broker。",
+      "elements_involved": [
+        "AXIL_M",
+        "M_AW",
+        "M_W",
+        "M_B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "让我整体看一下。MON_IN到PARSE的连接关系对吗？PARSE节点本身也是MQTT Broker？",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，MON_IN和PARSE都是IoT_Industrial_MQTT_Broker，MON_IN通过PARSE动作连接到PARSE节点。结构是：MON_IN -- PARSE[IoT_Industrial_MQTT_Broker]。",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要给关键节点加上样式区分。FILTER用蓝色填充，ERR_FIFO用红色加粗边框，WR_FIFO用绿色加粗，ADDR_GEN用黄色，IRQ用紫色加粗。",
+      "elements_involved": [
+        "FILTER",
+        "ERR_FIFO",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "样式已应用。FILTER是#bbf蓝色2px边框，ERR_FIFO是#fbb红色3px，WR_FIFO是#bfb绿色3px，ADDR_GEN是#ffb黄色2px，IRQ是#f9f紫色3px。",
+      "elements_involved": [
+        "FILTER",
+        "ERR_FIFO",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下子图命名。最外层是monbus_axil_group，里面分成Monitor Bus Input、Per-Protocol Filtering、Routing Decision、Error/Interrupt Path、Master Write Path五个子图对吧？",
+      "elements_involved": [
+        "monbus_axil_group",
+        "Monitor Bus Input",
+        "Per-Protocol Filtering",
+        "Routing Decision",
+        "Error/Interrupt Path",
+        "Master Write Path"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，五个子图都在monbus_axil_group内。Monitor Bus Input包含MON_IN和PARSE；Per-Protocol Filtering包含PARSE、FILTER和三个MASK；Routing Decision包含DROP、ERR_CHK、DISCARD、ERR_PATH、WR_PATH。",
+      "elements_involved": [
+        "monbus_axil_group"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "DROP和ERR_CHK的判断标签，Yes和No的方向对吗？DROP的Yes是丢弃，No是继续检查？",
+      "elements_involved": [
+        "DROP",
+        "ERR_CHK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认：DROP -- |No| ERR_CHK，DROP -- |Yes| DISCARD；ERR_CHK -- |Yes| ERR_PATH，ERR_CHK -- |No| WR_PATH。逻辑是：不丢弃才检查，有错误走错误路径，无错误走写入路径。",
+      "elements_involved": [
+        "DROP",
+        "ERR_CHK",
+        "DISCARD",
+        "ERR_PATH",
+        "WR_PATH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "有个细节，ERR_FIFO后面同时连到AXIL_S和IRQ，这两个是并行的输出对吧？不是二选一。",
+      "elements_involved": [
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，ERR_FIFO同时输出到AXIL_S和IRQ，错误信息既可以通过AXIL_S接口读取，也可以触发IRQ中断通知。",
+      "elements_involved": [
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再看一下AXI_MASK、AXIS_MASK、CORE_MASK的归属。AXI_MASK是MQTT Broker，AXIS_MASK是EdgeNode，CORE_MASK是TelemetryStream，这个对应关系对吗？",
+      "elements_involved": [
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认：AXI_MASK[IoT_Industrial_MQTT_Broker]，AXIS_MASK[IoT_Industrial_EdgeNode]，CORE_MASK[IoT_Industrial_TelemetryStream]。三个掩码都输入到FILTER。",
+      "elements_involved": [
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK",
+        "FILTER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体结构差不多了，但我发现MON_IN到PARSE的连接写法可能需要调整。现在写的是MON_IN -- PARSE[...]，但PARSE本身也是一个节点，这样写会不会有歧义？",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "您的意思是PARSE既是连接标签又是节点名称？当前写法是MON_IN -- PARSE[IoT_Industrial_MQTT_Broker]，这在Mermaid中是合法的，PARSE作为带标签的边指向PARSE节点。但如果您希望更清晰...",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "不，这样也可以，表示MON_IN经过PARSE动作到达PARSE节点。保持现状吧。检查一下所有节点的角色分配有没有遗漏。",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我梳理一下所有IoT角色：MQTT_Broker有MON_IN、PARSE、AXI_MASK、ADDR_GEN、S_R、M_B；EdgeNode有AXIS_MASK、FILTER、DROP、ERR_CHK、ERR_PATH、ERR_FIFO、CFG_BASE、WR_FIFO、M_AW；TelemetryStream有CORE_MASK、IRQ、AXIL_M、M_W；ActuatorController有DISCARD、WR_PATH、AXIL_S、S_AR。",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE",
+        "AXI_MASK",
+        "ADDR_GEN",
+        "S_R",
+        "M_B",
+        "AXIS_MASK",
+        "FILTER",
+        "DROP",
+        "ERR_CHK",
+        "ERR_PATH",
+        "ERR_FIFO",
+        "CFG_BASE",
+        "WR_FIFO",
+        "M_AW",
+        "CORE_MASK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "分配合理。MQTT Broker主要负责协议解析和地址生成；EdgeNode承担核心的过滤、决策和FIFO缓冲；TelemetryStream处理中断和主接口；ActuatorController负责最终执行和从接口。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "有个问题想确认：DISCARD节点是TelemetryStream，但它是在DROP的Yes分支上，也就是被丢弃的数据。这个命名会不会让人误解？",
+      "elements_involved": [
+        "DISCARD",
+        "DROP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "DISCARD是丢弃动作的终点节点，虽然名字叫DISCARD，但它确实是一个处理节点，由TelemetryStream来执行实际的丢弃统计或日志记录，不是单纯的无操作。",
+      "elements_involved": [
+        "DISCARD"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "明白了。那是否需要给DISCARD也加个样式？比如灰色表示终止路径？",
+      "elements_involved": [
+        "DISCARD"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "暂时不用，目前重点突出FILTER、ERR_FIFO、WR_FIFO、ADDR_GEN、IRQ这五个关键节点就够了。DISCARD作为正常分支的终点，不需要特别标注。",
+      "elements_involved": [
+        "DISCARD",
+        "FILTER",
+        "ERR_FIFO",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "再确认一下外部接口的连接方向。AXIL_S和AXIL_M是在monbus_axil_group内部定义的，但S_AR、S_R、M_AW、M_W、M_B是在子图外部连接的，这样跨层级连接在Mermaid中没问题吧？",
+      "elements_involved": [
+        "AXIL_S",
+        "AXIL_M",
+        "S_AR",
+        "S_R",
+        "M_AW",
+        "M_W",
+        "M_B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题，Mermaid支持跨子图引用节点。AXIL_S和AXIL_M在Error/Interrupt Path和Master Write Path子图内定义，外部可以直接引用连接。这样结构更清晰，接口内外分明。",
+      "elements_involved": [
+        "AXIL_S",
+        "AXIL_M"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，最终确认所有连接：AXIL_S -- S_AR，AXIL_S -- S_R，AXIL_M -- M_AW，AXIL_M -- M_W，AXIL_M -- M_B。五条外部接口线都完整。",
+      "elements_involved": [
+        "AXIL_S",
+        "S_AR",
+        "S_R",
+        "AXIL_M",
+        "M_AW",
+        "M_W",
+        "M_B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后检查一下，整个图的方向是TB从上到下对吧？没有使用LR或其他方向？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，graph TB，从上到下布局。数据流从顶部的MON_IN进入，经过中间的处理层，最终到底部的外部接口输出。",
+      "elements_involved": [
+        "MON_IN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节，ERR_FIFO的样式是3px边框，但颜色是#fbb偏粉红，要不要改成更标准的红色#f00？",
+      "elements_involved": [
+        "ERR_FIFO"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "#fbb是浅红色，在Mermaid中显示效果比#f00更柔和，且能看清节点文字。如果改成#f00深红色，3px边框可能过于刺眼。建议保持#fbb。",
+      "elements_involved": [
+        "ERR_FIFO"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意，保持#fbb。那WR_FIFO的#bfb浅绿色、ADDR_GEN的#ffb浅黄色、IRQ的#f9f浅紫色也保持协调的 pastel 风格。",
+      "elements_involved": [
+        "ERR_FIFO",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "样式方案最终确定：FILTER #bbf蓝色2px，ERR_FIFO #fbb浅红3px，WR_FIFO #bfb浅绿3px，ADDR_GEN #ffb浅黄2px，IRQ #f9f浅紫3px。整体视觉层次清晰。",
+      "elements_involved": [
+        "FILTER",
+        "ERR_FIFO",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再最后过一遍所有节点名称：MON_IN、PARSE、FILTER、AXI_MASK、AXIS_MASK、CORE_MASK、DROP、ERR_CHK、DISCARD、ERR_PATH、WR_PATH、ERR_FIFO、AXIL_S、IRQ、WR_FIFO、ADDR_GEN、CFG_BASE、AXIL_M、S_AR、S_R、M_AW、M_W、M_B。一共21个节点，没错吧？",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE",
+        "FILTER",
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK",
+        "DROP",
+        "ERR_CHK",
+        "DISCARD",
+        "ERR_PATH",
+        "WR_PATH",
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ",
+        "WR_FIFO",
+        "ADDR_GEN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认21个节点。其中DROP和ERR_CHK是菱形判断节点，其余为矩形处理节点。所有节点都有明确的IoT角色归属，连接关系完整无孤立节点。",
+      "elements_involved": [
+        "DROP",
+        "ERR_CHK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好的，这个工业物联网AXIL监控总线架构图完成了。涵盖了从MQTT Broker输入、多协议过滤、路由决策、错误处理到最终主从接口输出的完整数据通路。",
+      "elements_involved": [
+        "MON_IN",
+        "AXIL_S",
+        "AXIL_M"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "总结：monbus_axil_group包含5个子图，21个节点，5个样式标注节点，完整实现了IoT工业场景下的AXIL总线监控、过滤、路由和接口扩展功能。",
+      "elements_involved": [
+        "monbus_axil_group"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 52,
+    "repair_count": 0,
+    "grounding_acts_count": 50,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 100425.6966,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 50
+  }
+}

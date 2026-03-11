@@ -1,0 +1,355 @@
+{
+  "id": "ot_journey_01064",
+  "source": "other",
+  "source_url": "https://github.com/alexfarlander/stitch-run/blob/97ed17d1aa70d69eaf4e348e021a4473f10c471b/docs/implementation/diagrams/database-schema.mmd",
+  "source_type": "github_search",
+  "github_repo": "alexfarlander/stitch-run",
+  "diagram_type": "journey",
+  "code": "erDiagram\n    %% Core Flow and Run Tables\n    stitch_flows ||--o{ stitch_runs : \"executes\"\n    stitch_flows ||--o{ stitch_flows : \"parent_of\"\n    stitch_flows ||--o{ stitch_flow_versions : \"has_versions\"\n    stitch_flows ||--o| stitch_flow_versions : \"current_version\"\n    stitch_flows ||--o{ stitch_entities : \"tracks\"\n    stitch_flows ||--o{ stitch_webhook_configs : \"receives_webhooks\"\n    \n    %% Run and Version Relationship\n    stitch_runs }o--|| stitch_flow_versions : \"executed_version\"\n    \n    %% Entity Relationships\n    stitch_entities ||--o{ stitch_journey_events : \"generates\"\n    stitch_entities ||--o{ stitch_runs : \"triggers\"\n    stitch_entities ||--o{ stitch_webhook_events : \"created_from\"\n    \n    %% Webhook System\n    stitch_webhook_configs ||--o{ stitch_webhook_events : \"receives\"\n    stitch_webhook_events }o--|| stitch_runs : \"triggers\"\n    \n    %% Media Library\n    stitch_media ||--o{ stitch_media : \"style_reference\"\n    stitch_media ||--o{ stitch_media : \"source_image\"\n    \n    %% ========================================================================\n    %% Table: stitch_flows\n    %% Purpose: Stores all canvases (BMC and Workflows)\n    %% ========================================================================\n    stitch_flows {\n        uuid id PK \"Primary key\"\n        text name \"Canvas name\"\n        jsonb graph \"Visual graph structure\"\n        text canvas_type \"bmc or workflow\"\n        uuid parent_id FK \"Parent canvas for hierarchy\"\n        uuid current_version_id FK \"Latest version\"\n        timestamptz created_at \"Creation timestamp\"\n        timestamptz updated_at \"Last update timestamp\"\n    }\n    \n    %% ========================================================================\n    %% Table: stitch_flow_versions\n    %% Purpose: Immutable snapshots of canvas versions\n    %% ========================================================================\n    stitch_flow_versions {\n        uuid id PK \"Primary key\"\n        uuid flow_id FK \"Parent flow\"\n        jsonb visual_graph \"UI graph with positions\"\n        jsonb execution_graph \"Optimized runtime graph\"\n        text commit_message \"Version description\"\n        timestamptz created_at \"Version creation time\"\n    }\n    \n    %% ========================================================================\n    %% Table: stitch_runs\n    %% Purpose: Tracks workflow execution instances\n    %% ========================================================================\n    stitch_runs {\n        uuid id PK \"Primary key\"\n        uuid flow_id FK \"Flow being executed\"\n        uuid flow_version_id FK \"Specific version executed\"\n        uuid entity_id FK \"Entity triggering run\"\n        jsonb node_states \"Current state of all nodes\"\n        jsonb trigger \"Trigger metadata\"\n        timestamptz created_at \"Run start time\"\n        timestamptz updated_at \"Last state update\"\n    }\n    \n    %% ========================================================================\n    %% Table: stitch_entities\n    %% Purpose: Tracks customers/leads moving through canvas\n    %% ========================================================================\n    stitch_entities {\n        uuid id PK \"Primary key\"\n        uuid canvas_id FK \"Canvas entity belongs to\"\n        text name \"Entity name\"\n        text avatar_url \"Avatar image URL\"\n        text entity_type \"customer, lead, churned\"\n        text current_node_id \"Current node position\"\n        text current_edge_id \"Current edge if traveling\"\n        numeric edge_progress \"Position on edge 0.0-1.0\"\n        jsonb journey \"Journey history array\"\n        jsonb metadata \"Additional entity data\"\n        timestamptz created_at \"Entity creation time\"\n        timestamptz updated_at \"Last position update\"\n    }\n    \n    %% ========================================================================\n    %% Table: stitch_journey_events\n    %% Purpose: Detailed event log of entity movements\n    %% ========================================================================\n    stitch_journey_events {\n        uuid id PK \"Primary key\"\n        uuid entity_id FK \"Entity generating event\"\n        text event_type \"Event type identifier\"\n        text node_id \"Related node if applicable\"\n        text edge_id \"Related edge if applicable\"\n        numeric progress \"Progress value 0.0-1.0\"\n        jsonb metadata \"Event-specific data\"\n        timestamptz timestamp \"Event occurrence time\"\n    }\n    \n    %% ========================================================================\n    %% Table: stitch_webhook_configs\n    %% Purpose: Webhook endpoint configurations\n    %% ========================================================================\n    stitch_webhook_configs {\n        uuid id PK \"Primary key\"\n        uuid canvas_id FK \"Canvas receiving webhooks\"\n        text name \"Config name\"\n        text source \"stripe, typeform, calendly\"\n        text endpoint_slug UK \"Unique URL slug\"\n        text secret \"Webhook signature secret\"\n        uuid workflow_id FK \"Workflow to trigger\"\n        text entry_edge_id \"Edge to inject entity\"\n        jsonb entity_mapping \"Field mapping config\"\n        boolean is_active \"Enable/disable webhook\"\n        timestamptz created_at \"Config creation time\"\n        timestamptz updated_at \"Last config update\"\n    }\n    \n    %% ========================================================================\n    %% Table: stitch_webhook_events\n    %% Purpose: Log of received webhook events\n    %% ========================================================================\n    stitch_webhook_events {\n        uuid id PK \"Primary key\"\n        uuid webhook_config_id FK \"Config that received event\"\n        timestamptz received_at \"Event receipt time\"\n        jsonb payload \"Raw webhook payload\"\n        uuid entity_id FK \"Created entity\"\n        uuid workflow_run_id FK \"Triggered run\"\n        text status \"pending, processed, failed\"\n        text error \"Error message if failed\"\n        timestamptz processed_at \"Processing completion time\"\n    }\n    \n    %% ========================================================================\n    %% Table: stitch_media\n    %% Purpose: Centralized media asset library\n    %% ========================================================================\n    stitch_media {\n        uuid id PK \"Primary key\"\n        text name \"Asset name\"\n        text description \"Asset description\"\n        text media_type \"image, video, audio, etc\"\n        text storage_path \"Storage bucket path\"\n        text url \"Public URL\"\n        text thumbnail_path \"Thumbnail storage path\"\n        text thumbnail_url \"Thumbnail public URL\"\n        integer file_size \"File size in bytes\"\n        text mime_type \"MIME type\"\n        numeric duration_seconds \"Duration for audio/video\"\n        jsonb dimensions \"Width and height\"\n        jsonb metadata \"Additional metadata\"\n        text[] tags \"Searchable tags array\"\n        uuid style_reference_id FK \"Style reference asset\"\n        uuid source_image_id FK \"Source image asset\"\n        uuid user_id FK \"Owner user ID\"\n        timestamptz created_at \"Asset creation time\"\n        timestamptz updated_at \"Last asset update\"\n    }\n",
+  "content_size": 7119,
+  "collected_at": "2026-02-06T11:02:46.342167",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个支持BMC画布和工作流的核心数据模型。核心概念是stitch_flows，它要存储所有画布，不管是商业模式画布还是自动化工作流。",
+      "elements_involved": [
+        "stitch_flows",
+        "bmc",
+        "workflows"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，stitch_flows作为核心表。那版本管理怎么做？画布经常需要迭代，不能每次修改都直接覆盖吧？",
+      "elements_involved": [
+        "stitch_flows",
+        "versions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，需要stitch_flow_versions来存不可变的版本快照。每个版本包含visual_graph和execution_graph，前者给UI用，后者是优化后的运行时图。",
+      "elements_involved": [
+        "stitch_flow_versions",
+        "visual_graph",
+        "execution_graph"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，所以stitch_flows和stitch_flow_versions是一对多，同时还有一个current_version指向最新版本。",
+      "elements_involved": [
+        "stitch_flows",
+        "stitch_flow_versions",
+        "current_version"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。另外画布支持层级结构，一个画布可以是另一个画布的子画布，所以stitch_flows要有parent_id自关联。",
+      "elements_involved": [
+        "stitch_flows",
+        "parent_of",
+        "hierarchy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了parent_of关系。现在来看执行层，工作流需要实际跑起来，是不是要有stitch_runs？",
+      "elements_involved": [
+        "stitch_runs",
+        "run"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，stitch_runs记录每次执行实例。关键点是它要关联到具体执行的版本，而不是直接关联flow，这样能保证可重现性。",
+      "elements_involved": [
+        "stitch_runs",
+        "stitch_flow_versions",
+        "executed_version"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "所以stitch_runs通过flow_version_id关联到stitch_flow_versions，同时保留flow_id方便查询。那触发机制呢？",
+      "elements_involved": [
+        "stitch_runs",
+        "flow_version_id",
+        "flow_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "触发来自实体。我们需要stitch_entities表来跟踪客户或线索在画布中的流转。实体进入某个节点时会触发stitch_runs。",
+      "elements_involved": [
+        "stitch_entities",
+        "triggers",
+        "stitch_runs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，stitch_entities和stitch_runs是多对多关系。实体类型包括customer、lead、churned这些对吧？",
+      "elements_involved": [
+        "stitch_entities",
+        "entity_type",
+        "customer",
+        "lead"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对。实体在画布中移动会产生journey_events，我们需要详细记录这个轨迹。stitch_journey_events要存进度、节点位置这些信息。",
+      "elements_involved": [
+        "stitch_journey_events",
+        "journey",
+        "position",
+        "progress"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了stitch_journey_events，关联到entity。现在有个问题：实体怎么进入系统的？外部系统怎么对接？",
+      "elements_involved": [
+        "stitch_journey_events",
+        "entity_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "通过webhook。需要stitch_webhook_configs配置接收端点，支持Stripe、Typeform、Calendly这些来源。每个配置关联到具体画布和工作流。",
+      "elements_involved": [
+        "stitch_webhook_configs",
+        "receiving webhooks",
+        "canvas_id",
+        "workflow_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "所以stitch_flows通过receives_webhooks关联到多个webhook_configs。那实际收到的事件存在哪？",
+      "elements_involved": [
+        "stitch_flows",
+        "stitch_webhook_configs",
+        "receives_webhooks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "stitch_webhook_events存原始payload，处理状态，以及最终创建的实体和触发的工作流运行。",
+      "elements_involved": [
+        "stitch_webhook_events",
+        "payload",
+        "raw",
+        "entity_id",
+        "workflow_run_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，webhook_events关联到webhook_config，同时可以触发run和创建entity。最后还需要媒体库吗？",
+      "elements_involved": [
+        "stitch_webhook_events",
+        "stitch_webhook_configs",
+        "stitch_runs",
+        "stitch_entities"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要stitch_media作为集中式资源库。支持图片、视频、音频，还要有风格引用和源图关联，比如生成图要记录参考了哪张风格图。",
+      "elements_involved": [
+        "stitch_media",
+        "asset",
+        "style_reference",
+        "source_image"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了stitch_media的自关联关系。检查一下：flows有canvas_type字段区分bmc和workflow，这个枚举值确定吗？",
+      "elements_involved": [
+        "stitch_flows",
+        "canvas_type",
+        "bmc",
+        "workflow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确定，就是'bmc'或'workflow'。另外entity的journey字段存的是历史数组，metadata存额外数据，这两个都是jsonb。",
+      "elements_involved": [
+        "stitch_entities",
+        "journey",
+        "metadata",
+        "jsonb"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "stitch_runs的node_states也是jsonb吧？记录每个节点的当前状态。还有duration_seconds在media表是numeric？",
+      "elements_involved": [
+        "stitch_runs",
+        "node_states",
+        "stitch_media",
+        "duration"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "对，node_states是jsonb。但media的duration_seconds应该是numeric，不过我之前想的是integer？不对，视频可能有小数秒，用numeric更合理。",
+      "elements_involved": [
+        "stitch_media",
+        "duration_seconds",
+        "numeric"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正为numeric。再看webhook_configs的endpoint_slug要唯一约束，这个标记了UK。还有is_active布尔值控制启用状态。",
+      "elements_involved": [
+        "stitch_webhook_configs",
+        "endpoint_slug",
+        "is_active"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的。最后确认一下关系：entity通过current_node_id和current_edge_id定位实时位置，edge_progress是0到1的小数表示在边上的进度。",
+      "elements_involved": [
+        "stitch_entities",
+        "current_node_id",
+        "current_edge_id",
+        "edge_progress"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有关系都理清了：flows执行runs、有versions、跟踪entities、接收webhooks；entities生成journey_events、触发runs、来自webhook_events；webhook_configs接收webhook_events；media自引用风格和源图。",
+      "elements_involved": [
+        "relationships",
+        "stitch_flows",
+        "stitch_runs",
+        "stitch_entities",
+        "stitch_journey_events",
+        "stitch_webhook_configs",
+        "stitch_webhook_events",
+        "stitch_media"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。所有表都有标准时间戳字段，核心表都覆盖到了。这个模型应该能支撑画布编辑、版本管理、实体追踪、工作流执行和外部集成的完整生命周期。",
+      "elements_involved": [
+        "created_at",
+        "updated_at",
+        "core",
+        "processing",
+        "purp"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 25,
+    "repair_count": 1,
+    "grounding_acts_count": 25,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:43Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:39Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:39Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 53917.0599,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 25
+  }
+}

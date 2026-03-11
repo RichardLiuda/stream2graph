@@ -1,0 +1,431 @@
+{
+  "id": "ot_journey_01103",
+  "source": "other",
+  "source_url": "https://github.com/ik-workshop/naglfar-analytics/blob/2ff359b7b80b238f0b039374ec84a4f8152fadc1/docs/assets/diagrams/06-data-pipeline.mmd",
+  "source_type": "github_search",
+  "github_repo": "ik-workshop/naglfar-analytics",
+  "diagram_type": "journey",
+  "code": "graph TB\n    subgraph Stage1[STAGE 1: COLLECTION - Real-time]\n        ValidationSvc[Naglfar Validation Service<br/>Captures: IP, token, endpoint, query]\n        BookstoreSvc[Book Store Backend<br/>Captures: User actions with email]\n    end\n\n    subgraph Kafka[Message Broker - Apache Kafka]\n        ValidationTopic[naglfar-validation-topic<br/>Request metadata]\n        JourneyTopic[naglfar-user-journey-topic<br/>User actions]\n    end\n\n    subgraph Stage2[STAGE 2: INGESTION - Near real-time &lt; 1s]\n        Worker[Naglfar Worker<br/>.NET Consumer<br/>• Enriches data<br/>• Correlates events]\n    end\n\n    subgraph Storage[Graph Database]\n        Neo4j[(Neo4j<br/>Nodes: IP, Token, Account, Request, Action<br/>Relationships: MADE_REQUEST, USED_TOKEN, etc.)]\n    end\n\n    subgraph Stage3[STAGE 3: ANALYSIS - Batch/Streaming]\n        Analytics[Analytics Worker<br/>Pattern Detection:<br/>• Token reuse<br/>• Similar journeys<br/>• High frequency<br/>• Account compromise]\n    end\n\n    subgraph Stage4[STAGE 4: ACTION - Real-time &lt; 100ms]\n        Redis[(Redis Cache<br/>blocked_ips<br/>blocked_tokens<br/>TTL: 5 min)]\n    end\n\n    ValidationSvc -->|Publish<br/>< 5ms| ValidationTopic\n    BookstoreSvc -->|Publish<br/>< 5ms| JourneyTopic\n\n    ValidationTopic -->|Consume| Worker\n    JourneyTopic -->|Consume| Worker\n\n    Worker -->|Write graph<br/>< 1s| Neo4j\n\n    Neo4j -->|Query patterns<br/>Every 30s-5min| Analytics\n\n    Analytics -->|Write blocks<br/>< 100ms| Redis\n\n    Redis -.->|Check blocks<br/>< 1ms| ValidationSvc\n\n    style Stage1 fill:#e1f5ff\n    style Kafka fill:#e1d5e7\n    style Stage2 fill:#fff4cc\n    style Storage fill:#ffe6cc\n    style Stage3 fill:#d5e8d4\n    style Stage4 fill:#f8cecc\n    style Redis fill:#ffcccc",
+  "content_size": 1737,
+  "collected_at": "2026-02-06T11:04:26.678635",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个用户行为追踪系统，核心目标是检测异常登录和账号共享。整个流程要分成四个阶段：数据采集、实时摄入、图分析、最后实时阻断。先从Stage1开始，有两个数据源。",
+      "elements_involved": [
+        "Stage1",
+        "ValidationSvc",
+        "BookstoreSvc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。Stage1是实时采集层。ValidationSvc和BookstoreSvc这两个服务具体采集什么字段？我需要确认数据语义才能确定下游关联逻辑。",
+      "elements_involved": [
+        "ValidationSvc",
+        "BookstoreSvc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ValidationSvc采集IP、token、请求端点和查询参数；BookstoreSvc采集用户行为，关键是带上email标识。这两个服务独立部署，数据格式也不一样。",
+      "elements_involved": [
+        "ValidationSvc",
+        "BookstoreSvc",
+        "IP",
+        "token",
+        "email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在Stage1子图里画好了这两个服务，标注了各自捕获的字段。接下来它们怎么流转？直接写库还是先过消息队列削峰？",
+      "elements_involved": [
+        "Stage1",
+        "ValidationSvc",
+        "BookstoreSvc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "必须过Kafka。ValidationSvc发到naglfar-validation-topic，存请求元数据；BookstoreSvc发到naglfar-user-journey-topic，存用户行为。两个topic分开，消费端可以灵活订阅。",
+      "elements_involved": [
+        "Kafka",
+        "ValidationTopic",
+        "JourneyTopic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下：两个服务都是Publish到Kafka，延迟要求小于5毫秒对吧？我在边上标注了这个SLA。",
+      "elements_involved": [
+        "ValidationSvc",
+        "BookstoreSvc",
+        "ValidationTopic",
+        "JourneyTopic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，5毫秒内必须发出，不能阻塞主流程。现在看Stage2，需要一个Worker同时消费这两个topic，做数据清洗和关联。",
+      "elements_involved": [
+        "Stage2",
+        "Worker",
+        "ValidationTopic",
+        "JourneyTopic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Worker的技术栈有要求吗？还有，enrich具体做什么？是把IP解析成地理位置，还是把token关联到账号ID？",
+      "elements_involved": [
+        "Worker",
+        "Stage2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用.NET写，叫Naglfar Worker。enrich包括补全账号信息、解析设备指纹，还有关键的一步：把ValidationTopic和JourneyTopic的事件按时间窗口关联，比如同一个token在5秒内既有验证请求又有购书行为。",
+      "elements_involved": [
+        "Worker",
+        "Stage2",
+        "ValidationTopic",
+        "JourneyTopic",
+        "token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Stage2画好了，标注了near real-time小于1秒的延迟。Worker同时consume两个topic。下一步数据存哪里？需要支持复杂关系查询。",
+      "elements_involved": [
+        "Stage2",
+        "Worker",
+        "ValidationTopic",
+        "JourneyTopic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "存Neo4j。节点类型有IP、Token、Account、Request、Action五种，关系包括MADE_REQUEST、USED_TOKEN这些。图结构才能做后续的旅程关联分析。",
+      "elements_involved": [
+        "Storage",
+        "Neo4j",
+        "IP",
+        "Token",
+        "Account",
+        "Request",
+        "Action",
+        "MADE_REQUEST",
+        "USED_TOKEN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Worker到Neo4j的写入延迟要控制在1秒内？我在箭头上标注了。现在Stage3是分析层，batch还是streaming模式？",
+      "elements_involved": [
+        "Worker",
+        "Neo4j",
+        "Storage",
+        "Stage3"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "混合模式，叫Analytics Worker。主要检测四类模式：token重用、相似旅程、高频请求、账号泄露。查询Neo4j的间隔可以配置，30秒到5分钟之间。",
+      "elements_involved": [
+        "Stage3",
+        "Analytics",
+        "Neo4j"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "检测出异常后怎么处理？直接告警还是先写阻断名单？还有Stage4的定位是什么？",
+      "elements_involved": [
+        "Stage3",
+        "Stage4",
+        "Analytics"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Stage4是实时阻断层，必须100毫秒内响应。Analytics把blocked_ips和blocked_tokens写到Redis，TTL设5分钟。ValidationSvc读取Redis做前置拦截，形成闭环。",
+      "elements_involved": [
+        "Stage4",
+        "Analytics",
+        "Redis",
+        "ValidationSvc",
+        "blocked_ips",
+        "blocked_tokens"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Stage4画好了，Redis用虚线连回ValidationSvc，标注检查延迟小于1毫秒。整个数据流看起来通了，但我有个疑问：Redis到ValidationSvc的虚线是什么意思？",
+      "elements_involved": [
+        "Stage4",
+        "Redis",
+        "ValidationSvc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "虚线表示这是查询依赖，不是数据写入。ValidationSvc在处理新请求时，先查Redis看IP或token是否在黑名单里，在的话直接拒绝，不走后续流程。",
+      "elements_involved": [
+        "Redis",
+        "ValidationSvc",
+        "blocked_ips",
+        "blocked_tokens"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解了，这是热路径上的缓存查询。各层颜色我按功能区分：Stage1浅蓝、Kafka浅紫、Stage2浅黄、Storage浅橙、Stage3浅绿、Stage4浅红，Redis用更醒目的红色。这样符合你的认知吗？",
+      "elements_involved": [
+        "Stage1",
+        "Kafka",
+        "Stage2",
+        "Storage",
+        "Stage3",
+        "Stage4",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。但Stage2的Worker我再看一眼——它同时consume两个topic，如果JourneyTopic流量远大于ValidationTopic，会不会有消费延迟？",
+      "elements_involved": [
+        "Worker",
+        "ValidationTopic",
+        "JourneyTopic",
+        "Stage2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "这是个风险点。我建议在Worker里用不同的consumer group，或者把JourneyTopic的分区数设高一些。图里需要体现这个设计考虑吗？",
+      "elements_involved": [
+        "Worker",
+        "JourneyTopic",
+        "Stage2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "先不展开细节，保持架构图简洁。但有个地方需要修正：Neo4j的节点类型我写漏了，应该是IP、Token、Account、Request、Action，你检查一下。",
+      "elements_involved": [
+        "Neo4j",
+        "IP",
+        "Token",
+        "Account",
+        "Request",
+        "Action"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现了，我刚才只写了四种节点，漏了Action。现在修正为五种节点，关系也补全了MADE_REQUEST、USED_TOKEN等。还有别的要调整吗？",
+      "elements_involved": [
+        "Neo4j",
+        "Action",
+        "MADE_REQUEST",
+        "USED_TOKEN"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Analytics Worker的查询频率写清楚是30秒到5分钟可调，这个范围要体现在图上。还有，Redis的TTL 5分钟也要标注。",
+      "elements_involved": [
+        "Analytics",
+        "Neo4j",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都补上了。Neo4j到Analytics的箭头标注了Every 30s-5min，Redis内部标注了TTL: 5 min。整个架构现在完整了，从数据采集到实时阻断形成闭环。",
+      "elements_involved": [
+        "Neo4j",
+        "Analytics",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一个边界情况：如果Analytics检测到异常但Redis写入失败，怎么办？这个降级策略需要文档化，但图里可能放不下。",
+      "elements_involved": [
+        "Analytics",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "建议用注释或者单独的错误处理流程图。当前这张图聚焦正常数据流，已经比较清晰了。各层延迟标注完整：Stage1到Kafka小于5ms，Stage2小于1s，Stage4小于100ms，Redis查询小于1ms。",
+      "elements_involved": [
+        "Stage1",
+        "Kafka",
+        "Stage2",
+        "Stage4",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好的，这张图可以用了。下一步我会拿着它跟安全团队对齐检测规则的阈值，比如token重用的具体定义。",
+      "elements_involved": [
+        "Analytics",
+        "token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "需要我把这张图导出，或者补充一个数据样例的附录吗？比如ValidationTopic里一条典型消息的结构。",
+      "elements_involved": [
+        "ValidationTopic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "暂时不用，架构图本身已经够清晰了。Kafka的两个topic命名、Neo4j的节点类型、Redis的block名单，这些关键信息都有了。可以定稿。",
+      "elements_involved": [
+        "Kafka",
+        "ValidationTopic",
+        "JourneyTopic",
+        "Neo4j",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "定稿完成。最终版本包含四个Stage、两个Kafka topic、Naglfar Worker和Analytics Worker、Neo4j图库、Redis缓存，以及完整的闭环阻断机制。颜色区分和延迟标注都已落实。",
+      "elements_involved": [
+        "Stage1",
+        "Stage2",
+        "Stage3",
+        "Stage4",
+        "Kafka",
+        "ValidationTopic",
+        "JourneyTopic",
+        "Worker",
+        "Analytics",
+        "Neo4j",
+        "Redis",
+        "ValidationSvc"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 30,
+    "repair_count": 1,
+    "grounding_acts_count": 30,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:43Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:39Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:39Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 59184.5596,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 30
+  }
+}

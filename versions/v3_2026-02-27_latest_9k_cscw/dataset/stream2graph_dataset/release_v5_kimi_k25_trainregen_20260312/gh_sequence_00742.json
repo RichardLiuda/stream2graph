@@ -1,0 +1,453 @@
+{
+  "id": "gh_sequence_00742",
+  "source": "github",
+  "source_url": "https://github.com/edx/commerce-coordinator/blob/25bb739e9ccaba9407808c494cd3461172fd1fa3/docs/decisions/arch-diagrams/mobile-create-order.mmd",
+  "github_repo": "edx/commerce-coordinator",
+  "github_file_path": "docs/decisions/arch-diagrams/mobile-create-order.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant User\n    participant MobileApp\n    participant CTBackend as CT Backend\n    participant IAPValidator as IAP Validator (Android/iOS)\n    participant MobileStore as Mobile Store (Android/iOS)\n    participant CoCo as Commercetools (CoCo)\n    participant EventSystem\n\n    User->>MobileApp: Starts in-app purchase\n    MobileApp->>CTBackend: Sends purchase info (price, course, platform, token)\n\n    CTBackend->>CoCo: Get CT customer by LMS user ID\n    alt Customer does not exist\n        CTBackend->>CoCo: Create customer with user info\n        CoCo-->>CTBackend: Return newly created customer\n    else Customer exists\n        CTBackend->>CoCo: Update customer if needed\n        CoCo-->>CTBackend: Return updated customer\n    end\n\n    CTBackend->>CoCo: Check if user already has a cart\n    CoCo-->>CTBackend: Return existing cart or none\n    alt Cart exists\n        CTBackend->>CoCo: Delete old cart\n    end\n\n    CTBackend->>CoCo: Add the product, set external price (localized), set `mobileOrder=true` in new cart\n    CoCo-->>CTBackend: Return new cart\n\n    CTBackend->>IAPValidator: Validate the purchase token\n    IAPValidator->>MobileStore: Send token to Google or Apple\n    MobileStore-->>IAPValidator: Get token result\n\n    IAPValidator->>CoCo: Check if token was already used\n    alt Token is already used\n        IAPValidator-->>CTBackend: Tell backend it is a duplicate\n        CTBackend->>CoCo: Delete the new cart\n        CTBackend-->>MobileApp: **Show error (payment already used)**\n    else Token is valid\n        IAPValidator-->>CTBackend: Send transaction info\n    end\n\n    CTBackend->>EventSystem: Send event - checkout started\n    CTBackend->>EventSystem: Send event - item added to cart\n\n    CTBackend->>CoCo: Create a payment using the token info\n    CTBackend->>CoCo: Updates payment object to set custom field usdCentAmount with product's USD price\n    alt Payment creation failed\n        CoCo-->>CTBackend: **Error while creating payment**\n        CTBackend-->>MobileApp: **Show error (payment creation failed)**\n    else\n        CoCo-->>CTBackend: Return payment\n        CTBackend->>EventSystem: Send event - payment method used\n\n        CTBackend->>CoCo: Attach payment to the cart\n        alt Attaching payment failed\n            CoCo-->>CTBackend: **Error while attaching payment**\n            CTBackend-->>MobileApp: **Show error (payment attach failed)**\n        else\n            CoCo-->>CTBackend: Return updated cart\n\n            CTBackend->>CoCo: Create order from cart\n            alt Order creation failed\n                CoCo-->>CTBackend: **Error while creating order**\n                CTBackend-->>MobileApp: **Show error (order creation failed)**\n            else\n                CoCo-->>CTBackend: Return order\n\n                CTBackend->>CoCo: Mark items as ready for delivery\n                alt Updating item state failed\n                    CoCo-->>CTBackend: **Error while updating item states**\n                    CTBackend-->>MobileApp: **Show error (item state update failed)**\n                else\n                    CoCo-->>CTBackend: Return updated order\n\n                    CTBackend->>EventSystem: Send event - order completed\n                    CTBackend-->>MobileApp: Show success (order ID, number)\n                end\n            end\n        end\n    end\n",
+  "content_size": 3340,
+  "collected_at": "2026-02-06T01:36:24.179277",
+  "compilation_status": "success",
+  "license": "agpl-3.0",
+  "license_name": "GNU Affero General Public License v3.0",
+  "license_url": "https://api.github.com/licenses/agpl-3.0",
+  "repo_stars": 11,
+  "repo_forks": 7,
+  "repo_owner": "edx",
+  "repo_name": "commerce-coordinator",
+  "repo_description": "A controller to manage commerce workflows and services",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2021-10-01T19:08:54Z",
+  "repo_updated_at": "2026-01-14T15:27:30Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的应用内购买流程图，从用户在MobileApp发起购买开始，一直到订单完成。核心是CT Backend作为中间层，要对接Commercetools、IAP验证器和移动端商店。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。那IAP Validator是单独画出来，还是合并到MobileApp里？另外EventSystem需要作为独立参与者吗？",
+      "elements_involved": [
+        "IAPValidator",
+        "MobileApp",
+        "EventSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "IAP Validator要独立出来，因为它同时服务Android和iOS两个平台。EventSystem也单独画，用来发各种业务事件。还有，CT Backend和Commercetools的交互很频繁，我把CoCo标成Commercetools的简称。",
+      "elements_involved": [
+        "IAPValidator",
+        "EventSystem",
+        "CTBackend",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出六个参与者：User、MobileApp、CT Backend、IAP Validator（Android/iOS）、Mobile Store（Android/iOS）、Commercetools（CoCo），再加上EventSystem。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore",
+        "CoCo",
+        "EventSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "流程第一步是User在MobileApp启动购买，然后MobileApp把价格、课程、平台和token发给CT Backend。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了。接下来CT Backend要去CoCo获取客户对吧？这里有个分支——客户可能不存在。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，用alt分支。如果客户不存在就创建，存在就更新。两个分支都要返回客户信息给Backend。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "分支画好了。接下来是检查购物车？",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "cart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Backend查询用户是否已有cart。如果有，要先删除旧cart，然后新建一个，加入产品、设置外部价格——注意价格是localized的，还要设个标记mobileOrder=true。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "cart",
+        "price",
+        "localized",
+        "mobileOrder"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "mobileOrder=true是放在cart的自定义字段里吗？",
+      "elements_involved": [
+        "mobileOrder",
+        "cart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，作为cart的自定义字段。然后Backend拿返回的新cart去IAP Validator验证token。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了：CT Backend到IAP Validator验证token，然后Validator去Mobile Store找Google或Apple确认。",
+      "elements_involved": [
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore",
+        "token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里有个关键分支：Validator还要去CoCo检查这个token是否already used。如果已经用过，要报错给Backend，Backend删除cart，然后给MobileApp返回\"payment already used\"错误。",
+      "elements_involved": [
+        "IAPValidator",
+        "CoCo",
+        "token",
+        "already used",
+        "CTBackend",
+        "MobileApp",
+        "payment already used"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "分支画好了，错误路径标了双星号。那token有效的情况呢？",
+      "elements_involved": [
+        "IAPValidator",
+        "CTBackend",
+        "token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "token有效的话，Validator把transaction info发给Backend，然后Backend发两个事件：checkout started和item added to cart。",
+      "elements_involved": [
+        "IAPValidator",
+        "CTBackend",
+        "EventSystem",
+        "checkout started",
+        "item added to cart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "事件发出去了。接下来是创建payment？",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "payment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Backend用token info创建payment，还要更新payment对象，设一个自定义字段usdCentAmount，值是产品的USD价格。这里可能失败，要处理payment creation failed的错误。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "payment",
+        "token",
+        "usdCentAmount",
+        "USD",
+        "price",
+        "payment creation failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "分支画好了。创建成功的话呢？",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "payment",
+        "EventSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "成功的话先发payment method used事件，然后把payment attach到cart。这里又可能失败——payment attach failed。",
+      "elements_involved": [
+        "CTBackend",
+        "EventSystem",
+        "payment method used",
+        "CoCo",
+        "cart",
+        "payment attach failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "attach分支画好了。如果成功，下一步是create order？",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "order"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，从cart创建order，可能失败——order creation failed。成功的话，要mark items as ready for delivery。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "order",
+        "cart",
+        "order creation failed",
+        "ready for delivery"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ready for delivery是order的状态还是item的状态？",
+      "elements_involved": [
+        "ready for delivery",
+        "order",
+        "item"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是item的状态更新，所以叫item state update。这里也可能失败——item state update failed。",
+      "elements_involved": [
+        "item",
+        "ready for delivery",
+        "item state update failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都画好了。最后成功的话呢？",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "order"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "成功的话，CoCo返回updated order，Backend发order completed事件，最后给MobileApp返回成功，带上order ID和number。",
+      "elements_involved": [
+        "CoCo",
+        "CTBackend",
+        "order",
+        "EventSystem",
+        "order completed",
+        "MobileApp",
+        "order ID",
+        "number"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "整个流程都画完了。我检查一下：所有错误分支都标了双星号，alt嵌套也正确，事件系统在最后也有order completed。还有需要调整的吗？",
+      "elements_involved": [
+        "EventSystem",
+        "order completed",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，IAP Validator检查token already used那里，箭头方向画反了。应该是Validator去查CoCo，不是CoCo主动发过来。",
+      "elements_involved": [
+        "IAPValidator",
+        "CoCo",
+        "token",
+        "already used"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "修复了，现在方向是IAP Validator指向CoCo。还有其他问题吗？",
+      "elements_involved": [
+        "IAPValidator",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Backend删除旧cart那个分支，alt的结束位置对吗？它和后面的新建cart是顺序关系，不是嵌套。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "cart",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "你说得对，我调整一下alt的结束标记，让删除旧cart的分支正确闭合，然后再接新建cart的步骤。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "cart",
+        "alt"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "现在结构对了。整个图完整呈现了从购买发起到订单完成的全部流程，包括所有错误处理分支。可以定稿了。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore",
+        "CoCo",
+        "EventSystem"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 31,
+    "repair_count": 2,
+    "grounding_acts_count": 30,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 48407.1851,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 25
+  }
+}

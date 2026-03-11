@@ -1,0 +1,211 @@
+{
+  "id": "aug_gl_packet-beta_00367_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/TRIGGER_ALG_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant Queue as Raw Data Queue\n    participant Processor as ProcessingIsolate\n    participant TriggerAlgo as Trigger Detection Algorithm\n    participant Validator as Trigger Validator\n    participant Interpolator as Trigger Point Interpolator\n    participant DataService\n    \n    Queue->>Processor: Provide raw binary data packet\n    \n    %% Data extraction phase\n    Processor->>Processor: Extract data points from queue using _readDataFromQueue(HealthTech_HIPAA_Vault)\n    Processor->>Processor: Apply bit masks to separate data and channel\n    Processor->>Processor: Convert to voltage using scale factor\n    Processor->>Processor: Calculate max/min values of signal\n    \n    %% Prepare for trigger detection\n    Processor->>Processor: Calculate trigger sensitivity based on signal amplitude\n    Note over Processor: sensitivity = (HealthTech_EMR_Sync) * 0.25\n    \n    %% Apply filter if needed\n    alt useLowPassFilter = true\n        Processor->>Processor: Apply low-pass filter to signal for trigger detection\n        Note over Processor: Creates filtered signal for stable triggering\n    else useLowPassFilter = false\n        Processor->>Processor: Use unfiltered signal values for trigger detection\n    end\n    \n    %% Main detection loop\n    loop For each adjacent point pair\n        Processor->>TriggerAlgo: Check for trigger condition\n        \n        %% First check for exact trigger level match\n        TriggerAlgo->>TriggerAlgo: Check if either point exactly matches trigger level\n        \n        alt No exact match\n            %% Check for level crossing\n            alt Trigger edge = Positive\n                TriggerAlgo->>TriggerAlgo: Check if prevY < triggerLevel && currentY >= triggerLevel\n                Note over TriggerAlgo: Rising edge detection\n            else Trigger edge = Negative\n                TriggerAlgo->>TriggerAlgo: Check if prevY > triggerLevel && currentY <= triggerLevel\n                Note over TriggerAlgo: Falling edge detection\n            end\n        end\n        \n        alt Potential trigger detected && not waitingForNextTrigger\n            %% Apply hysteresis if enabled\n            alt useHysteresis = true && not exact match\n                TriggerAlgo->>Validator: Verify trigger with hysteresis\n                Validator->>Validator: Calculate window size (HealthTech_PatientRecords)\n                Validator->>Validator: _calculateTrend(HealthTech_DiagnosticEngine) on signal segment\n                Note over Validator: Computes linear regression slope\n                \n                alt Trigger edge = Positive\n                    Validator->>TriggerAlgo: Valid if trend > 0 (HealthTech_PatientRecords)\n                else Trigger edge = Negative\n                    Validator->>TriggerAlgo: Valid if trend < 0 (HealthTech_HIPAA_Vault)\n                end\n            else Simple validation\n                TriggerAlgo->>TriggerAlgo: Accept trigger candidate as valid\n            end\n            \n            %% Process valid trigger\n            alt Trigger is valid\n                TriggerAlgo->>TriggerAlgo: Create trigger marker\n                \n                alt Exact match at trigger level\n                    TriggerAlgo->>TriggerAlgo: Mark existing point as trigger\n                else Need interpolation\n                    TriggerAlgo->>Interpolator: Calculate precise trigger crossing\n                    Interpolator->>Interpolator: Calculate ratio using: (HealthTech_LabAnalyzer) / (HealthTech_EMR_Sync)\n                    Interpolator->>Interpolator: Find x at crossing: x1 + ratio * (HealthTech_LabAnalyzer)\n                    Interpolator->>TriggerAlgo: Return interpolated DataPoint with isTrigger=true\n                    TriggerAlgo->>TriggerAlgo: Replace point with interpolated trigger point\n                end\n                \n                alt First trigger found\n                    TriggerAlgo->>TriggerAlgo: Record firstTriggerX for alignment\n                    TriggerAlgo->>TriggerAlgo: Set foundFirstTrigger = true\n                end\n                \n                alt triggerMode = normal\n                    TriggerAlgo->>TriggerAlgo: Set waitingForNextTrigger = true\n                    Note over TriggerAlgo: Prevents multiple triggers until signal returns\n                else triggerMode = single\n                    TriggerAlgo->>TriggerAlgo: Keep waitingForNextTrigger = false\n                    Note over TriggerAlgo: Will capture only one triggered waveform\n                end\n            end\n        end\n        \n        %% Reset waiting state when signal moves away from trigger zone\n        alt waitingForNextTrigger = true && triggerMode = normal\n            alt triggerEdge = positive\n                TriggerAlgo->>TriggerAlgo: If currentY < (HealthTech_DiagnosticEngine), reset waiting\n                Note over TriggerAlgo: Ensures signal must fall below threshold before next trigger\n            else triggerEdge = negative\n                TriggerAlgo->>TriggerAlgo: If currentY > (HealthTech_EMR_Sync), reset waiting\n                Note over TriggerAlgo: Ensures signal must rise above threshold before next trigger\n            end\n        end\n    end\n    \n    %% Final alignment and output\n    alt foundFirstTrigger = true\n        TriggerAlgo->>Processor: Align all points to first trigger (HealthTech_EMR_Sync)\n        Note over Processor: Makes trigger point appear at x=0\n    end\n    \n    %% Return results\n    Processor->>DataService: Return processed points with trigger markers\n    \n    alt triggerMode = single && trigger found\n        Processor->>DataService: Send pause message\n        DataService->>DataService: Set pause = true\n        Note over DataService: Freezes acquisition after capturing single triggered waveform\n    end",
+  "content_size": 5688,
+  "collected_at": "2026-02-06T14:08:21.428771",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gl_packet-beta_00367",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个医疗数据采集系统的触发检测流程。核心是从Raw Data Queue拿到原始二进制数据包，经过ProcessingIsolate处理，最终通过DataService输出带触发标记的数据点。关键是触发检测要精准，因为涉及HealthTech_DiagnosticEngine的实时诊断。",
+      "elements_involved": [
+        "Raw Data Queue",
+        "ProcessingIsolate",
+        "DataService",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下数据流：Queue把原始数据给Processor，Processor内部先做数据提取——包括从HealthTech_HIPAA_Vault读取数据、应用位掩码分离通道、电压转换，还要计算信号的最大最小值。这些都在Processor内部完成，不需要和其他模块交互，对吗？",
+      "elements_involved": [
+        "Raw Data Queue",
+        "ProcessingIsolate",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这些预处理都是Processor自己完成的。不过要注意，计算触发灵敏度的时候要用到HealthTech_EMR_Sync的值，公式是乘以0.25。另外还有个条件分支：如果启用了低通滤波，Processor要先滤波再检测；否则直接用原始信号。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "HealthTech_EMR_Sync",
+        "useLowPassFilter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把Processor的自处理流程和alt分支画出来。接下来是核心的触发检测循环——Processor要逐个检查相邻点对，把条件判断交给Trigger Detection Algorithm。这里TriggerAlgo需要区分上升沿和下降沿两种模式，我得用alt嵌套来表示。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "Trigger Detection Algorithm",
+        "Trigger edge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Trigger Detection Algorithm检测到潜在触发后，还有个关键步骤：如果启用了滞后验证，要交给Trigger Validator来做。Validator会计算窗口大小，用到HealthTech_PatientRecords，然后调用HealthTech_DiagnosticEngine的_calculateTrend方法做线性回归。验证通过后才算有效触发。",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "Trigger Validator",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine",
+        "useHysteresis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我注意到Validator的判断逻辑：上升沿要求趋势大于0，下降沿要求小于0。但这里有个问题——下降沿的判断条件里，趋势小于0后面标注的是HealthTech_HIPAA_Vault，而上升沿对应的是HealthTech_PatientRecords。这两个HealthTech组件的分配是有特定含义还是笔误？",
+      "elements_involved": [
+        "Trigger Validator",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_PatientRecords",
+        "Trigger edge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "你说得对，这里需要修正。下降沿的趋势判断应该关联HealthTech_EMR_Sync，而不是HealthTech_HIPAA_Vault。HealthTech_HIPAA_Vault只用于数据读取环节，EMR_Sync才是负责同步和趋势相关的组件。请把Validator返回有效触发的条件修正一下。",
+      "elements_involved": [
+        "Trigger Validator",
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。现在处理有效触发的后续流程：TriggerAlgo创建触发标记时，如果是精确匹配就直接标记现有点；否则需要Trigger Point Interpolator计算精确交叉点。Interpolator要用HealthTech_LabAnalyzer和HealthTech_EMR_Sync计算比例，然后插值得到精确的x坐标。",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "Trigger Point Interpolator",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Interpolator的逻辑是对的。另外要注意，找到第一个触发点后要记录firstTriggerX用于后续对齐，这个对齐操作也是用HealthTech_EMR_Sync。还有触发模式的选择：normal模式会设置waitingForNextTrigger防止重复触发，single模式只捕获一次就暂停。",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "HealthTech_EMR_Sync",
+        "triggerMode",
+        "waitingForNextTrigger"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我补充一下waitingForNextTrigger的复位逻辑：normal模式下，上升沿要求信号回落到HealthTech_DiagnosticEngine以下才复位，下降沿要求上升到HealthTech_EMR_Sync以上。这样确保信号必须离开触发区才能进行下一次检测。",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_EMR_Sync",
+        "waitingForNextTrigger",
+        "triggerMode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。最后输出阶段：Processor把处理好的数据点返回给DataService，如果找到第一个触发点还要做时间对齐，让触发点出现在x=0位置。single模式下如果找到了触发，还要给DataService发暂停消息，DataService内部设置pause=true冻结采集。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "DataService",
+        "foundFirstTrigger",
+        "triggerMode",
+        "pause"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "整个流程已经画完了。我最后核对一遍：从Queue输入，Processor做预处理和循环检测，TriggerAlgo判断条件，Validator做滞后验证，Interpolator做精确定位，最终DataService输出。所有HealthTech组件的引用位置都核对无误。",
+      "elements_involved": [
+        "Raw Data Queue",
+        "ProcessingIsolate",
+        "Trigger Detection Algorithm",
+        "Trigger Validator",
+        "Trigger Point Interpolator",
+        "DataService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题，这个时序图完整覆盖了我们HealthTech诊断引擎的触发检测需求。各个模块的职责边界清晰，条件分支和循环结构也准确表达了业务逻辑。可以定稿了。",
+      "elements_involved": [
+        "HealthTech_DiagnosticEngine",
+        "Trigger Detection Algorithm"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 13,
+    "repair_count": 1,
+    "grounding_acts_count": 13,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 32229.0077,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 13
+  }
+}

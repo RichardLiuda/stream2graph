@@ -1,0 +1,166 @@
+{
+  "id": "gh_sequence_00961",
+  "source": "github",
+  "source_url": "https://github.com/KiritoMainBro88/kiritomainbro-monorepo/blob/f022137c7dc280db2b032ae9e3a88a305fa49167/docs/diagrams/payments_manual.mmd",
+  "github_repo": "KiritoMainBro88/kiritomainbro-monorepo",
+  "github_file_path": "docs/diagrams/payments_manual.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant C as Customer\n    participant W as Web Frontend\n    participant A as API Server\n    participant D as Database\n    participant S as Staff\n    participant F as File Storage\n    \n    Note over C,F: Manual Payment Flow\n    \n    %% Start Payment\n    C->>W: Click \"Pay Now\"\n    W->>A: POST /payments/manual/start\n    Note right of W: { orderId, amountVnd }\n    \n    A->>D: Create Payment record\n    Note right of A: status: PENDING\n    D-->>A: Payment created\n    A-->>W: { paymentId, status: PENDING }\n    W-->>C: Show payment instructions\n    \n    %% Upload Proof\n    C->>W: Upload payment proof\n    W->>A: POST /payments/manual/proof\n    Note right of W: multipart/form-data<br/>{ paymentId, proof }\n    \n    A->>F: Store proof file\n    Note right of A: Validate file type, size\n    F-->>A: File stored\n    A->>D: Update Payment\n    Note right of A: status: UNDER_REVIEW<br/>proofUrl: file_path\n    D-->>A: Payment updated\n    A-->>W: { status: UNDER_REVIEW }\n    W-->>C: \"Payment under review\"\n    \n    %% Staff Review\n    S->>W: Login to admin panel\n    W->>A: GET /admin/payments/pending\n    A->>D: Query pending payments\n    D-->>A: Pending payments\n    A-->>W: List of pending payments\n    W-->>S: Show payment details & proof\n    \n    alt Payment Approved\n        S->>W: Click \"Approve\"\n        W->>A: POST /payments/manual/review\n        Note right of W: { paymentId, action: APPROVE }\n        \n        A->>D: Update Payment\n        Note right of A: status: SUCCEEDED<br/>reviewedAt: now()\n        D-->>A: Payment updated\n        \n        A->>D: Update Order\n        Note right of A: status: PAID<br/>paidAt: now()\n        D-->>A: Order updated\n        \n        A->>D: Create Delivery\n        Note right of A: Generate token hash<br/>status: PENDING\n        D-->>A: Delivery created\n        \n        A-->>W: { status: SUCCEEDED }\n        W-->>S: \"Payment approved\"\n        \n        %% Notify Customer\n        A->>D: Create Notification\n        Note right of A: type: PAYMENT_APPROVED\n        D-->>A: Notification created\n        A-->>C: SSE: payment.status\n        \n    else Payment Rejected\n        S->>W: Click \"Reject\"\n        W->>A: POST /payments/manual/review\n        Note right of W: { paymentId, action: REJECT, reason }\n        \n        A->>D: Update Payment\n        Note right of A: status: FAILED<br/>reviewedAt: now()\n        D-->>A: Payment updated\n        \n        A->>D: Update Order\n        Note right of A: status: CANCELED<br/>canceledAt: now()\n        D-->>A: Order updated\n        \n        A-->>W: { status: FAILED }\n        W-->>S: \"Payment rejected\"\n        \n        %% Notify Customer\n        A->>D: Create Notification\n        Note right of A: type: PAYMENT_REJECTED\n        D-->>A: Notification created\n        A-->>C: SSE: payment.status\n    end\n    \n    %% Customer Response\n    C->>W: Check payment status\n    W->>A: GET /orders/{orderId}\n    A->>D: Query order with payment\n    D-->>A: Order data\n    A-->>W: Order details\n    W-->>C: Show updated status\n    \n    alt Payment Approved\n        C->>W: Access delivery\n        W->>A: POST /deliveries/reveal\n        Note right of W: { orderId, token }\n        \n        A->>D: Verify token & update delivery\n        Note right of A: revealsLeft: 0<br/>revealedAt: now()\n        D-->>A: Delivery updated\n        \n        A-->>W: { content: actual_content }\n        W-->>C: Show delivery content\n    end\n",
+  "content_size": 3413,
+  "collected_at": "2026-02-06T01:51:16.308187",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 2,
+  "repo_forks": 0,
+  "repo_owner": "KiritoMainBro88",
+  "repo_name": "kiritomainbro-monorepo",
+  "repo_description": "KMB monorepo (web + api) with Next.js, NestJS, Prisma, Turborepo, full security hardening and CI/CD",
+  "repo_language": "TypeScript",
+  "repo_topics": [],
+  "repo_created_at": "2025-10-09T16:51:12Z",
+  "repo_updated_at": "2025-10-24T07:26:58Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个手动付款流程的时序图。场景是：顾客在Web前端点击付款，上传转账凭证，然后后台人工审核，最后通知结果。参与者有顾客、Web前端、API服务器、数据库、客服人员和文件存储。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Staff",
+        "File Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下流程结构：顾客点击\"立即支付\"后，前端向API发送POST请求创建待支付记录，状态为PENDING。然后顾客上传凭证文件，API把文件存到文件存储，再把状态改成UNDER_REVIEW。这样对吗？",
+      "elements_involved": [
+        "POST /payments/manual/start",
+        "status: PENDING",
+        "POST /payments/manual/proof",
+        "File Storage",
+        "status: UNDER_REVIEW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，文件存储那边要验证文件类型和大小。然后客服人员登录后台，查询待审核的付款列表，查看详情和凭证图片。审核通过或拒绝都要走不同的分支。",
+      "elements_involved": [
+        "Staff",
+        "GET /admin/payments/pending",
+        "proof",
+        "alt Payment Approved",
+        "else Payment Rejected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我加上审核分支。通过时：客服点击\"通过\"，API更新付款状态为SUCCEEDED，同时把订单状态改成PAID，还要创建发货记录生成token。拒绝时：状态改为FAILED，订单取消。两种结果都要创建通知并通过SSE推送给顾客。",
+      "elements_involved": [
+        "POST /payments/manual/review",
+        "status: SUCCEEDED",
+        "status: PAID",
+        "Create Delivery",
+        "status: FAILED",
+        "status: CANCELED",
+        "SSE: payment.status",
+        "Create Notification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要补充顾客端的后续流程。顾客可以查询订单状态，如果付款通过了，就能用token去揭示发货内容，这个token验证后只能看一次。",
+      "elements_involved": [
+        "Customer",
+        "GET /orders/{orderId}",
+        "POST /deliveries/reveal",
+        "token",
+        "revealsLeft: 0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下揭示流程：顾客访问发货页面，前端发送POST /deliveries/reveal带上orderId和token，API验证token后更新发货记录，把revealsLeft设为0并记录revealedAt时间，然后返回实际内容给前端展示。对吗？",
+      "elements_involved": [
+        "POST /deliveries/reveal",
+        "Verify token",
+        "revealsLeft: 0",
+        "revealedAt: now()",
+        "actual_content"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。另外注意审核通过后的连锁反应：付款成功→订单已支付→创建发货→通知顾客，这几步是顺序执行的。还有整个流程顶部加个备注说明这是\"Manual Payment Flow\"。",
+      "elements_involved": [
+        "Note over C,F",
+        "Manual Payment Flow",
+        "status: SUCCEEDED",
+        "status: PAID",
+        "Create Delivery",
+        "Create Notification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成了。整个时序图已经包含：顾客发起付款和上传凭证、文件存储验证、客服审核的双分支处理、SSE实时通知、以及顾客查询和揭示发货的完整闭环。所有状态流转和数据库操作都标注清楚了。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Staff",
+        "File Storage",
+        "alt Payment Approved",
+        "else Payment Rejected"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 19442.9972,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

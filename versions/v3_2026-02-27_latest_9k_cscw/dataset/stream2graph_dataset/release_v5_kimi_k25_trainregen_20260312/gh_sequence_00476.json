@@ -1,0 +1,405 @@
+{
+  "id": "gh_sequence_00476",
+  "source": "github",
+  "source_url": "https://github.com/DamienReichhart/ChatApp/blob/c4cc2ad171949d92ad0d8e0f12a4ddf246c319f3/documentation/uml/sequence/sequence-connection-flow.mmd",
+  "github_repo": "DamienReichhart/ChatApp",
+  "github_file_path": "documentation/uml/sequence/sequence-connection-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    %% Participants\n    participant ClientUI as Client UI\n    participant AuthController as Auth Controller\n    participant SessionSvc as SessionService\n    participant WebSocketSvc as WebSocketService\n    participant WebSocketHandler as WebSocketHandler\n    participant ConnManager as WebSocketConnectionManager\n    participant StompClient as STOMP Client\n    participant ClientDB as Client Database\n    participant UserDAO as User DAO\n    participant ServerEndpoint as Server WebSocket Endpoint\n    participant ServerController as Server Controller\n\n    %% Connection Flow\n    ClientUI->>AuthController: login(username, password)\n    AuthController->>UserDAO: getUserByCredentials(username, password)\n    UserDAO->>ClientDB: SELECT * FROM users\n    ClientDB-->>UserDAO: userData\n    UserDAO-->>AuthController: authenticatedUser\n    \n    alt Authentication Success\n        AuthController->>SessionSvc: setCurrentUser(authenticatedUser)\n        SessionSvc->>AuthController: sessionStarted\n        AuthController->>WebSocketSvc: connect(authenticatedUser)\n        WebSocketSvc->>WebSocketSvc: this.currentUser = user\n        WebSocketSvc->>WebSocketHandler: connect(user)\n        WebSocketHandler->>ConnManager: connect(user)\n        ConnManager->>ConnManager: this.currentUser = user\n        ConnManager->>ConnManager: createWebSocketClient()\n        ConnManager->>StompClient: connect()\n        StompClient->>ServerEndpoint: WebSocket connection request\n        \n        %% Async Connection Handling\n        ServerEndpoint-->>StompClient: connection established\n        StompClient-->>ConnManager: stompSession created\n        ConnManager->>WebSocketHandler: handleSuccessfulConnection(session)\n        WebSocketHandler->>WebSocketSvc: onConnectionStatusChanged(true)\n        WebSocketSvc->>WebSocketSvc: processPendingJoins()\n        \n        Note over WebSocketSvc: Process any chats<br/>waiting to be joined\n        \n        WebSocketSvc->>AuthController: notify connection listeners\n        AuthController->>ClientUI: update UI (connected)\n        \n        %% Load user data from local database\n        AuthController->>SessionSvc: loadUserData()\n        SessionSvc->>UserDAO: getUserChats(userId)\n        UserDAO->>ClientDB: SELECT * FROM chat_participants WHERE user_id = ?\n        ClientDB-->>UserDAO: chatParticipantData\n        UserDAO-->>SessionSvc: userChats\n        SessionSvc-->>AuthController: userData loaded\n        AuthController->>ClientUI: navigate to main view\n    else Authentication Failure\n        AuthController->>ClientUI: show error message\n    end\n    \n    %% Error Handling Path (Alternative Flow)\n    ServerEndpoint--xStompClient: connection error\n    StompClient--xConnManager: connection error\n    ConnManager->>WebSocketHandler: handleTransportError(session, exception)\n    WebSocketHandler->>WebSocketSvc: onError(errorMessage)\n    WebSocketSvc->>AuthController: notify error listeners\n    AuthController->>ClientUI: show connection error\n",
+  "content_size": 2989,
+  "collected_at": "2026-02-06T01:32:50.845607",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的WebSocket连接流程图，从用户登录到建立实时连接。核心场景是：用户在Client UI输入用户名密码，经过认证后建立WebSocket会话。",
+      "elements_involved": [
+        "ClientUI",
+        "AuthController",
+        "WebSocketSvc",
+        "ServerEndpoint"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下参与者的边界：AuthController负责认证逻辑，WebSocketService处理连接管理，那SessionService是用来维护当前用户状态的吗？",
+      "elements_involved": [
+        "AuthController",
+        "SessionSvc",
+        "WebSocketSvc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，SessionService专门管当前登录用户和会话生命周期。另外还需要WebSocketConnectionManager来管理STOMP客户端的实际连接，以及ClientDB做本地数据存储。",
+      "elements_involved": [
+        "SessionSvc",
+        "ConnManager",
+        "StompClient",
+        "ClientDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主流程的骨架：ClientUI调用AuthController的login方法，然后AuthController去查UserDAO验证凭据。",
+      "elements_involved": [
+        "ClientUI",
+        "AuthController",
+        "UserDAO"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "UserDAO这边要体现和ClientDB的交互，用SELECT查询users表。认证成功后返回authenticatedUser对象。",
+      "elements_involved": [
+        "UserDAO",
+        "ClientDB",
+        "authenticatedUser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到。认证成功后走alt分支，AuthController调用SessionSvc的setCurrentUser，然后触发sessionStarted回调。",
+      "elements_involved": [
+        "AuthController",
+        "SessionSvc",
+        "sessionStarted",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关键：AuthController通知WebSocketSvc开始连接，WebSocketSvc先把自己内部的currentUser赋值为user，然后往下传。",
+      "elements_involved": [
+        "AuthController",
+        "WebSocketSvc",
+        "currentUser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了这层：WebSocketSvc调用WebSocketHandler的connect，WebSocketHandler再交给ConnectionManager。这里ConnManager也要保存currentUser。",
+      "elements_involved": [
+        "WebSocketSvc",
+        "WebSocketHandler",
+        "ConnManager",
+        "currentUser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ConnManager这边有个内部步骤createWebSocketClient()，是构造STOMP客户端的，然后调用StompClient.connect()发起真正的网络请求。",
+      "elements_involved": [
+        "ConnManager",
+        "StompClient",
+        "createWebSocketClient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，StompClient向Server WebSocket Endpoint发起连接请求。这里我用虚线箭头表示异步返回：ServerEndpoint确认connection established。",
+      "elements_involved": [
+        "StompClient",
+        "ServerEndpoint",
+        "connection established",
+        "async"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "异步回调链要画完整：StompClient返回stompSession给ConnManager，然后ConnManager通知WebSocketHandler处理成功连接，状态一路向上冒泡。",
+      "elements_involved": [
+        "StompClient",
+        "ConnManager",
+        "stompSession",
+        "WebSocketHandler",
+        "onConnectionStatusChanged"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了：WebSocketHandler回调onConnectionStatusChanged(true)，WebSocketSvc这边有个自调用processPendingJoins()，处理等待加入的聊天室。我加了个Note标注这个逻辑。",
+      "elements_involved": [
+        "WebSocketHandler",
+        "WebSocketSvc",
+        "processPendingJoins",
+        "true",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，然后WebSocketSvc通知AuthController的连接监听器，AuthController更新ClientUI显示connected状态。",
+      "elements_involved": [
+        "WebSocketSvc",
+        "AuthController",
+        "ClientUI",
+        "connected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "登录成功后还有一步：AuthController让SessionSvc加载用户数据，从ClientDB查chat_participants表获取用户的聊天列表。",
+      "elements_involved": [
+        "AuthController",
+        "SessionSvc",
+        "UserDAO",
+        "ClientDB",
+        "chatParticipantData"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，userChats返回后SessionSvc通知AuthController数据加载完成，最后导航到主界面。alt的success分支就结束了。",
+      "elements_involved": [
+        "SessionSvc",
+        "AuthController",
+        "userChats",
+        "userData loaded",
+        "navigate to main view"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我把else分支也补上了：认证失败时AuthController直接返回ClientUI显示error message。现在需要补充错误处理路径吗？",
+      "elements_involved": [
+        "else",
+        "AuthController",
+        "ClientUI",
+        "error message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，这是alternative flow。ServerEndpoint可能在异步阶段返回connection error，要用叉号箭头表示失败。",
+      "elements_involved": [
+        "ServerEndpoint",
+        "connection error",
+        "alternative flow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "画了：ServerEndpoint--xStompClient表示连接错误，StompClient再传给ConnManager。然后ConnManager调用handleTransportError，带上session和exception参数。",
+      "elements_involved": [
+        "ServerEndpoint",
+        "StompClient",
+        "ConnManager",
+        "handleTransportError",
+        "session",
+        "exception"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "WebSocketHandler收到错误后调用onError，把errorMessage往上抛，最终AuthController通知错误监听器，ClientUI显示connection error。",
+      "elements_involved": [
+        "WebSocketHandler",
+        "WebSocketSvc",
+        "onError",
+        "errorMessage",
+        "AuthController",
+        "ClientUI",
+        "connection error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完整流程都画好了。我再检查一下：ServerController这个参与者好像还没用到，需要调整吗？",
+      "elements_involved": [
+        "ServerController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "ServerController应该和ServerEndpoint放在一起，作为服务端的对等角色。但当前流程里ServerEndpoint已经代表了服务端入口，ServerController可以保留作为后续扩展，或者我确认一下——其实ServerController是处理业务消息的，这次连接流程确实用不到。",
+      "elements_involved": [
+        "ServerController",
+        "ServerEndpoint"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，保留ServerController作为参与者但不画消息，这样结构完整。另外我注意到UserDAO的getUserByCredentials和getUserChats两个方法都体现了。",
+      "elements_involved": [
+        "ServerController",
+        "UserDAO",
+        "getUserByCredentials",
+        "getUserChats"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有个小细节：WebSocketSvc的processPendingJoins那里，Note的内容要准确——\"Process any chats waiting to be joined\"，说明是处理待加入的聊天室队列。",
+      "elements_involved": [
+        "WebSocketSvc",
+        "processPendingJoins",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正Note文本。整体结构检查：主流程从login到navigate to main view，异常分支覆盖auth failure和connection error，所有参与者都有明确职责。",
+      "elements_involved": [
+        "login",
+        "navigate to main view",
+        "auth failure",
+        "connection error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ConnManager的createWebSocketClient是内部调用，没有箭头指向外部参与者，这个自循环要画清楚。还有WebSocketSvc给currentUser赋值也是自调用。",
+      "elements_involved": [
+        "ConnManager",
+        "createWebSocketClient",
+        "WebSocketSvc",
+        "currentUser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认了，两个自调用都用了ConnManager-ConnManager和WebSocketSvc-WebSocketSvc的表示法。所有消息都有明确的源和目标。",
+      "elements_involved": [
+        "ConnManager",
+        "WebSocketSvc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下时序：连接建立后的回调链是异步的，从ServerEndpoint返回开始，经过StompClient、ConnManager、WebSocketHandler、WebSocketSvc，最后到AuthController和ClientUI，这个顺序不能乱。",
+      "elements_involved": [
+        "ServerEndpoint",
+        "StompClient",
+        "ConnManager",
+        "WebSocketHandler",
+        "WebSocketSvc",
+        "AuthController",
+        "ClientUI",
+        "async"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "完全匹配。图已完成，涵盖了正常连接流程、认证失败、连接错误三种场景，所有参与者职责清晰，消息时序准确。",
+      "elements_involved": [
+        "正常连接流程",
+        "认证失败",
+        "连接错误"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 28,
+    "repair_count": 1,
+    "grounding_acts_count": 28,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 63622.8328,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 28
+  }
+}

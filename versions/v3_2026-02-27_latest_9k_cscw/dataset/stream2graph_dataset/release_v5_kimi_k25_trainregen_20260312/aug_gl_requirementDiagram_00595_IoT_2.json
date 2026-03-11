@@ -1,0 +1,191 @@
+{
+  "id": "aug_gl_requirementDiagram_00595_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/KevinDyerAU/NytroAI/blob/2e93c5649794515d35364c995a58431fc0899442/docs/validation-flow.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "KevinDyerAU/NytroAI",
+  "diagram_type": "requirementDiagram",
+  "code": "%%{IoT_Industrial_TelemetryStream}}}%%\n\nsequenceDiagram\n    participant User\n    participant UI as React UI\n    participant Upload as upload-document\n    participant Storage as Supabase Storage\n    participant Gemini as Google Gemini\n    participant DB as Database\n    participant Trigger as trigger-validation\n    participant Validate as validate-assessment\n    participant Query as query-document\n\n    Note over User,Query: Document Upload & Indexing\n\n    User->>UI: Upload PDF Assessment\n    UI->>Upload: POST /upload-document\n    Upload->>Storage: Store PDF file\n    Storage-->>Upload: File URL\n    Upload->>DB: Create validation_detail record\n    Upload->>Gemini: Index document\n    Gemini-->>Upload: Indexing started\n    Upload->>DB: Create gemini_operations record\n    Upload-->>UI: Upload complete\n    UI-->>User: Show \"Processing...\"\n\n    Note over User,Query: Automatic Validation Trigger\n\n    Gemini->>DB: Update gemini_operations (IoT_Industrial_EdgeNode)\n    DB->>Trigger: Database trigger fires\n    Trigger->>DB: Check all operations complete\n    DB-->>Trigger: All complete\n    Trigger->>Validate: POST /validate-assessment\n    Trigger->>DB: Log trigger attempt\n    Validate->>DB: Update status to \"ProcessingInBackground\"\n\n    Note over User,Query: Validation Process\n\n    Validate->>DB: Fetch UOC requirements\n    DB-->>Validate: Requirements list\n    \n    loop For each requirement\n        Validate->>Query: Query assessment for requirement\n        Query->>Gemini: Search indexed document\n        Gemini-->>Query: Relevant passages\n        Query-->>Validate: Citations\n        Validate->>Gemini: Validate requirement\n        Gemini-->>Validate: Status + Reasoning\n        Validate->>DB: Store validation_result\n    end\n\n    Validate->>DB: Update validation_detail (IoT_Industrial_MQTT_Broker)\n    Validate-->>Trigger: Validation complete\n    DB->>UI: Real-time update (IoT_Industrial_ActuatorController)\n    UI-->>User: Show \"Complete\" with results\n\n    Note over User,Query: View Results & Regenerate Questions\n\n    User->>UI: Click validation to view results\n    UI->>DB: Fetch validation_results\n    DB-->>UI: All results\n    UI-->>User: Display results\n\n    alt Regenerate Smart Question\n        User->>UI: Click \"Regenerate\" with context\n        UI->>Validate: POST /regenerate-smart-questions\n        Validate->>Query: Query assessment\n        Query->>Gemini: Search with context\n        Gemini-->>Query: Passages\n        Validate->>Gemini: Generate question\n        Gemini-->>Validate: New smart question\n        Validate->>DB: Update validation_result\n        DB->>UI: Real-time update\n        UI-->>User: Show new question\n    end\n",
+  "content_size": 2801,
+  "collected_at": "2026-02-06T14:13:06.494447",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_requirementDiagram_00595",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的文档上传和自动验证流程，核心场景是工业IoT设备评估。用户上传PDF后，系统要自动触发Gemini索引，然后后台完成合规性验证。我想把IoT工业场景里的EdgeNode、MQTT Broker、ActuatorController这些设备类型都纳入验证范围。",
+      "elements_involved": [
+        "User",
+        "React UI",
+        "upload-document",
+        "Supabase Storage",
+        "Google Gemini",
+        "Database",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以上传流程是：用户→UI→上传服务→存Storage→调Gemini建索引，同时写数据库记录。但自动触发验证的机制我有点疑问——是Gemini索引完成后直接触发，还是通过数据库触发器？另外三个IoT设备类型是验证时的不同评估对象吗？",
+      "elements_involved": [
+        "trigger-validation",
+        "Database",
+        "validate-assessment",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，用数据库触发器更可靠。Gemini索引完成后更新gemini_operations表，触发器检测到所有操作完成（比如EdgeNode索引好了），才调validate-assessment。三个设备类型是验证过程中会分别处理的业务实体，但验证服务是统一的。验证时要循环查UOC要求，对每个要求去索引文档里找依据。",
+      "elements_involved": [
+        "trigger-validation",
+        "Database",
+        "validate-assessment",
+        "query-document",
+        "UOC requirements",
+        "gemini_operations",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我梳理一下验证循环：validate-assessment先从数据库取UOC要求列表，然后对每个要求，调query-document去Gemini搜索引过的PDF，拿到引用片段和依据，再让Gemini判断合规性，结果存validation_result。全部完成后更新validation_detail，同时通过MQTT Broker相关的状态推送让UI实时刷新。这样对吗？",
+      "elements_involved": [
+        "validate-assessment",
+        "query-document",
+        "Google Gemini",
+        "Database",
+        "validation_result",
+        "validation_detail",
+        "UOC requirements",
+        "Citations",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，而且用户看完结果后，还能针对具体验证点重新生成智能问题。这时候走另一条分支：用户点\"重新生成\"，UI调validate-assessment的regenerate接口，还是经过query-document查Gemini，但这一次是带着上下文生成新问题，再更新到validation_result里，UI实时展示。",
+      "elements_involved": [
+        "User",
+        "React UI",
+        "validate-assessment",
+        "query-document",
+        "Google Gemini",
+        "validation_result",
+        "Regenerate Smart Question"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我来画一下完整流程。主泳道分三块：上传索引、自动触发验证、查看结果与重生成。注意点：Upload服务要同时写validation_detail和gemini_operations两张表；Trigger是数据库触发器不是独立服务；验证循环里Query和Gemini有两次交互，一次查引用一次做判断。我标注了IoT_Industrial_ActuatorController作为实时推送的触发点。",
+      "elements_involved": [
+        "upload-document",
+        "validation_detail",
+        "gemini_operations",
+        "trigger-validation",
+        "query-document",
+        "Google Gemini",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "稍等，trigger-validation到validate-assessment的调用方向反了，应该是Trigger主动POST调Validate，不是Validate拉Trigger。还有，Gemini索引完成时更新的是gemini_operations里的EdgeNode状态，这个要写清楚。另外实时更新那块，DB到UI的箭头应该标注下是通过什么机制，比如Supabase Realtime？",
+      "elements_involved": [
+        "trigger-validation",
+        "validate-assessment",
+        "gemini_operations",
+        "IoT_Industrial_EdgeNode",
+        "Database",
+        "React UI",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正：Trigger POST调Validate，方向正确了。gemini_operations更新标注了EdgeNode。实时更新我加了备注说明是Supabase Realtime机制，对应ActuatorController的状态推送。验证完成时validation_detail更新关联到MQTT Broker。整个流程现在闭环了，从上传PDF到最终展示验证结果和智能问题重生成。",
+      "elements_involved": [
+        "trigger-validation",
+        "validate-assessment",
+        "gemini_operations",
+        "IoT_Industrial_EdgeNode",
+        "validation_detail",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_ActuatorController",
+        "Supabase Realtime"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，这个流程覆盖了完整的工业IoT文档评估场景。三个设备类型在各自阶段发挥作用：EdgeNode标记索引完成，MQTT Broker关联验证状态持久化，ActuatorController驱动前端实时反馈。准备定稿。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_ActuatorController",
+        "Document Upload & Indexing",
+        "Automatic Validation Trigger",
+        "Validation Process",
+        "View Results & Regenerate Questions"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 1,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 32946.9426,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

@@ -1,0 +1,209 @@
+{
+  "id": "gh_sequence_00190",
+  "source": "github",
+  "source_url": "https://github.com/atoxfy/kikwiflow/blob/50f543c2bc2f5bbf3a389f97aba094843e707314/docs/mongo-uow-seq.mmd",
+  "github_repo": "atoxfy/kikwiflow",
+  "github_file_path": "docs/mongo-uow-seq.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Core as \"kikwi-core<br>(runWhileNotFindAStopPoint)\"\n    participant UoW as \"UnitOfWork (em memória)\"\n    participant Repository as \"ProcessExecutionRepository\"\n    participant MongoDB as \"MongoDB\"\n    participant Publisher as \"EventPublisher (em memória)\"\n\n    Core->>Core: Executa tarefas síncronas...\n    Core->>UoW: new UnitOfWork()\n    Core->>UoW: Acumula alterações (estado, tarefas, eventos)\n\n    Note over Core: Fim do bloco síncrono.\n\n    Core->>+Repository: commit(unitOfWork)\n\n    Repository->>+MongoDB: INICIAR TRANSAÇÃO\n    MongoDB->>MongoDB: 1. Atualiza ProcessInstance\n    MongoDB->>MongoDB: 2. Cria/Apaga ExecutableTasks\n    MongoDB->>MongoDB: 3. Insere 'criticalEvents' na 'event_outbox'\n    MongoDB-->>-Repository: COMMIT TRANSAÇÃO\n    Repository-->>-Core: Commit bem-sucedido\n\n    Core->>+Publisher: publishEvents(unitOfWork.lightweightEvents())\n    Publisher-->>-Core: Retorno Imediato",
+  "content_size": 936,
+  "collected_at": "2026-02-06T01:28:57.577923",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 14,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个序列图，展示runWhileNotFindAStopPoint这个核心流程是怎么工作的。关键点是它用了内存中的UnitOfWork来累积状态变更，而不是每次都直接写数据库。",
+      "elements_involved": [
+        "Core",
+        "UnitOfWork",
+        "runWhileNotFindAStopPoint",
+        "estado",
+        "tarefas",
+        "eventos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，所以Core先执行同步任务，然后创建UnitOfWork实例。这个UoW是在内存里累积所有变更对吧？包括状态、任务和事件？",
+      "elements_involved": [
+        "Core",
+        "UnitOfWork",
+        "em memória",
+        "estado",
+        "tarefas",
+        "eventos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，完全正确。同步块执行完之后，Core才会调用commit，把UnitOfWork交给ProcessExecutionRepository去处理持久化。",
+      "elements_involved": [
+        "Core",
+        "ProcessExecutionRepository",
+        "commit",
+        "unitOfWork"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，那我这样安排：Core到Repository是同步调用commit，然后Repository开启MongoDB事务，里面分三步：更新ProcessInstance、处理ExecutableTasks的创建和删除、最后把关键事件写入event_outbox。这样准确吗？",
+      "elements_involved": [
+        "Repository",
+        "MongoDB",
+        "ProcessInstance",
+        "ExecutableTasks",
+        "event_outbox",
+        "criticalEvents"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "准确。不过要注意，ExecutableTasks的创建和删除是合并在一个步骤里的，用\"Cria/Apaga\"表达就行。还有，event_outbox只收criticalEvents，不是全部事件。",
+      "elements_involved": [
+        "ExecutableTasks",
+        "Cria/Apaga",
+        "event_outbox",
+        "criticalEvents"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把事务流程画好了。现在有个问题：commit成功后，Core还要异步发布事件对吧？这里应该用EventPublisher？",
+      "elements_involved": [
+        "Core",
+        "EventPublisher",
+        "commit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，但注意EventPublisher也是内存中的，而且Core调用的是publishEvents，传入的是unitOfWork.lightweightEvents()——这些是轻量级事件，和写入outbox的criticalEvents不一样。",
+      "elements_involved": [
+        "EventPublisher",
+        "em memória",
+        "publishEvents",
+        "unitOfWork.lightweightEvents()",
+        "lightweightEvents"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "懂了，lightweightEvents是立即返回的，不需要等待实际发布完成。那Publisher到Core的返回要标注\"Retorno Imediato\"？",
+      "elements_involved": [
+        "Publisher",
+        "Core",
+        "Retorno Imediato"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。还有，我注意到你之前写的是\"Repository到Core返回Commit成功\"，这个应该是虚线箭头表示异步返回对吧？",
+      "elements_involved": [
+        "Repository",
+        "Core",
+        "Commit bem-sucedido"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "啊对，我修正一下。Repository到Core的返回应该用虚线，表示这是commit操作的异步响应。还有MongoDB的事务提交返回给Repository也是虚线。",
+      "elements_involved": [
+        "Repository",
+        "Core",
+        "MongoDB",
+        "COMMIT TRANSAÇÃO"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后加个小细节：在同步块结束的地方加个Note，标注\"Fim do bloco síncrono\"，这样读图的人能清楚知道哪里是边界。",
+      "elements_involved": [
+        "Core",
+        "Note",
+        "Fim do bloco síncrono",
+        "bloco síncrono"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都加上了。现在完整流程是：Core执行同步任务→创建UoW累积变更→同步块结束→调用Repository commit→MongoDB事务三步→返回成功→异步发布轻量级事件。请确认。",
+      "elements_involved": [
+        "Core",
+        "UoW",
+        "Repository",
+        "MongoDB",
+        "Publisher",
+        "Executa tarefas síncronas",
+        "Acumula alterações",
+        "commit",
+        "INICIAR TRANSAÇÃO",
+        "publishEvents"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 12,
+    "repair_count": 1,
+    "grounding_acts_count": 12,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 26598.9809,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

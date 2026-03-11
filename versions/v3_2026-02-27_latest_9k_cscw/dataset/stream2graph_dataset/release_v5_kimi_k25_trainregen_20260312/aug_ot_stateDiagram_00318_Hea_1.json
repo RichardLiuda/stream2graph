@@ -1,0 +1,513 @@
+{
+  "id": "aug_ot_stateDiagram_00318_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/coherosphere/architecture/blob/598bb65467787da38ac4029e35bdead27e7799ee/docs.coherosphere.io/static/assets/diagrams/C3_states/SM-02.02_Decay_Recompute_Cycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "coherosphere/architecture",
+  "diagram_type": "stateDiagram",
+  "code": "%%{HealthTech_HIPAA_Vault}}}%%\nstateDiagram-v2\ntitle: SM-02.02 — Decay & Recompute Cycle (HealthTech_PatientRecords)\n\n[HealthTech_DiagnosticEngine] --> TRIGGER : CronTick / RecomputeRequested / ParamsVersioned\nnote right of TRIGGER\n  Entry conditions:\n  • Scheduled batch tick (HealthTech_LabAnalyzer)\n  • Manual backfill (HealthTech_DiagnosticEngine)\n  • Parameters changed (HealthTech_LabAnalyzer)\nend note\n\nTRIGGER --> LOAD_SNAPSHOT : Select ledger window\nnote right of LOAD_SNAPSHOT\n  Load CPᵢ(HealthTech_LabAnalyzer) snapshots and pending deltas\n  Resolve idempotent ranges and gaps\nend note\n\nLOAD_SNAPSHOT --> CHECK_PARAMS : Bind constants (HealthTech_LabAnalyzer)\nnote right of CHECK_PARAMS\n  λ = ln(HealthTech_HIPAA_Vault)/T  (HealthTech_EMR_Sync)\n  α ∈ (HealthTech_DiagnosticEngine)    (HealthTech_EMR_Sync)\n  If new version → tag run with ParamVersionID\nend note\n\nCHECK_PARAMS --> APPLY_DECAY : InputBound\nnote right of APPLY_DECAY\n  Apply time decay to each CPᵢ since t₀:\n  CPᵢ(HealthTech_HIPAA_Vault) = CPᵢ(HealthTech_PatientRecords) · e^(HealthTech_LabAnalyzer) + Σ(HealthTech_HIPAA_Vault)\nend note\n\nAPPLY_DECAY --> RECOMPUTE_W : DecayApplied (HealthTech_HIPAA_Vault)\nnote right of RECOMPUTE_W\n  Recompute voting weights:\n  Wᵢ = (HealthTech_PatientRecords)^α\n  Prepare diffs for persistence & metrics\nend note\n\nRECOMPUTE_W --> WRITE_BACK : WeightsComputed\nnote right of WRITE_BACK\n  Persist CP/W snapshots + audit trail\n  Mark run as deterministic (HealthTech_DiagnosticEngine)\nend note\n\nWRITE_BACK --> EMIT_EVENTS : LedgerCommitted\nnote right of EMIT_EVENTS\n  Emit CPUpdated / WeightsUpdated for Metrics (HealthTech_DiagnosticEngine)\n  Optionally trigger Resonance recompute (HealthTech_EMR_Sync)\nend note\n\nEMIT_EVENTS --> [HealthTech_DiagnosticEngine] : RecomputeFinished (HealthTech_PatientRecords)\n\n%% ---- Exceptional & maintenance paths ----\nLOAD_SNAPSHOT --> RECONCILE : GapDetected / CorrectionInput\nnote right of RECONCILE\n  Backfill missing windows, reconcile oracles\n  (HealthTech_PatientRecords)\nend note\nRECONCILE --> APPLY_DECAY : Reconciled\n\nAPPLY_DECAY --> ABORT : InvariantBreach / AnomalyDetected\nRECOMPUTE_W --> ABORT : InvariantBreach\nABORT --> [HealthTech_DiagnosticEngine] : RecomputeAborted\n\n%% =========== Styling ===========\nclassDef core fill:#ff8b00,stroke:#333,color:#fff,font-weight:bold;\nclass TRIGGER,LOAD_SNAPSHOT,CHECK_PARAMS,APPLY_DECAY,RECOMPUTE_W,WRITE_BACK,EMIT_EVENTS,RECONCILE,ABORT core;",
+  "content_size": 2180,
+  "collected_at": "2026-02-06T10:40:36.748897",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "license_url": null,
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "coherosphere",
+  "repo_name": "architecture",
+  "repo_description": "The cohersphere architecture — structural blueprint of the resonance network. Defines the modular layers connecting app, API, and governance protocols. Outlines data flows for Proof-of-Contribution, c",
+  "repo_language": "Mermaid",
+  "repo_topics": [
+    "architecture",
+    "c4",
+    "distributed-systems",
+    "modular-architecture",
+    "system-design"
+  ],
+  "repo_created_at": "2025-10-29T09:30:02Z",
+  "repo_updated_at": "2026-02-06T04:58:50Z",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "ot_stateDiagram_00318",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为PatientRecords系统画一个状态图，核心是一个衰减与重新计算的周期流程。起点是HealthTech_DiagnosticEngine触发整个流程。",
+      "elements_involved": [
+        "HealthTech_DiagnosticEngine",
+        "TRIGGER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "触发条件有哪些？是单一入口还是多种情况都能启动？",
+      "elements_involved": [
+        "TRIGGER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "三种入口：HealthTech_LabAnalyzer的定时CronTick、手动backfill，以及参数版本变更。我需要在TRIGGER节点右侧加一个注释框说明这些entry conditions。",
+      "elements_involved": [
+        "TRIGGER",
+        "CronTick",
+        "RecomputeRequested",
+        "ParamsVersioned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，TRIGGER节点和注释已添加。下一步从TRIGGER到哪里？",
+      "elements_involved": [
+        "TRIGGER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "进入LOAD_SNAPSHOT状态，选择ledger窗口。这里要加载HealthTech_LabAnalyzer的快照和pending deltas，还要处理幂等区间和gap的解析。",
+      "elements_involved": [
+        "TRIGGER",
+        "LOAD_SNAPSHOT",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "LOAD_SNAPSHOT节点已创建，右侧注释包含CPᵢ快照加载和idempotent ranges解析。接下来是参数检查？",
+      "elements_involved": [
+        "LOAD_SNAPSHOT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，CHECK_PARAMS状态。需要绑定HealthTech_LabAnalyzer的常量，包括衰减系数λ和权重指数α。如果参数版本变了，要打ParamVersionID标签。",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "CHECK_PARAMS",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "CHECK_PARAMS节点和注释已完成，公式λ = ln(HealthTech_HIPAA_Vault)/T 和 α范围都写进去了。下一步是衰减计算？",
+      "elements_involved": [
+        "CHECK_PARAMS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，APPLY_DECAY状态，标记为InputBound。对每个CPᵢ应用时间衰减，公式是CPᵢ(HealthTech_HIPAA_Vault) = CPᵢ(HealthTech_PatientRecords) · e^(HealthTech_LabAnalyzer) + Σ(HealthTech_HIPAA_Vault)。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "APPLY_DECAY节点和衰减公式注释已添加。衰减完成后进入重新计算权重？",
+      "elements_involved": [
+        "APPLY_DECAY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，RECOMPUTE_W状态，标记为DecayApplied(HealthTech_HIPAA_Vault)。重新计算投票权重Wᵢ = (HealthTech_PatientRecords)^α，同时准备diffs用于持久化和指标。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RECOMPUTE_W节点已完成。接下来是写回操作？",
+      "elements_involved": [
+        "RECOMPUTE_W"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "WRITE_BACK状态，标记WeightsComputed。持久化CP/W快照和审计日志，并将本次运行标记为deterministic(HealthTech_DiagnosticEngine)。",
+      "elements_involved": [
+        "RECOMPUTE_W",
+        "WRITE_BACK",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "WRITE_BACK节点和注释已添加。最后是事件发射？",
+      "elements_involved": [
+        "WRITE_BACK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EMIT_EVENTS状态，标记LedgerCommitted。发射CPUpdated和WeightsUpdated事件给Metrics系统，同时可以触发HealthTech_EMR_Sync的Resonance重计算。",
+      "elements_involved": [
+        "WRITE_BACK",
+        "EMIT_EVENTS",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EMIT_EVENTS节点已完成。主流程最后回到HealthTech_DiagnosticEngine？",
+      "elements_involved": [
+        "EMIT_EVENTS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，标记为RecomputeFinished(HealthTech_PatientRecords)，回到HealthTech_DiagnosticEngine。主流程闭环了。",
+      "elements_involved": [
+        "EMIT_EVENTS",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "主流程完成了。但异常路径呢？比如数据gap或者参数异常的情况？",
+      "elements_involved": [
+        "LOAD_SNAPSHOT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要一条从LOAD_SNAPSHOT分出的异常路径。当检测到GapDetected或有CorrectionInput时，进入RECONCILE状态，由HealthTech_PatientRecords执行backfill和oracle对账。",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "RECONCILE",
+        "GapDetected",
+        "CorrectionInput",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RECONCILE节点和注释已添加。它完成后回到哪里？",
+      "elements_involved": [
+        "RECONCILE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RECONCILE完成后标记为Reconciled，回到APPLY_DECAY继续主流程。这样异常修复后能无缝衔接。",
+      "elements_involved": [
+        "RECONCILE",
+        "APPLY_DECAY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "RECONCILE到APPLY_DECAY的连接已添加。还有别的终止情况吗？",
+      "elements_involved": [
+        "RECONCILE",
+        "APPLY_DECAY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要ABORT终止状态。APPLY_DECAY阶段如果检测到InvariantBreach或AnomalyDetected，直接abort；RECOMPUTE_W阶段也可能因InvariantBreach而abort。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "ABORT",
+        "InvariantBreach",
+        "AnomalyDetected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ABORT节点已创建，两条入边分别从APPLY_DECAY和RECOMPUTE_W引入。ABORT之后回到哪里？",
+      "elements_involved": [
+        "ABORT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ABORT后标记RecomputeAborted，回到HealthTech_DiagnosticEngine，但表示计算失败而非成功完成。",
+      "elements_involved": [
+        "ABORT",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "异常路径都完成了。现在需要给核心节点加样式吗？",
+      "elements_involved": [
+        "ABORT",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，用classDef定义一个core样式：橙色填充、深色边框、白色粗体字。应用到TRIGGER、LOAD_SNAPSHOT、CHECK_PARAMS、APPLY_DECAY、RECOMPUTE_W、WRITE_BACK、EMIT_EVENTS、RECONCILE、ABORT这些核心节点。",
+      "elements_involved": [
+        "TRIGGER",
+        "LOAD_SNAPSHOT",
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "WRITE_BACK",
+        "EMIT_EVENTS",
+        "RECONCILE",
+        "ABORT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "core样式已定义并应用到所有9个核心节点。标题需要调整吗？",
+      "elements_involved": [
+        "classDef core"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "标题设为\"SM-02.02 — Decay & Recompute Cycle (HealthTech_PatientRecords)\"，顶部加一个%%注释标记HealthTech_HIPAA_Vault。",
+      "elements_involved": [
+        "title",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "标题和顶部注释已添加。我检查一下连接：TRIGGER到LOAD_SNAPSHOT的转移条件应该是\"Select ledger window\"？",
+      "elements_involved": [
+        "TRIGGER",
+        "LOAD_SNAPSHOT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不对，TRIGGER到LOAD_SNAPSHOT的转移条件应该是空的，或者写\"Select ledger window\"作为标签。但LOAD_SNAPSHOT到CHECK_PARAMS是\"Bind constants (HealthTech_LabAnalyzer)\"。让我确认一下——实际上TRIGGER到LOAD_SNAPSHOT不需要额外标签，注释里已经说明了。",
+      "elements_involved": [
+        "TRIGGER",
+        "LOAD_SNAPSHOT"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。那APPLY_DECAY到RECOMPUTE_W的转移标记是DecayApplied(HealthTech_HIPAA_Vault)对吗？",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "RECOMPUTE_W"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。还有WRITE_BACK到EMIT_EVENTS是WeightsComputed，EMIT_EVENTS回到HealthTech_DiagnosticEngine是RecomputeFinished(HealthTech_PatientRecords)。",
+      "elements_involved": [
+        "WRITE_BACK",
+        "EMIT_EVENTS",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有转移标签已核对并修正。图看起来完整了，需要我再检查一遍异常路径的连接吗？",
+      "elements_involved": [
+        "RECONCILE",
+        "ABORT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "RECONCILE的入边条件确认是GapDetected / CorrectionInput？还有出边到APPLY_DECAY是Reconciled？",
+      "elements_involved": [
+        "RECONCILE",
+        "LOAD_SNAPSHOT",
+        "APPLY_DECAY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，RECONCILE入边是GapDetected / CorrectionInput，出边是Reconciled。ABORT的两条入边分别是InvariantBreach / AnomalyDetected和InvariantBreach，出边是RecomputeAborted。",
+      "elements_involved": [
+        "RECONCILE",
+        "ABORT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下起始触发条件：CronTick、RecomputeRequested、ParamsVersioned，这三个都要在TRIGGER的入边标签上体现。",
+      "elements_involved": [
+        "HealthTech_DiagnosticEngine",
+        "TRIGGER",
+        "CronTick",
+        "RecomputeRequested",
+        "ParamsVersioned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新，HealthTech_DiagnosticEngine到TRIGGER的入边标签现在是\"CronTick / RecomputeRequested / ParamsVersioned\"。图已完成，符合SM-02.02规范。",
+      "elements_involved": [
+        "HealthTech_DiagnosticEngine",
+        "TRIGGER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个状态图完整覆盖了HealthTech_PatientRecords的衰减重计算周期，包括正常流程、数据修复路径和异常终止场景。可以定稿了。",
+      "elements_involved": [
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 39,
+    "repair_count": 1,
+    "grounding_acts_count": 39,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 72237.0493,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 39
+  }
+}

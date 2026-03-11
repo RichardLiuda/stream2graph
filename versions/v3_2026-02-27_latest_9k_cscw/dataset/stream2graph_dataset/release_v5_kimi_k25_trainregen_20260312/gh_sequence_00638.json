@@ -1,0 +1,553 @@
+{
+  "id": "gh_sequence_00638",
+  "source": "github",
+  "source_url": "https://github.com/lakkantha/IOT/blob/de6c5c7e8bdbd041c3d000beb50026056c31208b/docs/dataflow.mmd",
+  "github_repo": "lakkantha/IOT",
+  "github_file_path": "docs/dataflow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Device as IoT Device\n    participant API as REST API<br/>(Controller)\n    participant Facade as IoTFacade<br/>(Facade Pattern)\n    participant AsyncSvc as AsyncNotificationService<br/>@Async\n    participant Producer as KafkaProducer\n    participant Kafka as Kafka Cluster\n    participant Consumer as KafkaConsumer\n    participant Service as Processing Service\n    participant Config as ApplicationConfig<br/>(Singleton)\n    participant Builder as Device Builder<br/>(Builder Pattern)\n    participant Repo as Repository\n    participant DB as Database\n\n    Note over Device,DB: Device Registration Flow\n    Device->>API: POST /api/devices<br/>{deviceId, type, location}\n    API->>Facade: registerNewDevice(dto)\n    Facade->>Builder: Device.builder()...build()\n    Builder-->>Facade: validated Device\n    Facade->>Service: registerDevice(dto)\n    Service->>Repo: save(device)\n    Repo->>DB: INSERT device\n    DB-->>Repo: device saved\n    Repo-->>Service: Device entity\n    Service-->>Facade: Device\n    Facade->>AsyncSvc: publishDeviceRegistration(dto)\n    Note right of Facade: returns immediately (async)\n    AsyncSvc->>Producer: sendDeviceRegistration(dto)\n    Producer->>Kafka: publish to device-registration topic\n    Facade-->>API: Device\n    API-->>Device: 200 OK {device}\n\n    Note over Device,DB: Sensor Data Processing Flow\n    Device->>API: POST /api/data<br/>{deviceId, measurements}\n    API->>Facade: processSensorData(dto)\n    Facade->>Service: validateSensorData(dto)\n    Service-->>Facade: validated\n    Facade->>Service: getDeviceById(deviceId)\n    Service->>Repo: findByDeviceId(deviceId)\n    Repo->>DB: SELECT device\n    DB-->>Repo: device data\n    Repo-->>Service: Device\n    Service-->>Facade: Device\n    Facade->>Service: processSensorData(dto, device)\n    Service->>Config: getDeviceBatchSize()\n    Config-->>Service: batch size\n    Service->>Service: assessDataQuality(dto)\n    Service-->>Facade: SensorData\n    Facade->>AsyncSvc: publishSensorData(dto)\n    Note right of Facade: returns immediately (async)\n    AsyncSvc->>Producer: sendSensorData(dto)\n    Producer->>Kafka: publish to sensor-data topic\n    Facade-->>API: success\n    API-->>Device: 202 Accepted\n\n    Note over Device,DB: Async Kafka Consumer Processing\n    Kafka->>Consumer: consume sensor-data batch\n    Consumer->>Service: processSensorData(batch)\n    Service->>Repo: saveAll(sensorData)\n    Repo->>DB: BATCH INSERT\n    DB-->>Repo: saved\n    Repo-->>Service: success\n    Service-->>Consumer: processed\n",
+  "content_size": 2525,
+  "collected_at": "2026-02-06T01:35:05.001350",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的IoT设备管理时序图，涵盖设备注册、传感器数据处理以及异步Kafka消费三个核心流程。先从设备注册开始吧。",
+      "elements_involved": [
+        "IoT Device",
+        "Device Registration Flow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。设备注册时，IoT Device应该直接调用REST API的哪个端点？是POST /api/devices吗？",
+      "elements_involved": [
+        "IoT Device",
+        "REST API",
+        "Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，POST /api/devices，参数包含deviceId、type和location。Controller收到请求后要转发给IoTFacade处理。",
+      "elements_involved": [
+        "REST API",
+        "Controller",
+        "IoTFacade",
+        "Facade Pattern"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，Facade这边我用Builder Pattern来创建Device对象。IoTFacade调用Device Builder进行构建，Builder返回验证后的Device实例。",
+      "elements_involved": [
+        "IoTFacade",
+        "Device Builder",
+        "Builder Pattern",
+        "Device"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Builder模式没问题，但Device构建完成后，Facade是直接保存到数据库，还是走Processing Service？",
+      "elements_involved": [
+        "IoTFacade",
+        "Processing Service",
+        "Repository",
+        "Database"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "建议走Processing Service，保持分层。Facade调用registerDevice(dto)，Service再调用Repository做INSERT操作，最后DB返回保存成功的Device entity。",
+      "elements_involved": [
+        "IoTFacade",
+        "Processing Service",
+        "Repository",
+        "Database",
+        "Device"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。注册完成后还需要异步通知其他系统，这里要用@Async注解。Facade调用AsyncNotificationService发布设备注册事件。",
+      "elements_involved": [
+        "IoTFacade",
+        "AsyncNotificationService",
+        "@Async"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。AsyncNotificationService立即返回，不阻塞主流程。它内部调用KafkaProducer，将消息发布到device-registration topic。",
+      "elements_involved": [
+        "AsyncNotificationService",
+        "KafkaProducer",
+        "Kafka Cluster",
+        "device-registration topic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Facade在触发异步通知后，把Device返回给API，API再返回200 OK给设备端。注册流程闭环。",
+      "elements_involved": [
+        "IoTFacade",
+        "REST API",
+        "IoT Device",
+        "200 OK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "接下来是传感器数据处理流程？设备会上报测量数据。",
+      "elements_involved": [
+        "Sensor Data Processing Flow",
+        "IoT Device"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，设备POST /api/data，携带deviceId和measurements。Controller同样转发给IoTFacade的processSensorData方法。",
+      "elements_involved": [
+        "IoT Device",
+        "REST API",
+        "IoTFacade",
+        "processSensorData",
+        "deviceId",
+        "measurements"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "数据处理前需要验证吧？我画Facade先调用Processing Service做validateSensorData。",
+      "elements_involved": [
+        "IoTFacade",
+        "Processing Service",
+        "validateSensorData"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。验证通过后，Facade需要根据deviceId查询设备信息，调用getDeviceById。",
+      "elements_involved": [
+        "IoTFacade",
+        "Processing Service",
+        "getDeviceById",
+        "deviceId"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Service通过Repository执行SELECT，从Database获取device data，逐层返回Device对象给Facade。",
+      "elements_involved": [
+        "Processing Service",
+        "Repository",
+        "Database",
+        "Device"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "拿到设备信息后，Facade再次调用Processing Service的processSensorData，这次传入dto和device两个参数。",
+      "elements_involved": [
+        "IoTFacade",
+        "Processing Service",
+        "processSensorData",
+        "dto",
+        "Device"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有个配置需求。Processing Service需要从ApplicationConfig获取batch size，这个Config是Singleton模式对吧？",
+      "elements_involved": [
+        "Processing Service",
+        "ApplicationConfig",
+        "Singleton",
+        "batch size"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，getDeviceBatchSize()。另外Service内部还要做数据质量评估，assessDataQuality(dto)。",
+      "elements_involved": [
+        "Processing Service",
+        "assessDataQuality",
+        "dto",
+        "ApplicationConfig"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Service返回SensorData给Facade，Facade再异步发布到Kafka，走AsyncNotificationService和KafkaProducer，topic是sensor-data。",
+      "elements_involved": [
+        "Processing Service",
+        "SensorData",
+        "IoTFacade",
+        "AsyncNotificationService",
+        "KafkaProducer",
+        "sensor-data topic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "异步发布返回后，API给设备端返回什么状态码？202 Accepted？",
+      "elements_involved": [
+        "REST API",
+        "IoT Device",
+        "202 Accepted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，202 Accepted表示已接受处理，异步完成。最后是Kafka Consumer端的批量处理流程。",
+      "elements_involved": [
+        "202 Accepted",
+        "KafkaConsumer",
+        "Async Kafka Consumer Processing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Consumer从Kafka Cluster批量消费sensor-data，然后调用Processing Service处理。",
+      "elements_involved": [
+        "Kafka Cluster",
+        "KafkaConsumer",
+        "sensor-data batch",
+        "Processing Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Consumer调用processSensorData(batch)，Service通过Repository执行BATCH INSERT到Database。",
+      "elements_involved": [
+        "KafkaConsumer",
+        "Processing Service",
+        "Repository",
+        "Database",
+        "BATCH INSERT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "批量插入完成后逐层返回，最后Consumer收到processed确认。整个流程结束。",
+      "elements_involved": [
+        "Database",
+        "Repository",
+        "Processing Service",
+        "KafkaConsumer",
+        "processed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我检查一下：三个Note分别标注了Device Registration Flow、Sensor Data Processing Flow和Async Kafka Consumer Processing，覆盖Device到DB的全链路。",
+      "elements_involved": [
+        "Note",
+        "Device Registration Flow",
+        "Sensor Data Processing Flow",
+        "Async Kafka Consumer Processing",
+        "IoT Device",
+        "Database"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "IoTFacade的异步调用那里，需要明确标注returns immediately (async)，避免误解为同步阻塞。",
+      "elements_involved": [
+        "IoTFacade",
+        "AsyncNotificationService",
+        "returns immediately (async)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已在两个异步调用处添加Note right of Facade标注。参与者命名也按规范：Device as IoT Device，API as REST API<br/(Controller)等。",
+      "elements_involved": [
+        "Note right of Facade",
+        "IoT Device",
+        "REST API",
+        "Controller",
+        "IoTFacade",
+        "Facade Pattern",
+        "AsyncNotificationService",
+        "@Async",
+        "KafkaProducer",
+        "Kafka Cluster",
+        "KafkaConsumer",
+        "Processing Service",
+        "ApplicationConfig",
+        "Singleton",
+        "Device Builder",
+        "Builder Pattern"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，Builder那边我再看一下。Device.builder()...build()的返回应该是validated Device，不是直接Device，要强调验证过的。",
+      "elements_involved": [
+        "Device Builder",
+        "Builder Pattern",
+        "validated Device"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，Builder--Facade: validated Device。另外Repository返回给Service的也是Device entity，不是简单的Device。",
+      "elements_involved": [
+        "Builder",
+        "Facade",
+        "validated Device",
+        "Repository",
+        "Service",
+        "Device entity"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。还有，Service--Facade在注册流程中返回的是Device，数据处理流程返回的是SensorData，这两个要区分清楚。",
+      "elements_involved": [
+        "Service",
+        "Facade",
+        "Device",
+        "SensorData"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认区分：注册流程Service--Facade: Device，数据处理流程Service--Facade: SensorData。所有消息流向和返回虚线都已正确标注。",
+      "elements_involved": [
+        "Service",
+        "Facade",
+        "Device",
+        "SensorData"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "KafkaConsumer那边的批量处理，Service调用的是saveAll(sensorData)对吧？不是单条save。",
+      "elements_involved": [
+        "KafkaConsumer",
+        "Processing Service",
+        "Repository",
+        "saveAll",
+        "sensorData"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，saveAll(sensorData)，对应DB的BATCH INSERT。最后Repo--Service: saved，Service--Consumer: processed。",
+      "elements_involved": [
+        "Repository",
+        "saveAll",
+        "sensorData",
+        "Database",
+        "BATCH INSERT",
+        "saved",
+        "processed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体结构没问题了。再确认一下参与者顺序：从左到右是Device、API、Facade、AsyncSvc、Producer、Kafka、Consumer、Service、Config、Builder、Repo、DB。",
+      "elements_involved": [
+        "participant order",
+        "IoT Device",
+        "REST API",
+        "IoTFacade",
+        "AsyncNotificationService",
+        "KafkaProducer",
+        "Kafka Cluster",
+        "KafkaConsumer",
+        "Processing Service",
+        "ApplicationConfig",
+        "Device Builder",
+        "Repository",
+        "Database"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "参与者顺序正确，符合调用链路从左到右、数据库在最右的惯例。所有异步流程用虚线返回，同步调用用实线。",
+      "elements_involved": [
+        "participant order",
+        "solid line",
+        "dashed line",
+        "async",
+        "sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。这个时序图完整覆盖了设备注册、传感器数据处理、Kafka异步消费三个场景，设计模式标注也清晰。可以定稿了。",
+      "elements_involved": [
+        "Device Registration Flow",
+        "Sensor Data Processing Flow",
+        "Async Kafka Consumer Processing",
+        "Facade Pattern",
+        "Builder Pattern",
+        "Singleton",
+        "@Async"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "定稿完成。最终图包含12个参与者、3个流程注释、完整的设备生命周期数据流，以及关键设计模式的显式标注。",
+      "elements_involved": [
+        "IoT Device",
+        "REST API",
+        "Controller",
+        "IoTFacade",
+        "Facade Pattern",
+        "AsyncNotificationService",
+        "@Async",
+        "KafkaProducer",
+        "Kafka Cluster",
+        "KafkaConsumer",
+        "Processing Service",
+        "ApplicationConfig",
+        "Singleton",
+        "Device Builder",
+        "Builder Pattern",
+        "Repository"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 36,
+    "repair_count": 1,
+    "grounding_acts_count": 36,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 75716.5296,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 36
+  }
+}

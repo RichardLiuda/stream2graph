@@ -1,0 +1,275 @@
+{
+  "id": "aug_gl_block-beta_00283_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/govuk-one-login/authentication-api/blob/a4c68710b6177665c4625f1c8789455deca7b26b/docs/diagrams/authentication/login/account-interventions/medium-sms/login-medium-level-sms-blocked-intervention.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "govuk-one-login/authentication-api",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant orch_api as Orchestration\n    participant auth_frontend as Authentication Frontend\n    participant auth_external_api as Authentication External API\n    participant auth_internal_api as Authentication Internal API\n    participant account_interventions as Account Interventions API\n    participant notification_queue as NotificationHandler.java Lambda   \n    participant notify as Notify   \n    orch_api ->> auth_frontend : OAuth 2.0 Authorization request 302 redirect to /authorize\n    auth_frontend ->> auth_frontend : Decrypt and validate request and create session    \n    auth_frontend ->> auth_internal_api : Request to /start (Education_ClassroomService)\n    auth_internal_api ->> auth_internal_api : Start helps calculate current state\n    auth_internal_api ->> auth_frontend : StartResponse.java object returned\n    auth_frontend ->> auth_frontend : State machine works out where to send user based on start response\n    auth_frontend ->> auth_internal_api : Request to /user-exists (Education_LMS_Portal)\n    auth_internal_api ->> auth_internal_api : Checks if account with email already exists\n    auth_internal_api ->> auth_frontend: CheckUserExistsResponse.java object returned\n    auth_frontend ->> auth_frontend: Validates that the user already has an account\n    auth_frontend ->> auth_internal_api : Request to /account-interventions (Education_ClassroomService)\n    auth_internal_api ->> account_interventions : Request to account interventions api (Education_ContentCDN)\n    account_interventions ->> auth_internal_api : Response from Account Interventions containing blocked=true\n    auth_internal_api ->> auth_internal_api : Generates audit event for \"blocked\" Account Intervention\n    auth_internal_api ->> auth_frontend: AccountInterventions.java object returned containing blocked intervention\n    auth_frontend ->> auth_frontend: Prevents user from performing password reset due to blocked intervention\n    auth_frontend ->> auth_internal_api : Request to /login (Education_StudentDB)\n    auth_internal_api ->> auth_internal_api : Validates if password is correct\n    auth_internal_api ->> auth_frontend: LoginResponse.java object returned\n    auth_frontend ->> auth_internal_api : Request to /account-recovery (Education_GradeSync)\n    auth_internal_api ->> auth_internal_api : Calculates whether account recovery is permitted\n    auth_internal_api ->> auth_frontend: AccountRecovery.java object returned\n    auth_frontend ->> auth_internal_api : Request to /mfa (Education_StudentDB)\n    auth_internal_api ->> auth_internal_api : Generates and stores OTP\n    auth_internal_api -->> notification_queue : Sends NotifyRequest.java object via SQS\n    notification_queue -->> notify : Request to send SMS containing OTP and phone number\n    auth_internal_api ->> auth_frontend : 204 response \n    auth_frontend ->> auth_frontend: Prevents user from performing MFA reset due to blocked intervention\n    auth_frontend ->> auth_internal_api : Request to /verify-code (Education_ContentCDN)\n    auth_internal_api ->> auth_internal_api : Validates whether SMS MFA code is valid\n    auth_internal_api ->> auth_frontend: 204 response\n    auth_frontend ->> auth_frontend : Displays Blocked intervention screen\n",
+  "content_size": 3274,
+  "collected_at": "2026-02-06T14:06:12.716465",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Education",
+  "seed_id": "gl_block-beta_00283",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个教育系统的完整登录流程时序图，核心是展示当用户账户被Account Interventions API拦截时的完整链路。起点是Orchestration层，终点是用户看到拦截页面。",
+      "elements_involved": [
+        "Orchestration",
+        "Account Interventions API",
+        "Authentication Frontend",
+        "Authentication Internal API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，所以Orchestration是最上游，通过OAuth 2.0把请求重定向到Authentication Frontend对吧？然后Frontend再跟Internal API交互？",
+      "elements_involved": [
+        "Orchestration",
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "OAuth 2.0 Authorization request 302 redirect to /authorize"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Frontend收到请求后要先解密验证，创建session，然后调用Internal API的/start接口，这里关联的是Education_ClassroomService。",
+      "elements_involved": [
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "/start",
+        "Education_ClassroomService",
+        "StartResponse.java"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先把这几个参与者列出来：Orchestration、Authentication Frontend、Authentication External API、Authentication Internal API、Account Interventions API。然后画第一条线：Orchestration到Frontend的302重定向。",
+      "elements_involved": [
+        "Orchestration",
+        "Authentication Frontend",
+        "Authentication External API",
+        "Authentication Internal API",
+        "Account Interventions API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来有个关键分支：Internal API要查用户是否存在，调用/user-exists，对应Education_LMS_Portal。返回CheckUserExistsResponse之后，Frontend验证用户已有账户，才会走到账户干预检查。",
+      "elements_involved": [
+        "Authentication Internal API",
+        "/user-exists",
+        "Education_LMS_Portal",
+        "CheckUserExistsResponse.java",
+        "Authentication Frontend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里我有点疑问——External API在这个流程里参与了吗？还是只是作为备用参与者存在？",
+      "elements_involved": [
+        "Authentication External API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "External API在这个特定流程里确实不活跃，主要是Internal API在处理。不过保留它作为参与者没问题，因为其他变体流程会用到。继续画，干预检查是调用/account-interventions，走Education_ContentCDN到Account Interventions API。",
+      "elements_involved": [
+        "Authentication External API",
+        "/account-interventions",
+        "Education_ContentCDN",
+        "Account Interventions API",
+        "Education_ClassroomService"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：Internal API调用Account Interventions API，返回blocked=true，然后Internal API生成审计事件，把AccountInterventions对象返回给Frontend。Frontend这时候阻止密码重置。",
+      "elements_involved": [
+        "Authentication Internal API",
+        "Account Interventions API",
+        "blocked=true",
+        "AccountInterventions.java",
+        "Authentication Frontend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，但流程还没结束。用户被拦截后，系统还是要走一遍完整的登录校验链路来确认身份，包括/login验证密码、/account-recovery计算恢复许可、/mfa生成OTP。这些分别对应Education_StudentDB和Education_GradeSync。",
+      "elements_involved": [
+        "/login",
+        "Education_StudentDB",
+        "/account-recovery",
+        "Education_GradeSync",
+        "/mfa",
+        "LoginResponse.java",
+        "AccountRecovery.java"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "MFA部分需要异步通知吗？我看到有NotificationHandler和Notify服务。",
+      "elements_involved": [
+        "NotificationHandler.java Lambda",
+        "Notify",
+        "/mfa"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Internal API生成OTP后，通过SQS发送NotifyRequest到NotificationHandler Lambda，然后Lambda调Notify发SMS。Internal API给Frontend返回204，Frontend还要再阻止一次MFA重置。",
+      "elements_involved": [
+        "Authentication Internal API",
+        "NotifyRequest.java",
+        "SQS",
+        "NotificationHandler.java Lambda",
+        "Notify",
+        "204 response"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了虚线表示异步：Internal API双横线到NotificationHandler，NotificationHandler双横线到Notify。然后用户输入验证码，Frontend调/verify-code，Education_ContentCDN处理，返回204。",
+      "elements_involved": [
+        "Authentication Internal API",
+        "NotificationHandler.java Lambda",
+        "Notify",
+        "/verify-code",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，verify-code是在Internal API内部验证的，Education_ContentCDN只是标记，实际处理还在Internal API。最后Frontend显示Blocked intervention screen结束。",
+      "elements_involved": [
+        "Authentication Internal API",
+        "Education_ContentCDN",
+        "Authentication Frontend",
+        "Blocked intervention screen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正了，/verify-code是Internal API自调用验证SMS MFA code，然后返回204给Frontend。最后一步是Frontend自调用显示拦截页面。",
+      "elements_involved": [
+        "Authentication Internal API",
+        "/verify-code",
+        "204 response",
+        "Authentication Frontend",
+        "Blocked intervention screen"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完整了。再确认一下中间状态：Start的时候Internal API有个自调用\"Start helps calculate current state\"，这个要保留，说明状态机逻辑。",
+      "elements_involved": [
+        "Authentication Internal API",
+        "Start helps calculate current state",
+        "State machine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充。现在整个流程从Orchestration重定向开始，经过Frontend解密、Internal API多轮校验、Account Interventions拦截、完整登录+MFA验证，最终显示拦截页面。所有Education下游服务标记都加上了：ClassroomService、LMS Portal、ContentCDN、StudentDB、GradeSync。",
+      "elements_involved": [
+        "Orchestration",
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "Account Interventions API",
+        "Education_ClassroomService",
+        "Education_LMS_Portal",
+        "Education_ContentCDN",
+        "Education_StudentDB",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个图清晰展示了即使账户被blocked，系统仍会走完身份验证全流程才拒绝访问，符合安全审计要求。",
+      "elements_involved": [
+        "blocked=true",
+        "Blocked intervention screen",
+        "audit event"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 17,
+    "repair_count": 2,
+    "grounding_acts_count": 17,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 44720.6416,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 17
+  }
+}

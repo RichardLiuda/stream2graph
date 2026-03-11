@@ -1,0 +1,167 @@
+{
+  "id": "gl_block-beta_00290",
+  "source": "gitlab",
+  "source_url": "https://github.com/pagopa/p4pa-doc/blob/7e7885cceb7021d36015482fc7455c44951d6b3f/design/workflow/classificazioneIncassi/04.tesoreriaXLS-ingestion.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "pagopa/p4pa-doc",
+  "diagram_type": "block-beta",
+  "code": "---\ntitle: WF caricamento giornale di cassa XLS\n---\nflowchart TD\n    DESCRIPTION@{ shape: braces, label: \"Input: ingestionFlowFileId\" }\n    START@{shape: start} -->\n    UPDATE_STATUS_INELAB:::activity@{label: \"Aggiorna stato ingestionFlowFile in 'PROCESSING'\"} -->\n    INGESTION:::activity@{label: \"Leggi file e persisti righe\"}\n\n    subgraph INGESTION_NOTE_BLOCK\n        INGESTION\n        INGESTION_NOTE@{shape: braces, label: \"Restituisce List&lt;IUF,treasuryId&gt;, <span style=\\\"color:red\\\">List&lt;IUV&gt;</span>\"}\n    end\n    class INGESTION_NOTE_BLOCK note_block\n\n    INGESTION -->\n    UPDATE_STATUS_COMPLETE:::activity@{label: \"Finalizza stato entità ingestionFlowId\"} -->\n    SEND_EMAIL:::activity@{label: \"Notifica stato import tramite email\"} -->\n    LOOP_IUVs\n\n    subgraph LOOP_IUVs[\"Per ogni IUV restituito dall'activity di ingestion\"]\n\n        %% dummy block added to have an empty line\n        DUMMY1:::hidden-->SIGNAL_IUV\n        linkStyle 5 display:none;\n\n        SIGNAL_IUV:::send-signal@{shape: delay, label: \"Invia evento 'Classifica Transfer' al workflow 'Classificazione Transfer'\"}\n        NOTE_SIGNAL_IUV@{ shape: braces, label: \"signalWithStart con workflowID=organizationId+IUV\" }\n    end\n    class LOOP_IUVs loop\n    style LOOP_IUVs color:red;\n\n    LOOP_IUVs --> LOOP_IUFs\n\n    subgraph LOOP_IUFs[\"Per ogni IUF/treasuryId restituito dall'activity di ingestion\"]\n\n        %% dummy block added to have an empty line\n        DUMMY2:::hidden-->SIGNAL_IUF\n        linkStyle 7 display:none;\n\n        SIGNAL_IUF:::send-signal@{shape: delay, label: \"Invia evento 'Tesoreria IUF' con treasuryId al workflow 'Classificazione IUF'\"}\n        NOTE_SIGNAL_IUF@{ shape: braces, label: \"signalWithStart con workflowID=organizationId+IUF\" }\n    end\n    class LOOP_IUFs loop\n\n    LOOP_IUFs --> END@{shape: stop}\n\n\n    classDef hidden display:none;\n    classDef note_block display:none;\n    classDef activity fill:#FFFFE0, stroke:#ffc300, stroke-width:2px;\n    classDef loop fill:#CCFFCC, stroke:#7FBF7F, stroke-width:2px, padding-bottom: 5px;\n    classDef send-signal fill:#ade8f4, stroke:#48cae4, stroke-width:2px",
+  "content_size": 2124,
+  "collected_at": "2026-02-06T14:06:19.099970",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个XLS现金日记账加载的工作流。首先，用户会传入一个ingestionFlowFileId作为输入参数，然后流程开始。第一步要把ingestionFlowFile的状态更新为PROCESSING，接着读取文件并持久化每一行数据。",
+      "elements_involved": [
+        "DESCRIPTION",
+        "START",
+        "UPDATE_STATUS_INELAB",
+        "INGESTION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。关于INGESTION这个活动，我需要标注它的输出吗？看起来它会返回两组数据：一组是IUF和treasuryId的列表，另一组是IUV的列表。",
+      "elements_involved": [
+        "INGESTION",
+        "INGESTION_NOTE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，需要标注。IUV那部分要用红色高亮显示，因为这部分数据会触发后续的循环处理。另外，INGESTION完成后要把ingestionFlowId的状态标记为完成，然后发邮件通知导入状态。",
+      "elements_involved": [
+        "INGESTION_NOTE",
+        "UPDATE_STATUS_COMPLETE",
+        "SEND_EMAIL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经把INGESTION_NOTE_BLOCK子图加上了，IUV用了红色样式。UPDATE_STATUS_COMPLETE和SEND_EMAIL也连接好了。接下来是循环处理部分吗？",
+      "elements_involved": [
+        "INGESTION_NOTE_BLOCK",
+        "UPDATE_STATUS_COMPLETE",
+        "SEND_EMAIL",
+        "LOOP_IUVs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，接下来有两个并行循环。第一个LOOP_IUVs遍历所有IUV，每个IUV要发送一个'Classifica Transfer'信号到'Classificazione Transfer'工作流，用organizationId+IUV作为workflowID。",
+      "elements_involved": [
+        "LOOP_IUVs",
+        "SIGNAL_IUV",
+        "NOTE_SIGNAL_IUV"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "LOOP_IUVs子图需要用绿色填充吗？还有SIGNAL_IUV的形状，用delay形状表示信号发送是否合适？",
+      "elements_involved": [
+        "LOOP_IUVs",
+        "SIGNAL_IUV"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，LOOP_IUVs用绿色，LOOP_IUFs也一样。SIGNAL_IUV用delay形状，填充色用浅蓝色。第二个循环LOOP_IUFs处理IUF/treasuryId，发送'Tesoreria IUF'信号到'Classificazione IUF'工作流，workflowID是organizationId+IUF。",
+      "elements_involved": [
+        "LOOP_IUVs",
+        "SIGNAL_IUV",
+        "LOOP_IUFs",
+        "SIGNAL_IUF",
+        "NOTE_SIGNAL_IUF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个循环子图都设置好了，样式也应用了。我注意到LOOP_IUVs里需要加一个DUMMY1隐藏节点来空出一行，LOOP_IUFs里也一样用DUMMY2，这样布局更美观。最后连接到END结束节点。",
+      "elements_involved": [
+        "DUMMY1",
+        "DUMMY2",
+        "LOOP_IUVs",
+        "LOOP_IUFs",
+        "END"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，INGESTION_NOTE_BLOCK这个子图不需要显示边框，应该隐藏掉。还有DUMMY1和DUMMY2的连接线也要隐藏。",
+      "elements_involved": [
+        "INGESTION_NOTE_BLOCK",
+        "DUMMY1",
+        "DUMMY2"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修复。给INGESTION_NOTE_BLOCK加了note_block类隐藏显示，DUMMY1和DUMMY2的连接线也用linkStyle隐藏了。现在整个流程图应该完整了，从开始节点到两个信号循环，最后到结束节点。",
+      "elements_involved": [
+        "INGESTION_NOTE_BLOCK",
+        "DUMMY1",
+        "DUMMY2",
+        "START",
+        "END"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 26032.4402,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

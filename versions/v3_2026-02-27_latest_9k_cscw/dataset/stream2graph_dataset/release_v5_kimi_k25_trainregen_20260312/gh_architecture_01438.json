@@ -1,0 +1,864 @@
+{
+  "id": "gh_architecture_01438",
+  "source": "github",
+  "source_url": "https://github.com/bartytime4life/Kansas-Frontier-Matrix/blob/15f52718884d74e74506c610d7a582178db53863/docs/architecture/diagrams/sources/60-ci-cd-devsecops.mmd",
+  "github_repo": "bartytime4life/Kansas-Frontier-Matrix",
+  "github_file_path": "docs/architecture/diagrams/sources/60-ci-cd-devsecops.mmd",
+  "diagram_type": "architecture",
+  "code": "%%---------------------------------------------------------------------------\n%% 📁 docs/architecture/diagrams/sources/60-ci-cd-devsecops.mmd\n%% 🧭 Kansas Frontier Matrix — CI/CD + DevSecOps (high-level pipeline)\n%% Source: \"Deployment Instructions\" (CI/CD + deployment) in:\n%%         Kansas Frontier Matrix Comprehensive System Documentation.pdf\n%%---------------------------------------------------------------------------\n\n%%{init: {\"flowchart\": {\"curve\": \"basis\"}} }%%\nflowchart TB\n\n  %% ===== Styles (kept subtle for GitHub light/dark) =====\n  classDef actor stroke-width:2px;\n  classDef ci stroke-width:1px;\n  classDef sec stroke-width:1px,stroke-dasharray: 3 3;\n  classDef artifact stroke-width:1px;\n  classDef gate stroke-width:2px,stroke-dasharray: 5 5;\n  classDef runtime stroke-width:1px;\n  classDef obs stroke-width:1px;\n\n  %%--------------------------------------------------------------------------\n  %% 🧑‍💻 SOURCE CONTROL & COLLABORATION\n  %%--------------------------------------------------------------------------\n  subgraph SOURCE[\"🧑‍💻 Source Control & Collaboration\"]\n    direction TB\n    DEV[\"🧑‍💻 Developer\"]\n    REPO[\"🐙 GitHub Repo<br/>Kansas-Frontier-Matrix\"]\n    PR[\"🔀 Pull Request<br/>review + merge\"]\n    DEV -->|git push| REPO\n    REPO -->|open PR| PR\n    PR -->|merge to main| REPO\n  end\n  class DEV,REPO,PR actor\n\n  %%--------------------------------------------------------------------------\n  %% ⚙️ CI — GITHUB ACTIONS\n  %%--------------------------------------------------------------------------\n  subgraph CI[\"⚙️ CI — GitHub Actions\"]\n    direction TB\n    CI_TRIGGER[\"⏱️ Workflows<br/>on: pull_request / push / schedule\"]\n    LINT[\"🔎 Lint + Format\"]\n    TESTS[\"✅ Automated Tests<br/>unit + integration\"]\n    SAST[\"🧯 SAST<br/>static code analysis\"]\n    SECRETSCAN[\"🕵️ Secrets Scan<br/>prevent credential leaks\"]\n    SCA[\"📦 Dependency / SCA Scan<br/>vulns + licenses\"]\n    IAC_SCAN[\"🏗️ IaC Scan<br/>compose / k8s / terraform\"]\n    BUILD[\"🐳 Build Docker Images<br/>api + web\"]\n    IMAGE_SCAN[\"🧫 Container/Image Scan<br/>vulns + misconfig\"]\n    SBOM[\"🧾 SBOM + Provenance<br/>SPDX/CycloneDX\"]\n    SIGN[\"🔏 Sign / Attest Artifacts<br/>(optional)\"]\n    PUSH[\"📤 Publish Images<br/>GHCR / Docker Hub\"]\n    GHA_SECRETS[\"🔐 GitHub Actions Secrets<br/>(SSH key, registry creds)\"]\n\n    CI_TRIGGER --> LINT --> TESTS --> SAST --> SECRETSCAN --> SCA --> IAC_SCAN --> BUILD --> IMAGE_SCAN --> SBOM --> SIGN --> PUSH\n  end\n  class CI_TRIGGER,LINT,TESTS,BUILD,SBOM,SIGN,PUSH ci\n  class SAST,SECRETSCAN,SCA,IAC_SCAN,IMAGE_SCAN sec\n\n  REPO -->|push / PR| CI_TRIGGER\n  GHA_SECRETS -.->|auth to registry| PUSH\n\n  %%--------------------------------------------------------------------------\n  %% 📦 ARTIFACTS & SUPPLY-CHAIN\n  %%--------------------------------------------------------------------------\n  subgraph ARTIFACTS[\"📦 Artifacts & Supply-Chain\"]\n    direction TB\n    REGISTRY[\"📦 Container Registry<br/>GHCR / Docker Hub\"]\n    SBOM_STORE[\"🧾 SBOM Store<br/>workflow artifact / release asset\"]\n    RELEASE[\"🏷️ Versioned Release<br/>tag + changelog\"]\n    PUSH --> REGISTRY\n    SBOM --> SBOM_STORE\n    PUSH --> RELEASE\n  end\n  class REGISTRY,SBOM_STORE,RELEASE artifact\n\n  %%--------------------------------------------------------------------------\n  %% 🚀 CD — DEPLOYMENT AUTOMATION\n  %%--------------------------------------------------------------------------\n  subgraph CD[\"🚀 CD — Deployment Automation\"]\n    direction TB\n    IAC_APPLY[\"🏗️ Provision / Configure Infra<br/>Terraform / CloudFormation / Ansible\"]\n    DEPLOY_STG[\"🚀 Deploy → Staging<br/>SSH pull + docker-compose up -d<br/>or apply K8s manifests\"]\n    SMOKE[\"🧪 Staging Verification<br/>• Web UI + map layers<br/>• /api + /graphql<br/>• Focus Mode (citations)<br/>• DB migrations/seeds\"]\n    DAST[\"🕷️ DAST (staging)<br/>API + UI attack-surface checks\"]\n    APPROVAL{\"🛑 Approval Gate<br/>manual + policy checks\"}\n    DEPLOY_PROD[\"🚀 Deploy → Production<br/>compose restart / rolling update\"]\n    POSTCHECK[\"✅ Post-Deploy Checks<br/>port scan (80/443)<br/>basic vuln scan + health checks\"]\n\n    IAC_APPLY --> DEPLOY_STG --> SMOKE --> DAST --> APPROVAL --> DEPLOY_PROD --> POSTCHECK\n  end\n  class DAST,POSTCHECK sec\n  class APPROVAL gate\n\n  REGISTRY -->|pull images| DEPLOY_STG\n  RELEASE -->|tag/version| DEPLOY_STG\n  GHA_SECRETS -.->|SSH deploy key| DEPLOY_STG\n\n  %%--------------------------------------------------------------------------\n  %% 🛰️ RUNTIME — KFM STACK\n  %%--------------------------------------------------------------------------\n  subgraph RUNTIME[\"🛰️ Runtime — KFM Stack (Docker Compose / ☸️ K8s)\"]\n    direction TB\n    HOST[\"🖥️ Ubuntu Server / Cloud VM<br/>public: 80/443\"]\n    PROXY[\"🌐 Nginx / Apache Reverse Proxy<br/>TLS (Let's Encrypt)<br/>security headers + caching\"]\n    ORCH[\"🐳 docker-compose.yml<br/>or ☸️ Kubernetes/ECS\"]\n\n    WEB[\"🖥️ web (React)<br/>static assets\"]\n    API[\"🧠 api (FastAPI + Uvicorn)<br/>REST / GraphQL / Focus Mode\"]\n    POSTGIS[\"🗺️ db-postgis<br/>PostgreSQL + PostGIS\"]\n    NEO4J[\"🕸️ db-neo4j<br/>Graph DB\"]\n    OLLAMA[\"🤖 ollama<br/>LLM service\"]\n    OPA[\"🛡️ opa (OPA)<br/>Policy-as-Code sidecar\"]\n    SECRETS_RT[\"🔑 Secrets + Env<br/>.env.example → prod .env<br/>Docker secrets\"]\n\n    HOST --> PROXY\n    HOST --> ORCH\n\n    PROXY --> WEB\n    PROXY --> API\n\n    ORCH --> WEB\n    ORCH --> API\n    ORCH --> POSTGIS\n    ORCH --> NEO4J\n    ORCH --> OLLAMA\n    ORCH --> OPA\n\n    API --> POSTGIS\n    API --> NEO4J\n    API --> OLLAMA\n    API --> OPA\n\n    SECRETS_RT --> API\n    SECRETS_RT --> POSTGIS\n    SECRETS_RT --> NEO4J\n    SECRETS_RT --> OLLAMA\n  end\n  class HOST,PROXY,ORCH,WEB,API,POSTGIS,NEO4J,OLLAMA,OPA,SECRETS_RT runtime\n\n  DEPLOY_PROD -->|restart/update| ORCH\n  DEPLOY_PROD -->|config/proxy reload| PROXY\n\n  %%--------------------------------------------------------------------------\n  %% 📈 OBSERVABILITY + OPS + FEEDBACK LOOP\n  %%--------------------------------------------------------------------------\n  subgraph OBS[\"📈 Observability, Ops, and Feedback\"]\n    direction TB\n    LOGS[\"🪵 Centralized Logs<br/>proxy + api + DB\"]\n    METRICS[\"📈 Metrics<br/>Prometheus\"]\n    DASH[\"📊 Dashboards<br/>Grafana\"]\n    ALERTS[\"🚨 Alerts<br/>on-call / email / chat\"]\n    BACKUPS[\"💾 Backups<br/>Postgres + Neo4j\"]\n    AUDIT[\"🧾 Audit Trails<br/>auth + data access\"]\n\n    LOGS --> DASH\n    METRICS --> DASH --> ALERTS\n\n    POSTGIS --> BACKUPS\n    NEO4J --> BACKUPS\n    API --> AUDIT\n  end\n  class LOGS,METRICS,DASH,ALERTS,BACKUPS,AUDIT obs\n\n  API --> LOGS\n  PROXY --> LOGS\n  API --> METRICS\n\n  %% 🔁 Continuous feedback into engineering\n  ALERTS -->|incident / bug report| REPO\n\n  %% 🧯 Recovery path (conceptual)\n  POSTCHECK -->|rollback → redeploy previous tag| DEPLOY_PROD\n\n",
+  "content_size": 6689,
+  "collected_at": "2026-02-06T01:46:13.741623",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "compilation_status": "success",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为Kansas Frontier Matrix项目绘制一张完整的CI/CD + DevSecOps架构图。这张图要覆盖从代码提交到生产部署的全流程，包括安全扫描和可观测性。",
+      "elements_involved": [
+        "CI/CD",
+        "DevSecOps",
+        "Kansas Frontier Matrix"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，这是一个高层次的流水线架构。我先确认一下范围：需要包含源代码管理、CI构建、制品管理、CD部署、运行时环境和可观测性这六个主要阶段吗？",
+      "elements_involved": [
+        "Source Control",
+        "CI",
+        "Artifacts",
+        "CD",
+        "Runtime",
+        "Observability"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，就是这六个阶段。特别要注意的是安全扫描要贯穿整个流程，不是只在最后做检查。还有我们的运行时是基于Docker Compose，未来可能迁移到Kubernetes。",
+      "elements_involved": [
+        "Security Scan",
+        "Docker Compose",
+        "Kubernetes"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我先从最左侧开始画源代码协作部分。这里应该有开发者、GitHub仓库和Pull Request三个核心节点，体现git push、开PR、合并到main的工作流。",
+      "elements_involved": [
+        "Developer",
+        "GitHub Repo",
+        "Pull Request"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，PR环节要强调代码审查。开发者推送后开PR，审查通过才能合并回main分支，这个合并动作会触发后续的CI流程。",
+      "elements_involved": [
+        "PR review",
+        "merge to main",
+        "CI trigger"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加源代码管理子图，包含Developer、GitHub Repo和Pull Request三个节点，以及它们之间的git push、open PR、merge to main关系。",
+      "elements_involved": [
+        "SOURCE subgraph",
+        "DEV",
+        "REPO",
+        "PR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是CI部分，我们用GitHub Actions。这里要画一个完整的流水线：从触发器开始，经过代码检查、测试、多种安全扫描，最后构建镜像并推送。",
+      "elements_involved": [
+        "GitHub Actions",
+        "CI pipeline",
+        "security scans"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "安全扫描具体包含哪些？我看到文档里有SAST、Secrets Scan、SCA、IaC Scan和容器镜像扫描，需要全部列出来吗？",
+      "elements_involved": [
+        "SAST",
+        "Secrets Scan",
+        "SCA",
+        "IaC Scan",
+        "Container Image Scan"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "全部都要，这是DevSecOps的核心。顺序是：Lint和Format → 自动化测试 → SAST静态分析 → Secrets扫描防止凭证泄露 → SCA依赖和许可证检查 → IaC扫描检查compose和k8s配置 → 构建Docker镜像 → 镜像漏洞扫描 → 生成SBOM → 签名 → 推送到仓库。",
+      "elements_involved": [
+        "LINT",
+        "TESTS",
+        "SAST",
+        "SECRETSCAN",
+        "SCA",
+        "IAC_SCAN",
+        "BUILD",
+        "IMAGE_SCAN",
+        "SBOM",
+        "SIGN",
+        "PUSH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加CI子图，包含11个顺序执行的节点，从CI_TRIGGER到PUSH。安全相关节点用了虚线边框样式区分。",
+      "elements_involved": [
+        "CI subgraph",
+        "CI_TRIGGER",
+        "LINT",
+        "TESTS",
+        "SAST",
+        "SECRETSCAN",
+        "SCA",
+        "IAC_SCAN",
+        "BUILD",
+        "IMAGE_SCAN",
+        "SBOM",
+        "SIGN",
+        "PUSH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要在CI部分加上GitHub Actions Secrets，用来存储SSH密钥和仓库凭证。这个要和PUSH节点有虚线连接，表示认证关系。",
+      "elements_involved": [
+        "GitHub Actions Secrets",
+        "SSH key",
+        "registry creds"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加GHA_SECRETS节点，用虚线连接到PUSH表示认证到镜像仓库的关系。",
+      "elements_involved": [
+        "GHA_SECRETS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "制品和供应链部分需要单独一个子图。包含容器仓库、SBOM存储和版本化发布三个节点。CI的PUSH会流向这里。",
+      "elements_involved": [
+        "Container Registry",
+        "SBOM Store",
+        "Versioned Release"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "容器仓库具体用哪个？GHCR还是Docker Hub？",
+      "elements_involved": [
+        "GHCR",
+        "Docker Hub"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "两个都支持，标注为GHCR / Docker Hub。SBOM存储可以是工作流制品或发布资产。",
+      "elements_involved": [
+        "REGISTRY",
+        "SBOM_STORE",
+        "RELEASE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加ARTIFACTS子图，包含REGISTRY、SBOM_STORE、RELEASE三个节点，以及从PUSH、SBOM流入的关系。",
+      "elements_involved": [
+        "ARTIFACTS subgraph",
+        "REGISTRY",
+        "SBOM_STORE",
+        "RELEASE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CD部署自动化是重点。需要包含基础设施即代码、部署到Staging、验证、DAST扫描、审批门、生产部署和部署后检查。",
+      "elements_involved": [
+        "IaC",
+        "Staging",
+        "DAST",
+        "Approval Gate",
+        "Production"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "基础设施工具用哪些？Terraform、CloudFormation还是Ansible？",
+      "elements_involved": [
+        "Terraform",
+        "CloudFormation",
+        "Ansible"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "都支持，标注为Terraform / CloudFormation / Ansible。Staging部署可以用SSH拉取加docker-compose，或者应用K8s manifest。",
+      "elements_involved": [
+        "IAC_APPLY",
+        "DEPLOY_STG",
+        "K8s manifests"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加CD子图的前半部分：IAC_APPLY → DEPLOY_STG。Staging验证需要检查哪些内容？",
+      "elements_involved": [
+        "IAC_APPLY",
+        "DEPLOY_STG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Staging验证要包含：Web UI和地图图层、API和GraphQL端点、Focus Mode的引用功能、数据库迁移和种子数据。这个节点叫SMOKE。",
+      "elements_involved": [
+        "SMOKE",
+        "Web UI",
+        "map layers",
+        "API",
+        "GraphQL",
+        "Focus Mode",
+        "DB migrations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加SMOKE节点。接下来是DAST动态应用安全测试？",
+      "elements_involved": [
+        "SMOKE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，DAST在Staging环境跑，检查API和UI的攻击面。然后是一个审批门，需要人工确认加策略检查，通过后才能部署生产。",
+      "elements_involved": [
+        "DAST",
+        "Approval Gate",
+        "policy checks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加DAST和APPROVAL节点，审批门用了特殊样式。生产部署和部署后检查呢？",
+      "elements_involved": [
+        "DAST",
+        "APPROVAL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "生产部署DEPLOY_PROD用compose重启或滚动更新。部署后检查POSTCHECK要包含端口扫描80/443、基础漏洞扫描和健康检查。",
+      "elements_involved": [
+        "DEPLOY_PROD",
+        "POSTCHECK",
+        "port scan",
+        "health checks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成CD子图：IAC_APPLY → DEPLOY_STG → SMOKE → DAST → APPROVAL → DEPLOY_PROD → POSTCHECK。REGISTRY和RELEASE有流入DEPLOY_STG的关系。",
+      "elements_involved": [
+        "CD subgraph",
+        "POSTCHECK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要一条从GHA_SECRETS到DEPLOY_STG的虚线，表示SSH部署密钥的认证关系。",
+      "elements_involved": [
+        "GHA_SECRETS",
+        "SSH deploy key",
+        "DEPLOY_STG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加GHA_SECRETS到DEPLOY_STG的虚线连接。现在进入运行时部分？",
+      "elements_involved": [
+        "GHA_SECRETS",
+        "DEPLOY_STG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "运行时KFM Stack比较复杂。底层是Ubuntu服务器或云VM，暴露80/443端口。上面有Nginx/Apache反向代理处理TLS和缓存，然后是编排层docker-compose或K8s。",
+      "elements_involved": [
+        "Ubuntu Server",
+        "Cloud VM",
+        "Nginx",
+        "Apache",
+        "Reverse Proxy",
+        "TLS",
+        "Let's Encrypt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加HOST和PROXY节点。编排层后面有哪些服务？",
+      "elements_involved": [
+        "HOST",
+        "PROXY",
+        "ORCH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "六个核心服务：web前端用React、api后端用FastAPI+Uvicorn支持REST/GraphQL/Focus Mode、PostGIS空间数据库、Neo4j图数据库、Ollama LLM服务、OPA策略即代码边车。",
+      "elements_involved": [
+        "WEB",
+        "API",
+        "POSTGIS",
+        "NEO4J",
+        "OLLAMA",
+        "OPA",
+        "React",
+        "FastAPI",
+        "Uvicorn"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "OPA是Open Policy Agent？作为sidecar运行？",
+      "elements_involved": [
+        "OPA",
+        "Open Policy Agent",
+        "sidecar"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，OPA做策略即代码。还需要一个Secrets + Env节点，管理.env和Docker secrets，连接到需要密钥的服务。",
+      "elements_involved": [
+        "SECRETS_RT",
+        ".env",
+        "Docker secrets"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加RUNTIME子图，包含HOST、PROXY、ORCH、WEB、API、POSTGIS、NEO4J、OLLAMA、OPA、SECRETS_RT十个节点，以及它们之间的连接关系。API连接所有数据库和OPA。",
+      "elements_involved": [
+        "RUNTIME subgraph",
+        "WEB",
+        "API",
+        "POSTGIS",
+        "NEO4J",
+        "OLLAMA",
+        "OPA",
+        "SECRETS_RT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "DEPLOY_PROD要有两条流出线：一条到ORCH表示重启/更新，一条到PROXY表示配置/代理重载。",
+      "elements_involved": [
+        "DEPLOY_PROD",
+        "ORCH",
+        "PROXY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加DEPLOY_PROD到ORCH和PROXY的连接。最后是可观测性部分？",
+      "elements_involved": [
+        "DEPLOY_PROD",
+        "ORCH",
+        "PROXY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "可观测性子图包含：集中式日志、Prometheus指标、Grafana仪表盘、告警、备份、审计追踪。",
+      "elements_involved": [
+        "LOGS",
+        "METRICS",
+        "DASH",
+        "ALERTS",
+        "BACKUPS",
+        "AUDIT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "日志来源有哪些？备份针对哪些数据？",
+      "elements_involved": [
+        "LOGS sources",
+        "BACKUPS sources"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "日志来自PROXY、API和数据库。备份针对Postgres和Neo4j。审计追踪来自API的认证和数据访问。",
+      "elements_involved": [
+        "PROXY logs",
+        "API logs",
+        "DB logs",
+        "Postgres backups",
+        "Neo4j backups",
+        "Audit Trails"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加OBS子图，包含LOGS、METRICS、DASH、ALERTS、BACKUPS、AUDIT六个节点。LOGS和METRICS流向DASH，DASH流向ALERTS。",
+      "elements_involved": [
+        "OBS subgraph",
+        "LOGS",
+        "METRICS",
+        "DASH",
+        "ALERTS",
+        "BACKUPS",
+        "AUDIT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要添加具体的数据流：API和PROXY流向LOGS，API流向METRICS，POSTGIS和NEO4J流向BACKUPS，API流向AUDIT。",
+      "elements_involved": [
+        "API",
+        "PROXY",
+        "LOGS",
+        "METRICS",
+        "POSTGIS",
+        "NEO4J",
+        "BACKUPS",
+        "AUDIT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加所有可观测性的数据流连接。",
+      "elements_involved": [
+        "API-LOGS",
+        "PROXY-LOGS",
+        "API-METRICS",
+        "POSTGIS-BACKUPS",
+        "NEO4J-BACKUPS",
+        "API-AUDIT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "差点忘了反馈循环。ALERTS应该有一条虚线回到REPO，表示告警触发事件或bug报告进入工程流程。",
+      "elements_involved": [
+        "ALERTS",
+        "REPO",
+        "incident",
+        "bug report"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加ALERTS到REPO的反馈连接。还有其他的吗？",
+      "elements_involved": [
+        "ALERTS",
+        "REPO"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要一条概念性的回滚路径：POSTCHECK可以触发回滚，重新部署之前的tag到DEPLOY_PROD。",
+      "elements_involved": [
+        "POSTCHECK",
+        "rollback",
+        "redeploy previous tag",
+        "DEPLOY_PROD"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加POSTCHECK到DEPLOY_PROD的回滚路径，标注为rollback → redeploy previous tag。",
+      "elements_involved": [
+        "POSTCHECK",
+        "DEPLOY_PROD"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在检查整体结构。SOURCE到CI的连接是REPO推送或PR触发CI_TRIGGER，这个有了吗？",
+      "elements_involved": [
+        "REPO",
+        "CI_TRIGGER",
+        "push",
+        "PR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "感谢提醒，我漏掉了这条关键连接。现在添加REPO到CI_TRIGGER的触发关系。",
+      "elements_involved": [
+        "REPO",
+        "CI_TRIGGER"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "样式方面，安全相关节点用虚线边框，审批门用特殊样式，actor用粗边框，这样视觉上能区分不同类型。",
+      "elements_involved": [
+        "classDef sec",
+        "classDef gate",
+        "classDef actor",
+        "stroke-dasharray"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已应用所有样式定义：actor类2px边框，ci类1px，sec类1px虚线，artifact类1px，gate类2px虚线，runtime类1px，obs类1px。",
+      "elements_involved": [
+        "classDef styles",
+        "DEV",
+        "REPO",
+        "PR",
+        "SAST",
+        "SECRETSCAN",
+        "SCA",
+        "IAC_SCAN",
+        "IMAGE_SCAN",
+        "APPROVAL",
+        "DAST",
+        "POSTCHECK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "DAST和POSTCHECK也应该标记为安全类吧？",
+      "elements_involved": [
+        "DAST",
+        "POSTCHECK",
+        "sec class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "对，这两个也是安全相关的。更新它们的样式为sec类。",
+      "elements_involved": [
+        "DAST",
+        "POSTCHECK"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "曲线样式用basis会比较平滑。还有整个图的方向是TB从上到下。",
+      "elements_involved": [
+        "curve: basis",
+        "flowchart TB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已设置flowchart TB方向和basis曲线。现在检查所有子图的标题和图标是否准确。",
+      "elements_involved": [
+        "flowchart direction",
+        "curve style"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "子图标题：源代码部分用🧑‍💻 Source Control & Collaboration，CI用⚙️ CI — GitHub Actions，制品用📦 Artifacts & Supply-Chain，CD用🚀 CD — Deployment Automation，运行时用🛰️ Runtime — KFM Stack (Docker Compose / ☸️ K8s)，可观测性用📈 Observability, Ops, and Feedback。",
+      "elements_involved": [
+        "SOURCE",
+        "CI",
+        "ARTIFACTS",
+        "CD",
+        "RUNTIME",
+        "OBS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新所有子图标题，包含对应的emoji和描述。K8s用了☸️符号。",
+      "elements_involved": [
+        "subgraph titles",
+        "emoji icons"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "节点标签里的换行用<br/还是<br？GitHub渲染用哪个？",
+      "elements_involved": [
+        "<br/",
+        "<br",
+        "line break"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "用<br/，这是标准的XML风格，Mermaid都支持。检查一遍所有节点都用了正确的格式。",
+      "elements_involved": [
+        "<br/"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下：整个图要适配GitHub的浅色和深色主题，所以颜色要保持克制，主要靠边框样式区分，不要用太鲜艳的背景色。",
+      "elements_involved": [
+        "GitHub light/dark theme",
+        "subtle colors",
+        "stroke styles"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，只定义了边框样式，没有设置背景色，确保在GitHub两种主题下都能清晰显示。",
+      "elements_involved": [
+        "no fill colors",
+        "stroke-only styles"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要在顶部加上文件路径和文档来源的注释，说明这张图来自Kansas Frontier Matrix Comprehensive System Documentation.pdf的Deployment Instructions章节。",
+      "elements_involved": [
+        "file path comment",
+        "documentation source"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加顶部注释：文件路径docs/architecture/diagrams/sources/60-ci-cd-devsecops.mmd，标题Kansas Frontier Matrix — CI/CD + DevSecOps (high-level pipeline)，以及来源引用。",
+      "elements_involved": [
+        "%% comments",
+        "file header"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "完整检查一遍：六个子图、所有节点、所有连接、样式定义、反馈循环、回滚路径、顶部注释都齐全了。这张图应该能准确反映我们的DevSecOps实践。",
+      "elements_involved": [
+        "complete diagram review"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认完成。最终图表包含6个子图、40+节点、完整的CI/CD流水线、安全扫描嵌入、制品供应链、部署审批、运行时架构、可观测性反馈，以及回滚机制。已导出为Mermaid格式。",
+      "elements_involved": [
+        "final diagram",
+        "complete architecture"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 2,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:39Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:37Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:37Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 118014.4105,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 108
+  }
+}

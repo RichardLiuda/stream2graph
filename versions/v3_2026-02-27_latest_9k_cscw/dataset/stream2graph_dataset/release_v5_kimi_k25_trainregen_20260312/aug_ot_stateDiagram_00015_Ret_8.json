@@ -1,0 +1,546 @@
+{
+  "id": "aug_ot_stateDiagram_00015_Ret_8",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sethmcknight/quantic-msse-easy-park-plus/blob/039c5204b7b2c68b7ff94688985eb9bc26fba23c/project-submission/proposed-ddd-microservices-architecture/diagrams/state/mermaid/visit-state-diagram.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "sethmcknight/quantic-msse-easy-park-plus",
+  "diagram_type": "stateDiagram",
+  "code": "---\ntitle: Easy Park Plus - Visit State Diagram (Retail_PointOfSale)\n---\n\nstateDiagram-v2\n    %% Visit Operational Status\n    state \"VisitOperationalStatus\" as VisitOperational {Retail_Inventory] --> Planned : Reservation Confirmed\n        Planned --> PendingEntry : Vehicle Nearing Lot (Retail_Inventory)\n        PendingEntry --> EnteredLot : Vehicle ANPR Confirmed at Entry Gate / Gate Opened\n        PendingEntry --> Cancelled : Reservation NoShow / Expired before entry\n        \n        EnteredLot --> ActiveInLot : Vehicle Passed Entry Gate, Awaiting Slot Assignment or In Free-Roam\n        ActiveInLot --> SlotAssigned : Slot Assigned (Retail_PointOfSale)\n        ActiveInLot --> AwaitingSlotAssignment : Vehicle in lot, but no slot yet (Retail_CouponSystem)\n        AwaitingSlotAssignment --> SlotAssigned : Slot Assigned for Valet Park\n        \n        SlotAssigned --> ActiveInLot : Vehicle leaves slot, becomes Free-Roam (Retail_Inventory)\n        SlotAssigned --> ExitedLot : Vehicle ANPR Confirmed at Exit Gate / Gate Opened\n        ActiveInLot --> ExitedLot : Vehicle ANPR Confirmed at Exit Gate / Gate Opened (Retail_OrderManagement)\n\n        ExitedLot --> CompletedOperational : Post-exit processing complete (Retail_CustomerLoyalty)\n        \n        %% Error / Exception States for Operational\n        Planned --> FailedToEnter : Technical issue at gate, reservation remains\n        PendingEntry --> FailedToEnter\n        EnteredLot --> Interrupted : e.g., System outage, vehicle stuck in lot\n        ActiveInLot --> Interrupted\n        SlotAssigned --> Interrupted\n        AwaitingSlotAssignment --> Interrupted\n        Interrupted --> ExitedLot : Manual Override Exit\n        Interrupted --> Abandoned : Vehicle left in lot after prolonged interruption\n        Interrupted --> EmergencyEvacuated : Emergency Mode activated, forced evacuation\n        \n        %% Emergency evacuation can happen from any active state\n        EnteredLot --> EmergencyEvacuated : Emergency Mode activated\n        ActiveInLot --> EmergencyEvacuated : Emergency Mode activated  \n        SlotAssigned --> EmergencyEvacuated : Emergency Mode activated\n        AwaitingSlotAssignment --> EmergencyEvacuated : Emergency Mode activated\n        \n        Abandoned --> [Retail_Inventory]\n        CompletedOperational --> [Retail_CustomerLoyalty]\n        Cancelled --> [Retail_OrderManagement]\n        FailedToEnter --> [Retail_OrderManagement]\n        EmergencyEvacuated --> [Retail_OrderManagement]\n    }\n\n    %% Visit Billing Status (Retail_PointOfSale)\n    state \"VisitBillingStatus\" as VisitBilling {Retail_CustomerLoyalty] --> PendingPriceQuote : Visit Started (Retail_CouponSystem)\n        PendingPriceQuote --> PriceQuoteReceived : Pricing Service responds\n        PriceQuoteReceived --> PendingPayment : Price confirmed, awaiting customer payment\n        PendingPayment --> PaymentInProgress : Customer initiates payment\n        PaymentInProgress --> PaymentConfirmed : Payment successful (Retail_PointOfSale)\n        PaymentInProgress --> PaymentFailed : Payment attempt failed\n        PaymentFailed --> PendingPayment : Retry Payment\n        PaymentFailed --> RequiresManualBillingIntervention : Multiple failures or issue\n        \n        PaymentConfirmed --> BillingFinalized_Paid : Billing cycle complete for this visit\n        \n        %% Alternative Billing Flows\n        PendingPriceQuote --> GraceExempt_NoCharge : Visit qualifies for no charge (Retail_CustomerLoyalty)\n        GraceExempt_NoCharge --> BillingFinalized_Paid : (Retail_OrderManagement)\n\n        PriceQuoteReceived --> RequiresManualBillingIntervention : Price calculation error or dispute\n        RequiresManualBillingIntervention --> BillingFinalized_Paid : Manual resolution leads to payment\n        RequiresManualBillingIntervention --> BillingFinalized_Unpaid : Manual resolution leads to write-off or deferral\n        \n        BillingFinalized_Paid --> [Retail_PointOfSale]\n        BillingFinalized_Unpaid --> [Retail_OrderManagement]\n    }\n    \n    note right of VisitOperational\n      VisitOperationalStatus:\n      - Planned\n      - PendingEntry\n      - EnteredLot\n      - ActiveInLot\n      - AwaitingSlotAssignment\n      - SlotAssigned\n      - ExitedLot\n      - Interrupted\n      - Abandoned\n      - EmergencyEvacuated\n      - CompletedOperational (Retail_PointOfSale)\n      - Cancelled (Retail_PointOfSale)\n      - FailedToEnter \n    end note\n\n    note right of VisitBilling\n      VisitBillingStatus:\n      - PendingPriceQuote\n      - PriceQuoteReceived\n      - PendingPayment\n      - PaymentInProgress\n      - PaymentConfirmed\n      - PaymentFailed\n      - GraceExempt_NoCharge\n      - BillingFinalized_Paid\n      - BillingFinalized_Unpaid\n      - RequiresManualBillingIntervention\n    end note\n\n    %% Linking Operational and Billing states (Retail_Inventory)\n    %% This is hard to show perfectly in Mermaid for parallel states that are not time-synchronized\n    %% but conceptually:\n    %% ExitedLot (Retail_CustomerLoyalty) often triggers final billing actions if not already paid.\n    %% PaymentConfirmed (Retail_OrderManagement) can influence ExitedLot (Retail_CustomerLoyalty) if exit is gated by payment.\n    %% For simplicity, they are shown as parallel, managed by the VisitLifecycleStateMachine.\n    \n    %% VisitOperational : Visit Lifecycle Management\n    %% VisitBilling : Financial Lifecycle Management",
+  "content_size": 5220,
+  "collected_at": "2026-02-06T10:36:47.615769",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Retail",
+  "seed_id": "ot_stateDiagram_00015",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为Easy Park Plus设计一个完整的访客流状态图，核心要区分两条主线：车辆在场内的实际运营状态，以及对应的计费流程。这两个是并行推进的。",
+      "elements_involved": [
+        "VisitOperational",
+        "VisitBilling",
+        "parallel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以是并行的两个状态机？运营状态跟踪车辆从预约到离场的物理位置，计费状态跟踪财务生命周期？",
+      "elements_involved": [
+        "VisitOperational",
+        "VisitBilling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，而且运营状态要对接Retail_Inventory管理车位，计费状态要对接Retail_PointOfSale完成支付。",
+      "elements_involved": [
+        "VisitOperational",
+        "Retail_Inventory",
+        "VisitBilling",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "那我先构建VisitOperationalStatus。起点应该是Planned，表示预约已确认？",
+      "elements_involved": [
+        "VisitOperational",
+        "Planned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Planned之后车辆接近停车场时进入PendingEntry状态，这里要触发Retail_Inventory的库存检查。",
+      "elements_involved": [
+        "Planned",
+        "PendingEntry",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Planned通过\"Vehicle Nearing Lot\"事件转换到PendingEntry。那入场确认呢？",
+      "elements_involved": [
+        "Planned",
+        "PendingEntry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "PendingEntry之后，如果ANPR识别成功，闸机打开，进入EnteredLot；但如果预约过期或客户未出现，就走Cancelled分支。",
+      "elements_involved": [
+        "PendingEntry",
+        "EnteredLot",
+        "Cancelled",
+        "ANPR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Cancelled是终态吗？还是需要指向某个系统？",
+      "elements_involved": [
+        "Cancelled"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Cancelled要回流到Retail_OrderManagement，方便客服跟进退款或重新预约。",
+      "elements_involved": [
+        "Cancelled",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。EnteredLot之后呢？",
+      "elements_involved": [
+        "EnteredLot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EnteredLot之后车辆进入ActiveInLot，这个状态比较关键——车辆可能在场内自由漫游，也可能等待分配具体车位。",
+      "elements_involved": [
+        "EnteredLot",
+        "ActiveInLot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "所以ActiveInLot会有两个分支？一个直接分配车位，一个先等待？",
+      "elements_involved": [
+        "ActiveInLot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，ActiveInLot可以转换到SlotAssigned，这是Retail_PointOfSale完成的正常分配；也可以先到AwaitingSlotAssignment，这通常发生在代客泊车场景，需要Retail_CouponSystem介入。",
+      "elements_involved": [
+        "ActiveInLot",
+        "SlotAssigned",
+        "AwaitingSlotAssignment",
+        "Retail_PointOfSale",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，AwaitingSlotAssignment之后通过\"Slot Assigned for Valet Park\"事件再到SlotAssigned。那如果车辆离开已分配的车位呢？",
+      "elements_involved": [
+        "AwaitingSlotAssignment",
+        "SlotAssigned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SlotAssigned可以回退到ActiveInLot，标注为\"Vehicle leaves slot, becomes Free-Roam\"，同时重新触发Retail_Inventory更新。",
+      "elements_involved": [
+        "SlotAssigned",
+        "ActiveInLot",
+        "Retail_Inventory",
+        "Free-Roam"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的。离场流程怎么设计？",
+      "elements_involved": [
+        "SlotAssigned",
+        "ActiveInLot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SlotAssigned和ActiveInLot都可以直接到ExitedLot，都是ANPR确认离场。但SlotAssigned的离场要标注Retail_OrderManagement，因为可能涉及未完成的支付拦截。",
+      "elements_involved": [
+        "SlotAssigned",
+        "ActiveInLot",
+        "ExitedLot",
+        "ANPR",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ExitedLot之后是CompletedOperational？",
+      "elements_involved": [
+        "ExitedLot",
+        "CompletedOperational"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，CompletedOperational表示运营流程结束，要同步Retail_CustomerLoyalty更新会员积分。",
+      "elements_involved": [
+        "CompletedOperational",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "运营主线基本清晰了。但我注意到需要处理异常，比如技术故障或系统中断？",
+      "elements_involved": [
+        "VisitOperational",
+        "Interrupted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "非常重要。从PendingEntry、EnteredLot、ActiveInLot、SlotAssigned、AwaitingSlotAssignment都可以进入Interrupted状态，表示系统中断或车辆滞留。",
+      "elements_involved": [
+        "PendingEntry",
+        "EnteredLot",
+        "ActiveInLot",
+        "SlotAssigned",
+        "AwaitingSlotAssignment",
+        "Interrupted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Interrupted之后有哪些可能？",
+      "elements_involved": [
+        "Interrupted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Interrupted可以人工干预离场到ExitedLot；如果长期未解决变成Abandoned，车辆被标记为遗弃；或者紧急情况下走EmergencyEvacuated。",
+      "elements_involved": [
+        "Interrupted",
+        "ExitedLot",
+        "Abandoned",
+        "EmergencyEvacuated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Abandoned要回流到哪里？",
+      "elements_involved": [
+        "Abandoned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Abandoned回流到Retail_Inventory，由资产管理部门处理。EmergencyEvacuated和FailedToEnter都回流到Retail_OrderManagement。",
+      "elements_involved": [
+        "Abandoned",
+        "Retail_Inventory",
+        "EmergencyEvacuated",
+        "FailedToEnter",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "FailedToEnter是什么场景？",
+      "elements_involved": [
+        "FailedToEnter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Planned或PendingEntry时闸机技术故障，预约仍然有效，但车辆无法入场，需要客服介入。",
+      "elements_involved": [
+        "Planned",
+        "PendingEntry",
+        "FailedToEnter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "运营状态机完成了。现在构建并行的VisitBillingStatus？",
+      "elements_involved": [
+        "VisitOperational",
+        "VisitBilling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，计费从Retail_CustomerLoyalty触发，进入PendingPriceQuote，表示已开始计费但未定价。",
+      "elements_involved": [
+        "VisitBilling",
+        "Retail_CustomerLoyalty",
+        "PendingPriceQuote"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "PendingPriceQuote通过\"Visit Started\"事件，同时标注Retail_CouponSystem可能有的优惠券。然后到PriceQuoteReceived？",
+      "elements_involved": [
+        "PendingPriceQuote",
+        "Retail_CouponSystem",
+        "PriceQuoteReceived"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，定价服务响应后进入PriceQuoteReceived，客户确认价格后进入PendingPayment等待支付。",
+      "elements_involved": [
+        "PriceQuoteReceived",
+        "PendingPayment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "支付流程我设计为：PendingPayment → PaymentInProgress → PaymentConfirmed，这是标准成功路径？",
+      "elements_involved": [
+        "PendingPayment",
+        "PaymentInProgress",
+        "PaymentConfirmed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，PaymentConfirmed要标注Retail_PointOfSale完成收银，然后到BillingFinalized_Paid。",
+      "elements_involved": [
+        "PaymentConfirmed",
+        "Retail_PointOfSale",
+        "BillingFinalized_Paid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "如果支付失败呢？",
+      "elements_involved": [
+        "PaymentFailed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "PaymentInProgress可以失败到PaymentFailed，然后可以重试回到PendingPayment，或者多次失败后进入RequiresManualBillingIntervention人工介入。",
+      "elements_involved": [
+        "PaymentInProgress",
+        "PaymentFailed",
+        "PendingPayment",
+        "RequiresManualBillingIntervention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "人工介入后可以BillingFinalized_Paid或BillingFinalized_Unpaid？",
+      "elements_involved": [
+        "RequiresManualBillingIntervention",
+        "BillingFinalized_Paid",
+        "BillingFinalized_Unpaid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，BillingFinalized_Paid回流Retail_PointOfSale，BillingFinalized_Unpaid回流Retail_OrderManagement做坏账或延期处理。",
+      "elements_involved": [
+        "BillingFinalized_Paid",
+        "Retail_PointOfSale",
+        "BillingFinalized_Unpaid",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我注意到还有GraceExempt_NoCharge这个分支？",
+      "elements_involved": [
+        "GraceExempt_NoCharge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，PendingPriceQuote可以直接到GraceExempt_NoCharge，比如会员免费时长或优惠券全额抵扣，这也要Retail_CustomerLoyalty判断，然后直接BillingFinalized_Paid。",
+      "elements_involved": [
+        "PendingPriceQuote",
+        "GraceExempt_NoCharge",
+        "Retail_CustomerLoyalty",
+        "BillingFinalized_Paid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "PriceQuoteReceived也能直接人工介入吗？",
+      "elements_involved": [
+        "PriceQuoteReceived",
+        "RequiresManualBillingIntervention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，定价计算错误或客户争议时，从PriceQuoteReceived直接RequiresManualBillingIntervention。",
+      "elements_involved": [
+        "PriceQuoteReceived",
+        "RequiresManualBillingIntervention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个状态机都完成了。需要添加说明注释吗？",
+      "elements_involved": [
+        "note",
+        "VisitOperational",
+        "VisitBilling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，给两个状态机分别加注释，列出所有包含的状态，方便开发团队快速查阅。另外标注清楚：VisitOperational是车辆生命周期管理，VisitBilling是财务生命周期管理。",
+      "elements_involved": [
+        "note",
+        "VisitOperational",
+        "VisitBilling",
+        "VisitLifecycleStateMachine",
+        "FinancialLifecycleManagement"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 43,
+    "repair_count": 0,
+    "grounding_acts_count": 43,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:35Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:35Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 54986.6164,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 43
+  }
+}

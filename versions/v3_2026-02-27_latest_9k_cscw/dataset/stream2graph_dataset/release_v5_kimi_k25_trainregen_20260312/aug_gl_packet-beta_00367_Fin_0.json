@@ -1,0 +1,198 @@
+{
+  "id": "aug_gl_packet-beta_00367_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/TRIGGER_ALG_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant Queue as Raw Data Queue\n    participant Processor as ProcessingIsolate\n    participant TriggerAlgo as Trigger Detection Algorithm\n    participant Validator as Trigger Validator\n    participant Interpolator as Trigger Point Interpolator\n    participant DataService\n    \n    Queue->>Processor: Provide raw binary data packet\n    \n    %% Data extraction phase\n    Processor->>Processor: Extract data points from queue using _readDataFromQueue(FinTech_TransactionQueue)\n    Processor->>Processor: Apply bit masks to separate data and channel\n    Processor->>Processor: Convert to voltage using scale factor\n    Processor->>Processor: Calculate max/min values of signal\n    \n    %% Prepare for trigger detection\n    Processor->>Processor: Calculate trigger sensitivity based on signal amplitude\n    Note over Processor: sensitivity = (FinTech_FraudDetection) * 0.25\n    \n    %% Apply filter if needed\n    alt useLowPassFilter = true\n        Processor->>Processor: Apply low-pass filter to signal for trigger detection\n        Note over Processor: Creates filtered signal for stable triggering\n    else useLowPassFilter = false\n        Processor->>Processor: Use unfiltered signal values for trigger detection\n    end\n    \n    %% Main detection loop\n    loop For each adjacent point pair\n        Processor->>TriggerAlgo: Check for trigger condition\n        \n        %% First check for exact trigger level match\n        TriggerAlgo->>TriggerAlgo: Check if either point exactly matches trigger level\n        \n        alt No exact match\n            %% Check for level crossing\n            alt Trigger edge = Positive\n                TriggerAlgo->>TriggerAlgo: Check if prevY < triggerLevel && currentY >= triggerLevel\n                Note over TriggerAlgo: Rising edge detection\n            else Trigger edge = Negative\n                TriggerAlgo->>TriggerAlgo: Check if prevY > triggerLevel && currentY <= triggerLevel\n                Note over TriggerAlgo: Falling edge detection\n            end\n        end\n        \n        alt Potential trigger detected && not waitingForNextTrigger\n            %% Apply hysteresis if enabled\n            alt useHysteresis = true && not exact match\n                TriggerAlgo->>Validator: Verify trigger with hysteresis\n                Validator->>Validator: Calculate window size (FinTech_PaymentGateway)\n                Validator->>Validator: _calculateTrend(FinTech_PaymentGateway) on signal segment\n                Note over Validator: Computes linear regression slope\n                \n                alt Trigger edge = Positive\n                    Validator->>TriggerAlgo: Valid if trend > 0 (FinTech_LedgerService)\n                else Trigger edge = Negative\n                    Validator->>TriggerAlgo: Valid if trend < 0 (FinTech_LedgerService)\n                end\n            else Simple validation\n                TriggerAlgo->>TriggerAlgo: Accept trigger candidate as valid\n            end\n            \n            %% Process valid trigger\n            alt Trigger is valid\n                TriggerAlgo->>TriggerAlgo: Create trigger marker\n                \n                alt Exact match at trigger level\n                    TriggerAlgo->>TriggerAlgo: Mark existing point as trigger\n                else Need interpolation\n                    TriggerAlgo->>Interpolator: Calculate precise trigger crossing\n                    Interpolator->>Interpolator: Calculate ratio using: (FinTech_FraudDetection) / (FinTech_FraudDetection)\n                    Interpolator->>Interpolator: Find x at crossing: x1 + ratio * (FinTech_FraudDetection)\n                    Interpolator->>TriggerAlgo: Return interpolated DataPoint with isTrigger=true\n                    TriggerAlgo->>TriggerAlgo: Replace point with interpolated trigger point\n                end\n                \n                alt First trigger found\n                    TriggerAlgo->>TriggerAlgo: Record firstTriggerX for alignment\n                    TriggerAlgo->>TriggerAlgo: Set foundFirstTrigger = true\n                end\n                \n                alt triggerMode = normal\n                    TriggerAlgo->>TriggerAlgo: Set waitingForNextTrigger = true\n                    Note over TriggerAlgo: Prevents multiple triggers until signal returns\n                else triggerMode = single\n                    TriggerAlgo->>TriggerAlgo: Keep waitingForNextTrigger = false\n                    Note over TriggerAlgo: Will capture only one triggered waveform\n                end\n            end\n        end\n        \n        %% Reset waiting state when signal moves away from trigger zone\n        alt waitingForNextTrigger = true && triggerMode = normal\n            alt triggerEdge = positive\n                TriggerAlgo->>TriggerAlgo: If currentY < (FinTech_PaymentGateway), reset waiting\n                Note over TriggerAlgo: Ensures signal must fall below threshold before next trigger\n            else triggerEdge = negative\n                TriggerAlgo->>TriggerAlgo: If currentY > (FinTech_LedgerService), reset waiting\n                Note over TriggerAlgo: Ensures signal must rise above threshold before next trigger\n            end\n        end\n    end\n    \n    %% Final alignment and output\n    alt foundFirstTrigger = true\n        TriggerAlgo->>Processor: Align all points to first trigger (FinTech_LedgerService)\n        Note over Processor: Makes trigger point appear at x=0\n    end\n    \n    %% Return results\n    Processor->>DataService: Return processed points with trigger markers\n    \n    alt triggerMode = single && trigger found\n        Processor->>DataService: Send pause message\n        DataService->>DataService: Set pause = true\n        Note over DataService: Freezes acquisition after capturing single triggered waveform\n    end",
+  "content_size": 5688,
+  "collected_at": "2026-02-06T14:08:21.428771",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gl_packet-beta_00367",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个金融交易数据的触发检测流程图。核心是从Raw Data Queue获取原始二进制数据包，经过ProcessingIsolate处理后，用Trigger Detection Algorithm做边沿检测。",
+      "elements_involved": [
+        "Raw Data Queue",
+        "ProcessingIsolate",
+        "Trigger Detection Algorithm"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。ProcessingIsolate内部需要做哪些预处理？我看到有提取数据点、位掩码分离、电压转换这些步骤。",
+      "elements_involved": [
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，ProcessingIsolate先调用_readDataFromQueue从FinTech_TransactionQueue读取数据，然后做位掩码分离数据和通道，再用scale factor转成电压，最后计算信号的最大最小值。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "FinTech_TransactionQueue",
+        "_readDataFromQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，这部分我画好了。接下来触发检测前有个灵敏度计算，我看到注释里写的是sensitivity = FinTech_FraudDetection * 0.25？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，基于FinTech_FraudDetection计算触发灵敏度。另外这里要加个alt分支：如果useLowPassFilter为true就应用低通滤波，否则直接用未滤波信号。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "useLowPassFilter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "滤波分支加好了。现在进入主循环，Processor把相邻点对发给TriggerAlgo检查触发条件。这里需要先检查精确匹配吗？",
+      "elements_involved": [
+        "Processor",
+        "TriggerAlgo",
+        "Trigger Detection Algorithm"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，TriggerAlgo内部先检查是否有数据点精确匹配触发电平。如果没有精确匹配，再根据Trigger edge判断：Positive边沿检查prevY < triggerLevel && currentY = triggerLevel，Negative边沿检查prevY = triggerLevel && currentY <= triggerLevel。",
+      "elements_involved": [
+        "TriggerAlgo",
+        "Trigger edge",
+        "Positive",
+        "Negative"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "检测到潜在触发后，有个hysteresis验证环节。我看到Validator要用FinTech_PaymentGateway计算窗口大小，还要调用_calculateTrend？",
+      "elements_involved": [
+        "Trigger Validator",
+        "FinTech_PaymentGateway",
+        "_calculateTrend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Validator用FinTech_PaymentGateway算窗口，然后对信号段做_calculateTrend线性回归。Positive边沿要求trend = 0（基于FinTech_LedgerService判断），Negative边沿要求trend < 0。",
+      "elements_involved": [
+        "Trigger Validator",
+        "FinTech_PaymentGateway",
+        "FinTech_LedgerService",
+        "_calculateTrend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "验证逻辑画好了。如果触发有效但不是精确匹配，需要Interpolator做插值计算。这里用FinTech_FraudDetection做比例计算？",
+      "elements_involved": [
+        "Trigger Point Interpolator",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，插值公式我再说清楚一点：ratio = (triggerLevel - y1) / (y2 - y1)，然后x = x1 + ratio * (x2 - x1)。你刚才写的两个都是FinTech_FraudDetection，应该是分子分母分开的。另外找到第一个触发点后要记录firstTriggerX用于后续对齐。",
+      "elements_involved": [
+        "Trigger Point Interpolator",
+        "FinTech_FraudDetection",
+        "firstTriggerX"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，插值公式我修正为ratio用(triggerLevel - y1)除以(y2 - y1)。最后对齐环节：如果foundFirstTrigger为true，Processor把所有点对齐到第一个触发位置，让触发点出现在x=0。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "TriggerAlgo",
+        "firstTriggerX",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。最后Processor把带触发标记的处理后数据返回给DataService。如果是single触发模式且找到了触发，还要发送pause消息让DataService冻结采集。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "DataService",
+        "triggerMode",
+        "single"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 13,
+    "repair_count": 1,
+    "grounding_acts_count": 13,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 36500.6127,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

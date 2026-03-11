@@ -1,0 +1,156 @@
+{
+  "id": "gh_sequence_00679",
+  "source": "github",
+  "source_url": "https://github.com/Youknow2509/cio_verify_face/blob/64dd1b1eb75e62b25244067fb046f81672585bbe/doc/sequence_diagrams/websocket/device_status.mmd",
+  "github_repo": "Youknow2509/cio_verify_face",
+  "github_file_path": "doc/sequence_diagrams/websocket/device_status.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Admin as Admin Dashboard\n    participant WSGateway as WebSocket Gateway\n    participant WS as WebSocket Service\n    participant Monitor as Device Monitor\n    participant Cache as Redis Cache\n    participant DB as PostgreSQL\n    participant Queue as Kafka Consumer\n\n    Admin->>+WSGateway: WebSocket Connection\n    Note over Admin,WSGateway: ws://api.example.com/ws/admin?company_id=123&token=xyz\n    \n    WSGateway->>WSGateway: Validate admin token\n    WSGateway->>+Cache: Register admin connection\n    Note over WSGateway,Cache: admin_ws_connection:{company_id}:{admin_id}\n    Cache-->>-WSGateway: Connection registered\n    \n    WSGateway->>+WS: Register WebSocket client\n    Note over WSGateway,WS: Map admin to company device notifications\n    WS-->>-WSGateway: Admin client registered\n    \n    WSGateway-->>-Admin: WebSocket connection established\n    \n    Note over Admin,Queue: Device status monitoring begins...\n    \n    Monitor->>+DB: Query device status for company\n    Note over Monitor,DB: Check device heartbeats, connectivity\n    DB-->>-Monitor: Device status data\n    \n    Monitor->>Monitor: Analyze device health\n    Note over Monitor: Detect offline devices, connection issues\n    \n    alt Device status changed\n        Monitor->>+Queue: Publish device_status event\n        Note over Monitor,Queue: {company_id, device_id, status, details}\n        Queue-->>-Monitor: Event published\n        \n        Queue->>+WS: Consume device_status event\n        WS->>+Cache: Get admin connections for company\n        Note over WS,Cache: admin_ws_connection:{company_id}:*\n        Cache-->>-WS: Admin connection list\n        \n        loop For each connected admin\n            WS->>WSGateway: Send device status update\n            Note over WS,WSGateway: {type: \"device_status\", payload: {...}}\n            \n            WSGateway->>Admin: WebSocket message\n            Note over WSGateway,Admin: Real-time device status update\n            \n            Admin->>Admin: Update dashboard UI\n            Note over Admin: Show device online/offline status\n            Note over Admin: Display connection quality, last seen\n        end\n        \n        WS-->>-Queue: Event processed\n    end\n    \n    Note over Admin,Queue: Admin alert generation...\n    \n    Monitor->>Monitor: Check alert conditions\n    Note over Monitor: Multiple offline devices, security alerts\n    \n    alt Alert condition met\n        Monitor->>+Queue: Publish admin_alert event\n        Note over Monitor,Queue: {company_id, alert_type, severity, message}\n        Queue-->>-Monitor: Alert published\n        \n        Queue->>+WS: Consume admin_alert event\n        WS->>WSGateway: Send alert to admins\n        \n        WSGateway->>Admin: Critical alert notification\n        Note over WSGateway,Admin: High priority alert message\n        \n        Admin->>Admin: Display alert notification\n        Note over Admin: Show alert badge, sound notification\n        \n        WS-->>-Queue: Alert processed\n    end\n    \n    Note over Admin,Cache: WebSocket optimizations for admin dashboards:\n    Note over Admin,Cache: 1. Company-scoped device status broadcasting\n    Note over Admin,Cache: 2. Real-time alert prioritization\n    Note over Admin,Cache: 3. Dashboard state synchronization\n    Note over Admin,Cache: 4. Bandwidth-efficient status updates\n    Note over Admin,Cache: 5. Alert acknowledgment tracking",
+  "content_size": 3397,
+  "collected_at": "2026-02-06T01:35:34.728090",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 2,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个实时设备监控的时序图。管理员通过WebSocket连接到后台，能够实时收到设备状态变化和告警通知。核心流程是：Admin Dashboard先连WebSocket Gateway，然后Device Monitor去PostgreSQL查设备状态，发现有变化就通过Kafka推送给WebSocket Service，最后实时推给管理员。",
+      "elements_involved": [
+        "Admin Dashboard",
+        "WebSocket Gateway",
+        "Device Monitor",
+        "PostgreSQL",
+        "Kafka Consumer",
+        "WebSocket Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，我梳理一下参与者的顺序：Admin Dashboard、WebSocket Gateway、WebSocket Service、Device Monitor、Redis Cache、PostgreSQL、Kafka Consumer。连接建立时，Gateway需要把admin的连接信息存到Redis里，用company_id做隔离，对吧？",
+      "elements_involved": [
+        "WebSocket Gateway",
+        "Redis Cache",
+        "company_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Redis的key格式是admin_ws_connection:{company_id}:{admin_id}，这样WebSocket Service后面能根据company_id找到所有在线的管理员。还有，连接建立时Gateway要验证token，这个内部处理不用画外部调用。",
+      "elements_involved": [
+        "Redis Cache",
+        "admin_ws_connection",
+        "token validation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把连接建立流程画出来了：Admin Dashboard发起WebSocket连接，Gateway验证token后向Redis注册连接，然后通知WebSocket Service建立映射，最后返回连接成功。接下来画监控循环部分？",
+      "elements_involved": [
+        "Admin Dashboard",
+        "WebSocket Gateway",
+        "Redis Cache",
+        "WebSocket Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "监控部分用alt分支：Device Monitor定期查询PostgreSQL检查设备心跳和连接状态，分析健康度。如果状态有变化，就发device_status事件到Kafka；WebSocket Service消费后，从Redis拿到该company的所有admin连接，循环推送给每个在线管理员。",
+      "elements_involved": [
+        "Device Monitor",
+        "PostgreSQL",
+        "Kafka Consumer",
+        "Redis Cache",
+        "device_status",
+        "WebSocket Service",
+        "WebSocket Gateway",
+        "Admin Dashboard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "推送部分我理解是用loop循环每个admin，消息格式是{type: \"device_status\", payload: {...}}。另外告警部分也是类似的流程吗？还是独立的分支？",
+      "elements_involved": [
+        "loop",
+        "device_status",
+        "type",
+        "payload"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "告警是独立的alt分支。Monitor检查告警条件，比如多台设备离线或安全告警，满足条件就发admin_alert事件，severity标记优先级。WebSocket Service推送给admin时，Dashboard要显示alert badge和声音提醒，这个和状态更新是并行的。",
+      "elements_involved": [
+        "admin_alert",
+        "severity",
+        "alert badge",
+        "sound notification",
+        "Device Monitor",
+        "Kafka Consumer",
+        "WebSocket Service",
+        "Admin Dashboard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。我在底部加了几个note说明优化点：company-scoped的广播隔离、实时告警优先级、带宽高效的状态更新、以及告警确认追踪。整个流程从连接建立、状态监控、到双通道的实时推送都涵盖了。",
+      "elements_involved": [
+        "note",
+        "company-scoped",
+        "real-time alert prioritization",
+        "bandwidth-efficient",
+        "alert acknowledgment"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 30434.2761,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

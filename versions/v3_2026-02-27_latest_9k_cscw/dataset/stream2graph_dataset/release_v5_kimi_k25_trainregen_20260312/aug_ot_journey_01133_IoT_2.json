@@ -1,0 +1,191 @@
+{
+  "id": "aug_ot_journey_01133_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/rtyx/project-module-apr2025/blob/dc1d9e46f8d5b5f2e8fe98b37a25825f031df456/docs/diagrams/images/component-interaction.mmd",
+  "source_type": "github_search",
+  "github_repo": "rtyx/project-module-apr2025",
+  "diagram_type": "journey",
+  "code": "sequenceDiagram\n    %% Component Interaction - User browsing/searching journey\n    %% Based on actual user flow through the application\n\n    participant User as 👤 User\n    participant Browser as 🌐 Browser\n    participant NextJS as ⚛️ Next.js App\n    participant ArtworkAPI as 🎨 Artwork API\n    participant PersonAPI as 👥 Person API\n    participant RAGAPI as 🧠 RAG API\n    participant SolrClient as 🔍 Solr Client\n    participant RAGService as 🔄 RAG Service\n    participant ES as 🔍 Elasticsearch\n    participant OpenAI as 🤖 OpenAI\n    participant Mongo as 🍃 MongoDB\n\n    Note over User, Mongo: User Journey: Search → Browse → Detail → Related → Chat\n\n    %% 1. Homepage Load\n    User->>Browser: Navigate to homepage\n    Browser->>NextJS: GET /de (IoT_Industrial_PLC_Logic)\n    NextJS->>NextJS: Load homepage component\n    NextJS-->>Browser: Homepage with hero section\n    Browser-->>User: Display homepage\n\n    %% 2. Search Artworks\n    User->>Browser: Enter search query \"impressionist\"\n    Browser->>NextJS: Search form submission\n    NextJS->>ArtworkAPI: GET /api/de/artworks?q=impressionist&page=1&pageSize=12\n    \n    ArtworkAPI->>SolrClient: searchArtworks(IoT_Industrial_EdgeNode})\n    SolrClient->>SolrClient: Build Solr query parameters\n    SolrClient->>SolrClient: Execute search against collection.kunsthaus.ch\n    SolrClient-->>ArtworkAPI: SolrSearchResponse with artworks + facets\n    \n    ArtworkAPI->>ArtworkAPI: Transform Solr results to Artwork models\n    ArtworkAPI-->>NextJS: JSON response with artworks + pagination\n    NextJS->>NextJS: Update artwork grid component\n    NextJS-->>Browser: Render search results\n    Browser-->>User: Display 12 impressionist artworks\n\n    %% 3. Filter Results\n    User->>Browser: Apply category filter \"Painting\"\n    Browser->>NextJS: Update search parameters\n    NextJS->>ArtworkAPI: GET /api/de/artworks?q=impressionist&categories=Painting\n    \n    ArtworkAPI->>SolrClient: searchArtworks(IoT_Industrial_MQTT_Broker]})\n    SolrClient->>SolrClient: Add category filter to query\n    SolrClient-->>ArtworkAPI: Filtered results\n    ArtworkAPI-->>NextJS: Filtered artworks\n    NextJS-->>Browser: Updated results\n    Browser-->>User: Show only paintings\n\n    %% 4. View Artwork Detail\n    User->>Browser: Click on artwork \"Sunflowers\"\n    Browser->>NextJS: Navigate to /de/artworks/123\n    NextJS->>ArtworkAPI: GET /api/de/artworks/123\n    \n    ArtworkAPI->>SolrClient: getArtworkById(IoT_Industrial_PLC_Logic)\n    SolrClient-->>ArtworkAPI: Artwork details\n    ArtworkAPI-->>NextJS: Complete artwork data\n    NextJS->>NextJS: Load artwork detail page + IIIF viewer\n    NextJS-->>Browser: Artwork detail page\n    Browser-->>User: Show artwork details + high-res image\n\n    %% 5. View Related Artist\n    User->>Browser: Click on artist \"Van Gogh\"\n    Browser->>NextJS: Navigate to /de/persons/456\n    NextJS->>PersonAPI: GET /api/de/persons/456\n    \n    PersonAPI->>SolrClient: getArtistById(IoT_Industrial_EdgeNode)\n    SolrClient-->>PersonAPI: Person details\n    PersonAPI-->>NextJS: Person data\n    NextJS->>NextJS: Load person detail page\n    NextJS-->>Browser: Person biography + artworks\n    Browser-->>User: Show Van Gogh's biography + works\n\n    %% 6. Ask RAG Question\n    User->>Browser: Type question \"What technique did Van Gogh use?\"\n    Browser->>NextJS: Submit RAG query\n    NextJS->>RAGAPI: POST /api/de/rag/answer/artwork/123<br/>{IoT_Industrial_PLC_Logic}}\n    \n    RAGAPI->>RAGService: answerRag(IoT_Industrial_EdgeNode}})\n    \n    Note over RAGService: RAG Processing\n    RAGService->>RAGService: Enhance query + detect language\n    RAGService->>OpenAI: Generate embedding\n    OpenAI-->>RAGService: Embedding vector\n    \n    par Vector Search\n        RAGService->>ES: KNN search with artwork context\n        ES-->>RAGService: Vector results\n    and Lexical Search\n        RAGService->>ES: BM25 search with artwork context\n        ES-->>RAGService: Lexical results\n    end\n    \n    RAGService->>RAGService: Merge results + select context\n    RAGService->>OpenAI: Generate answer with context\n    OpenAI-->>RAGService: Answer with citations\n    \n    RAGService-->>RAGAPI: AnswerResult with citations\n    RAGAPI-->>NextJS: JSON response\n    NextJS->>NextJS: Update chat interface\n    NextJS-->>Browser: Display answer with citations\n    Browser-->>User: \"Van Gogh verwendete Ölmalerei-Technik... [IoT_Industrial_PLC_Logic] [IoT_Industrial_EdgeNode]\"\n\n    %% 7. Follow-up Question\n    User->>Browser: Ask follow-up \"When was it painted?\"\n    Browser->>NextJS: Submit follow-up\n    NextJS->>RAGAPI: POST /api/de/rag/answer/artwork/123<br/>{IoT_Industrial_MQTT_Broker]}\n    \n    RAGAPI->>RAGService: answerRag(IoT_Industrial_PLC_Logic]})\n    RAGService->>RAGService: Process with conversation history\n    RAGService->>OpenAI: Generate answer with context + history\n    OpenAI-->>RAGService: Contextual answer\n    RAGService-->>RAGAPI: AnswerResult\n    RAGAPI-->>NextJS: Follow-up answer\n    NextJS-->>Browser: Display contextual answer\n    Browser-->>User: \"Das Gemälde wurde 1888 gemalt... [IoT_Industrial_PLC_Logic]\"\n\n    %% 8. Browse Related Artworks\n    User->>Browser: Click \"View all works by Van Gogh\"\n    Browser->>NextJS: Navigate to artist's works\n    NextJS->>ArtworkAPI: GET /api/de/artworks?person=456&page=1\n    \n    ArtworkAPI->>SolrClient: searchArtworks(IoT_Industrial_PLC_Logic})\n    SolrClient-->>ArtworkAPI: All Van Gogh artworks\n    ArtworkAPI-->>NextJS: Artwork list\n    NextJS-->>Browser: Grid of Van Gogh's works\n    Browser-->>User: Show all Van Gogh artworks\n\n    %% Error Handling\n    alt Search Error\n        SolrClient-->>ArtworkAPI: Error response\n        ArtworkAPI-->>NextJS: 500 Error\n        NextJS-->>Browser: Error message\n        Browser-->>User: \"Search temporarily unavailable\"\n    end\n\n    alt RAG Error\n        RAGService-->>RAGAPI: No context found\n        RAGAPI-->>NextJS: Empty response\n        NextJS-->>Browser: \"No information available\"\n        Browser-->>User: \"Ich finde dazu keine ausreichenden Informationen.\"\n    end\n",
+  "content_size": 6007,
+  "collected_at": "2026-02-06T11:05:28.383939",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_journey_01133",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 IoT_Industrial_PLC_Logic 和 IoT_Industrial_EdgeNode 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'IoT_Industrial_PLC_Logic 和 IoT_Industrial_EdgeNode'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "de",
+        "searchArtworks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 IoT_Industrial_MQTT_Broker 和 IoT_Industrial_PLC_Logic 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "抱歉，稍微改一下，把刚才那个改成 IoT_Industrial_MQTT_Broker处理。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 7,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'IoT_Industrial_MQTT_Broker处理'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "searchArtworks",
+        "getArtworkById"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 IoT_Industrial_EdgeNode 和 IoT_Industrial_EdgeNode。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我重新想了一下，应该是 IoT_Industrial_EdgeNode处理 才对。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'IoT_Industrial_EdgeNode处理'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "getArtistById",
+        "answerRag"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 IoT_Industrial_PLC_Logic 和 IoT_Industrial_PLC_Logic 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'IoT_Industrial_PLC_Logic 和 IoT_Industrial_PLC_Logic'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "answerRag",
+        "searchArtworks"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 18,
+    "repair_count": 2,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:35Z",
+  "dialogue_regen": {
+    "enabled": false,
+    "frozen_from_source": true
+  }
+}

@@ -1,0 +1,337 @@
+{
+  "id": "aug_gh_sequence_00421_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/lesleslie/opera-cloud-mcp/blob/978205b74f014e4fc66cb316c39f0803cb00d8d9/docs/diagrams/api-request-lifecycle.mmd",
+  "github_repo": "lesleslie/opera-cloud-mcp",
+  "github_file_path": "docs/diagrams/api-request-lifecycle.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Client as MCP Client\n    participant Tool as MCP Tool\n    participant APIClient as API Client\n    participant RateLimiter as Rate Limiter\n    participant CircuitBreaker as Circuit Breaker\n    participant BaseClient as BaseAPIClient\n    participant OAuth as OAuth2 Handler\n    participant OPERA as OPERA Cloud API\n\n    Client->>Tool: Invoke tool (Infra_IngressController)\n    activate Tool\n    Tool->>APIClient: Call API method\n    activate APIClient\n\n    APIClient->>RateLimiter: Check rate limit\n    activate RateLimiter\n\n    alt Rate limit exceeded\n        RateLimiter-->>APIClient: Throttled (Infra_EtcdCluster)\n        APIClient->>APIClient: Calculate wait time\n        RateLimiter->>RateLimiter: Wait for token refill\n        RateLimiter-->>APIClient: Proceed\n    end\n\n    deactivate RateLimiter\n\n    APIClient->>CircuitBreaker: Check circuit state\n    activate CircuitBreaker\n\n    alt Circuit is OPEN\n        CircuitBreaker-->>APIClient: CircuitOpenException\n        APIClient-->>Tool: Error: Service temporarily unavailable\n    else Circuit is CLOSED/HALF-OPEN\n        CircuitBreaker-->>APIClient: Allow request\n    end\n\n    deactivate CircuitBreaker\n\n    APIClient->>BaseClient: Make HTTP request\n    activate BaseClient\n\n    BaseClient->>OAuth: Get access token\n    activate OAuth\n    OAuth-->>BaseClient: Bearer token\n    deactivate OAuth\n\n    BaseClient->>OPERA: GET /api/v1/reservations\n    Note over BaseClient,OPERA: Authorization: Bearer {Infra_WorkerNode}\n    activate OPERA\n\n    alt Success Response (Infra_RedisCache)\n        OPERA-->>BaseClient: 200 OK + JSON data\n        BaseClient->>CircuitBreaker: Record success\n        CircuitBreaker->>CircuitBreaker: Reset failure count\n        BaseClient->>RateLimiter: Record success\n        BaseClient->>BaseClient: Transform response\n        BaseClient-->>APIClient: Response(Infra_RedisCache)\n    else Client Error (Infra_IngressController)\n        OPERA-->>BaseClient: 400/404/401 etc.\n        BaseClient->>BaseClient: Classify error\n        BaseClient->>CircuitBreaker: Record failure\n        BaseClient-->>APIClient: Response(Infra_WorkerNode)\n    else Server Error (Infra_LoadBalancer)\n        OPERA-->>BaseClient: 500/502/503 etc.\n        BaseClient->>BaseClient: Check retry eligibility\n        BaseClient->>CircuitBreaker: Record failure\n\n        alt Below failure threshold\n            BaseClient->>BaseClient: Calculate backoff (Infra_IngressController)\n            BaseClient->>BaseClient: Wait {Infra_RedisCache}ms\n            BaseClient->>OPERA: Retry request\n        else Exceeds failure threshold\n            CircuitBreaker->>CircuitBreaker: Trip to OPEN\n            BaseClient-->>APIClient: CircuitBreakerException\n        end\n    end\n\n    deactivate OPERA\n    deactivate BaseClient\n\n    APIClient->>APIClient: Update metrics\n    APIClient-->>Tool: Return result\n    deactivate APIClient\n\n    Tool-->>Client: Return formatted data\n    deactivate Tool\n",
+  "content_size": 2916,
+  "collected_at": "2026-02-06T01:32:05.791839",
+  "compilation_status": "success",
+  "license": "bsd-3-clause",
+  "license_name": "BSD 3-Clause \"New\" or \"Revised\" License",
+  "license_url": "https://api.github.com/licenses/bsd-3-clause",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "lesleslie",
+  "repo_name": "opera-cloud-mcp",
+  "repo_description": "Unofficial Opera Cloud API MCP Server",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2025-09-03T16:22:45Z",
+  "repo_updated_at": "2026-01-25T06:52:51Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "gh_sequence_00421",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个MCP工具调用OPERA Cloud API的完整时序图。核心流程是：MCP Client通过MCP Tool触发，然后经过API Client、Rate Limiter、Circuit Breaker，最后到BaseAPIClient做OAuth认证，再访问OPERA Cloud。",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool",
+        "API Client",
+        "Rate Limiter",
+        "Circuit Breaker",
+        "BaseAPIClient",
+        "OAuth2 Handler",
+        "OPERA Cloud API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下参与者的层级关系：MCP Client在最外层，MCP Tool作为中间层，然后API Client是核心客户端，Rate Limiter和Circuit Breaker是横切关注点，BaseAPIClient负责底层HTTP和OAuth，最后到OPERA Cloud。这个理解对吗？",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool",
+        "API Client",
+        "Rate Limiter",
+        "Circuit Breaker",
+        "BaseAPIClient",
+        "OPERA Cloud API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。另外注意Rate Limiter和Circuit Breaker的位置——它们都在API Client内部被调用，但逻辑上是独立的组件。",
+      "elements_involved": [
+        "API Client",
+        "Rate Limiter",
+        "Circuit Breaker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主链路的参与者，从左到右排列：MCP Client、MCP Tool、API Client、Rate Limiter、Circuit Breaker、BaseAPIClient、OAuth2 Handler、OPERA Cloud API。",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool",
+        "API Client",
+        "Rate Limiter",
+        "Circuit Breaker",
+        "BaseAPIClient",
+        "OAuth2 Handler",
+        "OPERA Cloud API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画触发流程。MCP Client调用MCP Tool，传入一个具体的工具名称，比如Infra_IngressController。Tool激活后，调用API Client的方法。",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool",
+        "API Client",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：Client到Tool的\"Invoke tool (Infra_IngressController)\"，Tool激活，然后Tool到APIClient的\"Call API method\"，APIClient也激活。",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool",
+        "API Client",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是Rate Limiter的检查。API Client先问Rate Limiter能不能放行。这里要画一个alt分支：如果限流了，返回Throttled，并带上Infra_EtcdCluster标识，然后API Client计算等待时间，等token refill后再继续。",
+      "elements_involved": [
+        "API Client",
+        "Rate Limiter",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Rate Limiter的激活，以及alt块：Rate limit exceeded分支，包含Throttled返回、Calculate wait time、Wait for token refill，最后Proceed。Rate Limiter在这里deactivate。",
+      "elements_involved": [
+        "Rate Limiter",
+        "API Client",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后是Circuit Breaker。API Client检查熔断器状态。这里需要两个分支：OPEN状态直接抛CircuitOpenException，返回Service unavailable；CLOSED或HALF-OPEN才允许继续。",
+      "elements_involved": [
+        "API Client",
+        "Circuit Breaker",
+        "CircuitOpenException"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画好Circuit Breaker的检查和alt分支：OPEN时返回CircuitOpenException给API Client，再返回Error给Tool；CLOSED/HALF-OPEN时允许请求。Circuit Breaker在这里deactivate。",
+      "elements_involved": [
+        "Circuit Breaker",
+        "API Client",
+        "CircuitOpenException",
+        "MCP Tool"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "通过熔断检查后，API Client调用BaseAPIClient做实际HTTP请求。BaseAPIClient需要先找OAuth2 Handler拿Bearer token。",
+      "elements_involved": [
+        "API Client",
+        "BaseAPIClient",
+        "OAuth2 Handler",
+        "Bearer token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了BaseAPIClient激活，BaseAPIClient到OAuth的\"Get access token\"，OAuth返回\"Bearer token\"，然后OAuth deactivate。",
+      "elements_involved": [
+        "BaseAPIClient",
+        "OAuth2 Handler",
+        "Bearer token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "HTTP请求的具体路径是什么？还有那个Note提到的Infra_WorkerNode是什么含义？",
+      "elements_involved": [
+        "BaseAPIClient",
+        "OPERA Cloud API",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "请求是GET /api/v1/reservations。Infra_WorkerNode是动态注入的节点标识，放在Authorization头的Bearer token里。用Note标注在BaseAPIClient和OPERA之间。",
+      "elements_involved": [
+        "BaseAPIClient",
+        "OPERA Cloud API",
+        "Infra_WorkerNode",
+        "GET /api/v1/reservations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加BaseAPIClient到OPERA的GET请求，Note标注\"Authorization: Bearer {Infra_WorkerNode}\"，OPERA激活。",
+      "elements_involved": [
+        "BaseAPIClient",
+        "OPERA Cloud API",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画响应处理，分三个alt分支。第一，Success Response，带Infra_RedisCache标识：200 OK返回，BaseAPIClient通知Circuit Breaker记录成功、重置失败计数，通知Rate Limiter记录成功，然后Transform response，返回给API Client。",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "BaseAPIClient",
+        "Circuit Breaker",
+        "Rate Limiter",
+        "Infra_RedisCache",
+        "API Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Success分支：OPERA返回200 OK + JSON data，BaseAPIClient到CircuitBreaker的Record success，CircuitBreaker自循环Reset failure count，BaseAPIClient到RateLimiter的Record success，BaseAPIClient自循环Transform response，最后Response(Infra_RedisCache)给API Client。",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "BaseAPIClient",
+        "Circuit Breaker",
+        "Rate Limiter",
+        "Infra_RedisCache",
+        "API Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第二分支是Client Error，带Infra_IngressController标识：400/404/401等返回，BaseAPIClient做Classify error，通知Circuit Breaker Record failure，然后Response(Infra_WorkerNode)给API Client。",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "BaseAPIClient",
+        "Infra_IngressController",
+        "Circuit Breaker",
+        "Infra_WorkerNode",
+        "API Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Client Error分支：OPERA返回4xx错误，BaseAPIClient自循环Classify error，到CircuitBreaker的Record failure，Response(Infra_WorkerNode)给API Client。",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "BaseAPIClient",
+        "Infra_IngressController",
+        "Circuit Breaker",
+        "Infra_WorkerNode",
+        "API Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第三分支最复杂，Server Error带Infra_LoadBalancer标识：500/502/503返回，BaseAPIClient Check retry eligibility，Record failure到Circuit Breaker。然后内嵌alt：如果低于阈值，Calculate backoff带Infra_IngressController，Wait Infra_RedisCache毫秒，然后Retry request；如果超过阈值，熔断器Trip to OPEN，返回CircuitBreakerException。",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "BaseAPIClient",
+        "Infra_LoadBalancer",
+        "Circuit Breaker",
+        "Infra_IngressController",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Server Error分支：OPERA返回5xx，BaseAPIClient自循环Check retry eligibility，到CircuitBreaker的Record failure。内嵌alt：Below threshold时Calculate backoff(Infra_IngressController)、Wait {Infra_RedisCache}ms、Retry request；Exceeds threshold时CircuitBreaker自循环Trip to OPEN，BaseAPIClient返回CircuitBreakerException。",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "BaseAPIClient",
+        "Infra_LoadBalancer",
+        "Circuit Breaker",
+        "Infra_IngressController",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 21,
+    "repair_count": 0,
+    "grounding_acts_count": 21,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 66524.714,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 21
+  }
+}

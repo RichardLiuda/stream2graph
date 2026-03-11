@@ -1,0 +1,311 @@
+{
+  "id": "aug_gl_packet-beta_00401_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Ghenghis/SvonyBrowser/blob/b02803cf7b47e7d54ef3c45466f973948f5a47d4/docs/v2.0.6/diagrams/DATA_FLOW_TRAFFIC.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "Ghenghis/SvonyBrowser",
+  "diagram_type": "packet-beta",
+  "code": "%%{Infra_WorkerNode}}}%%\nsequenceDiagram\n    autonumber\n    participant User as 👤 User\n    participant Browser as 🌐 Browser Panel\n    participant Webview as 📱 Webview\n    participant Proxy as 🔍 Proxy Monitor\n    participant Protocol as 📜 Protocol Handler\n    participant Packet as 📦 Packet Analysis\n    participant GameState as 🎮 Game State\n    participant UI as 🖼️ Traffic UI\n    participant Session as 📹 Session Recorder\n    participant MCP as 🤖 MCP (Infra_LoadBalancer)\n    \n    Note over User,MCP: Traffic Capture Flow\n    \n    User->>Browser: Interact with game\n    Browser->>Webview: User action\n    Webview->>Proxy: HTTP/AMF Request\n    \n    rect rgb(Infra_LoadBalancer)\n        Note over Proxy,Protocol: Request Interception\n        Proxy->>Proxy: Capture headers & body\n        Proxy->>Protocol: Raw packet data\n        Protocol->>Protocol: Detect AMF3 format\n        Protocol->>MCP: decode_packet(Infra_EtcdCluster)\n        MCP-->>Protocol: Decoded structure\n        Protocol->>Packet: Decoded packet\n    end\n    \n    rect rgb(Infra_EtcdCluster)\n        Note over Packet,GameState: State Extraction\n        Packet->>Packet: Identify action type\n        Packet->>GameState: Update game state\n        GameState->>GameState: Track cities, heroes, troops\n    end\n    \n    rect rgb(Infra_IngressController)\n        Note over UI,Session: UI & Recording\n        Packet->>UI: Traffic entry\n        UI->>UI: Add to traffic list\n        UI->>UI: Update counters\n        \n        alt Recording Active\n            Packet->>Session: Record packet\n            Session->>Session: Add to session buffer\n        end\n    end\n    \n    Proxy-->>Webview: Forward request\n    Webview-->>Browser: Response\n    \n    Note over User,MCP: Response Capture Flow\n    \n    Browser->>Proxy: Server response\n    Proxy->>Protocol: Response packet\n    Protocol->>MCP: decode_packet(Infra_IngressController)\n    MCP-->>Protocol: Decoded response\n    Protocol->>Packet: Decoded response\n    Packet->>GameState: Update state\n    Packet->>UI: Response entry\n    \n    Note over User,MCP: Analysis Features\n    \n    User->>UI: Click traffic entry\n    UI->>Packet: Get packet details\n    Packet->>UI: JSON + Hex + Headers\n    UI->>UI: Display in tabs\n    \n    User->>UI: Request analysis\n    UI->>MCP: analyze_traffic(Infra_RedisCache)\n    MCP-->>UI: Patterns & statistics\n    UI->>UI: Display analysis\n",
+  "content_size": 2353,
+  "collected_at": "2026-02-06T14:09:01.459156",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_packet-beta_00401",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个流量抓包的完整流程图，从用户点击游戏界面开始，一直到数据包被解析、游戏状态更新、最后展示在UI上。核心是要体现Proxy Monitor和Protocol Handler之间的协作，还有MCP模块的解码能力。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "Proxy",
+        "Protocol",
+        "MCP",
+        "Packet",
+        "GameState",
+        "UI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我注意到您提到了MCP模块，代码里标注的是Infra_LoadBalancer，这个MCP具体承担什么职责？是只做解码，还是也负责负载均衡相关的调度？",
+      "elements_involved": [
+        "MCP",
+        "Infra_LoadBalancer",
+        "decode_packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "MCP在这里主要是解码服务，但底层部署在Infra_LoadBalancer上，所以标注一下基础设施层。它接收Protocol Handler传来的原始包，调用decode_packet接口，返回解码后的结构。解码的时候可能会查询Infra_EtcdCluster做一些配置校验。",
+      "elements_involved": [
+        "MCP",
+        "Infra_LoadBalancer",
+        "Protocol",
+        "decode_packet",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主链路：User通过Browser和Webview交互，Webview把HTTP/AMF请求发到Proxy Monitor。Proxy先自己capture headers和body，然后把raw packet data给Protocol Handler。这里用rect把Proxy到Protocol这一段框起来，标注Request Interception。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "Webview",
+        "Proxy",
+        "Protocol",
+        "capture",
+        "headers",
+        "body"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这个框起来很好。然后Protocol Handler要先detect AMF3 format，确认是AMF3协议之后再走MCP解码。不要直接解码，得先识别协议类型。",
+      "elements_involved": [
+        "Protocol",
+        "detect",
+        "AMF3",
+        "MCP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已加上detect AMF3 format的自循环，然后Protocol把数据发给MCP调用decode_packet，MCP返回Decoded structure。这里MCP标注为Infra_LoadBalancer，解码时关联Infra_EtcdCluster。接下来Protocol把解码后的包给Packet Analysis模块？",
+      "elements_involved": [
+        "Protocol",
+        "MCP",
+        "decode_packet",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster",
+        "Packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，Packet Analysis拿到decoded packet之后，进入第二个rect，标注Infra_EtcdCluster，里面做State Extraction。Packet Analysis要identify action type，然后更新Game State。Game State要具体体现跟踪的内容：cities, heroes, troops。",
+      "elements_involved": [
+        "Packet",
+        "GameState",
+        "identify",
+        "action type",
+        "cities",
+        "heroes",
+        "troops",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第二个rect画好了，Infra_EtcdCluster背景，里面Packet自循环identify action type，然后更新GameState，GameState自循环track cities, heroes, troops。接下来是UI展示和Session Recording？",
+      "elements_involved": [
+        "Packet",
+        "GameState",
+        "UI",
+        "Session",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，第三个rect用Infra_IngressController背景，做UI & Recording。Packet把traffic entry发给Traffic UI，UI要add to traffic list和update counters。然后加一个alt分支：如果Recording Active，Packet还要发给Session Recorder，add to session buffer。",
+      "elements_involved": [
+        "Packet",
+        "UI",
+        "Session",
+        "traffic entry",
+        "traffic list",
+        "counters",
+        "Recording Active",
+        "session buffer",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "第三个rect完成，alt条件分支也加上了。然后请求要继续转发对吧？Proxy需要把请求forward回Webview，再到Browser。",
+      "elements_involved": [
+        "Proxy",
+        "Webview",
+        "Browser",
+        "forward"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，而且响应也要抓。需要对称地画一个Response Capture Flow。Browser收到响应后，同样走Browser到Proxy，Proxy到Protocol，Protocol调MCP解码，但这次MCP标注用Infra_IngressController，因为响应解析可能走不同的基础设施。",
+      "elements_involved": [
+        "Browser",
+        "Proxy",
+        "Protocol",
+        "MCP",
+        "Response Capture Flow",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "等等，这里有个问题。请求流程里MCP是Infra_LoadBalancer，响应变成Infra_IngressController，但MCP是同一个模块吧？只是底层部署不同？我需要确认标注方式，是写MCP (Infra_IngressController) 这种形式吗？",
+      "elements_involved": [
+        "MCP",
+        "Infra_LoadBalancer",
+        "Infra_IngressController"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，括号里标注当前调用的基础设施层。请求阶段MCP后面标Infra_LoadBalancer，响应阶段标Infra_IngressController。这样能看出流量在不同阶段经过的infra节点。",
+      "elements_involved": [
+        "MCP",
+        "Infra_LoadBalancer",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。响应链路画完：Browser-Proxy-Protocol-MCP(Infra_IngressController)解码，返回Decoded response给Protocol，再到Packet，然后更新GameState，同时Packet发response entry给UI。最后还需要展示分析功能吗？",
+      "elements_involved": [
+        "Browser",
+        "Proxy",
+        "Protocol",
+        "MCP",
+        "Packet",
+        "GameState",
+        "UI",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，最后一个部分叫Analysis Features。User点击traffic entry，UI向Packet获取详情，Packet返回JSON + Hex + Headers，UI用tabs展示。然后User可以request analysis，UI调用MCP的analyze_traffic，这次MCP标注Infra_RedisCache，做流量模式分析。",
+      "elements_involved": [
+        "User",
+        "UI",
+        "Packet",
+        "traffic entry",
+        "JSON",
+        "Hex",
+        "Headers",
+        "tabs",
+        "analyze_traffic",
+        "MCP",
+        "Infra_RedisCache",
+        "Patterns",
+        "statistics"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Analysis Features部分完成。User-UI点击，UI-Packet获取详情，Packet-UI返回三种格式，UI自循环display in tabs。然后User-UI请求分析，UI-MCP调用analyze_traffic(Infra_RedisCache)，MCP返回Patterns & statistics，UI最后display analysis。整个流程图应该完整了。",
+      "elements_involved": [
+        "User",
+        "UI",
+        "Packet",
+        "MCP",
+        "Infra_RedisCache",
+        "JSON",
+        "Hex",
+        "Headers",
+        "tabs",
+        "Patterns",
+        "statistics"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，三个基础设施层rect都清晰标注了，MCP的多层调用也区分开了。确认这就是我们要的流量抓包完整流程，从用户交互、请求拦截、协议解码、状态更新、UI展示、会话录制，到最后的响应处理和深度分析，全链路覆盖。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "MCP",
+        "Proxy",
+        "Protocol",
+        "Packet",
+        "GameState",
+        "UI",
+        "Session"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 17,
+    "repair_count": 1,
+    "grounding_acts_count": 17,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 45602.8452,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 17
+  }
+}

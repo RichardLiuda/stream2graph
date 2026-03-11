@@ -1,0 +1,501 @@
+{
+  "id": "gh_sequence_00606",
+  "source": "github",
+  "source_url": "https://github.com/ilyan146/openai_sdk_resume_assistant/blob/abac81bf9620390eb87ce3dbdcd34d4186809a85/docs/routes/chat_stream_flow.mmd",
+  "github_repo": "ilyan146/openai_sdk_resume_assistant",
+  "github_file_path": "docs/routes/chat_stream_flow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant User as User\n    participant CP as ChatPage.jsx\n    participant UC as useChat.js\n    participant API as api.js\n    participant Router as chat.py\n    participant CS as ChatService\n    participant DAL as MongoDAL\n    participant MCP as MCP Server (RAG)\n    participant Azure as Azure OpenAI\n    participant DB as MongoDB\n\n    User->>CP: Type message + Send\n    CP->>UC: sendMessage(text)\n    UC->>API: askStream(chatId, message)\n    API->>Router: POST /api/chat/ask_stream\n    \n    Router->>DAL: get_chat_memory(chatId)\n    DAL->>DB: find_one({_id: chatId})\n    DB-->>DAL: ChatMemory\n    DAL-->>Router: ChatMemory (validate exists)\n    \n    Router->>DAL: add_message_to_chat(chatId, user_msg)\n    DAL->>DB: update_one (push user message)\n    DB-->>DAL: OK\n    \n    Router->>CS: get_agent_response_stream(message)\n    CS->>MCP: Spawn MCP subprocess (env vars merged)\n    MCP->>Azure: Query with RAG context\n    \n    loop Streaming Response\n        Azure-->>MCP: Token chunk\n        MCP-->>CS: Token chunk\n        CS-->>Router: yield chunk\n        Router-->>API: SSE: data: chunk\n        API-->>UC: onChunk(chunk)\n        UC-->>CP: Update UI (streaming)\n    end\n    \n    Router->>DAL: add_message_to_chat(chatId, assistant_msg)\n    DAL->>DB: update_one (push assistant message)\n    DB-->>DAL: OK\n    \n    Router-->>API: Stream complete\n    API-->>UC: Done\n    UC-->>CP: Final render\n    CP-->>User: See complete response",
+  "content_size": 1448,
+  "collected_at": "2026-02-06T01:34:38.069855",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "ilyan146",
+  "repo_name": "openai_sdk_resume_assistant",
+  "repo_description": "This repo contains a multi-agent system with multiple AI models that serves to be an assistant about me and my professional experience.",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2025-07-16T15:07:24Z",
+  "repo_updated_at": "2025-12-01T22:26:38Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的AI聊天系统时序图，从用户输入到流式响应返回。前端用React，后端是Python FastAPI，数据存MongoDB，模型调用Azure OpenAI。",
+      "elements_involved": [
+        "User",
+        "ChatPage.jsx",
+        "useChat.js",
+        "api.js",
+        "chat.py",
+        "ChatService",
+        "MongoDAL",
+        "MCP Server (RAG)",
+        "Azure OpenAI",
+        "MongoDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下参与者层级：User在最外层，然后是前端组件CP（ChatPage.jsx）、UC（useChat.js）、API（api.js），后端有Router（chat.py）、CS（ChatService）、DAL（MongoDAL），再往下是MCP Server、Azure OpenAI和DB。这个划分对吗？",
+      "elements_involved": [
+        "User",
+        "ChatPage.jsx",
+        "useChat.js",
+        "api.js",
+        "chat.py",
+        "ChatService",
+        "MongoDAL",
+        "MCP Server (RAG)",
+        "Azure OpenAI",
+        "MongoDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但要注意MCP Server是RAG检索用的，它负责合并环境变量后去调Azure。还有，所有数据库操作都走MongoDAL，不能直接连DB。",
+      "elements_involved": [
+        "MCP Server (RAG)",
+        "MongoDAL",
+        "MongoDB",
+        "env vars merged"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好，那我先画用户触发流程。第一步：User在ChatPage.jsx输入消息并点击发送，CP调用useChat.js的sendMessage方法，传入text。这里UC作为状态管理枢纽。",
+      "elements_involved": [
+        "User",
+        "ChatPage.jsx",
+        "useChat.js",
+        "sendMessage",
+        "text"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，UC拿到text后，要带上chatId一起发。它调api.js的askStream，参数是chatId和message。",
+      "elements_involved": [
+        "useChat.js",
+        "api.js",
+        "askStream",
+        "chatId",
+        "message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：UC→API: askStream(chatId, message)。接下来API层走HTTP POST到后端，路径是/api/chat/ask_stream，对吧？",
+      "elements_involved": [
+        "api.js",
+        "chat.py",
+        "POST /api/chat/ask_stream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Router（chat.py）收到请求后，第一步要先取历史记忆。它调DAL的get_chat_memory，传入chatId。",
+      "elements_involved": [
+        "chat.py",
+        "MongoDAL",
+        "get_chat_memory",
+        "chatId"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Router→DAL: get_chat_memory(chatId)。然后DAL去MongoDB查数据，用find_one({_id: chatId})？",
+      "elements_involved": [
+        "MongoDAL",
+        "MongoDB",
+        "find_one",
+        "{_id: chatId}"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，DB返回ChatMemory给DAL，DAL再返回给Router。这里有个校验点——Router要validate exists，确认这个chatId存在。",
+      "elements_involved": [
+        "MongoDB",
+        "MongoDAL",
+        "chat.py",
+        "ChatMemory",
+        "validate exists"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画双向箭头：DB--DAL: ChatMemory，然后DAL--Router: ChatMemory (validate exists)。校验通过后，Router要把用户消息存库？",
+      "elements_involved": [
+        "MongoDB",
+        "MongoDAL",
+        "chat.py",
+        "validate exists"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，调add_message_to_chat，把user_msg推进去。DAL用update_one做push user message操作。",
+      "elements_involved": [
+        "chat.py",
+        "MongoDAL",
+        "add_message_to_chat",
+        "user_msg",
+        "push user message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Router→DAL: add_message_to_chat(chatId, user_msg)，然后DAL→DB: update_one (push user message)，DB返回OK。接下来进入AI处理环节？",
+      "elements_involved": [
+        "chat.py",
+        "MongoDAL",
+        "MongoDB",
+        "add_message_to_chat",
+        "push user message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Router调ChatService的get_agent_response_stream，把message传过去。CS负责协调MCP和流式处理。",
+      "elements_involved": [
+        "chat.py",
+        "ChatService",
+        "get_agent_response_stream",
+        "message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里MCP Server是子进程形式启动吗？我看到注释说env vars merged。",
+      "elements_involved": [
+        "ChatService",
+        "MCP Server (RAG)",
+        "env vars merged"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，CS会Spawn MCP subprocess，启动时把环境变量合并进去。然后MCP去Query Azure OpenAI，带RAG context。",
+      "elements_involved": [
+        "ChatService",
+        "MCP Server (RAG)",
+        "env vars merged",
+        "Azure OpenAI",
+        "RAG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加CS→MCP: Spawn MCP subprocess (env vars merged)，然后MCP→Azure: Query with RAG context。接下来是流式响应的核心循环？",
+      "elements_involved": [
+        "ChatService",
+        "MCP Server (RAG)",
+        "Azure OpenAI",
+        "env vars merged",
+        "RAG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，这里要画loop Streaming Response。Azure生成Token chunk，通过MCP、CS、Router、API逐层返回，最后UC更新UI。",
+      "elements_involved": [
+        "Azure OpenAI",
+        "MCP Server (RAG)",
+        "ChatService",
+        "chat.py",
+        "api.js",
+        "useChat.js",
+        "ChatPage.jsx",
+        "streaming",
+        "chunk"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了loop块：Azure--MCP: Token chunk，MCP--CS: Token chunk，CS--Router: yield chunk，Router--API: SSE: data: chunk，API--UC: onChunk(chunk)，UC--CP: Update UI (streaming)。",
+      "elements_involved": [
+        "Azure OpenAI",
+        "MCP Server (RAG)",
+        "ChatService",
+        "chat.py",
+        "api.js",
+        "useChat.js",
+        "ChatPage.jsx",
+        "Token chunk",
+        "SSE",
+        "streaming"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SSE格式要写清楚，是data: chunk。还有，UC收到chunk后驱动CP做streaming更新，这个UI反馈要体现出来。",
+      "elements_involved": [
+        "api.js",
+        "useChat.js",
+        "ChatPage.jsx",
+        "SSE",
+        "chunk",
+        "streaming"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，已标注SSE: data: chunk和Update UI (streaming)。流结束后，Router要把assistant_msg存库，和之前存user_msg对称。",
+      "elements_involved": [
+        "chat.py",
+        "MongoDAL",
+        "assistant_msg",
+        "push assistant message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，同样走add_message_to_chat，DAL做push assistant message。DB返回OK后，整个流才算complete。",
+      "elements_involved": [
+        "chat.py",
+        "MongoDAL",
+        "MongoDB",
+        "add_message_to_chat",
+        "assistant_msg",
+        "push assistant message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Router→DAL: add_message_to_chat(chatId, assistant_msg)，DAL→DB: update_one (push assistant message)，DB--DAL: OK。然后Router通知API流完成？",
+      "elements_involved": [
+        "chat.py",
+        "MongoDAL",
+        "MongoDB",
+        "push assistant message",
+        "assistant_msg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，Router--API: Stream complete，API--UC: Done，UC--CP: Final render，最后CP--User: See complete response。",
+      "elements_involved": [
+        "chat.py",
+        "api.js",
+        "useChat.js",
+        "ChatPage.jsx",
+        "User",
+        "Stream complete",
+        "Final render"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充最后四条消息。整体结构完成了。我检查一下：User发起→前端状态管理→API路由→后端服务→数据层→RAG检索→AI流式生成→逐层返回→双写消息库→最终渲染。",
+      "elements_involved": [
+        "User",
+        "ChatPage.jsx",
+        "useChat.js",
+        "api.js",
+        "chat.py",
+        "ChatService",
+        "MongoDAL",
+        "MCP Server (RAG)",
+        "Azure OpenAI",
+        "MongoDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，我注意到第一步我写的是User-CP: Type message + Send，但后面CP-UC是sendMessage(text)。这里text和message是同一个东西吗？需要统一术语。",
+      "elements_involved": [
+        "User",
+        "ChatPage.jsx",
+        "useChat.js",
+        "text",
+        "message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "感谢指出。我调整一下：User→CP是Type message + Send，CP→UC是sendMessage(text)，UC→API是askStream(chatId, message)。这里text和message确实指用户输入内容，但UC→API时封装成了message对象。保持现有标注可以吗？",
+      "elements_involved": [
+        "ChatPage.jsx",
+        "useChat.js",
+        "api.js",
+        "text",
+        "message"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，这样体现数据封装过程。另外确认一下chatId的传递：UC从CP拿到，一路带到Router，DAL所有操作都依赖它。",
+      "elements_involved": [
+        "useChat.js",
+        "api.js",
+        "chat.py",
+        "MongoDAL",
+        "chatId"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，chatId贯穿全程：UC→API→Router→DAL→DB，两次add_message_to_chat都用它。还有别的需要调整吗？",
+      "elements_involved": [
+        "chatId",
+        "useChat.js",
+        "api.js",
+        "chat.py",
+        "MongoDAL",
+        "MongoDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "MCP Server的标注再明确下，括号里写(RAG)说明用途。还有env vars merged是启动参数，不是运行时传的。",
+      "elements_involved": [
+        "MCP Server (RAG)",
+        "env vars merged"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认：MCP Server (RAG)，Spawn MCP subprocess (env vars merged)标注在启动阶段。整个时序图31步消息，包含loop Streaming Response，双写数据库，完整呈现了从用户输入到AI响应的端到端流程。",
+      "elements_involved": [
+        "MCP Server (RAG)",
+        "env vars merged",
+        "streaming",
+        "push user message",
+        "push assistant message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题，这个图可以用了。覆盖了前端交互、API调用、数据持久化、RAG检索、流式响应全链路，术语和箭头方向都准确。",
+      "elements_involved": [
+        "User",
+        "ChatPage.jsx",
+        "useChat.js",
+        "api.js",
+        "chat.py",
+        "ChatService",
+        "MongoDAL",
+        "MCP Server (RAG)",
+        "Azure OpenAI",
+        "MongoDB"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 31,
+    "repair_count": 1,
+    "grounding_acts_count": 31,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 102196.0609,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 31
+  }
+}

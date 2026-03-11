@@ -1,0 +1,167 @@
+{
+  "id": "gh_sequence_00336",
+  "source": "github",
+  "source_url": "https://github.com/DamienReichhart/DockerWebInterface/blob/d5f29f636f5667b7f66c8963826694cea2309dab/documentation/technique/diagrammes/sequence/php_request_lifecycle.mmd",
+  "github_repo": "DamienReichhart/DockerWebInterface",
+  "github_file_path": "documentation/technique/diagrammes/sequence/php_request_lifecycle.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    title PHP Application Request Lifecycle\n    \n    participant Client as Client Browser\n    participant Apache as Apache Server\n    participant PHP as PHP-FPM\n    participant index as index.php\n    participant Request as HttpRequest\n    participant Response as HttpResponse\n    participant Session as Session\n    participant Router as Router\n    participant Route as Route\n    participant Middleware as Middlewares\n    participant Controller as Controller\n    participant Model as Model\n    participant DB as Database\n    \n    Client->>Apache: HTTP Request\n    Apache->>PHP: Forward to PHP-FPM via socket\n    PHP->>index: Execute index.php\n    \n    index->>index: Load autoloader\n    index->>index: Load environment variables\n    index->>Session: Create Session\n    Session->>Session: Start session\n    index->>Request: Create HttpRequest\n    Request->>Request: Parse request data\n    index->>Response: Create HttpResponse\n    index->>Router: Create Router(request, response, session)\n    \n    Router->>Router: Load routes from routes.json\n    index->>Router: route()\n    \n    Router->>Router: Get request method & URI\n    Router->>Router: searchRoute(URI, method)\n    Router->>Route: Create Route object\n    Route->>Route: Parse route parameters\n    Route->>Route: Load middlewares\n    \n    alt Route Found\n        Router->>Middleware: Call entry middlewares\n        Middleware->>Middleware: Execute pre-controller logic\n        \n        Router->>Controller: Instantiate controller\n        Controller->>Controller: Initialize Twig\n        Router->>Controller: Call action method\n        \n        Controller->>Model: Interact with model(s)\n        Model->>DB: Execute SQL queries\n        DB->>Model: Return data\n        Model->>Controller: Return processed data\n        \n        Controller->>Controller: Render template\n        Controller->>Response: Append rendered content\n        \n        Router->>Middleware: Call exit middlewares\n        Middleware->>Middleware: Execute post-controller logic\n        \n        Router->>Response: send()\n        Response->>PHP: Output HTTP response\n    else Route Not Found\n        Router->>Controller: Create ErrorController\n        Controller->>Controller: error404()\n        Controller->>Response: Append error page\n        Router->>Response: send()\n        Response->>PHP: Output HTTP response\n    end\n    \n    PHP->>Apache: Return response\n    Apache->>Client: HTTP Response ",
+  "content_size": 2435,
+  "collected_at": "2026-02-06T01:30:51.616066",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的PHP应用请求生命周期时序图，从Client Browser发起请求开始，经过Apache Server、PHP-FPM，一直到Database返回数据。关键是要体现index.php作为入口点的初始化流程，以及Router如何调度Middleware和Controller。",
+      "elements_involved": [
+        "Client Browser",
+        "Apache Server",
+        "PHP-FPM",
+        "index.php",
+        "Database",
+        "Router",
+        "Middleware",
+        "Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。关于入口初始化，我理解为index.php要先加载autoloader和环境变量，然后创建Session、HttpRequest、HttpResponse这三个核心对象，再实例化Router。Session的启动是在创建之后立即进行吗？",
+      "elements_involved": [
+        "index.php",
+        "Session",
+        "HttpRequest",
+        "HttpResponse",
+        "Router",
+        "autoloader"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，Session创建后要马上start。HttpRequest需要解析请求数据，包括URI和method，这些后面Router匹配路由时会用到。Router创建时要注入request、response、session三个依赖。",
+      "elements_involved": [
+        "Session",
+        "HttpRequest",
+        "Router",
+        "URI",
+        "method"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把入口到Router创建的流程画出来：Client Browser发送HTTP Request到Apache Server，Apache通过socket转发给PHP-FPM执行index.php，然后依次完成autoloader、环境变量、Session启动、HttpRequest解析、HttpResponse创建，最后创建Router并调用route()方法。",
+      "elements_involved": [
+        "Client Browser",
+        "Apache Server",
+        "PHP-FPM",
+        "index.php",
+        "Session",
+        "HttpRequest",
+        "HttpResponse",
+        "Router",
+        "route()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是路由匹配的核心逻辑。Router要先从routes.json加载路由配置，然后获取request的method和URI，调用searchRoute进行匹配。匹配成功会创建Route对象，解析参数并加载middlewares。这里要用alt分支处理Route Found和Not Found两种情况。",
+      "elements_involved": [
+        "Router",
+        "routes.json",
+        "method",
+        "URI",
+        "searchRoute",
+        "Route",
+        "middlewares",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "清楚。对于匹配成功的情况，流程是：先调用entry middlewares执行前置逻辑，然后实例化Controller、初始化Twig、调用action方法。Controller通过Model与Database交互获取数据，渲染模板后append到Response，再经过exit middlewares，最后Router调用Response的send()输出。这样理解对吗？",
+      "elements_involved": [
+        "Middleware",
+        "Controller",
+        "Twig",
+        "Model",
+        "Database",
+        "Response",
+        "send()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。注意Model和Database的交互是双向的：Model执行SQL查询，Database返回数据，Model处理后再返回给Controller。另外Route Not Found时要创建ErrorController，调用error404()方法，同样append到Response后send()。",
+      "elements_involved": [
+        "Model",
+        "Database",
+        "ErrorController",
+        "error404()",
+        "Response"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成。整个流程闭合：PHP-FPM把Response返回给Apache Server，最终Apache向Client Browser输出HTTP Response。两个分支都汇聚到Response-PHP-Apache-Client的返回路径。",
+      "elements_involved": [
+        "PHP-FPM",
+        "Apache Server",
+        "Client Browser",
+        "HTTP Response"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 23066.0849,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

@@ -1,0 +1,410 @@
+{
+  "id": "gh_architecture_01474",
+  "source": "github",
+  "source_url": "https://github.com/leanguardia/provider-switcher/blob/dd3f37a5c130c1af2d5d7887db94f5f21d0f276c/diagrams/architecture2-containers.mmd",
+  "github_repo": "leanguardia/provider-switcher",
+  "github_file_path": "diagrams/architecture2-containers.mmd",
+  "diagram_type": "architecture",
+  "code": "---\ntitle: \"C4 - Level 2: Containers\"\n---\ngraph TB    \n    subgraph PaymentSystem[\"Payment Service<br/>[NestJS Application]\"]\n        API[\"PaymentsController<br/>[REST API /payments]<br/>\"]\n        \n        Orchestrator[\"PaymentsService<br/>[Service]<br/>Payment processing\"]\n        \n        Switcher[\"ProviderSwitcherService<br/>[Service]<br/>Manages the chain\"]\n        \n        ChainHandler[\"PaymentHandler<br/>[abstract]<br/><br/>Chain of Responsibility<br/>base class\"]\n        \n        Exception[\"PaymentProvidersUnavailableException<br/>[Custom Exception]<br/>503 Service Unavailable\"]\n        \n        subgraph Handlers[\"Handler Chain\"]\n            HA[\"ProviderHandler<br/>[Concrete Handler]<br/>Wraps ProviderAService\"]\n            HB[\"ProviderHandler<br/>[Concrete Handler]<br/>Wraps ProviderBService\"]\n            HC[\"ProviderHandler<br/>[Concrete Handler]<br/>Wraps ProviderCService\"]\n        end\n    end\n    \n    ExtA[\"Provider A API<br/>[External REST API]\"]\n    ExtB[\"Provider B API<br/>[External REST API]\"]\n    ExtC[\"Provider C API<br/>[External REST API]\"]\n    \n    API --> Orchestrator\n    Orchestrator --> Switcher\n    Switcher --> ChainHandler\n    ChainHandler -.-> HA\n    HA -->|\"on failure\"| HB\n    HB -->|\"on failure\"| HC\n    HC -.->|\"all failed\"| Exception\n    Exception -.->|\"503 response\"| API\n    \n    HA -->|\"HTTP Request\"| ExtA\n    HB -->|\"HTTP Request\"| ExtB\n    HC -->|\"HTTP Request\"| ExtC\n\n",
+  "content_size": 1424,
+  "collected_at": "2026-02-06T01:46:41.843296",
+  "license": "mit",
+  "license_name": "MIT License",
+  "compilation_status": "success",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为支付系统设计一个容灾机制，核心思路是责任链模式。当主支付通道失败时，自动切换到备用通道。",
+      "elements_involved": [
+        "PaymentSystem",
+        "ChainHandler",
+        "Handlers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，是用责任链实现多级降级。那整个系统边界怎么定？是画在应用内部还是包含外部服务？",
+      "elements_involved": [
+        "PaymentSystem",
+        "ExtA",
+        "ExtB",
+        "ExtC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "画成C4的容器图，PaymentSystem作为NestJS应用，内部包含API层、业务编排层和处理器链。外部三个Provider A/B/C作为外部系统。",
+      "elements_involved": [
+        "API",
+        "Orchestrator",
+        "Handlers",
+        "ExtA",
+        "ExtB",
+        "ExtC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把PaymentSystem容器画出来，里面放PaymentsController作为REST入口，标注上/payments端点。",
+      "elements_involved": [
+        "API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Controller下面要有个PaymentsService做编排，它不负责具体支付，只协调流程。另外需要一个ProviderSwitcherService来管理链的切换逻辑。",
+      "elements_involved": [
+        "Orchestrator",
+        "Switcher"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了，PaymentsService和ProviderSwitcherService都标为Service类型。Switcher专门负责链的管理，这个职责拆分很清晰。",
+      "elements_involved": [
+        "Orchestrator",
+        "Switcher"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "核心来了——Handler Chain。需要一个抽象基类PaymentHandler，下面挂三个具体的ProviderHandler，分别对接A、B、C三个外部通道。",
+      "elements_involved": [
+        "ChainHandler",
+        "HA",
+        "HB",
+        "HC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "三个Handler都是ProviderHandler的具体实现，只是包装的下游服务不同？结构完全一样？",
+      "elements_involved": [
+        "HA",
+        "HB",
+        "HC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，结构一致，都是Concrete Handler。HA包装ProviderAService对接ExtA，HB对ExtB，HC对ExtC。",
+      "elements_involved": [
+        "HA",
+        "HB",
+        "HC",
+        "ExtA",
+        "ExtB",
+        "ExtC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我把Handlers做成子图，三个Handler放进去，每个都标注Wraps ProviderXService。外部三个REST API也画好了。",
+      "elements_involved": [
+        "Handlers",
+        "ExtA",
+        "ExtB",
+        "ExtC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画调用关系。API调用Orchestrator，Orchestrator调用Switcher，Switcher再指向ChainHandler这个抽象基类。",
+      "elements_involved": [
+        "API",
+        "Orchestrator",
+        "Switcher",
+        "ChainHandler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "连线画好了，三层调用关系。ChainHandler到具体Handler用什么线？实现关系？",
+      "elements_involved": [
+        "ChainHandler",
+        "Handlers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用虚线，表示抽象到具体的关联。ChainHandler指向HA，然后HA失败时转给HB，HB失败再转HC。",
+      "elements_involved": [
+        "ChainHandler",
+        "HA",
+        "HB",
+        "HC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了，HA到HB、HB到HC都标注\"on failure\"，表示失败转移。",
+      "elements_involved": [
+        "HA",
+        "HB",
+        "HC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要一个异常处理。如果三个都失败，抛出PaymentProvidersUnavailableException，返回503。",
+      "elements_involved": [
+        "Exception",
+        "API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了这个自定义异常，标注503 Service Unavailable。HC虚线连到Exception，标注\"all failed\"。",
+      "elements_involved": [
+        "HC",
+        "Exception"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Exception怎么回到API？需要让客户端知道服务不可用。",
+      "elements_involved": [
+        "Exception",
+        "API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "画一条虚线从Exception回到API，标注\"503 response\"，表示异常转换成HTTP响应。这样？",
+      "elements_involved": [
+        "Exception",
+        "API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。再把三个Handler到外部API的调用补上，都是HTTP Request。",
+      "elements_involved": [
+        "HA",
+        "HB",
+        "HC",
+        "ExtA",
+        "ExtB",
+        "ExtC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "三条实线都加上了，HA-ExtA、HB-ExtB、HC-ExtC，标注HTTP Request。",
+      "elements_involved": [
+        "HA",
+        "HB",
+        "HC",
+        "ExtA",
+        "ExtB",
+        "ExtC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我再看一眼，ChainHandler的标注是不是少了？应该是抽象类和责任链基类。",
+      "elements_involved": [
+        "ChainHandler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正了，之前只写了abstract，现在加上\"Chain of Responsibility base class\"，和Handlers子图的标题呼应。",
+      "elements_involved": [
+        "ChainHandler"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体标题定一下，用\"C4 - Level 2: Containers\"，符合架构文档规范。",
+      "elements_involved": [
+        "title"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "标题已设置。PaymentSystem子图的标注也补全了，加上[NestJS Application]。",
+      "elements_involved": [
+        "title",
+        "PaymentSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "PaymentsController的端点路径写清楚了吗？是/payments。",
+      "elements_involved": [
+        "API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认了，标注的是REST API /payments。PaymentsService的描述我也细化成\"Payment processing\"。",
+      "elements_involved": [
+        "API",
+        "Orchestrator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ProviderSwitcherService的描述改成\"Manages the chain\"更准确，突出链管理而非具体支付。",
+      "elements_involved": [
+        "Switcher"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已调整。另外发现HA、HB、HC的描述可以更统一，都写成\"Wraps ProviderXService\"，X对应A/B/C。",
+      "elements_involved": [
+        "HA",
+        "HB",
+        "HC"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这样一致性更好。再检查一下外部系统的标注，都是External REST API吧？",
+      "elements_involved": [
+        "ExtA",
+        "ExtB",
+        "ExtC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，ExtA、ExtB、ExtC都标注为External REST API。图完整了，从Controller进入，经三层服务到责任链，逐级降级，最终要么成功支付要么返回503。",
+      "elements_involved": [
+        "API",
+        "Orchestrator",
+        "Switcher",
+        "Handlers",
+        "Exception"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题，这个设计评审可以通过。责任链的降级逻辑和异常处理都表达清楚了。",
+      "elements_involved": [
+        "PaymentSystem",
+        "ChainHandler",
+        "Exception"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 31,
+    "repair_count": 2,
+    "grounding_acts_count": 31,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:39Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:37Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:37Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 63185.5314,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 31
+  }
+}

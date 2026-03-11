@@ -1,0 +1,185 @@
+{
+  "id": "aug_gh_sequence_00526_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/CHATEAUFORGE-LLC/QuantumZero/blob/6b5410862a30fc06a35512b1d874132524aaeba8/diagrams/sequence-mobile-biometric-authentication.mmd",
+  "github_repo": "CHATEAUFORGE-LLC/QuantumZero",
+  "github_file_path": "diagrams/sequence-mobile-biometric-authentication.mmd",
+  "diagram_type": "sequence",
+  "code": "---\ntitle: Sequence Diagram - Mobile Biometric Authentication\nconfig:\n  theme: base\n---\n%% QuantumZero UML palette note: actors/external=#fff7e6/#b45309, system/component=#e0f2fe/#075985, datastore=#ecfccb/#4d7c0f, notes=#fff9c4/#d97706. Aligns diagrams to Deliverable 1 UML/DFD theme.\nsequenceDiagram\n  autonumber\n  actor User as Holder\n  participant UI as Flutter UI\n  participant Bio as BiometricService\n  participant Plugin as local_auth\n  participant OS as OS Auth Prompt (Infra_LoadBalancer)\n\n  User->>UI: Unlock wallet / access protected feature\n  UI->>Bio: authenticate(Infra_IngressController)\n  activate Bio\n  Bio->>Plugin: authenticate(Infra_LoadBalancer)\n  activate Plugin\n  Plugin->>OS: Prompt user\n  activate OS\n\n  alt Authentication Success\n    OS-->>Plugin: Success\n    Plugin-->>Bio: true\n    Bio-->>UI: true\n    UI-->>User: Access granted\n  else Authentication Failed/Cancelled\n    OS-->>Plugin: Failure / Cancel\n    Plugin-->>Bio: false\n    Bio-->>UI: false\n    UI-->>User: Access denied\n  end\n\n  deactivate OS\n  deactivate Plugin\n  deactivate Bio\n",
+  "content_size": 1027,
+  "collected_at": "2026-02-06T01:33:29.435227",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "CHATEAUFORGE-LLC",
+  "repo_name": "QuantumZero",
+  "repo_description": "The QuantumZero repository hosts the project’s public-facing static website, delivered through Static Pages. This site provides high-level information about the platform, including architectural overv",
+  "repo_language": "Mermaid",
+  "repo_topics": [],
+  "repo_created_at": "2025-11-30T02:25:40Z",
+  "repo_updated_at": "2026-01-31T19:49:00Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "gh_sequence_00526",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个移动端的生物识别认证流程。用户作为Holder解锁钱包时，Flutter UI层要先调用BiometricService，然后一路透传到系统的OS Auth Prompt。这里有个细节，OS层我想标注成Infra_LoadBalancer，因为底层实际走的是负载均衡后的认证节点。",
+      "elements_involved": [
+        "User",
+        "Holder",
+        "Flutter UI",
+        "BiometricService",
+        "OS Auth Prompt",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，那BiometricService到系统层之间需要加一个桥接吗？比如local_auth这种插件层，还是让Bio直接调用OS？另外Infra_IngressController这个标记放在哪一层合适？",
+      "elements_involved": [
+        "BiometricService",
+        "local_auth",
+        "Plugin",
+        "OS Auth Prompt",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，要加local_auth作为Plugin层。Infra_IngressController放在BiometricService的authenticate调用参数里就行，表示入口控制。整个链路是：UI → Bio → Plugin → OS，每层都要activate，最后按成功和失败两个分支返回。",
+      "elements_involved": [
+        "Flutter UI",
+        "BiometricService",
+        "local_auth",
+        "Plugin",
+        "OS Auth Prompt",
+        "Infra_IngressController",
+        "authenticate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主流程画出来：User发起Unlock wallet，UI调用Bio.authenticate，参数带Infra_IngressController，Bio再调用Plugin.authenticate，参数用Infra_LoadBalancer，最后Plugin触发OS Auth Prompt。四层都加上activate。",
+      "elements_involved": [
+        "User",
+        "Unlock wallet",
+        "Flutter UI",
+        "BiometricService",
+        "authenticate",
+        "Infra_IngressController",
+        "local_auth",
+        "Plugin",
+        "Infra_LoadBalancer",
+        "OS Auth Prompt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "返回路径需要区分两种情况：认证成功时OS把Success逐层返回给Plugin、Bio、UI，最后UI通知User访问已授权；失败或取消时走另一条分支，返回false，UI提示访问被拒绝。用alt块把这两个分支包起来。",
+      "elements_involved": [
+        "OS Auth Prompt",
+        "Plugin",
+        "BiometricService",
+        "Flutter UI",
+        "User",
+        "Success",
+        "Failure",
+        "Cancel",
+        "Access granted",
+        "Access denied",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "alt块加好了，两个分支分别是Authentication Success和Authentication Failed/Cancelled。成功分支OS--Plugin--Bio--UI--User一路返回true和Access granted；失败分支返回false和Access denied。三层deactivate也补在end后面。",
+      "elements_involved": [
+        "alt",
+        "Authentication Success",
+        "Authentication Failed/Cancelled",
+        "OS Auth Prompt",
+        "Plugin",
+        "BiometricService",
+        "Flutter UI",
+        "User",
+        "true",
+        "false",
+        "Access granted",
+        "Access denied",
+        "deactivate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下，OS Auth Prompt的标注是不是写完整了？需要体现Infra_LoadBalancer的身份，另外整个图的主题色要对齐QuantumZero的交付物规范，用base主题。",
+      "elements_involved": [
+        "OS Auth Prompt",
+        "Infra_LoadBalancer",
+        "QuantumZero",
+        "Deliverable 1",
+        "base theme"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误，OS Auth Prompt已经标注为Infra_LoadBalancer，标题是Mobile Biometric Authentication，配置了base主题，palette注释也加上了，actors用#fff7e6，system用#e0f2fe，跟交付物1的UML/DFD风格保持一致。",
+      "elements_involved": [
+        "OS Auth Prompt",
+        "Infra_LoadBalancer",
+        "Mobile Biometric Authentication",
+        "base theme",
+        "QuantumZero",
+        "Deliverable 1",
+        "actors",
+        "system"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 28521.564,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

@@ -1,0 +1,705 @@
+{
+  "id": "aug_gl_packet-beta_00467_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sean-galloway/RTLDesignSherpa/blob/47f8a16641658f570a69c3af3c9724b29ea39187/projects/components/stream/docs/stream_mas/assets/mermaid/16_monbus_axil_group_block.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sean-galloway/RTLDesignSherpa",
+  "diagram_type": "packet-beta",
+  "code": "graph TB\n    subgraph \"monbus_axil_group\"\n        subgraph \"Monitor Bus Input\"\n            MON_IN[HealthTech_DiagnosticEngine] --> PARSE[HealthTech_LabAnalyzer]\n        end\n\n        subgraph \"Per-Protocol Filtering\"\n            PARSE --> FILTER[HealthTech_LabAnalyzer]\n            AXI_MASK[HealthTech_HIPAA_Vault] --> FILTER\n            AXIS_MASK[HealthTech_LabAnalyzer] --> FILTER\n            CORE_MASK[HealthTech_DiagnosticEngine] --> FILTER\n        end\n\n        subgraph \"Routing Decision\"\n            FILTER --> DROP{HealthTech_PatientRecords}\n            DROP --> |No| ERR_CHK{HealthTech_LabAnalyzer}\n            DROP --> |Yes| DISCARD[HealthTech_DiagnosticEngine]\n            ERR_CHK --> |Yes| ERR_PATH[HealthTech_DiagnosticEngine]\n            ERR_CHK --> |No| WR_PATH[HealthTech_HIPAA_Vault]\n        end\n\n        subgraph \"Error/Interrupt Path\"\n            ERR_PATH --> ERR_FIFO[HealthTech_DiagnosticEngine]\n            ERR_FIFO --> AXIL_S[HealthTech_HIPAA_Vault]\n            ERR_FIFO --> IRQ[HealthTech_HIPAA_Vault]\n        end\n\n        subgraph \"Master Write Path\"\n            WR_PATH --> WR_FIFO[HealthTech_PatientRecords]\n            WR_FIFO --> ADDR_GEN[HealthTech_HIPAA_Vault]\n            CFG_BASE[HealthTech_PatientRecords] --> ADDR_GEN\n            ADDR_GEN --> AXIL_M[HealthTech_PatientRecords]\n        end\n    end\n\n    AXIL_S --> S_AR[HealthTech_DiagnosticEngine]\n    AXIL_S --> S_R[HealthTech_EMR_Sync]\n    AXIL_M --> M_AW[HealthTech_EMR_Sync]\n    AXIL_M --> M_W[HealthTech_PatientRecords]\n    AXIL_M --> M_B[HealthTech_PatientRecords]\n\n    style FILTER fill:#bbf,stroke:#333,stroke-width:2px\n    style ERR_FIFO fill:#fbb,stroke:#333,stroke-width:3px\n    style WR_FIFO fill:#bfb,stroke:#333,stroke-width:3px\n    style ADDR_GEN fill:#ffb,stroke:#333,stroke-width:2px\n    style IRQ fill:#f9f,stroke:#333,stroke-width:3px\n",
+  "content_size": 1801,
+  "collected_at": "2026-02-06T14:10:17.639470",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 8,
+  "repo_forks": 1,
+  "repo_owner": "sean-galloway",
+  "repo_name": "RTLDesignSherpa",
+  "repo_description": "This site is hopefully a springboard for others to learn about coding in System Verilog and experimenting with FPGAs.",
+  "repo_language": "C++",
+  "repo_topics": [
+    "amba-apb",
+    "amba-axi",
+    "cocotb",
+    "crossbar",
+    "dma"
+  ],
+  "repo_created_at": "2023-06-15T21:56:48Z",
+  "repo_updated_at": "2026-02-06T00:19:01Z",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gl_packet-beta_00467",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们今天需要把HealthTech系统的监控总线架构梳理清楚。这个AXI-Lite监控总线要处理诊断引擎、实验室分析仪和HIPAA合规库之间的数据流。",
+      "elements_involved": [
+        "MON_IN",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下整体结构：最外层是一个monbus_axil_group分组，里面包含监控输入、协议过滤、路由决策这几个主要模块对吗？",
+      "elements_involved": [
+        "monbus_axil_group",
+        "Monitor Bus Input",
+        "Per-Protocol Filtering",
+        "Routing Decision"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，还有错误中断路径和主写路径两个子模块。我们从监控输入开始画。",
+      "elements_involved": [
+        "Error/Interrupt Path",
+        "Master Write Path"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先创建Monitor Bus Input子图，里面放HealthTech_DiagnosticEngine作为MON_IN节点，它输出到PARSE节点也就是HealthTech_LabAnalyzer。",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "PARSE之后需要进入过滤层。这里有个关键点：我们有三种协议掩码需要处理——AXI_MASK、AXIS_MASK和CORE_MASK，分别对应不同的安全级别。",
+      "elements_involved": [
+        "PARSE",
+        "FILTER",
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "三种掩码都汇聚到FILTER节点对吗？AXI_MASK是HIPAA_Vault，AXIS_MASK和CORE_MASK分别是LabAnalyzer和DiagnosticEngine？",
+      "elements_involved": [
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK",
+        "FILTER",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，三种掩码都输入到FILTER。FILTER节点本身也是LabAnalyzer，负责协议过滤决策。",
+      "elements_involved": [
+        "FILTER",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Per-Protocol Filtering子图，包含PARSE到FILTER的连线，以及三个掩码节点都指向FILTER。FILTER需要高亮显示吗？",
+      "elements_involved": [
+        "FILTER",
+        "style"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，FILTER用蓝色高亮，这是关键决策点。接下来是路由决策层：FILTER输出到DROP判断节点。",
+      "elements_involved": [
+        "FILTER",
+        "DROP",
+        "style"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "DROP是判断节点，用菱形表示。它的两个分支：Yes走DISCARD，No走ERR_CHK？",
+      "elements_involved": [
+        "DROP",
+        "DISCARD",
+        "ERR_CHK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。DISCARD是DiagnosticEngine，ERR_CHK是LabAnalyzer做的错误检查判断。",
+      "elements_involved": [
+        "DISCARD",
+        "ERR_CHK",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Routing Decision子图，包含DROP分支到DISCARD和ERR_CHK。ERR_CHK后续怎么连？",
+      "elements_involved": [
+        "ERR_CHK",
+        "ERR_PATH",
+        "WR_PATH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ERR_CHK也是判断节点：Yes走错误路径ERR_PATH到DiagnosticEngine，No走正常写路径WR_PATH到HIPAA_Vault。",
+      "elements_involved": [
+        "ERR_CHK",
+        "ERR_PATH",
+        "WR_PATH",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成路由决策层。现在处理错误中断路径：ERR_PATH到ERR_FIFO，然后分叉到AXIL_S和IRQ？",
+      "elements_involved": [
+        "ERR_PATH",
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，ERR_FIFO是DiagnosticEngine，AXIL_S和IRQ都是HIPAA_Vault。ERR_FIFO和IRQ都要用醒目的样式。",
+      "elements_involved": [
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ",
+        "style"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Error/Interrupt Path子图，ERR_FIFO用红色粗边框，IRQ用紫色粗边框。现在处理主写路径？",
+      "elements_involved": [
+        "ERR_FIFO",
+        "IRQ",
+        "WR_PATH",
+        "WR_FIFO"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "WR_PATH到WR_FIFO，WR_FIFO是PatientRecords。然后WR_FIFO到ADDR_GEN，同时CFG_BASE也输入到ADDR_GEN。",
+      "elements_involved": [
+        "WR_PATH",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "CFG_BASE",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "CFG_BASE也是PatientRecords对吗？ADDR_GEN是HIPAA_Vault，然后输出到AXIL_M？",
+      "elements_involved": [
+        "CFG_BASE",
+        "ADDR_GEN",
+        "AXIL_M",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。AXIL_M也是PatientRecords。WR_FIFO用绿色，ADDR_GEN用黄色高亮。",
+      "elements_involved": [
+        "AXIL_M",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "style"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成Master Write Path子图。现在处理子图外部的连接：AXIL_S要连到S_AR和S_R？",
+      "elements_involved": [
+        "AXIL_S",
+        "S_AR",
+        "S_R"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，S_AR是DiagnosticEngine，S_R是EMR_Sync。AXIL_M要连M_AW、M_W、M_B三个信号。",
+      "elements_involved": [
+        "S_AR",
+        "S_R",
+        "AXIL_M",
+        "M_AW",
+        "M_W",
+        "M_B",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "M_AW是EMR_Sync，M_W和M_B都是PatientRecords对吧？这些都在monbus_axil_group外部？",
+      "elements_involved": [
+        "M_AW",
+        "M_W",
+        "M_B",
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords",
+        "monbus_axil_group"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，这些外部接口信号画在分组外面。整体结构应该完整了，让我检查一下。",
+      "elements_involved": [
+        "monbus_axil_group"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加所有外部连接。我数一下节点：MON_IN、PARSE、三种MASK、FILTER、DROP、DISCARD、ERR_CHK、ERR_PATH、WR_PATH、ERR_FIFO、AXIL_S、IRQ、WR_FIFO、ADDR_GEN、CFG_BASE、AXIL_M，加上外部信号S_AR、S_R、M_AW、M_W、M_B，共22个节点。",
+      "elements_involved": [
+        "所有节点"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，DROP节点我确认一下——它应该是PatientRecords，不是LabAnalyzer。我刚才说错了。",
+      "elements_involved": [
+        "DROP",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，DROP改为HealthTech_PatientRecords。还有其他需要调整的吗？",
+      "elements_involved": [
+        "DROP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "AXIL_S和AXIL_M的命名再确认一下：S代表Slave，M代表Master，这是AXI-Lite的从机和主机接口？",
+      "elements_involved": [
+        "AXIL_S",
+        "AXIL_M"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对的，AXIL_S是AXI-Lite Slave接口，AXIL_M是AXI-Lite Master接口。S_AR是读地址，S_R是读数据；M_AW是写地址，M_W是写数据，M_B是写响应。",
+      "elements_involved": [
+        "AXIL_S",
+        "AXIL_M",
+        "S_AR",
+        "S_R",
+        "M_AW",
+        "M_W",
+        "M_B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "样式方面再细化一下：FILTER蓝色填充，ERR_FIFO红色填充粗边框，WR_FIFO绿色填充粗边框，ADDR_GEN黄色填充，IRQ紫色填充粗边框，都是333色号的边框。",
+      "elements_involved": [
+        "FILTER",
+        "ERR_FIFO",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "IRQ",
+        "style"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已应用所有样式。边框宽度方面：FILTER和ADDR_GEN是2px，其他三个是3px对吗？",
+      "elements_involved": [
+        "FILTER",
+        "ADDR_GEN",
+        "ERR_FIFO",
+        "WR_FIFO",
+        "IRQ",
+        "stroke-width"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。现在整体看一下数据流：诊断引擎的监控数据进来，经过解析、过滤，然后根据错误检查结果，要么走错误路径上报中断，要么走正常写路径更新配置。",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE",
+        "FILTER",
+        "ERR_CHK",
+        "ERR_PATH",
+        "WR_PATH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "HIPAA_Vault在图中出现多次：AXI_MASK、AXIL_S、IRQ、ADDR_GEN都是它，这是同一个安全存储组件的不同功能视图？",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault",
+        "AXI_MASK",
+        "AXIL_S",
+        "IRQ",
+        "ADDR_GEN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，这是模块化的表示方法。实际是一个HIPAA合规的数据保险库，但在不同功能路径上分别标注。",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我注意到CFG_BASE直接连到ADDR_GEN，这是基址配置，不经过WR_FIFO？这是为了性能考虑？",
+      "elements_involved": [
+        "CFG_BASE",
+        "ADDR_GEN",
+        "WR_FIFO"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，CFG_BASE是静态配置基址，直接参与地址生成，不需要经过写数据FIFO缓冲。",
+      "elements_involved": [
+        "CFG_BASE",
+        "ADDR_GEN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ERR_FIFO同时连到AXIL_S和IRQ，意味着错误信息既可以通过AXI-Lite接口读取，也可以触发中断通知CPU？",
+      "elements_involved": [
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。这是典型的中断加轮询双机制，确保错误能被及时感知。",
+      "elements_involved": [
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有连接和样式都已确认。我再检查一下子图嵌套层次：monbus_axil_group包含五个子图，外部信号直接连到AXIL_S和AXIL_M。",
+      "elements_involved": [
+        "monbus_axil_group",
+        "Monitor Bus Input",
+        "Per-Protocol Filtering",
+        "Routing Decision",
+        "Error/Interrupt Path",
+        "Master Write Path"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "三种协议掩码的优先级有隐含顺序吗？AXI_MASK、AXIS_MASK、CORE_MASK同时有效时怎么处理？",
+      "elements_involved": [
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK",
+        "FILTER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "图上没有显示优先级逻辑，可能是在FILTER内部处理。需要我在图中标注优先级吗？",
+      "elements_involved": [
+        "FILTER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "不用，保持当前抽象层次。FILTER内部逻辑不在本图范围内。我们确认一下节点标签的命名规范。",
+      "elements_involved": [
+        "FILTER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "目前节点ID用大写下划线格式如ERR_FIFO，显示文本用HealthTech_前缀的驼峰格式。需要调整吗？",
+      "elements_involved": [
+        "命名规范",
+        "ERR_FIFO",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这样很好，技术ID和业务名称分离，清晰可读。最后检查一下DROP节点的分支标签Yes和No的方向。",
+      "elements_involved": [
+        "DROP",
+        "Yes",
+        "No"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认：DROP -- |Yes| DISCARD，DROP -- |No| ERR_CHK。Yes表示需要丢弃，No表示继续检查。",
+      "elements_involved": [
+        "DROP",
+        "DISCARD",
+        "ERR_CHK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ERR_CHK的分支也是Yes表示有错误走ERR_PATH，No表示无错误走WR_PATH对吗？",
+      "elements_involved": [
+        "ERR_CHK",
+        "ERR_PATH",
+        "WR_PATH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "正确。ERR_CHK -- |Yes| ERR_PATH，ERR_CHK -- |No| WR_PATH。逻辑一致。",
+      "elements_involved": [
+        "ERR_CHK",
+        "ERR_PATH",
+        "WR_PATH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体架构确认完毕。这个监控总线负责HealthTech系统中诊断数据的安全过滤和路由，满足HIPAA合规要求。可以定稿了。",
+      "elements_involved": [
+        "整体架构",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终图表已生成，包含完整的monbus_axil_group分组结构、五个功能子图、22个节点、所有样式定义和外部接口连接。",
+      "elements_involved": [
+        "monbus_axil_group",
+        "所有节点",
+        "style"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再确认一下PatientRecords出现的节点：DROP、WR_FIFO、CFG_BASE、AXIL_M、M_W、M_B，共六个位置？",
+      "elements_involved": [
+        "HealthTech_PatientRecords",
+        "DROP",
+        "WR_FIFO",
+        "CFG_BASE",
+        "AXIL_M",
+        "M_W",
+        "M_B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认：DROP、WR_FIFO、CFG_BASE、AXIL_M是内部节点，M_W、M_B是外部信号，共六个PatientRecords实例。",
+      "elements_involved": [
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好的，图表完整准确。这个架构图可以用于设计评审和HIPAA合规审计了。",
+      "elements_involved": [
+        "整体图表"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已最终定稿。所有节点、连接、样式、分组结构均已验证完毕，符合HealthTech系统监控总线架构设计要求。",
+      "elements_involved": [
+        "整体图表"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 52,
+    "repair_count": 1,
+    "grounding_acts_count": 52,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 82100.4567,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 52
+  }
+}

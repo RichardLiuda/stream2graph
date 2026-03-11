@@ -1,0 +1,476 @@
+{
+  "id": "aug_gl_packet-beta_00360_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/llai-harmonicinc/cDS-Session-Management/blob/034fa5d6ac3372256af047d7e02f454dd09526d5/cDS%20Session%20Routing.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "llai-harmonicinc/cDS-Session-Management",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\nparticipant P as Player\nparticipant Boot as Bootstrap\nparticipant LD as DNS resolver\nparticipant AD as Authoritative DNS server\n\nparticipant SM as cDS::Session Management\nparticipant sNA as cDS::Node-A\nparticipant sNB as cDS::Node-B\nparticipant TC as cDS::TC\nparticipant NA as cDS::Node-C\nparticipant CS as cDS::Content Steering Servers\nparticipant TE as cDS::Telemetry\n\nautonumber\n    P->>Boot: get session bootstrap\n    Boot->>P: Bootstrap details e.g. endpoint, ad serving parameters, etc\n\n    %% resolve Session Management server domain name\n    P->>LD: query cDS::Session Management domain name\n    LD->>AD: query cDS::Session Management domain name\n    AD->>LD:  cDS::Session Management Server IP for that DNS resolver\n    LD->>P: cDS::Session Mangement Server IP\n\n    %% request master manifest from Session Management server\n    Note over P, SM: request master manifest from cDS::Session Management\n    P->>SM: GET /master manifest\n    Note over P, SM: #35;EXTM3U<br/> #35;EXT-X-VERSION:3<br>#35;EXT-X-CONTENT-STEERING:SERVER-URI=\"https://cs.harmonic.com/\"<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::Node-A\"<br>https://nodeA.harmonic.com/01.m3u8<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::Node-B\"<br>http://nodeB.harmonic.com/01.m3u8<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::TC\"<br>https://tc.harmonic.com/01.m3u8.....\n    SM->>P: 200 OK\\n(Infra_LoadBalancer) \n    \n    %% request steering manifest from Content Steering server\n    Note over P, CS: request steering manifest from cDS: Content Steering\n    P->>LD: query cDS::Content Steering domain name\n    LD->>AD: query cDS::Content Steering domain name\n    AD->>LD:  cDS::Content Steering Server IP for that DNS resolver\n    LD->>P: cDS::Content Steering Server IP\n\n    P->>CS: GET /steering manifest\n    Note over CS, P: {Infra_LoadBalancer]<br>}\n    CS->>P: 200 OK\\n(Infra_IngressController)\n    \n    Note over P, sNA: request variant manifest from cDS::Node A\n    P->>LD: query cDS::Node A domain name\n    LD->>AD: query cDS::Node A domain name\n    AD->>LD:  cDS::Node A IP for that DNS resolver\n    LD->>P: cDS::Node A IP\n    P->>sNA: TCP SYN\n    Note over P, sNA: cDS::Node A is down<br>TCP retransmission timer timeout<br>Player fail over to cDS::Node B\n    Note over TE: cDS::Telemetry detect cDS::Node A is down\n    par \n        TE->>CS: update routing decision (Infra_LoadBalancer)\n    and \n        TE->>SM: update routing decision (Infra_EtcdCluster)\n    end\n\n    Note over P, sNB: Player fail over to cDS::Node B\n    P->>LD: query cDS::Node B domain name\n    LD->>AD: query cDS::Node B domain name\n    AD->>LD:  cDS::Node B IP for that DNS resolver\n    LD->>P: cDS::Node B IP\n    Note over P, sNB: GET /variant manifest \n    P->>sNB: TCP SYN\n    sNB->>P: ACK, SYN\n    P->>sNB: SYN\n    Note over P, sNB: #35;EXTM3U<br>#35;EXT-X-TARGETDURATION:4<br>#35;EXT-X-MEDIA-SEQUENCE:432137172<br>#35;EXT-X-VERSION:3<br>#35;EXT-X-PROGRAM-DATE-TIME:2024-10-10T08:24:48.831Z<br>#35;EXTINF:3,<br>20240927T075714-01-432137172.ts<br>#35;EXT-X-PROGRAM-DATE-TIME:2024-10-10T08:24:52.031Z<br>EXTINF:5,<br>20240927T075714-01-432137173.ts<br>#35;.........\n    sNB->>P: 200 OK\\n(Infra_RedisCache)\n\n    %% establish TCP connection, 3 way handshake\n    Note over P, sNB: request video segments\n    P->>sNB: GET /20240927T075714-01-432137172.ts\n\n    %% cDS:: Node start to push video segment\n    Note over sNB, P: server start pushing video segments\n    sNB->>P: TCP segment (Infra_WorkerNode)\n    sNB->>P: TCP segment (Infra_RedisCache)\n    P->>sNB: ACK (Infra_RedisCache)\n\n    %% packet start missing and player request retransmission\n    sNB->>P: TCP segment(Infra_LoadBalancer)\n    sNB->>P: TCP segment(Infra_LoadBalancer)\n    Note over sNB, P: packet loss, retransmission timer timeout, send duplicate ACK to request retransmission\n    P->>sNB: ACK (Infra_EtcdCluster)\n    sNB->>P: reset connection\n    \n    sNB->>TE: report packet loss\n    par\n        TE->>CS: update routing decision (Infra_WorkerNode)\n    and \n        TE->>SM: update routing decision (Infra_IngressController)\n    end\n\n    %% player fail over to cDS::TC\n    Note over P, TC: Player fail over to cDS::TC\n    P->>LD: query cDS::TC domain name\n    LD->>AD: query cDS::TC  domain name\n    AD->>LD:  cDS::TC IP for that DNS resolver\n    LD->>P: cDS::TC IP\n\n    P->> TC: GET /variant manifest\n    TC->>P: 302 Found\\nLocation: cDS::Node C\n   \n    P->>LD: query cDS::Node C domain name\n    LD->>AD: query cDS::Node C domain name\n    AD->>LD:  cDS::Node C IP for that DNS resolver\n    LD->>P: cDS::Node C IP\n\n    P->>NA: GET /variant manifest\n    NA->>P: 200 OK\\n(Infra_EtcdCluster)\n\n    loop\n        P->>NA: GET video/audio segments\n        NA->>P: 200 OK\\n(Infra_WorkerNode)\n    end\n    \n    Note over P, CS: steering manifest expire, request an updated steering manifest\n    P->>CS: GET /steering manifest\n    Note over CS, P: cDS::Node A and cDS::Node B are removed from the list<br>{Infra_LoadBalancer]<br>}\n    CS->>P: 200 OK\\n(Infra_IngressController)\n",
+  "content_size": 5274,
+  "collected_at": "2026-02-06T14:08:15.440859",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_packet-beta_00360",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个cDS系统的完整会话流程图，从Player启动到最终内容传输，重点展示故障转移和动态路由决策的机制。",
+      "elements_involved": [
+        "Player",
+        "cDS::Session Management",
+        "cDS::Content Steering"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先确认一下参与者结构：Player作为客户端，Bootstrap负责初始配置下发，然后是DNS解析链，再到Session Management和多个内容节点。您看这样划分对吗？",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。特别要注意cDS内部的模块划分：Session Management、Node-A、Node-B、TC、Node-C，还有Content Steering Servers和Telemetry，这些都要作为独立参与者。",
+      "elements_involved": [
+        "cDS::Session Management",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C",
+        "cDS::Content Steering Servers",
+        "cDS::Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经创建了所有参与者。现在开始画第一步：Player向Bootstrap获取会话启动信息。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Bootstrap返回的信息要包含endpoint和广告服务参数。接下来Player需要通过DNS解析找到Session Management服务器。",
+      "elements_involved": [
+        "Bootstrap",
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "DNS解析链已添加：Player查询LD，LD查询AD，AD返回IP，LD回传给Player。现在Player可以向Session Management请求master manifest了。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "master manifest的内容很重要，要包含EXT-X-CONTENT-STEERING标签指向Content Steering服务器，还有三个PATHWAY-ID分别对应Node-A、Node-B和TC。",
+      "elements_involved": [
+        "cDS::Session Management",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Content Steering Servers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加GET /master manifest请求和200 OK响应，标注了Infra_LoadBalancer。manifest内容用Note展示，包含三个节点的BANDWIDTH和PATHWAY-ID信息。",
+      "elements_involved": [
+        "Player",
+        "cDS::Session Management",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来Player需要获取steering manifest。这里要再走一遍DNS解析流程，但目标是Content Steering Servers。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Content Steering Servers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "DNS解析和GET /steering manifest已添加。响应标注为Infra_IngressController，内容包含Infra_LoadBalancer的路由信息。",
+      "elements_involved": [
+        "Player",
+        "cDS::Content Steering Servers",
+        "Infra_IngressController",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在进入关键场景：Player尝试连接Node-A获取variant manifest，但Node-A宕机了。这里要展示TCP重传超时和故障转移。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Node-A的DNS解析和TCP SYN，用Note标注Node-A is down和TCP retransmission timer timeout，然后Player fail over到Node-B。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "DNS resolver",
+        "Authoritative DNS server"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "同时Telemetry要检测到Node-A宕机，并并行更新Content Steering和Session Management的路由决策。这里用par结构。",
+      "elements_involved": [
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "par结构已添加：TE同时向CS和SM发送update routing decision，分别标注Infra_LoadBalancer和Infra_EtcdCluster。",
+      "elements_involved": [
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Player成功切换到Node-B后，完成TCP三次握手，获取variant manifest。manifest内容要包含MEDIA-SEQUENCE和PROGRAM-DATE-TIME。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加完整的TCP三次握手（SYN, ACK-SYN, SYN）和GET /variant manifest，响应200 OK标注Infra_RedisCache。manifest内容包含TARGETDURATION、MEDIA-SEQUENCE和ts片段列表。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来展示视频片段传输，然后引入第二个故障场景：packet loss导致连接重置，Player需要fail over到TC。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "视频片段传输已添加：GET .ts文件，server push TCP segment，分别标注Infra_WorkerNode和Infra_RedisCache。然后添加packet loss场景。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "Infra_WorkerNode",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "packet loss的细节要准确：重传定时器超时后，Player发送duplicate ACK请求重传，但Node-B直接reset connection，并向Telemetry报告丢包。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "cDS::Telemetry",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加packet loss Note、duplicate ACK、connection reset和report packet loss。然后Telemetry再次并行更新CS和SM的路由决策。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "Infra_WorkerNode",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在Player fail over到TC。TC的响应比较特殊，返回302 Found重定向到Node-C，而不是直接服务。",
+      "elements_involved": [
+        "Player",
+        "cDS::TC",
+        "cDS::Node-C"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "TC的DNS解析和GET /variant manifest已添加，响应302 Found Location: cDS::Node C。然后Player再解析Node-C的域名。",
+      "elements_involved": [
+        "Player",
+        "cDS::TC",
+        "cDS::Node-C",
+        "DNS resolver",
+        "Authoritative DNS server"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Node-C是最终的内容源。Player从Node-C获取variant manifest成功后，进入循环获取音视频片段的稳定状态。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-C",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Node-C的GET /variant manifest和200 OK响应标注Infra_EtcdCluster。然后用loop结构展示持续的片段请求。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-C",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后要展示steering manifest过期后的更新请求。这时候Content Steering返回的列表中应该已经移除了Node-A和Node-B。",
+      "elements_involved": [
+        "Player",
+        "cDS::Content Steering Servers",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "Infra_LoadBalancer",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加steering manifest expire的Note，GET /steering manifest请求，响应内容标注Node-A和Node-B已从列表移除，200 OK标注Infra_IngressController。",
+      "elements_involved": [
+        "Player",
+        "cDS::Content Steering Servers",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "Infra_LoadBalancer",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下，Infra相关的标注是否都正确对应了？LoadBalancer、EtcdCluster、IngressController、RedisCache、WorkerNode这些都要在合适的位置出现。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已核对：Session Management和CS首次响应用LoadBalancer，CS第二次响应用IngressController，Node-B的manifest用RedisCache，片段传输涉及WorkerNode和RedisCache，Telemetry更新分别用LoadBalancer、EtcdCluster、WorkerNode、IngressController。Node-C用EtcdCluster和WorkerNode。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要在关键步骤加上autonumber，让读者能清楚跟踪整个流程的先后顺序。特别是DNS解析和故障转移的时序。",
+      "elements_involved": [
+        "autonumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "autonumber已启用，所有消息现在都带有序号。整个流程从1开始，到最后的steering manifest更新，序号能清晰展示执行顺序。",
+      "elements_involved": [
+        "autonumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。这个图完整展示了cDS的内容分发流程：启动、DNS解析、manifest获取、故障转移机制、动态路由更新，以及最终的稳定传输状态。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Session Management",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C",
+        "cDS::Content Steering Servers",
+        "cDS::Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认完成。图中涵盖了两次故障转移场景（Node-A宕机、Node-B丢包重置），Telemetry驱动的并行路由更新，以及302重定向机制，完整呈现了cDS系统的弹性设计。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C",
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 32,
+    "repair_count": 0,
+    "grounding_acts_count": 32,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:33Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 67843.1017,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 32
+  }
+}

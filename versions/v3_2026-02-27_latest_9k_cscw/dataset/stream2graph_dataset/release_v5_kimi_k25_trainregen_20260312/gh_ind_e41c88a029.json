@@ -1,0 +1,1074 @@
+{
+  "id": "gh_ind_e41c88a029",
+  "source": "github_industrial",
+  "repo": "SolaceHarmony/Thea-Code",
+  "license": "apache-2.0",
+  "code": "flowchart TB\n    classDef inputClass fill:#FFD700,stroke:#FF8C00,stroke-width:2px,color:#000\n    classDef embeddingClass fill:#98FB98,stroke:#006400,stroke-width:2px,color:#000\n    classDef rwkvClass fill:#E6E6FA,stroke:#483D8B,stroke-width:2px,color:#000\n    classDef ffnClass fill:#FFA07A,stroke:#8B0000,stroke-width:2px,color:#000\n    classDef normClass fill:#D8BFD8,stroke:#9400D3,stroke-width:2px,color:#000\n    classDef outputClass fill:#F08080,stroke:#CD5C5C,stroke-width:2px,color:#000\n    \n    %% Input Processing\n    subgraph InputProcessing[\"Input Processing Layer\"]\n        direction TB\n        Input[/\"Input Tokens\"/]:::inputClass\n        TokenEmbed[\"Token Embeddings<br/>(d_model)\"]:::embeddingClass\n        TimeEmbed[\"Time Embeddings<br/>(d_model)\"]:::embeddingClass\n        \n        Input --> TokenEmbed\n        TokenEmbed --> InputEmbed\n        TimeEmbed --> InputEmbed\n        \n        InputEmbed[\"Input Embeddings<br/>(batch_size × seq_len × d_model)\"]:::embeddingClass\n    end\n    \n    %% Annotation for Input Processing\n    InputAnnotation[\"<b>Input Processing</b><br/>- Tokens converted to embeddings<br/>- Time embeddings instead of positional<br/>- Dimensions: batch_size × seq_len × d_model\"]\n    InputProcessing -.-> InputAnnotation\n    \n    %% First RWKV Layer\n    subgraph Layer1[\"RWKV Layer 1\"]\n        direction TB\n        \n        %% Time-mixing Block (Alternative to Attention)\n        subgraph TMB1[\"Time Mixing Block\"]\n            direction TB\n            \n            %% Time Mixing Components\n            TMNorm1[\"Layer Normalization\"]:::normClass\n            TMLinear1[\"Linear Projection\"]:::rwkvClass\n            TMWKV1[\"WKV Mechanism<br/>(Receptance & Decay)\"]:::rwkvClass\n            TMOutput1[\"Time-Mixed Output\"]:::rwkvClass\n            \n            %% Time Mixing Flow\n            TMNorm1 --> TMLinear1\n            TMLinear1 --> TMWKV1\n            TMWKV1 --> TMOutput1\n        end\n        \n        %% Channel Mixing Block (FFN alternative)\n        subgraph CMB1[\"Channel Mixing Block\"]\n            direction TB\n            CMNorm1[\"Layer Normalization\"]:::normClass\n            CMRLinear1[\"Receptance Gate\"]:::rwkvClass\n            CMKLinear1[\"Key Projection\"]:::rwkvClass\n            CMVLinear1[\"Value Projection\"]:::rwkvClass\n            CMOutput1[\"Channel-Mixed Output\"]:::rwkvClass\n            \n            %% Channel Mixing Flow\n            CMNorm1 --> CMRLinear1 & CMKLinear1 & CMVLinear1\n            CMRLinear1 & CMKLinear1 & CMVLinear1 --> CMOutput1\n        end\n        \n        %% Residual Connections\n        Add1((\"+\"))\n        Add2((\"+\"))\n    end\n    \n    %% Annotation for Time Mixing\n    TMAnnotation[\"<b>Time Mixing Block</b><br/>- Linear attention alternative<br/>- Recurrent formulation with tokens<br/>- WKV mechanism with exponential decay<br/>- O(1) complexity per token vs O(n²)\"]\n    TMB1 -.-> TMAnnotation\n    \n    %% Annotation for Channel Mixing\n    CMAnnotation[\"<b>Channel Mixing Block</b><br/>- FFN replacement with gating<br/>- Mixes information across channels<br/>- Uses receptance gating mechanism<br/>- Similar to SwiGLU in transformers\"]\n    CMB1 -.-> CMAnnotation\n    \n    %% Second RWKV Layer\n    subgraph Layer2[\"RWKV Layer 2\"]\n        direction TB\n        \n        %% Time Mixing Block\n        subgraph TMB2[\"Time Mixing Block\"]\n            direction TB\n            TMNorm2[\"Layer Normalization\"]:::normClass\n            TMLinear2[\"Linear Projection\"]:::rwkvClass\n            TMWKV2[\"WKV Mechanism<br/>(Receptance & Decay)\"]:::rwkvClass\n            TMOutput2[\"Time-Mixed Output\"]:::rwkvClass\n            \n            TMNorm2 --> TMLinear2\n            TMLinear2 --> TMWKV2\n            TMWKV2 --> TMOutput2\n        end\n        \n        %% Channel Mixing Block\n        subgraph CMB2[\"Channel Mixing Block\"]\n            direction TB\n            CMNorm2[\"Layer Normalization\"]:::normClass\n            CMRLinear2[\"Receptance Gate\"]:::rwkvClass\n            CMKLinear2[\"Key Projection\"]:::rwkvClass\n            CMVLinear2[\"Value Projection\"]:::rwkvClass\n            CMOutput2[\"Channel-Mixed Output\"]:::rwkvClass\n            \n            CMNorm2 --> CMRLinear2 & CMKLinear2 & CMVLinear2\n            CMRLinear2 & CMKLinear2 & CMVLinear2 --> CMOutput2\n        end\n        \n        %% Residual Connections\n        Add3((\"+\"))\n        Add4((\"+\"))\n    end\n    \n    %% Nth RWKV Layer (Abbreviated)\n    subgraph LayerN[\"RWKV Layer N\"]\n        direction TB\n        \n        %% Abbreviated components\n        TMBN[\"Time<br/>Mixing<br/>Block\"]:::rwkvClass\n        CMBN[\"Channel<br/>Mixing<br/>Block\"]:::rwkvClass\n        \n        %% Residual Connections\n        AddN1((\"+\"))\n        AddN2((\"+\"))\n        \n        %% Connections\n        TMBN --> AddN1\n        AddN1 --> CMBN\n        CMBN --> AddN2\n    end\n    \n    %% Output Processing\n    subgraph OutputProcessing[\"Output Processing\"]\n        direction TB\n        FinalLayerNorm[\"Final Layer Normalization\"]:::normClass\n        OutputProjection[\"Output Projection<br/>(token prediction)\"]:::outputClass\n        FinalOutput[/\"Next Token Output\"/]:::outputClass\n        \n        FinalLayerNorm --> OutputProjection\n        OutputProjection --> FinalOutput\n    end\n    \n    %% Annotation for RWKV Formula\n    RWKVFormula[\"<b>RWKV Formula</b><br/>- WKV(t) = ∑(k=1 to t) W_k × V_k × exp(-decay × (t-k))<br/>- Output = sigmoid(R) ⊙ WKV / (∑exp(-decay))<br/>- Linear time & constant memory complexity<br/>- Parallelizable in training, recursive in inference\"]\n    Layer2 -.-> RWKVFormula\n    \n    %% Annotation for Architecture Comparison\n    ComparisonAnnotation[\"<b>RWKV vs Transformer</b><br/>- Linear O(n) vs Quadratic O(n²) complexity<br/>- State-based vs All-to-all attention<br/>- Can run as CNN or RNN<br/>- Channel mixing vs FFN<br/>- Comparable quality at higher efficiency\"]\n    LayerN -.-> ComparisonAnnotation\n    \n    %% Main Flow Connections\n    InputProcessing --> Layer1\n    InputEmbed --> Add1\n    \n    %% Layer 1 Connections\n    Add1 --> TMNorm1\n    TMOutput1 --> Add1\n    Add1 --> Add2\n    Add2 --> CMNorm1\n    CMOutput1 --> Add2\n    \n    %% Between Layer 1 and Layer 2\n    Add2 --> Layer2\n    Add2 --> Add3\n    \n    %% Layer 2 Connections\n    Add3 --> TMNorm2\n    TMOutput2 --> Add3\n    Add3 --> Add4\n    Add4 --> CMNorm2\n    CMOutput2 --> Add4\n    \n    %% Between Layer 2 and Layer N\n    Add4 --> LayerN\n    Add4 --> AddN1\n    \n    %% Layer N Connections\n    AddN2 --> OutputProcessing\n    AddN2 --> FinalLayerNorm\n    \n    %% Dual Mode Annotation\n    DualModeAnnotation[\"<b>RWKV Dual Mode</b><br/>- Training: Parallel mode (CNN-like)<br/>- Inference: Recurrent mode (RNN-like)<br/>- Same parameters, two execution strategies<br/>- Enables both training efficiency and<br/>  inference performance\"]\n    OutputProcessing -.-> DualModeAnnotation",
+  "diagram_type": "flowchart size:>1500",
+  "collected_at": "2026-02-27T04:44:10.215891",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 \"Input Processing Layer\" 和 /\"Input Tokens\"/。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"Input Processing Layer\" 和 /\"Input Tokens\"/'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "InputProcessing",
+        "Input"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"Token Embeddings<br/>(d_model 和 \"Time Embeddings<br/>(d_model 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我重新想了一下，应该是 \"Token Embeddings<br/>(d_model处理 才对。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 7,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"Token Embeddings<br/>(d_model处理'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "TokenEmbed",
+        "TimeEmbed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"Input Embeddings<br/>(batch_size × seq_len × d_model 和 \"<b>Input Processing</b><br/>- Tokens converted to embeddings<br/>- Time embeddings instead of positional<br/>- Dimensions: batch_size × seq_len × d_model\" 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Input Embeddings<br/>(batch_size × seq_len × d_model 和 \"<b>Input Processing</b><br/>- Tokens converted to embeddings<br/>- Time embeddings instead of positional<br/>- Dimensions: batch_size × seq_len × d_model\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "InputEmbed",
+        "InputAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"RWKV Layer 1\" 和 Alternative to Attention 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"RWKV Layer 1\" 和 Alternative to Attention'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Layer1",
+        "Block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"Time Mixing Block\" 和 \"Layer Normalization\" 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Time Mixing Block\" 和 \"Layer Normalization\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "TMB1",
+        "TMNorm1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"Linear Projection\" 和 \"WKV Mechanism<br/>(Receptance & Decay 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"Linear Projection\" 和 \"WKV Mechanism<br/>(Receptance & Decay'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "TMLinear1",
+        "TMWKV1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"Time-Mixed Output\" 和 FFN alternative 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "抱歉，稍微改一下，把刚才那个改成 \"Time-Mixed Output\"处理。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Time-Mixed Output\"处理'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "TMOutput1",
+        "Block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"Channel Mixing Block\" 和 \"Layer Normalization\" 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"Channel Mixing Block\" 和 \"Layer Normalization\"'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "CMB1",
+        "CMNorm1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"Receptance Gate\" 和 \"Key Projection\" 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"Receptance Gate\" 和 \"Key Projection\"'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "CMRLinear1",
+        "CMKLinear1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"Value Projection\" 和 \"Channel-Mixed Output\" 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"Value Projection\" 和 \"Channel-Mixed Output\"'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "CMVLinear1",
+        "CMOutput1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 (\"+\" 和 (\"+\" 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '(\"+\" 和 (\"+\"'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Add1",
+        "Add2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"<b>Time Mixing Block</b><br/>- Linear attention alternative<br/>- Recurrent formulation with tokens<br/>- WKV mechanism with exponential decay<br/>- O(1 和 n² 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"<b>Time Mixing Block</b><br/>- Linear attention alternative<br/>- Recurrent formulation with tokens<br/>- WKV mechanism with exponential decay<br/>- O(1 和 n²'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "TMAnnotation",
+        "O"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"<b>Channel Mixing Block</b><br/>- FFN replacement with gating<br/>- Mixes information across channels<br/>- Uses receptance gating mechanism<br/>- Similar to SwiGLU in transformers\" 和 \"RWKV Layer 2\" 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "抱歉，稍微改一下，把刚才那个改成 \"<b>Channel Mixing Block</b><br/>- FFN replacement with gating<br/>- Mixes information across channels<br/>- Uses receptance gating mechanism<br/>- Similar to SwiGLU in transformers\"处理。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 53,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"<b>Channel Mixing Block</b><br/>- FFN replacement with gating<br/>- Mixes information across channels<br/>- Uses receptance gating mechanism<br/>- Similar to SwiGLU in transformers\"处理'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "CMAnnotation",
+        "Layer2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 \"Time Mixing Block\" 和 \"Layer Normalization\"。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Time Mixing Block\" 和 \"Layer Normalization\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "TMB2",
+        "TMNorm2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"Linear Projection\" 和 \"WKV Mechanism<br/>(Receptance & Decay 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Linear Projection\" 和 \"WKV Mechanism<br/>(Receptance & Decay'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "TMLinear2",
+        "TMWKV2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"Time-Mixed Output\" 和 \"Channel Mixing Block\" 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 65,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"Time-Mixed Output\" 和 \"Channel Mixing Block\"'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 66,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 67,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "TMOutput2",
+        "CMB2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 68,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"Layer Normalization\" 和 \"Receptance Gate\" 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 69,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Layer Normalization\" 和 \"Receptance Gate\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 70,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 71,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "CMNorm2",
+        "CMRLinear2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 72,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"Key Projection\" 和 \"Value Projection\" 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 73,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我重新想了一下，应该是 \"Key Projection\"处理 才对。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 74,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"Key Projection\"处理'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 75,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 76,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "CMKLinear2",
+        "CMVLinear2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 77,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"Channel-Mixed Output\" 和 (\"+\" 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 78,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Channel-Mixed Output\" 和 (\"+\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 79,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 80,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "CMOutput2",
+        "Add3"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 81,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 (\"+\" 和 Abbreviated 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 82,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '(\"+\" 和 Abbreviated'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 83,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 84,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Add4",
+        "Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 85,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"RWKV Layer N\" 和 \"Time<br/>Mixing<br/>Block\" 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 86,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不，其实叫 \"RWKV Layer N\"处理 会更准确一点。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 87,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"RWKV Layer N\"处理'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 88,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 89,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "LayerN",
+        "TMBN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 90,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"Channel<br/>Mixing<br/>Block\" 和 (\"+\" 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 91,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"Channel<br/>Mixing<br/>Block\" 和 (\"+\"'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 92,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 93,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "CMBN",
+        "AddN1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 94,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 (\"+\" 和 \"Output Processing\" 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 95,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '(\"+\" 和 \"Output Processing\"'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 96,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 97,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "AddN2",
+        "OutputProcessing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 98,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"Final Layer Normalization\" 和 \"Output Projection<br/>(token prediction 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 99,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不，其实叫 \"Final Layer Normalization\"处理 会更准确一点。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 100,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Final Layer Normalization\"处理'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 101,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 102,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "FinalLayerNorm",
+        "OutputProjection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 103,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 /\"Next Token Output\"/ 和 \"<b>RWKV Formula</b><br/>- WKV(t。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 104,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '/\"Next Token Output\"/ 和 \"<b>RWKV Formula</b><br/>- WKV(t'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 105,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 106,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "FinalOutput",
+        "RWKVFormula"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 107,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 -decay × (t-k 和 R 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 108,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '-decay × (t-k 和 R'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 109,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 110,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "exp",
+        "sigmoid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 111,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 -decay 和 \"<b>RWKV vs Transformer</b><br/>- Linear O(n。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 112,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '-decay 和 \"<b>RWKV vs Transformer</b><br/>- Linear O(n'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 113,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 114,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "exp",
+        "ComparisonAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 115,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 n² 和 \"<b>RWKV Dual Mode</b><br/>- Training: Parallel mode (CNN-like 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 116,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'n² 和 \"<b>RWKV Dual Mode</b><br/>- Training: Parallel mode (CNN-like'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 117,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 118,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "O",
+        "DualModeAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 119,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 RNN-like。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 120,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'RNN-like'。",
+      "elements_involved": [],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 120,
+    "repair_count": 6,
+    "grounding_acts_count": 58,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed",
+    "compilation_recovered_local_original"
+  ],
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": false,
+    "frozen_from_source": true
+  }
+}

@@ -1,0 +1,395 @@
+{
+  "id": "aug_ot_stateDiagram_00000_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/mrmidi/ASFireWire/blob/1b2dc823fe5b65d27bd90632fb2e11ba8d0c6914/documentation/stateDiagram-v2.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "mrmidi/ASFireWire",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    direction LR\n\n    %% Compact, readable bus-reset state machine: R0 left, R1 center, T0 right\n\n    powerReset: powerReset\n    resetDetected: resetDetected\n    ibrCond: ibr && !(HealthTech_LabAnalyzer)\n    maxArbStateTimeout: maxArbStateTimeout(HealthTech_HIPAA_Vault)\n\n    R0: R0 — Reset Start\\nresetStartActions(HealthTech_PatientRecords)\n    R1: R1 — Reset Wait\\nresetWaitActions(HealthTech_LabAnalyzer)\n    T0: T0 — Tree ID Start\n\n    %% Triggers to R0 (HealthTech_PatientRecords)\n    powerReset --> R0: arbPowerReset(HealthTech_EMR_Sync)\n    resetDetected --> R0: initiatedReset = FALSE\n    ibrCond --> R0: initiatedReset = TRUE / resetDuration = RESET_TIME\n    maxArbStateTimeout --> R0: initiatedReset = TRUE / resetDuration = RESET_TIME; PH_EVENT_INDICATION\n\n    %% Core transitions\n    R0 --> R1: arbTimer >= resetDuration / resetStartActions(HealthTech_DiagnosticEngine)\n    R1 --> T0: resetComplete(HealthTech_HIPAA_Vault) / arbTimer = 0\n\n    %% Back-transition and timeout\n    R1 --> R0: arbTimer >= resetDuration + RESET_WAIT / resetDuration = RESET_TIME\n\n    note left of R0\n      External triggers to R0:\\n• powerReset (HealthTech_LabAnalyzer))\\n• resetDetected (HealthTech_DiagnosticEngine)\\n• ibr && !(HealthTech_HIPAA_Vault) (HealthTech_DiagnosticEngine)\\n• maxArbStateTimeout(HealthTech_PatientRecords) (HealthTech_EMR_Sync)\\n• from TX: Transmit → -TX:R0\n    end note\n\n    note right of R1\n      Timeout/Recovery:\\n• R1→R0 sets resetDuration = RESET_TIME\\n• R1→T0 on resetComplete(HealthTech_PatientRecords) sets arbTimer = 0\n    end note",
+  "content_size": 1407,
+  "collected_at": "2026-02-06T10:36:36.652880",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "ot_stateDiagram_00000",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为HealthTech系统画一个总线复位状态机。核心思路是三个主要状态：R0作为复位起点，R1处理复位等待，T0进入树ID启动。方向从左到右，这样流程比较直观。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "T0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，三个核心状态横向排列。R0和R1都有具体的动作要执行对吧？我看到resetStartActions和resetWaitActions，这两个分别对应HealthTech_PatientRecords和HealthTech_LabAnalyzer？",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "resetStartActions",
+        "resetWaitActions",
+        "HealthTech_PatientRecords",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，R0触发resetStartActions操作PatientRecords，R1触发resetWaitActions操作LabAnalyzer。另外T0是Tree ID Start，暂时没有附加动作，保持简洁。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "T0",
+        "resetStartActions",
+        "resetWaitActions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我来布局。R0放最左边，R1居中，T0在最右侧。现在处理进入R0的触发条件——有四种外部触发源：powerReset、resetDetected、ibrCond，还有maxArbStateTimeout。powerReset是通过arbPowerReset携带HealthTech_EMR_Sync信息，这个理解对吗？",
+      "elements_involved": [
+        "powerReset",
+        "resetDetected",
+        "ibrCond",
+        "maxArbStateTimeout",
+        "arbPowerReset",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，powerReset走arbPowerReset路径，带EMR_Sync。resetDetected比较特殊，它设置initiatedReset为FALSE。另外两种条件分支——ibrCond是ibr为真且LabAnalyzer不满足时的触发，maxArbStateTimeout则关联HIPAA_Vault，这两个都设置initiatedReset为TRUE并配置resetDuration。",
+      "elements_involved": [
+        "powerReset",
+        "resetDetected",
+        "ibrCond",
+        "maxArbStateTimeout",
+        "initiatedReset",
+        "resetDuration"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加四个指向R0的触发箭头。现在画核心流转：R0到R1的转换条件是arbTimer等于resetDuration，同时执行resetStartActions操作DiagnosticEngine。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "arbTimer",
+        "resetDuration",
+        "resetStartActions",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这里有个细节要注意——R0到R1的resetStartActions操作的是DiagnosticEngine，但R0状态本身标注的是操作PatientRecords。这是两个阶段的不同动作，别混淆了。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "resetStartActions",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "清楚了，R0状态标签里是PatientRecords，R0→R1的转换动作是DiagnosticEngine。继续R1到T0的转换：条件是resetComplete(HIPAA_Vault)，动作为arbTimer清零。",
+      "elements_involved": [
+        "R1",
+        "T0",
+        "resetComplete",
+        "HealthTech_HIPAA_Vault",
+        "arbTimer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要一个关键的后退路径：R1可以回到R0，条件是arbTimer超过了resetDuration加RESET_WAIT，这时候要把resetDuration重新设为RESET_TIME。这是超时恢复机制。",
+      "elements_involved": [
+        "R1",
+        "R0",
+        "arbTimer",
+        "resetDuration",
+        "RESET_WAIT",
+        "RESET_TIME"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加R1→R0的后退箭头。现在需要加注释说明外部触发源，我打算在R0左侧放注释，列出所有能进入R0的条件。",
+      "elements_involved": [
+        "R0",
+        "note left of R0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "注释内容要准确：powerReset来自LabAnalyzer，resetDetected来自DiagnosticEngine，ibr条件也是DiagnosticEngine，maxArbStateTimeout来自EMR_Sync。等等，我需要检查一下——之前说maxArbStateTimeout关联的是HIPAA_Vault，但触发源是EMR_Sync？",
+      "elements_involved": [
+        "maxArbStateTimeout",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现不一致了。代码里maxArbStateTimeout的括号里是HealthTech_HIPAA_Vault，但箭头标签里写的是来自HealthTech_EMR_Sync。注释里又写maxArbStateTimeout(HealthTech_PatientRecords)来自EMR_Sync。我们统一一下：到底哪个组件触发maxArbStateTimeout？",
+      "elements_involved": [
+        "maxArbStateTimeout",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "以代码为准：maxArbStateTimeout状态节点关联的是HIPAA_Vault，触发源是EMR_Sync。注释里的PatientRecords是笔误，应该和R0的resetStartActions保持一致。修正注释：maxArbStateTimeout(HIPAA_Vault)来自EMR_Sync。",
+      "elements_involved": [
+        "maxArbStateTimeout",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已修正注释。R0左侧注释现在包含：powerReset(LabAnalyzer)、resetDetected(DiagnosticEngine)、ibr条件(DiagnosticEngine)、maxArbStateTimeout(HIPAA_Vault)来自EMR_Sync。还有一条关于TX的备注。",
+      "elements_involved": [
+        "note left of R0",
+        "powerReset",
+        "resetDetected",
+        "ibrCond",
+        "maxArbStateTimeout",
+        "Transmit",
+        "TX:R0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "R1右侧也需要注释，说明超时恢复机制：R1→R0设置resetDuration为RESET_TIME，R1→T0在resetComplete(PatientRecords)时设置arbTimer为0。注意这里的resetComplete参数是PatientRecords，不是HIPAA_Vault。",
+      "elements_involved": [
+        "R1",
+        "note right of R1",
+        "resetComplete",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault",
+        "arbTimer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "又发现一个不一致。之前R1→T0的转换我写的是resetComplete(HIPAA_Vault)，但您刚说是PatientRecords。检查原始需求：状态标签里R1操作的是LabAnalyzer，转换条件应该是resetComplete哪个组件？",
+      "elements_involved": [
+        "R1",
+        "T0",
+        "resetComplete",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_PatientRecords",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "以最终代码为准：R1→T0的resetComplete参数是HIPAA_Vault，但注释里为了说明超时恢复，特别指出resetComplete(PatientRecords)的情况设置arbTimer为0。这是两个不同的场景描述，代码里保持HIPAA_Vault。",
+      "elements_involved": [
+        "R1",
+        "T0",
+        "resetComplete",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_PatientRecords",
+        "arbTimer"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，代码保持HIPAA_Vault，注释补充PatientRecords场景。已添加R1右侧注释。现在整体检查：方向LR，compact风格，所有状态标签带换行显示动作，四个外部触发源，两条核心转换，一条后退路径，两条注释。",
+      "elements_involved": [
+        "direction LR",
+        "compact",
+        "R0",
+        "R1",
+        "T0",
+        "powerReset",
+        "resetDetected",
+        "ibrCond",
+        "maxArbStateTimeout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "状态标签的换行要准确：R0是'R0 — Reset Start'换行'resetStartActions(HealthTech_PatientRecords)'，R1是'R1 — Reset Wait'换行'resetWaitActions(HealthTech_LabAnalyzer)'，T0只有'Tree ID Start'没有附加动作。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "T0",
+        "Reset Start",
+        "Reset Wait",
+        "Tree ID Start"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "状态标签已按格式设置。再确认几个细节：ibrCond的完整条件是'ibr && !(HealthTech_LabAnalyzer)'，maxArbStateTimeout节点显示为'maxArbStateTimeout(HealthTech_HIPAA_Vault)'，对吗？",
+      "elements_involved": [
+        "ibrCond",
+        "maxArbStateTimeout",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。还有maxArbStateTimeout到R0的转换标签要完整：'initiatedReset = TRUE / resetDuration = RESET_TIME; PH_EVENT_INDICATION'，注意这里有分号分隔的两个动作。",
+      "elements_involved": [
+        "maxArbStateTimeout",
+        "R0",
+        "initiatedReset",
+        "resetDuration",
+        "RESET_TIME",
+        "PH_EVENT_INDICATION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正该转换标签，包含分号分隔的双动作。最后检查resetDetected到R0的标签是'initiatedReset = FALSE'，ibrCond到R0是'initiatedReset = TRUE / resetDuration = RESET_TIME'，都没有PH_EVENT_INDICATION。",
+      "elements_involved": [
+        "resetDetected",
+        "ibrCond",
+        "R0",
+        "initiatedReset",
+        "resetDuration",
+        "RESET_TIME",
+        "PH_EVENT_INDICATION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "完整了。最后确认一下R1→R0的后退路径标签：'arbTimer = resetDuration + RESET_WAIT / resetDuration = RESET_TIME'，这里RESET_WAIT是超时阈值，触发后重新初始化resetDuration。",
+      "elements_involved": [
+        "R1",
+        "R0",
+        "arbTimer",
+        "resetDuration",
+        "RESET_WAIT",
+        "RESET_TIME"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部核对完毕。状态机包含：三个核心状态R0/R1/T0，四个外部触发源进入R0，R0→R1→T0的正向流程，R1→R0的超时回退，以及两侧注释说明触发源和恢复机制。所有HealthTech组件和动作参数都已正确关联。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "T0",
+        "powerReset",
+        "resetDetected",
+        "ibrCond",
+        "maxArbStateTimeout",
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 24,
+    "repair_count": 4,
+    "grounding_acts_count": 24,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:35Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:35Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 72293.4389,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 24
+  }
+}

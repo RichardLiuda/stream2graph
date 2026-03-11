@@ -1,0 +1,399 @@
+{
+  "id": "gl_packet-beta_00466",
+  "source": "gitlab",
+  "source_url": "https://github.com/sean-galloway/RTLDesignSherpa/blob/47f8a16641658f570a69c3af3c9724b29ea39187/projects/components/stream/docs/stream_mas/assets/mermaid/02_scheduler_block.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sean-galloway/RTLDesignSherpa",
+  "diagram_type": "packet-beta",
+  "code": "graph TB\n    subgraph \"Scheduler\"\n        DESC[Descriptor Input] --> FETCH[Descriptor Latch]\n        FETCH --> FSM[FSM Controller]\n        FSM --> RD_IF[Read Interface]\n        FSM --> WR_IF[Write Interface]\n        FSM --> MON[MonBus Reporter]\n\n        BEAT_RD[Read Beat Counter] --> FSM\n        BEAT_WR[Write Beat Counter] --> FSM\n        TIMEOUT[Timeout Counter] --> FSM\n        ERR[Error Aggregator] --> FSM\n\n        RD_IF --> |datard_valid/ready| RD_ENG[Read Engine]\n        WR_IF --> |datawr_valid/ready| WR_ENG[Write Engine]\n        RD_ENG --> |done_strobe| BEAT_RD\n        WR_ENG --> |done_strobe| BEAT_WR\n    end\n\n    DESC_ENG[Descriptor Engine] --> |descriptor_packet| DESC\n    RD_ENG --> |datard_error| ERR\n    WR_ENG --> |datawr_error| ERR\n    MON --> |mon_valid/ready| MONBUS[MonBus]\n\n    style FSM fill:#f9f,stroke:#333,stroke-width:4px\n    style BEAT_RD fill:#bfb,stroke:#333,stroke-width:2px\n    style BEAT_WR fill:#bfb,stroke:#333,stroke-width:2px",
+  "content_size": 964,
+  "collected_at": "2026-02-06T14:10:16.652869",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个调度器（Scheduler）来管理DMA的读写流程。核心是一个状态机控制器，我暂时叫它FSM Controller，它要协调读写两个方向的数据流。",
+      "elements_involved": [
+        "Scheduler",
+        "FSM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。那FSM的输入从哪里来？是否需要先有一个描述符（Descriptor）的入口模块？",
+      "elements_involved": [
+        "DESC",
+        "FSM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，需要一个Descriptor Input模块接收外部的描述符包。描述符本身由外部的Descriptor Engine生成，通过descriptor_packet接口送进来。",
+      "elements_involved": [
+        "DESC",
+        "DESC_ENG",
+        "descriptor_packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "那我画一个Descriptor Input节点，然后加一个FETCH模块做描述符锁存（Descriptor Latch），这样FSM可以从FETCH拿到稳定的描述符信息。",
+      "elements_involved": [
+        "DESC",
+        "FETCH",
+        "FSM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。FETCH到FSM是控制流，FSM解析完描述符后，要分出两路：Read Interface和Write Interface。",
+      "elements_involved": [
+        "FETCH",
+        "FSM",
+        "RD_IF",
+        "WR_IF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在FSM下面挂出RD_IF和WR_IF两个接口模块。这两个接口后面应该对接实际的读写引擎吧？",
+      "elements_involved": [
+        "FSM",
+        "RD_IF",
+        "WR_IF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。RD_IF通过datard_valid/ready握手信号驱动Read Engine，WR_IF同理用datawr_valid/ready驱动Write Engine。",
+      "elements_involved": [
+        "RD_IF",
+        "RD_ENG",
+        "WR_IF",
+        "WR_ENG",
+        "datard_valid",
+        "datawr_valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Read Engine和Write Engine。注意到这两个引擎完成传输后需要反馈给计数器？",
+      "elements_involved": [
+        "RD_ENG",
+        "WR_ENG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，RD_ENG和WR_ENG都要输出done_strobe脉冲，分别驱动Read Beat Counter和Write Beat Counter，用来统计实际的读写拍数。",
+      "elements_involved": [
+        "RD_ENG",
+        "WR_ENG",
+        "BEAT_RD",
+        "BEAT_WR",
+        "done_strobe"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "那我把BEAT_RD和BEAT_WR放在FSM的左侧，它们的输出都连回FSM，这样FSM可以监控进度。需要给这两个计数器加个绿色填充区分一下吗？",
+      "elements_involved": [
+        "BEAT_RD",
+        "BEAT_WR",
+        "FSM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好主意，绿色表示状态类模块。另外还需要一个Timeout Counter，防止传输卡死，它也连到FSM。",
+      "elements_involved": [
+        "TIMEOUT",
+        "FSM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Timeout Counter已添加。还有别的监控需求吗？",
+      "elements_involved": [
+        "TIMEOUT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要错误聚合。Read Engine和Write Engine各自可能上报datard_error和datawr_error，这些要汇总到一个Error Aggregator，再送给FSM做异常处理。",
+      "elements_involved": [
+        "RD_ENG",
+        "WR_ENG",
+        "ERR",
+        "datard_error",
+        "datawr_error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Error Aggregator已放置，左侧三个计数器/聚合器都指向FSM。现在FSM是核心枢纽了。",
+      "elements_involved": [
+        "ERR",
+        "BEAT_RD",
+        "BEAT_WR",
+        "TIMEOUT",
+        "FSM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "FSM还需要一个MonBus Reporter，把内部状态通过mon_valid/ready接口导出到外部总线，方便软件调试。",
+      "elements_involved": [
+        "MON",
+        "mon_valid",
+        "MONBUS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "MonBus Reporter已添加，输出到MonBus。现在Scheduler子图内部结构基本完整了。",
+      "elements_involved": [
+        "MON",
+        "MONBUS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，我刚才说Descriptor Engine在外部，但它和DESC的连接关系需要明确画出来。DESC_ENG到DESC是descriptor_packet接口。",
+      "elements_involved": [
+        "DESC_ENG",
+        "DESC",
+        "descriptor_packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我调整一下：DESC_ENG放在Scheduler子图外面，用虚线或明确标注表示它是外部模块，通过descriptor_packet连到DESC。",
+      "elements_involved": [
+        "DESC_ENG",
+        "DESC"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这样结构清晰了。FSM作为核心，给它加个醒目的样式吧，比如粉色填充加粗边框。",
+      "elements_involved": [
+        "FSM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "FSM已设置为粉色填充、4px边框。BEAT_RD和BEAT_WR用浅绿色2px边框，符合之前的约定。",
+      "elements_involved": [
+        "FSM",
+        "BEAT_RD",
+        "BEAT_WR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再确认一下数据流向：RD_IF到RD_ENG的datard_valid/ready是双向握手，WR_IF到WR_ENG同理。这些要标注在连线上。",
+      "elements_involved": [
+        "RD_IF",
+        "RD_ENG",
+        "WR_IF",
+        "WR_ENG",
+        "datard_valid",
+        "datawr_valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已标注。另外MON到MONBUS的mon_valid/ready也标注了。所有控制信号都清晰了。",
+      "elements_involved": [
+        "MON",
+        "MONBUS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "检查一下完整性：DESC→FETCH→FSM，FSM分出RD_IF/WR_IF/MON，两个接口分别驱动RD_ENG/WR_ENG，引擎反馈done_strobe到计数器，错误汇总到ERR，超时监控到TIMEOUT。",
+      "elements_involved": [
+        "DESC",
+        "FETCH",
+        "FSM",
+        "RD_IF",
+        "WR_IF",
+        "MON",
+        "RD_ENG",
+        "WR_ENG",
+        "BEAT_RD",
+        "BEAT_WR",
+        "ERR",
+        "TIMEOUT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "流程完整。不过DESC_ENG的位置我再确认一下——它确实在Scheduler子图外部，作为上游模块，对吗？",
+      "elements_involved": [
+        "DESC_ENG",
+        "Scheduler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，DESC_ENG是独立的描述符生成引擎，不属于调度器内部。它的输出descriptor_packet是Scheduler的输入边界。",
+      "elements_involved": [
+        "DESC_ENG",
+        "Scheduler",
+        "descriptor_packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终调整完成。Scheduler子图包含DESC、FETCH、FSM、RD_IF、WR_IF、MON、BEAT_RD、BEAT_WR、TIMEOUT、ERR、RD_ENG、WR_ENG，外部连接DESC_ENG和MONBUS。",
+      "elements_involved": [
+        "Scheduler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "RD_ENG和WR_ENG的位置——它们是在Scheduler子图内部还是跨边界？从功能上看它们是引擎，但和Scheduler紧密耦合。",
+      "elements_involved": [
+        "RD_ENG",
+        "WR_ENG",
+        "Scheduler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我重新梳理：RD_ENG和WR_ENG放在Scheduler子图内部，作为受控的执行单元；DESC_ENG和MONBUS明确放在外部。这样层次更清晰。",
+      "elements_involved": [
+        "RD_ENG",
+        "WR_ENG",
+        "DESC_ENG",
+        "MONBUS",
+        "Scheduler"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。现在结构合理了：Scheduler是完整的控制平面，包含描述符处理、状态机、接口、计数器、监控和引擎；外部只有描述符源和监控总线。可以定稿了。",
+      "elements_involved": [
+        "Scheduler",
+        "DESC_ENG",
+        "MONBUS"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 29,
+    "repair_count": 2,
+    "grounding_acts_count": 29,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 95680.4481,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 29
+  }
+}

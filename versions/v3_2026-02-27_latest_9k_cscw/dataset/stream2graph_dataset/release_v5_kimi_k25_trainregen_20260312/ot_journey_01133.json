@@ -1,0 +1,281 @@
+{
+  "id": "ot_journey_01133",
+  "source": "other",
+  "source_url": "https://github.com/rtyx/project-module-apr2025/blob/dc1d9e46f8d5b5f2e8fe98b37a25825f031df456/docs/diagrams/images/component-interaction.mmd",
+  "source_type": "github_search",
+  "github_repo": "rtyx/project-module-apr2025",
+  "diagram_type": "journey",
+  "code": "sequenceDiagram\n    %% Component Interaction - User browsing/searching journey\n    %% Based on actual user flow through the application\n\n    participant User as 👤 User\n    participant Browser as 🌐 Browser\n    participant NextJS as ⚛️ Next.js App\n    participant ArtworkAPI as 🎨 Artwork API\n    participant PersonAPI as 👥 Person API\n    participant RAGAPI as 🧠 RAG API\n    participant SolrClient as 🔍 Solr Client\n    participant RAGService as 🔄 RAG Service\n    participant ES as 🔍 Elasticsearch\n    participant OpenAI as 🤖 OpenAI\n    participant Mongo as 🍃 MongoDB\n\n    Note over User, Mongo: User Journey: Search → Browse → Detail → Related → Chat\n\n    %% 1. Homepage Load\n    User->>Browser: Navigate to homepage\n    Browser->>NextJS: GET /de (or /en)\n    NextJS->>NextJS: Load homepage component\n    NextJS-->>Browser: Homepage with hero section\n    Browser-->>User: Display homepage\n\n    %% 2. Search Artworks\n    User->>Browser: Enter search query \"impressionist\"\n    Browser->>NextJS: Search form submission\n    NextJS->>ArtworkAPI: GET /api/de/artworks?q=impressionist&page=1&pageSize=12\n    \n    ArtworkAPI->>SolrClient: searchArtworks({query: \"impressionist\", pageSize: 12})\n    SolrClient->>SolrClient: Build Solr query parameters\n    SolrClient->>SolrClient: Execute search against collection.kunsthaus.ch\n    SolrClient-->>ArtworkAPI: SolrSearchResponse with artworks + facets\n    \n    ArtworkAPI->>ArtworkAPI: Transform Solr results to Artwork models\n    ArtworkAPI-->>NextJS: JSON response with artworks + pagination\n    NextJS->>NextJS: Update artwork grid component\n    NextJS-->>Browser: Render search results\n    Browser-->>User: Display 12 impressionist artworks\n\n    %% 3. Filter Results\n    User->>Browser: Apply category filter \"Painting\"\n    Browser->>NextJS: Update search parameters\n    NextJS->>ArtworkAPI: GET /api/de/artworks?q=impressionist&categories=Painting\n    \n    ArtworkAPI->>SolrClient: searchArtworks({query: \"impressionist\", categories: [\"Painting\"]})\n    SolrClient->>SolrClient: Add category filter to query\n    SolrClient-->>ArtworkAPI: Filtered results\n    ArtworkAPI-->>NextJS: Filtered artworks\n    NextJS-->>Browser: Updated results\n    Browser-->>User: Show only paintings\n\n    %% 4. View Artwork Detail\n    User->>Browser: Click on artwork \"Sunflowers\"\n    Browser->>NextJS: Navigate to /de/artworks/123\n    NextJS->>ArtworkAPI: GET /api/de/artworks/123\n    \n    ArtworkAPI->>SolrClient: getArtworkById(\"123\")\n    SolrClient-->>ArtworkAPI: Artwork details\n    ArtworkAPI-->>NextJS: Complete artwork data\n    NextJS->>NextJS: Load artwork detail page + IIIF viewer\n    NextJS-->>Browser: Artwork detail page\n    Browser-->>User: Show artwork details + high-res image\n\n    %% 5. View Related Artist\n    User->>Browser: Click on artist \"Van Gogh\"\n    Browser->>NextJS: Navigate to /de/persons/456\n    NextJS->>PersonAPI: GET /api/de/persons/456\n    \n    PersonAPI->>SolrClient: getArtistById(\"456\")\n    SolrClient-->>PersonAPI: Person details\n    PersonAPI-->>NextJS: Person data\n    NextJS->>NextJS: Load person detail page\n    NextJS-->>Browser: Person biography + artworks\n    Browser-->>User: Show Van Gogh's biography + works\n\n    %% 6. Ask RAG Question\n    User->>Browser: Type question \"What technique did Van Gogh use?\"\n    Browser->>NextJS: Submit RAG query\n    NextJS->>RAGAPI: POST /api/de/rag/answer/artwork/123<br/>{\"q\": \"What technique did Van Gogh use?\", \"currentArtwork\": {...}}\n    \n    RAGAPI->>RAGService: answerRag({q, lang: \"de\", currentArtwork: {...}})\n    \n    Note over RAGService: RAG Processing\n    RAGService->>RAGService: Enhance query + detect language\n    RAGService->>OpenAI: Generate embedding\n    OpenAI-->>RAGService: Embedding vector\n    \n    par Vector Search\n        RAGService->>ES: KNN search with artwork context\n        ES-->>RAGService: Vector results\n    and Lexical Search\n        RAGService->>ES: BM25 search with artwork context\n        ES-->>RAGService: Lexical results\n    end\n    \n    RAGService->>RAGService: Merge results + select context\n    RAGService->>OpenAI: Generate answer with context\n    OpenAI-->>RAGService: Answer with citations\n    \n    RAGService-->>RAGAPI: AnswerResult with citations\n    RAGAPI-->>NextJS: JSON response\n    NextJS->>NextJS: Update chat interface\n    NextJS-->>Browser: Display answer with citations\n    Browser-->>User: \"Van Gogh verwendete Ölmalerei-Technik... [1] [2]\"\n\n    %% 7. Follow-up Question\n    User->>Browser: Ask follow-up \"When was it painted?\"\n    Browser->>NextJS: Submit follow-up\n    NextJS->>RAGAPI: POST /api/de/rag/answer/artwork/123<br/>{\"q\": \"When was it painted?\", \"history\": [...]}\n    \n    RAGAPI->>RAGService: answerRag({q, lang: \"de\", history: [...]})\n    RAGService->>RAGService: Process with conversation history\n    RAGService->>OpenAI: Generate answer with context + history\n    OpenAI-->>RAGService: Contextual answer\n    RAGService-->>RAGAPI: AnswerResult\n    RAGAPI-->>NextJS: Follow-up answer\n    NextJS-->>Browser: Display contextual answer\n    Browser-->>User: \"Das Gemälde wurde 1888 gemalt... [3]\"\n\n    %% 8. Browse Related Artworks\n    User->>Browser: Click \"View all works by Van Gogh\"\n    Browser->>NextJS: Navigate to artist's works\n    NextJS->>ArtworkAPI: GET /api/de/artworks?person=456&page=1\n    \n    ArtworkAPI->>SolrClient: searchArtworks({artistId: 456})\n    SolrClient-->>ArtworkAPI: All Van Gogh artworks\n    ArtworkAPI-->>NextJS: Artwork list\n    NextJS-->>Browser: Grid of Van Gogh's works\n    Browser-->>User: Show all Van Gogh artworks\n\n    %% Error Handling\n    alt Search Error\n        SolrClient-->>ArtworkAPI: Error response\n        ArtworkAPI-->>NextJS: 500 Error\n        NextJS-->>Browser: Error message\n        Browser-->>User: \"Search temporarily unavailable\"\n    end\n\n    alt RAG Error\n        RAGService-->>RAGAPI: No context found\n        RAGAPI-->>NextJS: Empty response\n        NextJS-->>Browser: \"No information available\"\n        Browser-->>User: \"Ich finde dazu keine ausreichenden Informationen.\"\n    end\n",
+  "content_size": 6007,
+  "collected_at": "2026-02-06T11:05:28.383939",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的用户旅程图，展示从搜索艺术品到使用RAG问答的完整流程。核心参与者包括用户、浏览器、Next.js应用，以及后端的ArtworkAPI、PersonAPI和RAGAPI这几个服务。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "ArtworkAPI",
+        "PersonAPI",
+        "RAGAPI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。RAG流程看起来比较复杂，我需要确认一下：RAGAPI后面是不是还有RAGService、Elasticsearch和OpenAI这几个组件？另外SolrClient是不是同时被ArtworkAPI和PersonAPI共用？",
+      "elements_involved": [
+        "RAGAPI",
+        "RAGService",
+        "ES",
+        "OpenAI",
+        "SolrClient",
+        "ArtworkAPI",
+        "PersonAPI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，SolrClient是共享的搜索客户端。RAG链路确实更长：RAGAPI调用RAGService，RAGService会并行做向量搜索（走Elasticsearch的KNN）和词法搜索（BM25），最后调用OpenAI生成答案。另外还需要MongoDB来存对话历史。",
+      "elements_involved": [
+        "SolrClient",
+        "RAGService",
+        "ES",
+        "OpenAI",
+        "MongoDB",
+        "KNN",
+        "BM25"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主干架构。从用户打开首页开始：用户通过浏览器访问/de或/en路径，Next.js渲染首页带hero区域。然后用户搜索\"impressionist\"，请求走到ArtworkAPI，SolrClient构建查询参数，搜索collection.kunsthaus.ch，返回12条结果和聚合面。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "ArtworkAPI",
+        "SolrClient",
+        "collection.kunsthaus.ch",
+        "hero section",
+        "impressionist",
+        "pageSize: 12",
+        "facets"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来要展示筛选流程。用户在结果页选择\"Painting\"分类，ArtworkAPI会重新查询，这次带上categories:[\"Painting\"]参数。然后用户点击《向日葵》进入详情页，URL是/de/artworks/123，这里要加载IIIF viewer显示高清图。",
+      "elements_involved": [
+        "Painting",
+        "categories",
+        "Sunflowers",
+        "/de/artworks/123",
+        "IIIF viewer",
+        "artwork detail"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，详情页调用getArtworkById(\"123\")。接下来是艺术家关联：用户点击\"Van Gogh\"跳转到/de/persons/456，走PersonAPI查询艺术家生平和其他作品。这个跳转要清晰展示出来。",
+      "elements_involved": [
+        "Van Gogh",
+        "/de/persons/456",
+        "PersonAPI",
+        "getArtistById",
+        "artist biography"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在进入核心RAG场景。用户在《向日葵》详情页提问\"What technique did Van Gogh use?\"，这是个POST请求，端点是/api/de/rag/answer/artwork/123，请求体里要带上当前艺术品上下文currentArtwork。",
+      "elements_involved": [
+        "POST /api/de/rag/answer/artwork/123",
+        "currentArtwork",
+        "What technique did Van Gogh use?",
+        "RAG query"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我正在画RAG内部流程。RAGService收到请求后，先做查询增强和语言检测（德语），然后调用OpenAI生成embedding。接下来并行两路：一路走Elasticsearch做KNN向量搜索，另一路做BM25词法搜索，最后合并结果选上下文，再调OpenAI生成带引用的答案。",
+      "elements_involved": [
+        "RAGService",
+        "query enhancement",
+        "lang: de",
+        "embedding",
+        "KNN",
+        "BM25",
+        "merge results",
+        "citations",
+        "OpenAI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这里有个细节：答案要显示德语回复\"Van Gogh verwendete Ölmalerei-Technik\"，并且带引用标记[1][2]。然后用户追问\"When was it painted?\"，这时候请求体里要包含history数组，RAGService需要处理对话历史。",
+      "elements_involved": [
+        "Van Gogh verwendete Ölmalerei-Technik",
+        "[1][2]",
+        "follow-up question",
+        "history",
+        "When was it painted?",
+        "Das Gemälde wurde 1888 gemalt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，追问流程重用同一端点，但带上history。答案要体现上下文连续性：\"Das Gemälde wurde 1888 gemalt\"，引用[3]。最后用户点击\"查看Van Gogh所有作品\"，跳转到艺术家作品列表，用artistId: 456查询。",
+      "elements_involved": [
+        "history",
+        "conversation continuity",
+        "artistId: 456",
+        "all works by Van Gogh",
+        "artwork grid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要加上错误处理分支。搜索失败时SolrClient返回错误，ArtworkAPI抛500，前端显示\"Search temporarily unavailable\"。RAG找不到上下文时，要显示德语提示\"Ich finde dazu keine ausreichenden Informationen.\"。",
+      "elements_involved": [
+        "alt",
+        "Search Error",
+        "500 Error",
+        "RAG Error",
+        "No context found",
+        "Ich finde dazu keine ausreichenden Informationen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已经加上两个alt错误分支。我注意到整个旅程有个总标题\"User Journey: Search → Browse → Detail → Related → Chat\"，用Note覆盖所有参与者。检查一下：从首页→搜索→筛选→详情→艺术家→RAG问答→追问→浏览相关作品，完整闭环。",
+      "elements_involved": [
+        "Note over User, Mongo",
+        "Search → Browse → Detail → Related → Chat",
+        "complete journey"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，RAG流程里MongoDB的作用需要明确。它是用来存储对话历史的，但图上Note已经覆盖了Mongo，这个Note其实是总标题，不是数据流。MongoDB在追问时读取history，但不需要画显式连线，保持简洁。",
+      "elements_involved": [
+        "MongoDB",
+        "history storage",
+        "Note over User, Mongo",
+        "simplify data flow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我调整一下。之前我误以为MongoDB需要显式连线，实际上history作为参数传递即可，MongoDB在背景中支持。RAGService的answerRag方法签名是({q, lang: \"de\", currentArtwork: {...}})和({q, lang: \"de\", history: [...]})，这样更准确。",
+      "elements_involved": [
+        "MongoDB",
+        "answerRag",
+        "currentArtwork",
+        "history",
+        "repair: remove explicit MongoDB flow"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。另外确认下并行搜索的表示：par Vector Search / and Lexical Search / end 这个结构要保留，体现KNN和BM25同时执行。所有API端点的语言参数都是de，保持一致。",
+      "elements_involved": [
+        "par",
+        "Vector Search",
+        "Lexical Search",
+        "KNN",
+        "BM25",
+        "lang: de",
+        "/api/de/"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部完成。最终检查：用户旅程覆盖8个主要步骤，包含完整的搜索参数（q=impressionist&pageSize=12）、分类过滤、艺术品ID 123、艺术家ID 456、RAG双路检索、对话历史追踪，以及两种错误场景的降级处理。",
+      "elements_involved": [
+        "q=impressionist",
+        "pageSize: 12",
+        "artworkId: 123",
+        "artistId: 456",
+        "dual retrieval",
+        "error handling",
+        "complete diagram"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 16,
+    "repair_count": 1,
+    "grounding_acts_count": 16,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:43Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:39Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:39Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 34371.8314,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 16
+  }
+}

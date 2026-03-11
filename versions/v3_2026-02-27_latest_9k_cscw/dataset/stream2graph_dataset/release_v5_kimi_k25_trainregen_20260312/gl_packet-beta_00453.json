@@ -1,0 +1,583 @@
+{
+  "id": "gl_packet-beta_00453",
+  "source": "gitlab",
+  "source_url": "https://github.com/asmund20/in4230-mip/blob/791c34e926d22caef6c6cf7103c7265f86db82cc/design/tp.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "asmund20/in4230-mip",
+  "diagram_type": "packet-beta",
+  "code": "---\ntitle: MIP TP daemon\n---\nflowchart TB\n    Start((Start))\n    Init[Setup sockets, structures and accept connections]\n    Timeouts[Check timeouts and disconnects]\n    ReadyFd{Which fd?}\n    RecvLower{Ack?}\n    ReceiveData{Expected?}\n    RecvUpper{Is in-flight full \\nor first packet\\n not yet acked?}\n    ReceiveAck{NACK?}\n    HandleNack{In-flight?}\n    HandleAck{In-flight?}\n    Retransmit1[Retransmit non-acked in-flight packets\\n if holddown timer is expired]\n    Retransmit2[Retransmit non-acked in-flight packets\\n if holddown timer is expired]\n    SendPacket[Send packet and send\\n ready to upper]\n    Enque[Add packet to queue]\n    SendQueue1[Send packets from queue until in-flight is\\n full, sending request for each send]\n    SendQueue2[Send packets from queue until in-flight is\\n full, sending request for each send]\n    CummulativeAck[Remove all packets with seqno before\\nNACK-no from in-flight]\n    RemoveFirst[Remove first packet from in-flight]\n    CorrectData[Send up, ACK]\n    Store[Store in buffer, send ACK and NACK]\n    SendAck[Send ack, ignore content]\n    MarkAcked[Mark in-flight packet as acked]\n\n    Start --> Init --> Poll --> Timeouts --> ReadyFd\n    ReadyFd-- Mip daemon -->RecvLower\n        RecvLower-- Yes --> ReceiveAck\n            ReceiveAck-- Yes -->HandleNack\n                HandleNack-- First in-flight --> Retransmit1 --> Poll\n                HandleNack-- Other in-flight --> CummulativeAck --> Retransmit2 --> SendQueue1 --> Poll\n                HandleNack-- Not in-flight --> Poll\n            ReceiveAck-- No -->HandleAck\n                HandleAck-- First --> RemoveFirst --> SendQueue2 --> Poll\n                HandleAck-- In-flight --> MarkAcked --> Poll\n                HandleAck-- Not in-flight --> Poll\n        RecvLower-- No --> ReceiveData\n            ReceiveData-- Yes -->CorrectData -->Poll\n            ReceiveData-- In-window --> Store -->Poll\n            ReceiveData-- Recent seqno -->SendAck -->Poll\n    ReadyFd-- Upper -->RecvUpper\n        RecvUpper-- Yes -->Enque --> Poll\n        RecvUpper-- NO -->SendPacket --> Poll\n\n",
+  "content_size": 2077,
+  "collected_at": "2026-02-06T14:10:01.974436",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为MIP传输协议守护进程画一个流程图。这个守护进程负责处理可靠传输，包括超时重传、累积确认和窗口管理。",
+      "elements_involved": [
+        "Start",
+        "Init",
+        "Poll",
+        "Timeouts"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先把主循环结构搭起来：从Start开始，经过Init初始化，然后进入Poll主循环检查超时。ReadyFd作为分发节点，区分来自Mip daemon和上层的数据。这样理解对吗？",
+      "elements_involved": [
+        "Start",
+        "Init",
+        "Poll",
+        "Timeouts",
+        "ReadyFd"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，ReadyFd是关键的分支点。来自Mip daemon的数据走RecvLower路径，来自上层应用的数据走RecvUpper路径。",
+      "elements_involved": [
+        "ReadyFd",
+        "RecvLower",
+        "RecvUpper"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我画出了Start到Init到Poll到Timeouts到ReadyFd的主链，以及ReadyFd分出的两个分支。现在处理RecvLower分支——这里需要判断收到的是ACK还是数据吧？",
+      "elements_involved": [
+        "RecvLower"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。RecvLower先判断是否是ACK：如果是ACK，进入ReceiveAck；如果不是ACK，就是数据包，进入ReceiveData。ReceiveAck还要进一步区分是NACK还是普通ACK。",
+      "elements_involved": [
+        "RecvLower",
+        "ReceiveAck",
+        "ReceiveData"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：RecvLower--Yes--ReceiveAck，RecvLower--No--ReceiveData。ReceiveAck分出NACK和普通ACK两个分支。NACK处理比较复杂，我需要确认一下HandleNack的逻辑。",
+      "elements_involved": [
+        "ReceiveAck",
+        "HandleNack"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "HandleNack要判断这个NACK对应的包是否在in-flight队列中：如果是第一个包，直接重传；如果是其他in-flight包，要做累积确认然后重传；如果不在in-flight中，直接忽略。",
+      "elements_involved": [
+        "HandleNack",
+        "Retransmit1",
+        "CummulativeAck",
+        "Retransmit2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我注意到这里有两个重传节点Retransmit1和Retransmit2，还有SendQueue1和SendQueue2。它们的功能描述看起来一样？都是\"Retransmit non-acked in-flight packets if holddown timer is expired\"和\"Send packets from queue until in-flight is full\"。",
+      "elements_involved": [
+        "Retransmit1",
+        "Retransmit2",
+        "SendQueue1",
+        "SendQueue2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "功能确实相同，但它们出现在不同分支，是独立的执行实例。Retransmit1在HandleNack--First分支后直接返回Poll；而HandleNack--Other分支需要先CummulativeAck，再Retransmit2，然后SendQueue1，再返回Poll。",
+      "elements_involved": [
+        "HandleNack",
+        "CummulativeAck",
+        "Retransmit2",
+        "SendQueue1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "理解了，这是状态依赖的执行路径。我已画出HandleNack的三个分支：First in-flight到Retransmit1到Poll；Other in-flight到CummulativeAck到Retransmit2到SendQueue1到Poll；Not in-flight直接返回Poll。现在处理ReceiveAck为No的情况，即普通ACK的HandleAck分支。",
+      "elements_involved": [
+        "HandleAck",
+        "RemoveFirst",
+        "MarkAcked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "HandleAck也有三种情况：如果是第一个in-flight包被确认，要RemoveFirst，然后SendQueue2补充发送；如果是其他in-flight包，MarkAcked标记即可；如果不在in-flight中，忽略。",
+      "elements_involved": [
+        "HandleAck",
+        "RemoveFirst",
+        "SendQueue2",
+        "MarkAcked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成HandleAck分支：First到RemoveFirst到SendQueue2到Poll；In-flight到MarkAcked到Poll；Not in-flight直接到Poll。现在回到RecvLower的No分支，即ReceiveData处理数据包的情况。",
+      "elements_involved": [
+        "ReceiveData",
+        "CorrectData",
+        "Store",
+        "SendAck"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ReceiveData判断是否是期望的序号：如果是，CorrectData直接上交并发送ACK；如果在接收窗口内但不是期望的，Store存入缓冲区，发送ACK和NACK；如果是最近已处理的序号，SendAck后忽略内容。",
+      "elements_involved": [
+        "ReceiveData",
+        "CorrectData",
+        "Store",
+        "SendAck"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下Store的描述：\"Store in buffer, send ACK and NACK\"——这里同时发ACK和NACK吗？",
+      "elements_involved": [
+        "Store"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，这是选择性重传机制：ACK确认已收到的包，NACK请求缺失的包。这样发送方知道哪些需要重传。",
+      "elements_involved": [
+        "Store",
+        "ACK",
+        "NACK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加ReceiveData的三个分支：Yes到CorrectData到Poll；In-window到Store到Poll；Recent seqno到SendAck到Poll。现在处理ReadyFd的另一个分支——来自上层的RecvUpper。",
+      "elements_involved": [
+        "RecvUpper",
+        "Enque",
+        "SendPacket"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RecvUpper检查in-flight是否已满，或者第一个包是否还未被确认：如果条件满足，不能发送新包，Enque入队等待；如果不满足，可以直接SendPacket发送并通知上层就绪。",
+      "elements_involved": [
+        "RecvUpper",
+        "Enque",
+        "SendPacket"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "RecvUpper的判断条件是\"Is in-flight full or first packet not yet acked?\"——这个Yes表示阻塞，No表示可以发送？",
+      "elements_involved": [
+        "RecvUpper"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Yes表示窗口阻塞，需要Enque；NO表示可以SendPacket。注意这里NO是大写的，可能是强调。",
+      "elements_involved": [
+        "RecvUpper",
+        "Enque",
+        "SendPacket"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加RecvUpper分支：Yes到Enque到Poll；NO到SendPacket到Poll。整体结构基本完成。我检查一下SendQueue1和SendQueue2的命名——之前你提到SendQueue2在RemoveFirst之后，但图中还有SendQueue1在Retransmit2之后。",
+      "elements_involved": [
+        "SendQueue1",
+        "SendQueue2",
+        "RemoveFirst",
+        "Retransmit2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SendQueue1和SendQueue2功能相同但触发场景不同：SendQueue1在NACK导致的重传后触发，可能腾出窗口空间；SendQueue2在第一个包被ACK后触发，窗口向前滑动。两者都是从队列取包填充in-flight。",
+      "elements_involved": [
+        "SendQueue1",
+        "SendQueue2",
+        "in-flight",
+        "window"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，这是窗口滑动的两个触发点。现在检查整体连通性：所有路径最终都回到Poll，形成事件循环。我注意到CummulativeAck的描述是\"Remove all packets with seqno before NACK-no from in-flight\"——这里NACK-no是指NACK中指定的序号？",
+      "elements_involved": [
+        "CummulativeAck",
+        "NACK-no",
+        "in-flight"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，NACK-no是NACK包中携带的序号，表示该序号之前的包都已收到，可以批量确认。这是累积确认机制。",
+      "elements_involved": [
+        "CummulativeAck",
+        "NACK-no",
+        "cumulative ACK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，所有节点和边都已确认。我重新梳理一下完整路径确保没有遗漏：Start-Init-Poll-Timeouts-ReadyFd，然后Mip daemon分支到RecvLower，再分ACK和数据；Upper分支到RecvUpper。",
+      "elements_involved": [
+        "Start",
+        "Init",
+        "Poll",
+        "Timeouts",
+        "ReadyFd",
+        "RecvLower",
+        "RecvUpper"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "有个细节需要调整：RemoveFirst的描述应该是\"Remove first packet from in-flight\"，目前图上可能简写了。另外，Retransmit1和Retransmit2的描述要确保包含\"if holddown timer is expired\"这个条件。",
+      "elements_involved": [
+        "RemoveFirst",
+        "Retransmit1",
+        "Retransmit2",
+        "holddown timer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我修正RemoveFirst的描述为\"Remove first packet from in-flight\"。Retransmit1和Retransmit2的描述已确认包含holddown timer条件。检查完成。",
+      "elements_involved": [
+        "RemoveFirst"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再看一下SendPacket的描述：\"Send packet and send ready to upper\"——这里\"send ready to upper\"是什么意思？是通知上层可以继续发送数据吗？",
+      "elements_involved": [
+        "SendPacket"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，这是流控机制的一部分。当成功发送一个包后，如果窗口还有空间，通知上层可以继续提交数据。与RecvUpper的阻塞判断形成闭环。",
+      "elements_involved": [
+        "SendPacket",
+        "RecvUpper",
+        "flow control"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个点：Init的描述\"Setup sockets, structures and accept connections\"中，accept connections可能不太准确。MIP daemon是主动连接还是被动监听？",
+      "elements_involved": [
+        "Init",
+        "sockets",
+        "connections"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "根据上下文，MIP TP daemon应该是同时支持两种模式？或者这里的accept是指接受来自上层应用的连接请求？需要确认Init的具体行为。",
+      "elements_involved": [
+        "Init",
+        "MIP TP daemon"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持原描述即可。MIP daemon需要与对端建立传输连接，同时监听上层应用的请求。Init阶段完成这些初始化工作。",
+      "elements_involved": [
+        "Init"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，保持Init描述不变。现在检查所有判断节点的标签：ReadyFd是\"Which fd?\"，RecvLower是\"Ack?\"，ReceiveAck是\"NACK?\"，ReceiveData是\"Expected?\"，HandleNack和HandleAck都是\"In-flight?\"，RecvUpper是\"Is in-flight full or first packet not yet acked?\"——这些都很清晰。",
+      "elements_involved": [
+        "ReadyFd",
+        "RecvLower",
+        "ReceiveAck",
+        "ReceiveData",
+        "HandleNack",
+        "HandleAck",
+        "RecvUpper"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "HandleNack的分支标签需要精确：\"First in-flight\"、\"Other in-flight\"、\"Not in-flight\"。HandleAck的分支是\"First\"、\"In-flight\"、\"Not in-flight\"。注意HandleNack的First要强调是in-flight中的第一个。",
+      "elements_involved": [
+        "HandleNack",
+        "HandleAck",
+        "First in-flight",
+        "Other in-flight",
+        "Not in-flight"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正HandleNack的第一个分支标签为\"First in-flight\"，与HandleAck的\"First\"区分。HandleAck的第二个分支是\"In-flight\"，第三个是\"Not in-flight\"。已统一。",
+      "elements_involved": [
+        "HandleNack",
+        "HandleAck"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ReceiveData的分支标签：\"Yes\"表示期望的包，\"In-window\"表示在窗口内但非期望，\"Recent seqno\"表示最近已处理。这些标签是否足够清晰？",
+      "elements_involved": [
+        "ReceiveData",
+        "Yes",
+        "In-window",
+        "Recent seqno"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "在流程图语境下是清晰的。\"Yes\"对应期望序号，\"In-window\"对应可缓冲范围，\"Recent seqno\"对应重复包。与协议状态机一致。",
+      "elements_involved": [
+        "ReceiveData",
+        "state machine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下Poll节点的隐含行为：每次循环先检查Timeouts，然后阻塞在ReadyFd等待事件。Timeouts要处理重传定时器和连接断开。",
+      "elements_involved": [
+        "Poll",
+        "Timeouts",
+        "ReadyFd"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "理解，Timeouts节点包含\"Check timeouts and disconnects\"，在每次Poll迭代时执行。整个流程形成：Poll-Timeouts-ReadyFd-[处理分支]-Poll的循环。",
+      "elements_involved": [
+        "Poll",
+        "Timeouts",
+        "ReadyFd",
+        "event loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SendQueue1和SendQueue2的描述都是\"Send packets from queue until in-flight is full, sending request for each send\"——最后的\"sending request for each send\"是什么意思？",
+      "elements_involved": [
+        "SendQueue1",
+        "SendQueue2",
+        "sending request"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "这可能是指向底层Mip daemon发送请求，或者通知上层每次发送的状态？保持原描述，这是实现细节。",
+      "elements_involved": [
+        "SendQueue1",
+        "SendQueue2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体结构检查完成。还有一个：CorrectData的描述\"Send up, ACK\"——\"Send up\"是上交到上层，\"ACK\"是发送确认。这个简写可以接受。",
+      "elements_involved": [
+        "CorrectData",
+        "Send up",
+        "ACK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有节点描述已确认。最终检查边连接：Start到Init，Init到Poll，Poll到Timeouts，Timeouts到ReadyFd。ReadyFd分Mip daemon到RecvLower，Upper到RecvUpper。所有子流程完整闭环回到Poll。",
+      "elements_involved": [
+        "Start",
+        "Init",
+        "Poll",
+        "Timeouts",
+        "ReadyFd",
+        "RecvLower",
+        "RecvUpper"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "MIP TP daemon流程图完成。覆盖了连接初始化、主事件循环、数据接收处理（期望包、窗口内包、重复包）、ACK/NACK处理（普通ACK、NACK重传、累积确认）、以及上层数据发送（直接发送、队列缓冲）的完整状态机。",
+      "elements_involved": [
+        "MIP TP daemon",
+        "state machine",
+        "reliable transmission"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "流程图已最终确认。包含22个节点，完整描述了MIP传输协议的可靠传输机制，包括超时重传、选择性确认、窗口流量控制和累积确认。所有路径验证通过，无孤立节点。",
+      "elements_involved": [
+        "flowchart",
+        "MIP TP daemon",
+        "reliable transmission",
+        "timeout retransmission",
+        "cumulative ACK",
+        "flow control"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 44,
+    "repair_count": 2,
+    "grounding_acts_count": 44,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 89934.181,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 44
+  }
+}

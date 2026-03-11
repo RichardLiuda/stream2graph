@@ -1,0 +1,152 @@
+{
+  "id": "aug_gh_sequence_00954_Clo_6",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/hmrc/agent-client-relationships/blob/a371649ba48b4a3f171ef881758141379c20ea30/service-dependency-map/agent-client-relationships/diagrams/ApiCreateInvitationController.POST.create-invitation.mmd",
+  "github_repo": "hmrc/agent-client-relationships",
+  "github_file_path": "service-dependency-map/agent-client-relationships/diagrams/ApiCreateInvitationController.POST.create-invitation.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    autonumber\n    participant Upstream\n    participant agent-client-relationships\n    participant Database\n    participant agent-assurance\n    participant des\n\n    Upstream->>+agent-client-relationships: POST /api/:arn/invitation\n    agent-client-relationships->>Database: Read: Check for pending invitations.\n    agent-client-relationships->>+agent-assurance: GET /agent-assurance/agent-details/:arn\n    agent-assurance-->>-agent-client-relationships: Response\n    agent-client-relationships->>+des: GET /registration/business-details/... or /vat/customer/vrn/...\n    des-->>-agent-client-relationships: Response\n    agent-client-relationships->>Database: Read: Check for active relationship.\n    agent-client-relationships->>Database: Read: Check for partial-auth relationship (CloudNative_ServiceMesh).\n    agent-client-relationships->>Database: Create: Create new invitation.\n    agent-client-relationships-->>-Upstream: Final Response\n",
+  "content_size": 938,
+  "collected_at": "2026-02-06T01:51:11.294348",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 1,
+  "repo_forks": 1,
+  "compilation_error": "",
+  "augmentation_domain": "CloudNative",
+  "seed_id": "gh_sequence_00954",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个代理邀请流程的时序图。上游系统调用agent-client-relationships服务来创建邀请，这个服务需要查数据库、调agent-assurance获取代理详情，还要调des获取商户信息。最后把邀请写回数据库返回给上游。",
+      "elements_involved": [
+        "Upstream",
+        "agent-client-relationships",
+        "Database",
+        "agent-assurance",
+        "des"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。agent-client-relationships和agent-assurance之间的调用是同步获取代理详情对吧？还有des那边有两个可能的端点，/registration/business-details和/vat/customer/vrn，这两个是或的关系？",
+      "elements_involved": [
+        "agent-client-relationships",
+        "agent-assurance",
+        "des"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，都是同步GET调用。des那两个端点根据业务场景二选一，画的时候可以用\"...\"表示省略。另外数据库有三次查询：先检查pending邀请、再查active关系、最后查partial-auth关系，这个partial-auth是通过CloudNative_ServiceMesh处理的。",
+      "elements_involved": [
+        "Database",
+        "CloudNative_ServiceMesh",
+        "partial-auth"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主体流程：Upstream用POST /api/:arn/invitation发起，然后agent-client-relationships读数据库检查pending，接着并发调agent-assurance和des获取信息，最后写数据库创建邀请返回。编号我加上autonumber。",
+      "elements_involved": [
+        "Upstream",
+        "agent-client-relationships",
+        "Database",
+        "agent-assurance",
+        "des"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，agent-assurance和des的调用不是并发的，是顺序的。要先拿到agent详情，才能去des查商户信息。还有数据库那三次读是分开的，不是一次性读完，中间穿插着外部服务调用。",
+      "elements_involved": [
+        "agent-client-relationships",
+        "agent-assurance",
+        "des",
+        "Database"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "修正了，现在顺序是：POST之后先读库查pending，然后调agent-assurance拿agent-details，返回后再调des，des返回后第二次读库查active关系，第三次读库查partial-auth，最后create新邀请返回final response。",
+      "elements_involved": [
+        "agent-client-relationships",
+        "agent-assurance",
+        "des",
+        "Database"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "流程对了。确认一下箭头类型：POST和GET用实线加号表示同步调用，数据库操作因为是内部调用用实线就好，返回响应用虚线。agent-assurance和des的响应可以简写为Response。",
+      "elements_involved": [
+        "Upstream",
+        "agent-client-relationships",
+        "agent-assurance",
+        "des",
+        "Database"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部确认。participant按顺序是Upstream、agent-client-relationships、Database、agent-assurance、des。所有消息格式和箭头类型已按规范设置，CloudNative_ServiceMesh的partial-auth检查也标注在对应的数据库读操作上了。",
+      "elements_involved": [
+        "Upstream",
+        "agent-client-relationships",
+        "Database",
+        "agent-assurance",
+        "des",
+        "CloudNative_ServiceMesh"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 25729.9118,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

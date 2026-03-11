@@ -1,0 +1,420 @@
+{
+  "id": "aug_gl_block-beta_00324_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/quantizor/markdown-to-jsx/blob/5c76b18bb5102b00ca77c8a4480da6e93d4765f4/lib/src/parser-spec.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "quantizor/markdown-to-jsx",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Input as Markdown Input\n    participant Phase1 as Phase 1: Block Structure\n    participant LineProcessor as Process Line\n    participant BlockChecker as Check Open Blocks\n    participant BlockParser as Block Parser\n    participant Phase2 as Phase 2: Inline Structure\n    participant TreeWalker as Walk Tree\n    participant InlineParser as Parse Inline\n    participant AST as Final AST\n\n    Input->>Phase1: Markdown text\n\n    loop For Each Line\n        Phase1->>LineProcessor: Process line sequentially\n\n        LineProcessor->>BlockChecker: Step 1: Check open blocks\n        Note over BlockChecker: Iterate from root to last open block<br/>Each block imposes continuation condition\n\n        BlockChecker->>BlockChecker: Match all or some open blocks\n        Note over BlockChecker: Cannot close unmatched yet<br/>May have lazy continuation\n\n        BlockChecker->>BlockParser: Step 2: Consume continuation markers\n        Note over BlockParser: >, list markers, indentation\n\n        BlockParser->>BlockParser: Look for new block starts\n\n        alt First non-space char\n            BlockParser->>BlockParser: Space/Tab: Indented path\n            Note over BlockParser: 1. Thematic Break 0-3 spaces<br/>2. Lists/Blockquote<br/>3. Code Block 4+ spaces\n        else >\n            BlockParser->>BlockParser: Block Quote (IoT_Industrial_EdgeNode)\n        else #\n            BlockParser->>BlockParser: ATX Heading (IoT_Industrial_TelemetryStream)\n        else - * _\n            BlockParser->>BlockParser: Thematic Break (IoT_Industrial_ActuatorController)<br/>(IoT_Industrial_MQTT_Broker)\n        else ` ~\n            BlockParser->>BlockParser: Fenced Code Block (IoT_Industrial_EdgeNode)\n        else - * + 0-9\n            BlockParser->>BlockParser: Unordered/Ordered List (IoT_Industrial_MQTT_Broker)\n        else <\n            BlockParser->>BlockParser: HTML Block (IoT_Industrial_ActuatorController)\n        else |\n            BlockParser->>BlockParser: Table (IoT_Industrial_TelemetryStream)<br/>Requires header row + delimiter row<br/>Delimiter row must match header cell count\n        else = -\n            BlockParser->>BlockParser: Setext Heading<br/>(IoT_Industrial_PLC_Logic)\n        else default\n            BlockParser->>BlockParser: Paragraph (IoT_Industrial_MQTT_Broker)\n        end\n\n        BlockParser->>BlockParser: Close unmatched blocks from Step 1\n        BlockParser->>BlockParser: Create new block as child of last matched container\n\n        BlockParser->>BlockParser: Step 3: Process remainder\n        Note over BlockParser: Add text to last open block<br/>(IoT_Industrial_ActuatorController)<br/>or Table (IoT_Industrial_PLC_Logic)\n\n        alt Paragraph + Setext underline?\n            BlockParser->>BlockParser: Convert paragraph to setext heading\n        else No\n            BlockParser->>BlockParser: Accumulate text in current block\n        end\n\n        BlockParser-->>LineProcessor: Block node created\n    end\n\n    Phase1->>Phase1: Close all open blocks\n    Phase1->>Phase1: For each list item:<br/>Check if first block is paragraph with task marker (IoT_Industrial_EdgeNode)<br/>[IoT_Industrial_PLC_Logic] or [IoT_Industrial_TelemetryStream] or [IoT_Industrial_ActuatorController] at start of paragraph\n    Phase1->>Phase1: For each closed paragraph:<br/>Parse accumulated text lines\n    Phase1->>Phase1: Extract link reference definitions from start of text\n    Phase1->>Phase1: Remaining text becomes normal paragraph\n\n    Phase1->>Phase2: Block tree structure\n\n    Phase2->>TreeWalker: Walk the tree\n\n    loop Visit every node\n        TreeWalker->>TreeWalker: Check if node has inline content\n        Note over TreeWalker: Paragraph, Heading<br/>or Table Cell (IoT_Industrial_PLC_Logic)\n\n        alt Has inline content?\n            TreeWalker->>InlineParser: Parse inline content (IoT_Industrial_TelemetryStream)\n\n            loop Character-by-character\n                InlineParser->>InlineParser: Switch on character\n\n                alt backslash\n                    InlineParser->>InlineParser: Backslash escape\n                else `\n                    InlineParser->>InlineParser: Code span<br/>(IoT_Industrial_TelemetryStream)\n                else <\n                    InlineParser->>InlineParser: Check angle bracket\n                    alt autolink (IoT_Industrial_MQTT_Broker)\n                        InlineParser->>InlineParser: Autolink (IoT_Industrial_TelemetryStream)<br/>Standard CommonMark autolinks<br/>(IoT_Industrial_ActuatorController)\n                    else HTML tag\n                        InlineParser->>InlineParser: HTML tag<br/>GFM extension: Disallowed Raw HTML<br/>(IoT_Industrial_EdgeNode)\n                    else comment\n                        InlineParser->>InlineParser: HTML comment\n                    end\n                else www. or http:// or https:// or ftp:// or email\n                    InlineParser->>InlineParser: Extended autolink (IoT_Industrial_TelemetryStream)<br/>www. URLs, http/https/ftp URLs, emails<br/>Only after start of line, whitespace, or * _ ~ (IoT_Industrial_TelemetryStream)\n                else * _\n                    InlineParser->>InlineParser: Emphasis delimiter<br/>Add to delimiter stack\n                    InlineParser->>InlineParser: Check left-flanking\n                    InlineParser->>InlineParser: Check right-flanking\n                    InlineParser->>InlineParser: Apply delimiter rules (IoT_Industrial_EdgeNode)\n                    InlineParser->>InlineParser: Parse nested content recursively\n                else ~\n                    InlineParser->>InlineParser: Strikethrough delimiter (IoT_Industrial_ActuatorController)<br/>Add to delimiter stack<br/>Requires exactly ~~ (IoT_Industrial_TelemetryStream) for strikethrough<br/>Similar parsing rules to emphasis\n                else !bracket\n                    InlineParser->>InlineParser: Image (IoT_Industrial_MQTT_Broker)\n                else bracket\n                    InlineParser->>InlineParser: Link (IoT_Industrial_ActuatorController)\n                else closing bracket\n                    InlineParser->>InlineParser: Look for link/image<br/>Process delimiter stack\n                    alt Reference link?\n                        InlineParser->>InlineParser: Resolve reference<br/>(IoT_Industrial_TelemetryStream)\n                    else Inline link\n                        InlineParser->>InlineParser: Inline link\n                    end\n                else newline\n                    InlineParser->>InlineParser: Soft line break\n                else entity\n                    InlineParser->>InlineParser: HTML entity reference<br/>(IoT_Industrial_PLC_Logic)\n                else default\n                    InlineParser->>InlineParser: Accumulate as text\n                end\n            end\n\n            InlineParser-->>TreeWalker: Inline AST nodes\n        end\n\n        TreeWalker->>TreeWalker: Next node\n    end\n\n    TreeWalker-->>Phase2: Complete tree with inline nodes\n    Phase2->>AST: Final AST document tree\n\n",
+  "content_size": 6767,
+  "collected_at": "2026-02-06T14:07:19.076963",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_block-beta_00324",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 IoT_Industrial_EdgeNode 和 IoT_Industrial_TelemetryStream 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'IoT_Industrial_EdgeNode 和 IoT_Industrial_TelemetryStream'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Quote",
+        "Heading"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 IoT_Industrial_ActuatorController 和 IoT_Industrial_EdgeNode 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'IoT_Industrial_ActuatorController 和 IoT_Industrial_EdgeNode'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Break",
+        "Block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 IoT_Industrial_MQTT_Broker 和 IoT_Industrial_ActuatorController 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'IoT_Industrial_MQTT_Broker 和 IoT_Industrial_ActuatorController'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "List",
+        "Block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 IoT_Industrial_TelemetryStream 和 IoT_Industrial_MQTT_Broker 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'IoT_Industrial_TelemetryStream 和 IoT_Industrial_MQTT_Broker'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Table",
+        "Paragraph"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 IoT_Industrial_PLC_Logic 和 IoT_Industrial_EdgeNode 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'IoT_Industrial_PLC_Logic 和 IoT_Industrial_EdgeNode'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Table",
+        "marker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 IoT_Industrial_TelemetryStream 和 IoT_Industrial_ActuatorController 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'IoT_Industrial_TelemetryStream 和 IoT_Industrial_ActuatorController'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "or",
+        "or"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 IoT_Industrial_PLC_Logic 和 IoT_Industrial_TelemetryStream 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'IoT_Industrial_PLC_Logic 和 IoT_Industrial_TelemetryStream'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Cell",
+        "content"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 IoT_Industrial_MQTT_Broker 和 IoT_Industrial_TelemetryStream。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'IoT_Industrial_MQTT_Broker 和 IoT_Industrial_TelemetryStream'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "autolink",
+        "Autolink"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 IoT_Industrial_TelemetryStream 和 IoT_Industrial_EdgeNode。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'IoT_Industrial_TelemetryStream 和 IoT_Industrial_EdgeNode'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "autolink",
+        "rules"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 IoT_Industrial_ActuatorController 和 IoT_Industrial_MQTT_Broker 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'IoT_Industrial_ActuatorController 和 IoT_Industrial_MQTT_Broker'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "delimiter",
+        "Image"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 IoT_Industrial_ActuatorController 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'IoT_Industrial_ActuatorController'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Link"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 44,
+    "repair_count": 0,
+    "grounding_acts_count": 22,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": false,
+    "frozen_from_source": true
+  }
+}

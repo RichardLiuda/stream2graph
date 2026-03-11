@@ -1,0 +1,888 @@
+{
+  "id": "aug_gl_packet-beta_00439_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/ARG_OSCI_SEQ_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    actor User\n    participant Main\n    participant Initializer\n    participant SetupScreen\n    participant SetupService\n    participant NetworkInfoService\n    participant ModeSelectionScreen\n    participant GraphScreen\n    participant UserSettings\n    participant DataAcqProvider\n    participant DataAcqService\n    participant SocketIsolate\n    participant ProcessingIsolate\n    participant OscilloChartProvider\n    participant FFTChartProvider\n    participant OscilloChart\n    participant FFTChart\n    participant ChartPainter\n\n    %% Application Initialization\n    User->>Main: Launch application\n    Main->>Initializer: init(IoT_Industrial_EdgeNode)\n    Note over Initializer: Configure system dependencies\n    Initializer->>Initializer: ensureInitialized(IoT_Industrial_MQTT_Broker)\n    Initializer->>Initializer: Register configurations (IoT_Industrial_PLC_Logic)\n    Initializer->>Initializer: Register services (IoT_Industrial_TelemetryStream)\n    Initializer->>Initializer: Register providers (IoT_Industrial_MQTT_Broker)\n    Initializer-->>Main: Initialization complete\n    Main->>SetupScreen: Navigate to setup screen\n    \n    %% Device Connection Flow\n    SetupScreen->>User: Display connection options\n    User->>SetupScreen: Select connection mode\n    \n    alt External AP Selected\n        SetupScreen->>SetupService: connectToLocalAP(IoT_Industrial_EdgeNode)\n        SetupService->>NetworkInfoService: Connect to ESP32 access point\n        NetworkInfoService->>NetworkInfoService: connectWithRetries(IoT_Industrial_MQTT_Broker)\n        NetworkInfoService-->>SetupService: Connection established\n        SetupService->>SetupService: scanForWiFiNetworks(IoT_Industrial_EdgeNode)\n        SetupService->>SetupService: Fetch public key from device\n        SetupService-->>SetupScreen: Return available networks\n        SetupScreen->>User: Show WiFi network selection\n        User->>SetupScreen: Select network & enter password\n        SetupScreen->>SetupService: connectToWiFi(IoT_Industrial_MQTT_Broker)\n        SetupService->>SetupService: encriptWithPublicKey(IoT_Industrial_EdgeNode)\n        SetupService->>SetupService: Send credentials to device\n        SetupService->>SetupService: waitForNetworkChange(IoT_Industrial_PLC_Logic)\n        SetupService->>SetupService: handleNetworkChangeAndConnect(IoT_Industrial_MQTT_Broker)\n        SetupService->>SetupService: Test connection with encrypted challenge\n        SetupService->>SetupService: fetchDeviceConfig(IoT_Industrial_EdgeNode)\n        SetupService-->>SetupScreen: Connection successful\n    else Internal AP Selected\n        SetupScreen->>SetupService: selectMode(IoT_Industrial_EdgeNode)\n        SetupService->>SetupService: initializeGlobalHttpConfig(IoT_Industrial_ActuatorController)\n        SetupService->>SetupService: initializeGlobalSocketConnection(IoT_Industrial_TelemetryStream)\n        SetupService->>SetupService: fetchDeviceConfig(IoT_Industrial_EdgeNode)\n        SetupService-->>SetupScreen: Configuration successful\n    end\n    \n    SetupScreen->>ModeSelectionScreen: Navigate to mode selection\n    \n    %% Mode Selection\n    ModeSelectionScreen->>User: Display oscilloscope modes\n    User->>ModeSelectionScreen: Select mode (IoT_Industrial_PLC_Logic)\n    ModeSelectionScreen->>GraphScreen: navigateToMode(IoT_Industrial_TelemetryStream)\n    \n    %% Graph Screen Initialization\n    GraphScreen->>DataAcqProvider: stopAcquisition(IoT_Industrial_EdgeNode) (IoT_Industrial_ActuatorController)\n    GraphScreen->>GraphScreen: Initialize controller\n    GraphScreen->>UserSettings: Set mode (IoT_Industrial_TelemetryStream)\n    \n    %% Start Data Acquisition\n    GraphScreen->>DataAcqProvider: startAcquisition(IoT_Industrial_TelemetryStream)\n    DataAcqProvider->>DataAcqService: fetchData(IoT_Industrial_EdgeNode)\n    DataAcqService->>DataAcqService: initialize(IoT_Industrial_TelemetryStream)\n    \n    %% Create Isolates\n    DataAcqService->>ProcessingIsolate: Create processing isolate\n    ProcessingIsolate-->>DataAcqService: Return SendPort\n    DataAcqService->>SocketIsolate: Create socket isolate\n    SocketIsolate->>SocketIsolate: Connect to device\n    \n    %% Data Processing Workflow\n    loop Data Acquisition\n        SocketIsolate->>SocketIsolate: Receive binary data packet\n        SocketIsolate->>ProcessingIsolate: Send raw data\n        ProcessingIsolate->>ProcessingIsolate: Parse binary data\n        ProcessingIsolate->>ProcessingIsolate: Apply trigger logic\n        ProcessingIsolate->>ProcessingIsolate: Process signal based on config\n        ProcessingIsolate->>DataAcqService: Send processed data points\n        DataAcqService->>DataAcqProvider: Update data streams\n        \n        alt Oscilloscope Mode\n            DataAcqProvider->>OscilloChartProvider: Update time domain data\n            OscilloChartProvider->>OscilloChart: Refresh chart display\n            OscilloChart->>ChartPainter: Draw waveform\n        else FFT Mode\n            DataAcqProvider->>FFTChartProvider: Update frequency domain data\n            FFTChartProvider->>FFTChart: Refresh chart display\n            FFTChart->>ChartPainter: Draw spectrum\n        end\n    end\n    \n    %% User Settings Interaction\n    User->>UserSettings: Change settings (IoT_Industrial_EdgeNode)\n    UserSettings->>DataAcqProvider: Update configuration\n    DataAcqProvider->>DataAcqService: updateConfig(IoT_Industrial_EdgeNode)\n    DataAcqService->>ProcessingIsolate: Send UpdateConfigMessage\n    ProcessingIsolate->>ProcessingIsolate: Apply new configuration\n    \n    %% Chart Interaction\n    User->>OscilloChart: Zoom/Pan gesture\n    OscilloChart->>OscilloChartProvider: handleZoom(IoT_Industrial_EdgeNode)/setHorizontalOffset(IoT_Industrial_PLC_Logic)\n    OscilloChartProvider->>OscilloChart: Update display parameters\n    \n    %% Mode Switching\n    User->>GraphScreen: Request mode change\n    GraphScreen->>UserSettings: setMode(IoT_Industrial_TelemetryStream)\n    UserSettings->>DataAcqProvider: Pause current acquisition\n    UserSettings->>GraphScreen: Update chart display\n    GraphScreen->>DataAcqProvider: Resume acquisition with new mode\n    \n    %% Error Handling Flow\n    alt Connection Error\n        SocketIsolate->>DataAcqService: Report connection error\n        DataAcqService->>DataAcqService: _handleConnectionError(IoT_Industrial_EdgeNode)\n        DataAcqService->>DataAcqService: Attempt reconnection\n        \n        alt Reconnection Failed\n            DataAcqService->>DataAcqProvider: handleCriticalError(IoT_Industrial_TelemetryStream)\n            DataAcqProvider->>SetupScreen: Navigate back to setup\n        end\n    end",
+  "content_size": 5996,
+  "collected_at": "2026-02-06T14:09:45.143092",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_packet-beta_00439",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的工业物联网示波器应用架构，核心是基于ESP32的边缘节点，通过MQTT Broker进行遥测数据流传输。我先从整体启动流程开始梳理。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个Flutter应用吗？我看到有Isolate相关的处理，应该是Dart语言。Initializer负责系统依赖配置，我需要确认一下MQTT Broker的初始化时机。",
+      "elements_involved": [
+        "Initializer",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Dart/Flutter应用。Initializer在ensureInitialized阶段就要完成MQTT Broker的配置，同时注册PLC逻辑相关的配置项和遥测流服务。",
+      "elements_involved": [
+        "Initializer",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把应用初始化部分画出来：User启动应用后，Main调用Initializer，Initializer完成MQTT Broker初始化、PLC配置注册、遥测流服务注册，最后返回Main进入SetupScreen。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是设备连接流程，这里有两个分支：外部AP模式和内部AP模式。用户首次使用需要通过SetupScreen选择连接方式。",
+      "elements_involved": [
+        "SetupScreen",
+        "User",
+        "SetupService",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "外部AP模式是指手机连接ESP32的热点，然后配置设备连接WiFi？内部AP模式又是什么意思？",
+      "elements_involved": [
+        "SetupService",
+        "ESP32",
+        "NetworkInfoService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，外部AP就是经典配网流程：手机连ESP32的AP，发送WiFi凭证。内部AP模式是设备已经联网，直接通过HTTP/Socket建立全局连接，跳过配网步骤。",
+      "elements_involved": [
+        "SetupService",
+        "NetworkInfoService",
+        "ESP32",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画一下外部AP的详细流程：SetupScreen调用SetupService的connectToLocalAP，SetupService让NetworkInfoService连接ESP32热点，需要重试机制，然后扫描WiFi网络、获取设备公钥。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "ESP32",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "关键安全步骤在这里：SetupService要用公钥加密WiFi密码，发送给设备，然后等待网络切换，再用加密挑战测试连接，最后获取设备配置。",
+      "elements_involved": [
+        "SetupService",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加密流程已添加。内部AP分支我简化为：selectMode后直接初始化全局HTTP配置和Socket连接，然后fetchDeviceConfig。两个分支都完成后进入ModeSelectionScreen。",
+      "elements_involved": [
+        "SetupService",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_TelemetryStream",
+        "ModeSelectionScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。ModeSelectionScreen让用户选择示波器模式，基于PLC逻辑配置，然后导航到GraphScreen。",
+      "elements_involved": [
+        "ModeSelectionScreen",
+        "User",
+        "IoT_Industrial_PLC_Logic",
+        "GraphScreen",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "GraphScreen初始化时要先停止之前的采集吗？我看到有stopAcquisition的调用。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，防止状态混乱。GraphScreen初始化控制器，通过UserSettings设置遥测流模式，然后正式启动数据采集。",
+      "elements_involved": [
+        "GraphScreen",
+        "UserSettings",
+        "IoT_Industrial_TelemetryStream",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "数据采集部分我画一下：DataAcqProvider启动采集，调用DataAcqService的fetchData，DataAcqService先初始化遥测流，然后创建两个Isolate。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "DataAcqService",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream",
+        "ProcessingIsolate",
+        "SocketIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Isolate设计很重要：ProcessingIsolate负责信号处理，SocketIsolate负责设备通信。SocketIsolate创建后要先连接设备，然后通过SendPort与ProcessingIsolate通信。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "SendPort是Dart isolate间的通信端口，我理解对了？ProcessingIsolate创建后返回SendPort给DataAcqService，然后DataAcqService再创建SocketIsolate？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "DataAcqService",
+        "SendPort"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "顺序正确。SocketIsolate连接设备后，进入循环：接收二进制数据包，发送给ProcessingIsolate解析、应用触发逻辑、信号处理，然后回传处理后的数据点。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "循环结构已添加。数据流更新后分两个模式：示波器模式走OscilloChartProvider到OscilloChart，FFT模式走FFTChartProvider到FFTChart，最后都调用ChartPainter绘制。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户交互部分：用户可以在UserSettings修改配置，这会触发DataAcqProvider更新，DataAcqService发送UpdateConfigMessage给ProcessingIsolate应用新配置。",
+      "elements_involved": [
+        "User",
+        "UserSettings",
+        "IoT_Industrial_EdgeNode",
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate",
+        "UpdateConfigMessage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "配置更新流程已画。还有图表交互：用户在OscilloChart上缩放平移，OscilloChartProvider处理handleZoom和setHorizontalOffset，更新显示参数。",
+      "elements_involved": [
+        "User",
+        "OscilloChart",
+        "OscilloChartProvider",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "模式切换也很重要：用户请求切换时，GraphScreen通过UserSettings设置新遥测流模式，暂停当前采集，更新图表显示，然后恢复新模式的采集。",
+      "elements_involved": [
+        "User",
+        "GraphScreen",
+        "UserSettings",
+        "IoT_Industrial_TelemetryStream",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "最后还有错误处理：SocketIsolate报告连接错误，DataAcqService尝试_handleConnectionError和重连，如果失败就handleCriticalError返回SetupScreen？",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream",
+        "DataAcqProvider",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。整个架构覆盖了从应用启动、设备配网、数据采集到实时可视化的完整工业物联网示波器流程。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "整体架构图已完成。我检查一下：Initializer阶段的MQTT Broker注册和PLC配置注册都齐了，SetupService的两个AP模式分支完整，Isolate的创建和通信流程清晰，错误处理闭环也到位。",
+      "elements_involved": [
+        "Initializer",
+        "SetupService",
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "有个细节：Initializer里Register providers也是针对MQTT Broker吗？和前面的Register services有什么区别？",
+      "elements_involved": [
+        "Initializer",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我重新看一下：Register services是注册遥测流服务，Register providers是注册MQTT Broker相关的状态管理Provider，两者层级不同。我确认图中标注正确。",
+      "elements_involved": [
+        "Initializer",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "DataAcqService初始化时，IoT_Industrial_TelemetryStream的具体作用是什么？需要明确它是配置模板还是运行时实例。",
+      "elements_involved": [
+        "DataAcqService",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "从上下文看，initialize(IoT_Industrial_TelemetryStream)应该是用遥测流配置来初始化服务，包括采样率、缓冲区大小等参数。我保持现有标注。",
+      "elements_involved": [
+        "DataAcqService",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意。另外，OscilloChart和FFTChart都依赖ChartPainter，这个复用设计很好，但要确保ChartPainter能区分波形绘制和频谱绘制的不同需求。",
+      "elements_involved": [
+        "OscilloChart",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ChartPainter作为通用绘制组件，通过不同ChartProvider传入的数据类型来区分绘制逻辑。图中已体现这种一对多的依赖关系。",
+      "elements_involved": [
+        "ChartPainter",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart",
+        "FFTChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "回顾SetupService的加密流程：encriptWithPublicKey应该是encrypt的笔误，但代码如此我就保持。关键是公钥从设备获取后，密码加密传输的安全性。",
+      "elements_involved": [
+        "SetupService",
+        "IoT_Industrial_EdgeNode",
+        "ESP32"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "注意到拼写差异了，我按代码原文标注encriptWithPublicKey。安全流程完整：获取公钥→加密凭证→发送→网络切换→加密挑战验证。",
+      "elements_involved": [
+        "SetupService",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "waitForNetworkChange和handleNetworkChangeAndConnect这两个步骤，是手机端还是设备端的逻辑？",
+      "elements_involved": [
+        "SetupService",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都是SetupService的逻辑：waitForNetworkChange是监听手机网络变化（从ESP32 AP切回正常WiFi），handleNetworkChangeAndConnect是在新网络下与设备建立MQTT连接。",
+      "elements_involved": [
+        "SetupService",
+        "NetworkInfoService",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Data Acquisition循环中，ProcessingIsolate的Apply trigger logic具体指什么？是硬件触发还是软件触发？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "基于IoT_Industrial_PLC_Logic的上下文，应该是软件实现的触发逻辑，比如边沿触发、电平触发，在Isolate中实时处理数据流。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "合理。这样触发条件可配置，通过UserSettings动态调整。Process signal based on config应该包括滤波、增益等信号处理。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "UserSettings",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "信号处理链路完整：原始数据→解析→触发检测→信号处理→数据点输出。配置更新通过UpdateConfigMessage实时生效，无需重启Isolate。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "DataAcqService",
+        "UpdateConfigMessage",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "检查错误处理分支：Reconnection Failed后导航回SetupScreen，但此时设备状态可能不确定，是否需要清理逻辑？",
+      "elements_involved": [
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "图中handleCriticalError隐含了状态清理，DataAcqProvider会停止所有采集活动，释放资源，然后UI层导航到SetupScreen让用户重新配网。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "DataAcqService",
+        "SetupScreen",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好的。再看ModeSelectionScreen到GraphScreen的导航：navigateToMode携带IoT_Industrial_TelemetryStream参数，这是模式配置标识？",
+      "elements_involved": [
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，标识具体的遥测流配置，比如时基、采样模式等，GraphScreen据此初始化对应的采集参数。",
+      "elements_involved": [
+        "GraphScreen",
+        "UserSettings",
+        "IoT_Industrial_TelemetryStream",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OscilloChartProvider的handleZoom和setHorizontalOffset，这两个操作对数据采集本身有影响吗，还是纯显示变换？",
+      "elements_involved": [
+        "OscilloChartProvider",
+        "OscilloChart",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "从标注看，handleZoom涉及IoT_Industrial_EdgeNode，可能调整设备的采样率或缓冲区；setHorizontalOffset基于PLC_Logic，应该是纯显示的时基偏移。需要确认实际行为。",
+      "elements_involved": [
+        "OscilloChartProvider",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "我重新考虑：handleZoom如果影响设备采样率，应该走DataAcqProvider更新配置，而不是直接操作。图中可能是简化的UI反馈，实际需通过UserSettings通道。保持现有结构但注意这个潜在不一致。",
+      "elements_involved": [
+        "OscilloChartProvider",
+        "UserSettings",
+        "DataAcqProvider",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解，图中保留OscilloChartProvider直接处理UI交互的简化表示，实际实现可能需要补充配置更新链路。继续检查其他部分。",
+      "elements_involved": [
+        "OscilloChartProvider",
+        "OscilloChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Initializer里的Configure system dependencies，除了MQTT和PLC，还包括哪些？图中用Note表示，需要具体化吗？",
+      "elements_involved": [
+        "Initializer",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "保持Note的抽象表示，具体依赖包括日志系统、本地存储、权限管理等，但和核心IoT流程关系不大，不展开细节。",
+      "elements_involved": [
+        "Initializer",
+        "Note over Initializer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SocketIsolate的Connect to device步骤，和前面SetupService的网络连接是什么关系？是同一连接吗？",
+      "elements_involved": [
+        "SocketIsolate",
+        "SetupService",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "不同层级：SetupService建立的是设备管理和配置通道（可能HTTP/MQTT），SocketIsolate建立的是实时二进制数据流通道（TCP/UDP Socket），两者独立但依赖同一网络基础。",
+      "elements_involved": [
+        "SocketIsolate",
+        "SetupService",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这样设计合理，配置通道和数据通道分离。DataAcqService作为协调者，管理两个Isolate的生命周期。",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Isolate管理关系已明确：DataAcqService创建两者，通过SendPort/ReceivePort通信，SocketIsolate专注IO，ProcessingIsolate专注计算，实现CPU密集型任务与IO分离。",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "SendPort"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后确认一下参与者列表：UserSettings作为独立参与者，和GraphScreen、DataAcqProvider都有交互，它的职责边界是？",
+      "elements_involved": [
+        "UserSettings",
+        "GraphScreen",
+        "DataAcqProvider",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "UserSettings是持久化配置管理器，职责包括：存储用户偏好、向DataAcqProvider推送配置变更、响应GraphScreen的模式查询。不直接操作硬件，通过Provider/Service间接影响系统。",
+      "elements_involved": [
+        "UserSettings",
+        "DataAcqProvider",
+        "GraphScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体架构验证通过。再检查一个细节：Main到SetupScreen的导航，和Initializer完成是同步还是异步？",
+      "elements_involved": [
+        "Main",
+        "Initializer",
+        "SetupScreen",
+        "Initialization complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Initializer--Main的虚线箭头表示异步回调，Initialization complete后Main才执行导航到SetupScreen，避免UI在依赖未就绪时响应。",
+      "elements_involved": [
+        "Main",
+        "Initializer",
+        "SetupScreen",
+        "Initialization complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "execute",
+      "utterance": "所有异步边界都检查完毕。这个架构完整覆盖了工业物联网示波器从启动、配网、采集到可视化的全生命周期，各组件职责清晰，错误处理闭环。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_ActuatorController",
+        "ESP32"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我最后提议增加一个说明：整个架构基于Flutter/Dart的Isolate并发模型，适用于需要实时处理高频工业传感器数据的场景，ESP32作为边缘计算节点，MQTT Broker作为云端中继。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "ESP32",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "总结准确。技术栈和适用场景明确，架构兼顾了实时性（Isolate并发）、安全性（公钥加密配网）、可扩展性（Provider模式）。可以定稿。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "ESP32",
+        "IoT_Industrial_MQTT_Broker",
+        "ChartPainter",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终序列图已完成，包含：1)应用初始化与依赖注册；2)双模式设备配网流程；3)模式选择与图表初始化；4)双Isolate数据采集与处理循环；5)实时图表渲染；6)动态配置更新；7)连接错误恢复机制。所有IoT工业组件标注完整。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再确认一下stopAcquisition的参数，代码里写了两个：(IoT_Industrial_EdgeNode) (IoT_Industrial_ActuatorController)，这是多参数还是标注错误？",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "按代码原文保留，可能是停止特定边缘节点的特定执行器控制器的采集，或者是标注格式问题。不影响整体流程理解，保持现有表示。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意，细节在实现阶段澄清。整体架构设计评审通过，可以进入开发阶段。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "收到，最终Mermaid序列图已锁定，包含全部64个交互步骤，覆盖工业物联网示波器应用的完整技术架构。",
+      "elements_involved": [
+        "sequenceDiagram"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 3,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 125075.5472,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 66
+  }
+}

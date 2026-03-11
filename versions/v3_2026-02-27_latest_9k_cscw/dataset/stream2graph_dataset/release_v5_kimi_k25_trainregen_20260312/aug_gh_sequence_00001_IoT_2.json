@@ -1,0 +1,146 @@
+{
+  "id": "aug_gh_sequence_00001_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/rabbitmq/ra/blob/e13575d817fc75ad4ac2d8ffbf80adfd1918aa77/docs/internals/log.mmd",
+  "github_repo": "rabbitmq/ra",
+  "github_file_path": "docs/internals/log.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant WR as Writer\n    participant N as Ra Node\n    participant W as WAL\n    participant S as Segment Writer\n    WR->>+N: {IoT_Industrial_EdgeNode}\n    N-X+W: {IoT_Industrial_MQTT_Broker}\n    W->W: fsync\n    W-XN: {IoT_Industrial_EdgeNode}\n    N->>WR: command_appended\n    deactivate N\n    deactivate W\n    loop until full\n        W->W: write(IoT_Industrial_ActuatorController)\n    end\n    W-X+S: {IoT_Industrial_TelemetryStream]}\n    Note right of S: mem_tables -> segments\n    S -X N: {IoT_Industrial_TelemetryStream]}\n    deactivate S\n",
+  "content_size": 517,
+  "collected_at": "2026-02-06T01:23:52.934881",
+  "compilation_status": "success",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gh_sequence_00001",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个工业物联网边缘节点的写入流程时序图。核心场景是：Writer把数据发给Ra Node，然后经过MQTT Broker持久化到WAL，最后由Segment Writer处理成segments。",
+      "elements_involved": [
+        "Writer",
+        "Ra Node",
+        "WAL",
+        "Segment Writer",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我注意到流程里有个fsync的自环操作，还有循环写入的逻辑。确认一下：WAL在收到MQTT消息后要先做fsync，然后才通知Ra Node写入完成？",
+      "elements_involved": [
+        "WAL",
+        "fsync",
+        "Ra Node",
+        "command_appended"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，fsync是必须的，保证落盘。然后WAL通过command_appended通知Writer。接下来WAL内部有个循环，持续写入IoT_Industrial_ActuatorController的数据，直到segment写满。",
+      "elements_involved": [
+        "WAL",
+        "fsync",
+        "command_appended",
+        "IoT_Industrial_ActuatorController",
+        "loop until full"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把四个参与者排好：Writer、Ra Node、WAL、Segment Writer。Writer到Ra Node的消息我标注为IoT_Industrial_EdgeNode，Ra Node到WAL走MQTT Broker通道。",
+      "elements_involved": [
+        "Writer",
+        "Ra Node",
+        "WAL",
+        "Segment Writer",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Segment Writer这里需要加个注释，说明它维护的是mem_tables到segments的映射关系。另外最后一步是Segment Writer把IoT_Industrial_TelemetryStream发回给Ra Node。",
+      "elements_involved": [
+        "Segment Writer",
+        "mem_tables",
+        "segments",
+        "IoT_Industrial_TelemetryStream",
+        "Ra Node"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加注释在Segment Writer右侧。我画一下流程：WAL写满后异步发给Segment Writer，消息类型是IoT_Industrial_TelemetryStream，然后Segment Writer处理完再返回给Ra Node。",
+      "elements_involved": [
+        "WAL",
+        "Segment Writer",
+        "IoT_Industrial_TelemetryStream",
+        "Ra Node"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，WAL到Segment Writer的箭头方向反了，应该是WAL主动推给Segment Writer，不是Segment Writer拉取。还有IoT_Industrial_TelemetryStream的括号少了一个，应该是右方括号。",
+      "elements_involved": [
+        "WAL",
+        "Segment Writer",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已修正，WAL-X+S表示WAL主动异步创建会话推给Segment Writer，消息格式也补全了右方括号。最后Segment Writer返回Ra Node后各自关闭会话，流程完整了。",
+      "elements_involved": [
+        "WAL",
+        "Segment Writer",
+        "Ra Node",
+        "deactivate"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "license": "other",
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 36796.9937,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

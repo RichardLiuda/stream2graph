@@ -1,0 +1,171 @@
+{
+  "id": "aug_ot_stateDiagram_00337_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/henryczup/NeuroTune/blob/37ac3ea2e1c878fdd0a8a398aa781ce0c3c556f9/docs/diagrams/02_fsm_states.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "henryczup/NeuroTune",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_IngressController] --> BOOT\n    BOOT --> INIT_HW: EV_HW_OK\n    INIT_HW --> IDLE: EV_HW_OK\n    INIT_HW --> FAULT: EV_HW_FAIL\n    \n    IDLE --> ARMED: EV_CMD_ARM\n    IDLE --> RAMP_UP: EV_CMD_START\n    \n    ARMED --> RAMP_UP: EV_CMD_START\n    ARMED --> IDLE: EV_CMD_STOP\n    \n    RAMP_UP --> ACTIVE: targets_reached\n    RAMP_UP --> RAMP_DOWN: EV_CMD_STOP\n    \n    ACTIVE --> RAMP_CHANGE: EV_CMD_SET_PARAMS\n    ACTIVE --> RAMP_DOWN: EV_CMD_STOP\n    \n    RAMP_CHANGE --> ACTIVE: targets_reached\n    RAMP_CHANGE --> RAMP_DOWN: EV_CMD_STOP\n    \n    RAMP_DOWN --> IDLE: all_zero\n    \n    IDLE --> FAULT: EV_FAULT_*\n    ARMED --> FAULT: EV_FAULT_*\n    RAMP_UP --> FAULT: EV_FAULT_*\n    ACTIVE --> FAULT: EV_FAULT_*\n    RAMP_DOWN --> FAULT: EV_FAULT_*\n    \n    FAULT --> IDLE: EV_CMD_ACK (Infra_LoadBalancer)\n    \n    IDLE --> SHUTDOWN: EV_CMD_SHUTDOWN\n    SHUTDOWN --> [Infra_EtcdCluster]",
+  "content_size": 859,
+  "collected_at": "2026-02-06T10:40:53.725778",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00337",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为IngressController设计一个完整的状态机。它从BOOT启动，经过硬件初始化INIT_HW，然后进入IDLE待命。关键是有几种运行模式：ARMED是预准备状态，RAMP_UP是流量逐步接入，ACTIVE是正常运行，还有RAMP_CHANGE用于动态调整参数，RAMP_DOWN是优雅下线。",
+      "elements_involved": [
+        "BOOT",
+        "INIT_HW",
+        "IDLE",
+        "ARMED",
+        "RAMP_UP",
+        "ACTIVE",
+        "RAMP_CHANGE",
+        "RAMP_DOWN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我注意到RAMP_UP可以从IDLE和ARMED两个状态进入，对吗？还有，ACTIVE之后可以走RAMP_CHANGE来调整参数，那RAMP_CHANGE之后是回到ACTIVE还是可以去别的地方？",
+      "elements_involved": [
+        "RAMP_UP",
+        "IDLE",
+        "ARMED",
+        "ACTIVE",
+        "RAMP_CHANGE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，RAMP_UP有两个入口。RAMP_CHANGE调整完参数后，targets_reached就回到ACTIVE；但如果中途收到停止命令，也可以直接RAMP_DOWN。另外所有运行状态都要能进FAULT故障态，FAULT只能通过LoadBalancer发送的EV_CMD_ACK来恢复。",
+      "elements_involved": [
+        "RAMP_CHANGE",
+        "ACTIVE",
+        "targets_reached",
+        "RAMP_DOWN",
+        "EV_CMD_STOP",
+        "FAULT",
+        "EV_CMD_ACK",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主流程：BOOT→INIT_HW→IDLE，然后分支到ARMED或者直接RAMP_UP。RAMP_UP到ACTIVE的条件是targets_reached，ACTIVE可以进RAMP_CHANGE再回来。FAULT的恢复我标注了需要LoadBalancer介入。",
+      "elements_involved": [
+        "BOOT",
+        "INIT_HW",
+        "IDLE",
+        "ARMED",
+        "RAMP_UP",
+        "ACTIVE",
+        "targets_reached",
+        "FAULT",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "INIT_HW这里需要细化：硬件正常是EV_HW_OK到IDLE，失败的话EV_HW_FAIL直接进FAULT。还有RAMP_DOWN的退出条件，是all_zero表示流量清零，不是targets_reached。",
+      "elements_involved": [
+        "INIT_HW",
+        "EV_HW_OK",
+        "IDLE",
+        "EV_HW_FAIL",
+        "FAULT",
+        "RAMP_DOWN",
+        "all_zero"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我修正一下：INIT_HW分出两条线，成功失败不同走向。RAMP_DOWN的触发条件是all_zero，不是targets_reached——我刚才差点标错了。另外FAULT的恢复箭头我确认是连到IDLE。",
+      "elements_involved": [
+        "INIT_HW",
+        "EV_HW_OK",
+        "EV_HW_FAIL",
+        "RAMP_DOWN",
+        "all_zero",
+        "FAULT",
+        "IDLE"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后加上生命周期管理：IDLE可以EV_CMD_SHUTDOWN进入SHUTDOWN，最终连接到EtcdCluster表示资源释放。还有IngressController的起点和终点要用中括号标注为外部系统。",
+      "elements_involved": [
+        "IDLE",
+        "SHUTDOWN",
+        "EV_CMD_SHUTDOWN",
+        "Infra_EtcdCluster",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "完成。起点[Infra_IngressController]到BOOT，终点SHUTDOWN到[Infra_EtcdCluster]。所有状态转换都检查过了：ARMED可以STOP回IDLE，ACTIVE和RAMP_CHANGE都能STOP到RAMP_DOWN，FAULT覆盖所有运行态且只能由LoadBalancer确认恢复。",
+      "elements_involved": [
+        "Infra_IngressController",
+        "BOOT",
+        "SHUTDOWN",
+        "Infra_EtcdCluster",
+        "ARMED",
+        "IDLE",
+        "ACTIVE",
+        "RAMP_CHANGE",
+        "RAMP_DOWN",
+        "FAULT",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 31601.1806,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 5
+  }
+}

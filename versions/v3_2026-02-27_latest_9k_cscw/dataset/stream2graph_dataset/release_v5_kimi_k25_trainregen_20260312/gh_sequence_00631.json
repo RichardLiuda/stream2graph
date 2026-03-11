@@ -1,0 +1,496 @@
+{
+  "id": "gh_sequence_00631",
+  "source": "github",
+  "source_url": "https://github.com/IrfanMusthofa/veripass/blob/22c4b762707548cfdc7305441f00632cbc960b27/docs/diagrams/auth-flow.mmd",
+  "github_repo": "IrfanMusthofa/veripass",
+  "github_file_path": "docs/diagrams/auth-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "%%{init: {\n  'theme': 'base',\n  'themeVariables': {\n    'primaryColor': '#003366',\n    'primaryTextColor': '#ffffff',\n    'primaryBorderColor': '#002244',\n    'secondaryColor': '#8b5cf6',\n    'tertiaryColor': '#10b981',\n    'lineColor': '#003366',\n    'fontFamily': 'Inter, system-ui, sans-serif',\n    'fontSize': '13px',\n    'actorLineColor': '#003366',\n    'noteBkgColor': '#f5f3ff',\n    'noteTextColor': '#003366',\n    'noteBorderColor': '#8b5cf6'\n  }\n}}%%\n\nsequenceDiagram\n    autonumber\n\n    participant User as 👤 User\n    participant Frontend as ⚛️ React Frontend\n    participant RK as 🌈 RainbowKit\n    participant Wallet as 🦊 MetaMask\n    participant Backend as 🖥️ Backend API\n    participant DB as 🗄️ PostgreSQL\n\n    %% Phase 1: Wallet Connection\n    rect rgb(245, 243, 255)\n        Note over User,Wallet: Phase 1: Wallet Connection\n\n        User->>+Frontend: Click \"Connect Wallet\"\n\n        Frontend->>+RK: Open wallet modal\n\n        RK->>User: Select wallet provider\n        User->>RK: Choose MetaMask\n\n        RK->>+Wallet: Request connection\n        Wallet->>User: Approve connection?\n        User->>Wallet: Approve\n\n        Wallet-->>-RK: Connected<br/>address: 0x1234...\n\n        RK-->>-Frontend: Wallet connected\n        Frontend-->>-User: Wallet connected<br/>Display: 0x1234...abcd\n    end\n\n    %% Phase 2: Authentication Request\n    rect rgb(240, 249, 255)\n        Note over Frontend,DB: Phase 2: Request Nonce\n\n        Frontend->>Frontend: useAccount() hook<br/>Get connected address\n\n        Frontend->>+Backend: POST /api/auth/nonce<br/>Content-Type: application/json\n        Note right of Frontend: { address: \"0x1234...\" }\n\n        Backend->>Backend: Validate address format<br/>(42 chars, starts with 0x)\n\n        Backend->>Backend: Generate random nonce<br/>crypto.randomBytes(32)\n\n        Backend->>+DB: UPSERT auth_nonces<br/>address, nonce, expiresAt\n        Note right of Backend: expiresAt = NOW() + 5 min\n\n        DB-->>-Backend: Nonce stored\n\n        Backend-->>-Frontend: 200 OK<br/>{ nonce: \"0x9a8b7c...\" }\n    end\n\n    %% Phase 3: Message Signing\n    rect rgb(254, 249, 195)\n        Note over Frontend,Wallet: Phase 3: Sign Authentication Message\n\n        Frontend->>Frontend: Construct message\n        Note over Frontend: \"Sign this message to<br/>authenticate with VeriPass\\n\\n<br/>Nonce: 0x9a8b7c...\\n<br/>Timestamp: 2024-01-15T10:30:00Z\"\n\n        Frontend->>+Wallet: signMessage(message)\n        Note right of Frontend: wagmi useSignMessage hook\n\n        Wallet->>User: Sign message?<br/>Display message content\n        User->>Wallet: Sign\n\n        Wallet->>Wallet: ECDSA signature<br/>using private key\n\n        Wallet-->>-Frontend: signature: 0xabcd...\n        Note over Frontend: 65-byte signature<br/>(r, s, v)\n    end\n\n    %% Phase 4: Verification & JWT\n    rect rgb(236, 253, 245)\n        Note over Frontend,DB: Phase 4: Verify & Issue JWT\n\n        Frontend->>+Backend: POST /api/auth/verify\n        Note right of Frontend: { address, message, signature }\n\n        Backend->>Backend: Parse nonce from message\n\n        Backend->>+DB: SELECT * FROM auth_nonces<br/>WHERE address = ?\n        DB-->>-Backend: { nonce, expiresAt }\n\n        alt Nonce expired\n            Backend-->>Frontend: 401 Unauthorized<br/>\"Nonce expired\"\n        else Nonce not found\n            Backend-->>Frontend: 401 Unauthorized<br/>\"Invalid nonce\"\n        else Valid nonce\n            Backend->>Backend: ethers.verifyMessage(<br/>  message, signature<br/>)\n            Note over Backend: Recovers signer address\n\n            alt Address mismatch\n                Backend-->>Frontend: 401 Unauthorized<br/>\"Signature mismatch\"\n            else Address matches\n                Backend->>+DB: DELETE FROM auth_nonces<br/>WHERE address = ?\n                Note right of Backend: One-time use nonce\n                DB-->>-Backend: Deleted\n\n                Backend->>Backend: Generate JWT<br/>payload: { address }<br/>expiry: 7 days\n\n                Backend-->>-Frontend: 200 OK<br/>{ token: \"eyJ...\", address }\n            end\n        end\n    end\n\n    %% Phase 5: Token Storage & Usage\n    rect rgb(237, 233, 254)\n        Note over Frontend,User: Phase 5: Token Management\n\n        Frontend->>Frontend: localStorage.setItem(<br/>  'veripass_token', token<br/>)\n\n        Frontend->>Frontend: AuthContext update<br/>isAuthenticated: true<br/>user: { address }\n\n        Frontend->>User: Authentication success!<br/>Redirect to dashboard\n    end\n\n    %% Subsequent Requests\n    rect rgb(240, 249, 255)\n        Note over Frontend,Backend: Subsequent API Requests\n\n        loop Every authenticated request\n            Frontend->>+Backend: GET /api/assets<br/>Authorization: Bearer {JWT}\n\n            Backend->>Backend: authMiddleware<br/>jwt.verify(token, secret)\n\n            alt Token valid\n                Backend->>Backend: Extract address from payload\n                Backend->>Backend: Set c.set('userAddress', address)\n                Backend-->>-Frontend: 200 OK + data\n            else Token expired/invalid\n                Backend-->>Frontend: 401 Unauthorized\n                Frontend->>Frontend: Clear localStorage\n                Frontend->>User: Session expired<br/>Please sign in again\n            end\n        end\n    end\n\n    %% Logout\n    rect rgb(254, 226, 226)\n        Note over User,Frontend: Logout\n\n        User->>+Frontend: Click \"Disconnect\"\n\n        Frontend->>Frontend: localStorage.removeItem(<br/>  'veripass_token'<br/>)\n\n        Frontend->>RK: Disconnect wallet\n\n        Frontend->>Frontend: AuthContext reset<br/>isAuthenticated: false<br/>user: null\n\n        Frontend-->>-User: Logged out\n    end\n",
+  "content_size": 5636,
+  "collected_at": "2026-02-06T01:34:59.635078",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 1,
+  "repo_owner": "IrfanMusthofa",
+  "repo_name": "veripass",
+  "repo_description": "A decentralized asset passport enabling authenticity, ownership provenance, and verifiable lifecycle events for resale markets.",
+  "repo_language": "TypeScript",
+  "repo_topics": [],
+  "repo_created_at": "2025-12-26T08:52:11Z",
+  "repo_updated_at": "2026-01-14T09:33:01Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为VeriPass系统绘制一个完整的认证流程时序图，涵盖从钱包连接到JWT颁发的全过程。这个流程分为五个主要阶段，第一阶段是钱包连接。",
+      "elements_involved": [
+        "User",
+        "Frontend",
+        "RK",
+        "Wallet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，第一阶段是钱包连接。我看到有User、React Frontend、RainbowKit和MetaMask四个参与者。用户点击\"Connect Wallet\"后，前端打开钱包选择模态框，用户选择MetaMask后请求连接并批准，最后返回连接成功的地址信息。",
+      "elements_involved": [
+        "User",
+        "Frontend",
+        "RK",
+        "Wallet",
+        "Click \"Connect Wallet\"",
+        "Open wallet modal",
+        "Approve connection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，地址显示要注明格式，比如0x1234...abcd这种截断显示。接下来第二阶段是请求Nonce，前端通过useAccount获取地址后，向后端POST /api/auth/nonce。",
+      "elements_involved": [
+        "Frontend",
+        "Backend",
+        "DB",
+        "useAccount() hook",
+        "POST /api/auth/nonce"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里我需要确认一下：后端收到地址后要做格式验证，42个字符且以0x开头，然后生成32字节的随机nonce，存入PostgreSQL的auth_nonces表，设置5分钟过期时间。返回的nonce格式是0x开头的十六进制吗？",
+      "elements_involved": [
+        "Backend",
+        "DB",
+        "Validate address format",
+        "42 chars, starts with 0x",
+        "crypto.randomBytes(32)",
+        "expiresAt = NOW() + 5 min"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，nonce返回格式是0x9a8b7c...这样的十六进制。第三阶段是消息签名，前端构造包含nonce和时间戳的认证消息，通过wagmi的useSignMessage调用钱包签名。",
+      "elements_involved": [
+        "Frontend",
+        "Wallet",
+        "Sign this message to authenticate with VeriPass",
+        "Nonce: 0x9a8b7c...",
+        "wagmi useSignMessage hook"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，第三阶段已添加。用户在MetaMask中看到完整消息内容后确认签名，钱包使用私钥进行ECDSA签名，返回65字节的signature，包含r、s、v三个部分。",
+      "elements_involved": [
+        "Wallet",
+        "User",
+        "ECDSA signature",
+        "signature: 0xabcd...",
+        "65-byte signature",
+        "r, s, v"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第四阶段是验证和JWT颁发，这是最复杂的部分。前端将address、message、signature发送到POST /api/auth/verify，后端需要验证nonce有效性、检查签名、比对地址，最后颁发JWT。",
+      "elements_involved": [
+        "Frontend",
+        "Backend",
+        "DB",
+        "POST /api/auth/verify",
+        "ethers.verifyMessage",
+        "JWT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有几个分支条件需要理清：如果nonce过期返回401，nonce不存在也返回401，签名恢复的地址不匹配同样返回401，只有全部验证通过才删除nonce并生成7天有效期的JWT。这个删除操作是为了保证nonce一次性使用对吧？",
+      "elements_involved": [
+        "Backend",
+        "DB",
+        "Nonce expired",
+        "Nonce not found",
+        "Address mismatch",
+        "DELETE FROM auth_nonces",
+        "One-time use nonce",
+        "expiry: 7 days"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确，nonce必须一次性使用，这是为了防止重放攻击。JWT的payload只包含address，token格式是标准的eyJ...开头。第五阶段是令牌存储和使用。",
+      "elements_involved": [
+        "Backend",
+        "Frontend",
+        "token: eyJ...",
+        "payload: { address }",
+        "veripass_token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第五阶段已完成。前端将token存入localStorage的'veripass_token'键，更新AuthContext设置isAuthenticated为true，然后重定向到dashboard。",
+      "elements_involved": [
+        "Frontend",
+        "User",
+        "localStorage.setItem('veripass_token', token)",
+        "AuthContext update",
+        "isAuthenticated: true",
+        "Redirect to dashboard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要补充后续请求的处理流程。每次API调用都要在Authorization头中携带Bearer JWT，后端通过authMiddleware验证token，从中提取userAddress。",
+      "elements_involved": [
+        "Frontend",
+        "Backend",
+        "Authorization: Bearer {JWT}",
+        "authMiddleware",
+        "jwt.verify(token, secret)",
+        "c.set('userAddress', address)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里用loop表示每次认证请求的流程。如果token过期或无效，后端返回401，前端清除localStorage并提示用户重新登录。这个清除操作具体是removeItem吗？",
+      "elements_involved": [
+        "Frontend",
+        "Backend",
+        "loop Every authenticated request",
+        "Token expired/invalid",
+        "401 Unauthorized",
+        "Clear localStorage",
+        "Session expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，token失效时前端调用localStorage.removeItem清除。最后还需要一个登出流程，用户点击\"Disconnect\"后清除token并断开钱包连接。",
+      "elements_involved": [
+        "User",
+        "Frontend",
+        "RK",
+        "Click \"Disconnect\"",
+        "localStorage.removeItem('veripass_token')",
+        "Disconnect wallet",
+        "AuthContext reset"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "登出流程已添加。用户点击Disconnect后，前端清除veripass_token，调用RainbowKit断开钱包，重置AuthContext的isAuthenticated为false，user设为null。整个五个阶段都用不同颜色的rect框区分开了。",
+      "elements_involved": [
+        "Frontend",
+        "User",
+        "RK",
+        "localStorage.removeItem",
+        "AuthContext reset",
+        "isAuthenticated: false",
+        "user: null",
+        "Logged out"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我注意到第四阶段的alt嵌套层次比较多，确认一下结构：外层alt是nonce的三种状态（过期、不存在、有效），内层alt是地址匹配验证。这样画会不会太复杂？",
+      "elements_involved": [
+        "Backend",
+        "Nonce expired",
+        "Nonce not found",
+        "Valid nonce",
+        "Address mismatch",
+        "Address matches"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "层次是清晰的，我用缩进和颜色区分了嵌套关系。外层是nonce验证，内层是签名验证，最内层才是成功颁发JWT。这样符合实际代码的执行流程。",
+      "elements_involved": [
+        "Backend",
+        "alt",
+        "else"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好的。另外，第一阶段返回的地址显示格式需要统一，RK返回的是0x1234...，前端显示的是0x1234...abcd，这个差异要保留，因为前端做了更完整的截断显示。",
+      "elements_involved": [
+        "RK",
+        "Frontend",
+        "Wallet",
+        "Connected<br/address: 0x1234...",
+        "Display: 0x1234...abcd"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整显示文本。第一阶段RK返回简化的0x1234...，前端展示完整的0x1234...abcd。所有消息中的<br/换行符都正确保留了，保证图表可读性。",
+      "elements_involved": [
+        "RK",
+        "Frontend",
+        "br/"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查下各个参与者的图标：User是👤，Frontend是⚛️，RK是🌈，Wallet是🦊，Backend是🖥️，DB是🗄️。这些emoji都正确吗？",
+      "elements_involved": [
+        "User",
+        "Frontend",
+        "RK",
+        "Wallet",
+        "Backend",
+        "DB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有参与者图标都正确设置了。PostgreSQL用🗄️表示，MetaMask用🦊，RainbowKit用🌈，都很直观。参与者声明都用了as别名显示完整名称。",
+      "elements_involved": [
+        "participant",
+        "as"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第三阶段的消息内容需要精确还原：\"Sign this message to authenticate with VeriPass\"，然后换行，再显示Nonce和Timestamp。确保格式和实际产品一致。",
+      "elements_involved": [
+        "Frontend",
+        "Sign this message to<br/authenticate with VeriPass",
+        "Nonce: 0x9a8b7c...",
+        "Timestamp: 2024-01-15T10:30:00Z"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "消息内容已精确设置，包含两个<br/换行：第一行是标题，空一行后显示Nonce和Timestamp。时间戳用了ISO 8601格式2024-01-15T10:30:00Z。",
+      "elements_involved": [
+        "Frontend",
+        "Note over Frontend",
+        "message content"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ethers.verifyMessage的参数顺序确认一下，是message在前还是signature在前？代码里是verifyMessage(message, signature)。",
+      "elements_involved": [
+        "Backend",
+        "ethers.verifyMessage",
+        "message, signature"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认是ethers.verifyMessage(message, signature)，这是Ethers.js的标准API，从签名恢复出签名者地址，然后与请求中的address比对。",
+      "elements_involved": [
+        "Backend",
+        "Recovers signer address"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查下所有rect的颜色：Phase 1是rgb(245, 243, 255)淡紫色，Phase 2是rgb(240, 249, 255)淡蓝色，Phase 3是rgb(254, 249, 195)淡黄色，Phase 4是rgb(236, 253, 245)淡绿色，Phase 5是rgb(237, 233, 254)淡紫色，后续请求是rgb(240, 249, 255)淡蓝色，登出是rgb(254, 226, 226)淡红色。",
+      "elements_involved": [
+        "rect rgb",
+        "Phase 1",
+        "Phase 2",
+        "Phase 3",
+        "Phase 4",
+        "Phase 5",
+        "Logout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有颜色都已核对正确。七个rect区域颜色区分明显，便于快速识别不同阶段。Note over的文本颜色也与对应区域协调。",
+      "elements_involved": [
+        "rect",
+        "Note over"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "autonumber开启了自动编号对吧？这样每个交互步骤都有序号，方便在文档中引用具体步骤。",
+      "elements_involved": [
+        "autonumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，autonumber已启用，从1开始自动编号。整个时序图现在包含约30个编号步骤，覆盖完整的认证生命周期。",
+      "elements_involved": [
+        "autonumber",
+        "sequenceDiagram"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "很好。最后确认下init配置中的字体是Inter，字号13px，主色调是#003366深蓝色，与我们的品牌色一致。",
+      "elements_involved": [
+        "themeVariables",
+        "fontFamily",
+        "fontSize",
+        "primaryColor",
+        "#003366"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "主题配置已最终确认：Inter字体，13px字号，主色#003366，辅色#8b5cf6（紫色），第三色#10b981（绿色）。所有文本颜色、边框颜色都与主色调协调。图表已完成，可以导出了。",
+      "elements_involved": [
+        "theme",
+        "themeVariables",
+        "Inter, system-ui, sans-serif",
+        "fontSize: 13px",
+        "primaryColor: #003366",
+        "secondaryColor: #8b5cf6",
+        "tertiaryColor: #10b981"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个时序图完整展示了VeriPass的SIWE（Sign-In with Ethereum）认证流程，从钱包连接到JWT管理，每个技术细节都准确对应实现代码。可以用于技术文档和团队评审了。",
+      "elements_involved": [
+        "VeriPass",
+        "SIWE",
+        "MetaMask",
+        "RainbowKit",
+        "JWT",
+        "PostgreSQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认交付。图表包含6个参与者、7个阶段区域、完整的分支逻辑和循环处理，所有消息格式、API端点、数据库操作都与实际系统一致。",
+      "elements_involved": [
+        "User",
+        "Frontend",
+        "RK",
+        "Wallet",
+        "Backend",
+        "DB",
+        "Phase 1-5",
+        "Subsequent Requests",
+        "Logout"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 32,
+    "repair_count": 0,
+    "grounding_acts_count": 32,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 80954.809,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 32
+  }
+}

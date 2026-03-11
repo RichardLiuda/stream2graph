@@ -1,0 +1,251 @@
+{
+  "id": "aug_gl_timeline_00082_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/blyzer/interfell-epayco/blob/cd0ebd25836c2fa6ef15976bd2778ed537eb8451/diagrams/timelinePayment.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "blyzer/interfell-epayco",
+  "diagram_type": "timeline",
+  "code": "timeline\ntitle Timeline de Pago (FinTech_PaymentGateway)\nT0ms : Usuario submit pago form\nT10ms : Payment service recibe request\n: 5ms idempotency check (FinTech_LedgerService)\n: 8ms JWT validation (FinTech_AuthVault)\nT25ms : 12ms wallet balance check (FinTech_PaymentGateway)\n: 15ms reserve funds (FinTech_AuthVault)\n: Total sync: 40ms\nT50ms : Response enviada a usuario\n: 10ms network latency\nT60ms : Usuario ve: Transaction ID + éxito\n: (FinTech_FraudDetection)\nT150ms : Fraud service recibe evento\n: 30ms historical data query (FinTech_TransactionQueue)\n: 40ms ML inference (FinTech_AuthVault)\n: 20ms DynamoDB writes\n: Total: ~90ms\nT250ms : Payment service enqueue a SQS\n: (FinTech_AuthVault)\nT400ms : Bank responds + ePayco confirms\n: 100ms network time\n: 100ms bank processing\n: 50ms response + parse\n: Total: ~250ms\nT420ms : Transaction update + publish\n: 5ms transaction update\n: 10ms idempotency store\n: 5ms SNS publish\nT500ms : Notifications sent (FinTech_TransactionQueue)\n: Email enqueued\n: SMS enqueued\nT1000ms : User checks app\n: Sees \"Confirmed\"",
+  "content_size": 960,
+  "collected_at": "2026-02-06T14:02:26.722863",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gl_timeline_00082",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个支付流程的时序图，展示从用户提交表单到最终确认的全过程。关键系统包括PaymentGateway、LedgerService、AuthVault，还有FraudDetection和TransactionQueue。",
+      "elements_involved": [
+        "FinTech_PaymentGateway",
+        "FinTech_LedgerService",
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。这个时序图的时间粒度是什么？是毫秒级别的吗？另外，FraudDetection是同步还是异步处理的？",
+      "elements_involved": [
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，毫秒级。FraudDetection是异步的，在返回用户成功之后才会触发。同步阶段我们只做到T50ms返回响应，用户T60ms看到Transaction ID。",
+      "elements_involved": [
+        "T50ms",
+        "T60ms",
+        "Transaction ID",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出同步阶段。T0ms用户提交表单，T10ms Payment service接收请求，然后做5ms的幂等性检查调用LedgerService，8ms的JWT验证走AuthVault。",
+      "elements_involved": [
+        "T0ms",
+        "T10ms",
+        "FinTech_LedgerService",
+        "FinTech_AuthVault",
+        "idempotency check",
+        "JWT validation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "JWT验证时间可以再确认一下，实际压测是8ms。接下来T25ms开始wallet balance check，这个在PaymentGateway内部做，然后T25ms到T40ms是reserve funds，走AuthVault。",
+      "elements_involved": [
+        "T25ms",
+        "wallet balance check",
+        "reserve funds",
+        "FinTech_AuthVault",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "同步阶段总耗时40ms，T50ms发送响应给用户，加上10ms网络延迟，T60ms用户看到成功状态和Transaction ID。这里我标注一下FraudDetection在后台异步启动。",
+      "elements_involved": [
+        "T50ms",
+        "T60ms",
+        "network latency",
+        "Transaction ID",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "异步阶段详细展开一下。T150ms Fraud service才收到事件，因为它订阅的是消息队列。然后要查30ms历史数据，这个走TransactionQueue。",
+      "elements_involved": [
+        "T150ms",
+        "FinTech_FraudDetection",
+        "FinTech_TransactionQueue",
+        "historical data query"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ML推理放在哪里？还有DynamoDB写入？",
+      "elements_involved": [
+        "ML inference",
+        "DynamoDB writes"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "40ms ML推理走AuthVault的模型服务，然后20ms DynamoDB写入。Fraud检测总共约90ms。之后T250ms Payment service把结果enqueue到SQS，还是经过AuthVault做权限校验。",
+      "elements_involved": [
+        "T250ms",
+        "ML inference",
+        "DynamoDB writes",
+        "SQS",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了。T400ms银行响应回来，ePayco确认。这里网络100ms，银行处理100ms，响应解析50ms，总共约250ms。",
+      "elements_involved": [
+        "T400ms",
+        "ePayco",
+        "bank processing",
+        "network time"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，T420ms那里我写错了，应该是transaction update和publish，不是T400ms。T400ms只是银行响应到达的时间点。",
+      "elements_involved": [
+        "T420ms",
+        "T400ms",
+        "transaction update",
+        "SNS publish"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "修正了。T420ms做5ms transaction update，10ms idempotency store，5ms SNS publish。然后T500ms通知发送，Email和SMS都enqueue到TransactionQueue。",
+      "elements_involved": [
+        "T420ms",
+        "T500ms",
+        "idempotency store",
+        "SNS publish",
+        "Email",
+        "SMS",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后加一个用户体验的节点，T1000ms用户主动刷新App，看到\"Confirmed\"状态。这样整个流程闭环。",
+      "elements_involved": [
+        "T1000ms",
+        "Confirmed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "标题用中文还是英文？系统名保持FinTech前缀吗？",
+      "elements_involved": [
+        "title",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "标题用\"Timeline de Pago\"，系统名保持FinTech前缀，这是我们的命名规范。PaymentGateway是核心，要突出。",
+      "elements_involved": [
+        "Timeline de Pago",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。从T0ms用户提交到T1000ms确认，完整展示了Pago流程，各系统职责清晰，关键耗时点都标注了Total sync 40ms、Fraud检测90ms、银行处理250ms等汇总信息。",
+      "elements_involved": [
+        "T0ms",
+        "T1000ms",
+        "Total sync",
+        "Pago",
+        "FinTech_PaymentGateway",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 16,
+    "repair_count": 1,
+    "grounding_acts_count": 16,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 33801.991,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 16
+  }
+}

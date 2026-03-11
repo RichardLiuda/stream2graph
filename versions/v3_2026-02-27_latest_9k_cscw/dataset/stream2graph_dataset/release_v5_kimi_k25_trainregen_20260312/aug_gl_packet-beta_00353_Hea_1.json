@@ -1,0 +1,372 @@
+{
+  "id": "aug_gl_packet-beta_00353_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/SiliconLabs/wiseconnect/blob/dbddc46f86fab9728a390680290781b7d1ae8bb5/components/sli_queue_manager/queue_manager.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "SiliconLabs/wiseconnect",
+  "diagram_type": "packet-beta",
+  "code": "%%{HealthTech_LabAnalyzer} }%%\r\nsequenceDiagram\r\n    participant A as AppThread\r\n    participant E as EventThread\r\n    participant B as CommandEngine\r\n    participant R as RoutingUtility\r\n\r\n    Note over A: User calls API to send a command<br>A command packet is prepared with<br>all the command parameters\r\n    A->>A: Enter Critical Section\r\n    Note over A: Allocate unique packet id for the command<br>packet before it is being added to the queue\r\n    A->>A: Exit Critical Section\r\n    Note over A: Prepared command packet to be added<br>into respected command queue using<br>sli_queue_manager_enqueue(HealthTech_EMR_Sync)\r\n    Note left of A: Invoke the add to queue with atomic action API with<br>sli_queue_handle_t *handle<br>sl_slist_node_t *node<br>sli_queue_manager_action_handler_t action_handler\r\n\r\n    rect rgba(HealthTech_PatientRecords)\r\n        opt sli_queue_manager_enqueue(HealthTech_LabAnalyzer)\r\n            A->>A: Enter Critical Section\r\n\r\n            Note over A: This API facilitates user to perform an action<br>under the protection of queue's critical section\r\n            alt if handler is not NULL\r\n                A->>A: Invoke the handler with user specific data\r\n            end\r\n\r\n            A->>A: Add the command packet data to the queue\r\n            A->>A: Exit Critical Section\r\n        end\r\n    end\r\n\r\n    Note over A: Once the packet is queued in the respective command queue,<br>packet is dequeued in Command Engine and processed\r\n    A->>B: Trigger TX event to Command Engine\r\n\r\n    rect rgba(HealthTech_EMR_Sync)\r\n        B->>B: Check the status of the queues<br>using SLI_QUEUE_GET_STATUS(HealthTech_LabAnalyzer)\r\n\r\n        opt SLI_QUEUE_GET_STATUS(HealthTech_DiagnosticEngine)\r\n            B->>B: Return true if list is empty\r\n        end\r\n\r\n        Note over B: If the corresponding queue is not Empty, <br>then Command Engine will process the<br>comamnds in the commanmd queues\r\n    end\r\n\r\n    rect rgba(HealthTech_EMR_Sync)\r\n        Note over R: When the underlying HAL layer receives <br>a packet, it will forward it to command <br>engine through routing utility\r\n        R->>R: Add the packet to BUS RX queue\r\n\r\n        opt sli_queue_manager_enqueue(HealthTech_EMR_Sync)\r\n            R->>R: Enter Critical Section\r\n            R->>R: Add the command response <br>packet data to the queue\r\n            R->>R: Exit critical section\r\n        end\r\n\r\n        R->>B: Set BUS RX event for Command Engine\r\n    end\r\n\r\n    rect rgba(HealthTech_LabAnalyzer)\r\n        Note over B: When a command response or a asynchronous data<br>packet is received, Command Engine will add the packet<br>to either response queue or the notification queue\r\n\r\n        B->>B: Dequeue the RX Packet\r\n        opt sli_queue_manager_dequeue(HealthTech_DiagnosticEngine)\r\n            B->>B: Enter Critical Section\r\n            B->>B: Remove the BUS RX packet data from the queue head\r\n            B->>B: Exit Critical Section\r\n            B->>B: Return the data to Command Engine\r\n        end\r\n\r\n        opt sli_queue_manager_enqueue(HealthTech_DiagnosticEngine)\r\n            B->>B: Enter Critical Section\r\n            B->>B: Add the command response packet data to<br>the response or Async notification queue\r\n            B->>B: Exit critical section\r\n        end\r\n    end\r\n\r\n    B->>A: If the response is a synchronous command response<br>Trigger corresponding RX Event\r\n    rect rgba(HealthTech_LabAnalyzer)\r\n        A->>A: The thread waiting on the corresponding response wakes up\r\n        Note over A: After waking up from desired event, thread checks if<br>and dequeues the response for expected packet id<br>using sli_queue_manager_remove_node_from_queue(HealthTech_LabAnalyzer)\r\n\r\n        opt sli_queue_manager_remove_node_from_queue(HealthTech_LabAnalyzer)\r\n            A->>A: Enter Critical Section\r\n\r\n            alt if queue is empty\r\n                A->>A: Exit Critical Section\r\n                A->>A: Return SL_STATUS_EMPTY\r\n            end\r\n\r\n            loop Iterate through the nodes in the list\r\n                A->>A: Invoke the compare function to identify the node\r\n                Note over A: In this situation, packet_id identification<br>function is invoked\r\n            end\r\n\r\n            alt if comapre function returns true\r\n                A->>A: Remove node from list \r\n                A->>A: Exit Critical Section\r\n                A->>A: Return the response packet\r\n            else\r\n                A->>A: Exit Critical Section\r\n                A->>A: Return SL_STATUS_NOT_FOUND\r\n            end\r\n        end\r\n    end\r\n\r\n    rect rgba(HealthTech_LabAnalyzer)\r\n        alt if the received data packet is a Async data packet\r\n            B->>B: Add received data packet to corresponding<br>notification event queue\r\n            B->>E: Trigger Notification event to event handler thread\r\n\r\n            Note over E: Event thread will be waiting for<br>notification events to be triggered\r\n            Note over E: Once the Event is triggered, the<br> notification events are dequeued<br>from respective notification event queues<br>using sli_queue_manager_dequeue(HealthTech_LabAnalyzer)\r\n\r\n            opt sli_queue_manager_dequeue(HealthTech_DiagnosticEngine)\r\n                E->>E: Enter Critical Section\r\n                E->>E: Remove the Notification event packet data from the queue head\r\n                E->>E: Exit Critical Section\r\n                E->>E: Return the data to the application\r\n            end\r\n\r\n            Note over E: Invoke appropriate event handler with the event data\r\n        end\r\n    end",
+  "content_size": 5561,
+  "collected_at": "2026-02-06T14:08:07.626730",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "repo_stars": 23,
+  "repo_forks": 26,
+  "repo_owner": "SiliconLabs",
+  "repo_name": "wiseconnect",
+  "repo_description": "Next-generation Silicon Labs Wi-Fi API for SiWx91x chipset family.",
+  "repo_language": "C",
+  "repo_topics": [
+    "siwx917-dk2605a",
+    "siwx917-wireless-soc",
+    "wi-fi",
+    "wifi"
+  ],
+  "repo_created_at": "2023-06-06T16:26:11Z",
+  "repo_updated_at": "2026-01-22T17:46:41Z",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gl_packet-beta_00353",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 HealthTech_EMR_Sync 和 HealthTech_PatientRecords 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'HealthTech_EMR_Sync 和 HealthTech_PatientRecords'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "sli_queue_manager_enqueue",
+        "rgba"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 HealthTech_LabAnalyzer 和 HealthTech_EMR_Sync。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'HealthTech_LabAnalyzer 和 HealthTech_EMR_Sync'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "sli_queue_manager_enqueue",
+        "rgba"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 HealthTech_LabAnalyzer 和 HealthTech_DiagnosticEngine。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'HealthTech_LabAnalyzer 和 HealthTech_DiagnosticEngine'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "SLI_QUEUE_GET_STATUS",
+        "SLI_QUEUE_GET_STATUS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 HealthTech_EMR_Sync 和 HealthTech_EMR_Sync。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'HealthTech_EMR_Sync 和 HealthTech_EMR_Sync'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "rgba",
+        "sli_queue_manager_enqueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 HealthTech_LabAnalyzer 和 HealthTech_DiagnosticEngine 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我重新想了一下，应该是 HealthTech_LabAnalyzer处理 才对。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 19,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'HealthTech_LabAnalyzer处理'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "rgba",
+        "sli_queue_manager_dequeue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 HealthTech_DiagnosticEngine 和 HealthTech_LabAnalyzer 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'HealthTech_DiagnosticEngine 和 HealthTech_LabAnalyzer'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "sli_queue_manager_enqueue",
+        "rgba"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 HealthTech_LabAnalyzer 和 HealthTech_LabAnalyzer 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'HealthTech_LabAnalyzer 和 HealthTech_LabAnalyzer'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "sli_queue_manager_remove_node_from_queue",
+        "sli_queue_manager_remove_node_from_queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 HealthTech_LabAnalyzer 和 HealthTech_LabAnalyzer 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'HealthTech_LabAnalyzer 和 HealthTech_LabAnalyzer'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "rgba",
+        "sli_queue_manager_dequeue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 HealthTech_DiagnosticEngine 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'HealthTech_DiagnosticEngine'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "sli_queue_manager_dequeue"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 37,
+    "repair_count": 1,
+    "grounding_acts_count": 18,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:33Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": false,
+    "frozen_from_source": true
+  }
+}

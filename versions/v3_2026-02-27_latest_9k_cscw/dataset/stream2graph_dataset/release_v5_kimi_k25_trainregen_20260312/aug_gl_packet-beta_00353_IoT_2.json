@@ -1,0 +1,550 @@
+{
+  "id": "aug_gl_packet-beta_00353_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/SiliconLabs/wiseconnect/blob/dbddc46f86fab9728a390680290781b7d1ae8bb5/components/sli_queue_manager/queue_manager.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "SiliconLabs/wiseconnect",
+  "diagram_type": "packet-beta",
+  "code": "%%{IoT_Industrial_TelemetryStream} }%%\r\nsequenceDiagram\r\n    participant A as AppThread\r\n    participant E as EventThread\r\n    participant B as CommandEngine\r\n    participant R as RoutingUtility\r\n\r\n    Note over A: User calls API to send a command<br>A command packet is prepared with<br>all the command parameters\r\n    A->>A: Enter Critical Section\r\n    Note over A: Allocate unique packet id for the command<br>packet before it is being added to the queue\r\n    A->>A: Exit Critical Section\r\n    Note over A: Prepared command packet to be added<br>into respected command queue using<br>sli_queue_manager_enqueue(IoT_Industrial_PLC_Logic)\r\n    Note left of A: Invoke the add to queue with atomic action API with<br>sli_queue_handle_t *handle<br>sl_slist_node_t *node<br>sli_queue_manager_action_handler_t action_handler\r\n\r\n    rect rgba(IoT_Industrial_PLC_Logic)\r\n        opt sli_queue_manager_enqueue(IoT_Industrial_MQTT_Broker)\r\n            A->>A: Enter Critical Section\r\n\r\n            Note over A: This API facilitates user to perform an action<br>under the protection of queue's critical section\r\n            alt if handler is not NULL\r\n                A->>A: Invoke the handler with user specific data\r\n            end\r\n\r\n            A->>A: Add the command packet data to the queue\r\n            A->>A: Exit Critical Section\r\n        end\r\n    end\r\n\r\n    Note over A: Once the packet is queued in the respective command queue,<br>packet is dequeued in Command Engine and processed\r\n    A->>B: Trigger TX event to Command Engine\r\n\r\n    rect rgba(IoT_Industrial_TelemetryStream)\r\n        B->>B: Check the status of the queues<br>using SLI_QUEUE_GET_STATUS(IoT_Industrial_TelemetryStream)\r\n\r\n        opt SLI_QUEUE_GET_STATUS(IoT_Industrial_EdgeNode)\r\n            B->>B: Return true if list is empty\r\n        end\r\n\r\n        Note over B: If the corresponding queue is not Empty, <br>then Command Engine will process the<br>comamnds in the commanmd queues\r\n    end\r\n\r\n    rect rgba(IoT_Industrial_MQTT_Broker)\r\n        Note over R: When the underlying HAL layer receives <br>a packet, it will forward it to command <br>engine through routing utility\r\n        R->>R: Add the packet to BUS RX queue\r\n\r\n        opt sli_queue_manager_enqueue(IoT_Industrial_PLC_Logic)\r\n            R->>R: Enter Critical Section\r\n            R->>R: Add the command response <br>packet data to the queue\r\n            R->>R: Exit critical section\r\n        end\r\n\r\n        R->>B: Set BUS RX event for Command Engine\r\n    end\r\n\r\n    rect rgba(IoT_Industrial_MQTT_Broker)\r\n        Note over B: When a command response or a asynchronous data<br>packet is received, Command Engine will add the packet<br>to either response queue or the notification queue\r\n\r\n        B->>B: Dequeue the RX Packet\r\n        opt sli_queue_manager_dequeue(IoT_Industrial_TelemetryStream)\r\n            B->>B: Enter Critical Section\r\n            B->>B: Remove the BUS RX packet data from the queue head\r\n            B->>B: Exit Critical Section\r\n            B->>B: Return the data to Command Engine\r\n        end\r\n\r\n        opt sli_queue_manager_enqueue(IoT_Industrial_PLC_Logic)\r\n            B->>B: Enter Critical Section\r\n            B->>B: Add the command response packet data to<br>the response or Async notification queue\r\n            B->>B: Exit critical section\r\n        end\r\n    end\r\n\r\n    B->>A: If the response is a synchronous command response<br>Trigger corresponding RX Event\r\n    rect rgba(IoT_Industrial_MQTT_Broker)\r\n        A->>A: The thread waiting on the corresponding response wakes up\r\n        Note over A: After waking up from desired event, thread checks if<br>and dequeues the response for expected packet id<br>using sli_queue_manager_remove_node_from_queue(IoT_Industrial_ActuatorController)\r\n\r\n        opt sli_queue_manager_remove_node_from_queue(IoT_Industrial_EdgeNode)\r\n            A->>A: Enter Critical Section\r\n\r\n            alt if queue is empty\r\n                A->>A: Exit Critical Section\r\n                A->>A: Return SL_STATUS_EMPTY\r\n            end\r\n\r\n            loop Iterate through the nodes in the list\r\n                A->>A: Invoke the compare function to identify the node\r\n                Note over A: In this situation, packet_id identification<br>function is invoked\r\n            end\r\n\r\n            alt if comapre function returns true\r\n                A->>A: Remove node from list \r\n                A->>A: Exit Critical Section\r\n                A->>A: Return the response packet\r\n            else\r\n                A->>A: Exit Critical Section\r\n                A->>A: Return SL_STATUS_NOT_FOUND\r\n            end\r\n        end\r\n    end\r\n\r\n    rect rgba(IoT_Industrial_EdgeNode)\r\n        alt if the received data packet is a Async data packet\r\n            B->>B: Add received data packet to corresponding<br>notification event queue\r\n            B->>E: Trigger Notification event to event handler thread\r\n\r\n            Note over E: Event thread will be waiting for<br>notification events to be triggered\r\n            Note over E: Once the Event is triggered, the<br> notification events are dequeued<br>from respective notification event queues<br>using sli_queue_manager_dequeue(IoT_Industrial_EdgeNode)\r\n\r\n            opt sli_queue_manager_dequeue(IoT_Industrial_PLC_Logic)\r\n                E->>E: Enter Critical Section\r\n                E->>E: Remove the Notification event packet data from the queue head\r\n                E->>E: Exit Critical Section\r\n                E->>E: Return the data to the application\r\n            end\r\n\r\n            Note over E: Invoke appropriate event handler with the event data\r\n        end\r\n    end",
+  "content_size": 5561,
+  "collected_at": "2026-02-06T14:08:07.626730",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "repo_stars": 23,
+  "repo_forks": 26,
+  "repo_owner": "SiliconLabs",
+  "repo_name": "wiseconnect",
+  "repo_description": "Next-generation Silicon Labs Wi-Fi API for SiWx91x chipset family.",
+  "repo_language": "C",
+  "repo_topics": [
+    "siwx917-dk2605a",
+    "siwx917-wireless-soc",
+    "wi-fi",
+    "wifi"
+  ],
+  "repo_created_at": "2023-06-06T16:26:11Z",
+  "repo_updated_at": "2026-01-22T17:46:41Z",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_packet-beta_00353",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网场景设计一个完整的命令包流转时序图，核心涉及AppThread、EventThread、CommandEngine和RoutingUtility这四个参与者。AppThread负责发起命令，EventThread处理异步通知。",
+      "elements_involved": [
+        "AppThread",
+        "EventThread",
+        "CommandEngine",
+        "RoutingUtility"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。这个场景是IoT工业遥测数据流相关的吧？我需要确认一下：AppThread调用API发送命令时，是在用户态准备命令包参数，然后进入临界区分配唯一包ID？",
+      "elements_involved": [
+        "AppThread",
+        "IoT_Industrial_TelemetryStream",
+        "command packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，用户调用API后，命令包会准备好所有参数，然后AppThread进入临界区分配唯一的packet id，之后退出临界区。这个分配过程需要原子性保护。",
+      "elements_involved": [
+        "AppThread",
+        "Enter Critical Section",
+        "Exit Critical Section",
+        "packet id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在AppThread上方添加注释说明用户API调用和命令包准备，然后画出自调用箭头表示进入和退出临界区。接下来命令包要入队到哪个队列？",
+      "elements_involved": [
+        "AppThread",
+        "Note over A",
+        "Enter Critical Section",
+        "Exit Critical Section"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "准备好的命令包要通过sli_queue_manager_enqueue入队到IoT_Industrial_PLC_Logic对应的命令队列。这里需要标注这是一个原子操作API，涉及队列句柄、链表节点和动作处理函数。",
+      "elements_involved": [
+        "sli_queue_manager_enqueue",
+        "IoT_Industrial_PLC_Logic",
+        "sli_queue_handle_t",
+        "sl_slist_node_t",
+        "sli_queue_manager_action_handler_t"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我注意到sli_queue_manager_enqueue这个操作本身也有可选的IoT_Industrial_MQTT_Broker分支逻辑。是在入队PLC逻辑队列时，内部还可能涉及MQTT Broker的处理？",
+      "elements_involved": [
+        "sli_queue_manager_enqueue",
+        "IoT_Industrial_MQTT_Broker",
+        "opt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，这是一个嵌套的可选块。当调用enqueue时，如果目标涉及MQTT Broker，需要再次进入临界区保护。如果handler不为NULL，还要调用用户指定的处理函数，最后才把数据加入队列。",
+      "elements_involved": [
+        "opt sli_queue_manager_enqueue",
+        "Enter Critical Section",
+        "Invoke the handler",
+        "Add the command packet data",
+        "Exit Critical Section"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加rect块包裹IoT_Industrial_PLC_Logic的入队逻辑，内部嵌套opt块处理MQTT Broker的情况，包含临界区和handler调用的alt分支。包入队后，AppThread要触发事件给CommandEngine？",
+      "elements_involved": [
+        "rect rgba(IoT_Industrial_PLC_Logic)",
+        "opt sli_queue_manager_enqueue(IoT_Industrial_MQTT_Broker)",
+        "A-B: Trigger TX event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，AppThread触发TX事件到CommandEngine。CommandEngine收到后，首先检查队列状态，使用SLI_QUEUE_GET_STATUS查询IoT_Industrial_TelemetryStream的状态。",
+      "elements_involved": [
+        "A-B: Trigger TX event",
+        "CommandEngine",
+        "SLI_QUEUE_GET_STATUS",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "检查状态这里有个细节：如果查询IoT_Industrial_EdgeNode的状态返回true表示列表为空，这个opt块是做什么用的？是短路退出吗？",
+      "elements_involved": [
+        "opt SLI_QUEUE_GET_STATUS(IoT_Industrial_EdgeNode)",
+        "Return true if list is empty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这是快速路径。如果EdgeNode队列为空，直接返回。否则CommandEngine会继续处理命令队列中的命令。这个rect块用IoT_Industrial_TelemetryStream的颜色标识。",
+      "elements_involved": [
+        "opt SLI_QUEUE_GET_STATUS(IoT_Industrial_EdgeNode)",
+        "rect rgba(IoT_Industrial_TelemetryStream)",
+        "command queues"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成CommandEngine的状态检查逻辑。现在需要处理HAL层接收数据的路径。RoutingUtility在这里的角色是什么？",
+      "elements_involved": [
+        "rect rgba(IoT_Industrial_TelemetryStream)",
+        "B-B: Check the status",
+        "RoutingUtility"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "当底层HAL收到数据包时，会通过RoutingUtility转发给CommandEngine。RoutingUtility先把包加入BUS RX队列，这里同样涉及sli_queue_manager_enqueue的PLC逻辑保护。",
+      "elements_involved": [
+        "RoutingUtility",
+        "HAL layer",
+        "BUS RX queue",
+        "sli_queue_manager_enqueue",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "RoutingUtility的入队操作和之前AppThread的类似，也是进入临界区、添加命令响应包数据、退出临界区。然后设置BUS RX事件给CommandEngine？",
+      "elements_involved": [
+        "R-R: Enter Critical Section",
+        "R-R: Add the command response",
+        "R-R: Exit critical section",
+        "R-B: Set BUS RX event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。这个rect块用IoT_Industrial_MQTT_Broker的颜色。CommandEngine收到BUS RX事件后，要处理命令响应或异步数据包。",
+      "elements_involved": [
+        "rect rgba(IoT_Industrial_MQTT_Broker)",
+        "R-B: Set BUS RX event",
+        "CommandEngine",
+        "command response",
+        "asynchronous data packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加RoutingUtility的处理流程。现在CommandEngine这边：它会把收到的包加入响应队列或通知队列，然后出队RX包。这里有两个opt块？",
+      "elements_involved": [
+        "B-B: Dequeue the RX Packet",
+        "response queue",
+        "notification queue",
+        "sli_queue_manager_dequeue",
+        "sli_queue_manager_enqueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，第一个opt块是sli_queue_manager_dequeue出队IoT_Industrial_TelemetryStream的数据，进入临界区从队列头移除BUS RX包数据。第二个opt块是把命令响应包数据入队到响应队列或异步通知队列，同样用PLC逻辑保护。",
+      "elements_involved": [
+        "opt sli_queue_manager_dequeue(IoT_Industrial_TelemetryStream)",
+        "opt sli_queue_manager_enqueue(IoT_Industrial_PLC_Logic)",
+        "BUS RX packet",
+        "response or Async notification queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "如果响应是同步命令响应，CommandEngine要触发RX事件给AppThread。然后AppThread唤醒后需要查找特定packet id的响应？",
+      "elements_involved": [
+        "B-A: Trigger corresponding RX Event",
+        "synchronous command response",
+        "sli_queue_manager_remove_node_from_queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，AppThread唤醒后，使用sli_queue_manager_remove_node_from_queue从IoT_Industrial_ActuatorController队列中移除并获取对应packet id的响应。这里有个复杂的opt块涉及EdgeNode。",
+      "elements_involved": [
+        "AppThread",
+        "sli_queue_manager_remove_node_from_queue",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_EdgeNode",
+        "packet_id identification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "正在绘制AppThread的响应处理逻辑。如果队列为空返回SL_STATUS_EMPTY，否则遍历链表节点，调用比较函数匹配packet_id。匹配成功移除节点并返回响应，否则返回SL_STATUS_NOT_FOUND。",
+      "elements_involved": [
+        "alt if queue is empty",
+        "loop Iterate through the nodes",
+        "alt if comapre function returns true",
+        "SL_STATUS_EMPTY",
+        "SL_STATUS_NOT_FOUND"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后一块是异步数据处理。如果收到的是异步数据包，CommandEngine要加入通知事件队列，然后触发Notification事件给EventThread。这个rect块用IoT_Industrial_EdgeNode的颜色。",
+      "elements_involved": [
+        "alt if the received data packet is a Async data packet",
+        "notification event queue",
+        "B-E: Trigger Notification event",
+        "EventThread",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "EventThread等待通知事件触发，然后从IoT_Industrial_EdgeNode队列出队。这里也有sli_queue_manager_dequeue的opt块用PLC逻辑保护？",
+      "elements_involved": [
+        "EventThread",
+        "sli_queue_manager_dequeue(IoT_Industrial_EdgeNode)",
+        "opt sli_queue_manager_dequeue(IoT_Industrial_PLC_Logic)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，EventThread出队时同样进入临界区保护，从队列头移除通知事件包数据，然后退出临界区返回数据给应用，最后调用对应的事件处理函数。",
+      "elements_involved": [
+        "E-E: Enter Critical Section",
+        "E-E: Remove the Notification event packet",
+        "E-E: Exit Critical Section",
+        "Invoke appropriate event handler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成EventThread的异步处理流程。整体结构已经清晰，但我发现CommandEngine检查状态时有个问题：之前画的是查询IoT_Industrial_EdgeNode返回true表示空，但注释说的是'If the corresponding queue is not Empty'才处理，这里逻辑需要调整。",
+      "elements_involved": [
+        "opt SLI_QUEUE_GET_STATUS(IoT_Industrial_EdgeNode)",
+        "Return true if list is empty",
+        "Note over B"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "你说得对，这个opt块的条件应该是如果EdgeNode队列不为空才进入，或者理解为空时直接返回，非空时才继续处理。我确认一下原文：'Return true if list is empty'是快速返回路径，所以opt块内是空队列的处理，外面是非空队列的处理逻辑。",
+      "elements_involved": [
+        "opt SLI_QUEUE_GET_STATUS(IoT_Industrial_EdgeNode)",
+        "Return true if list is empty",
+        "Command Engine will process"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，opt块内是空队列的快速返回，块外才是正常处理流程。这样逻辑就通了。另外，AppThread左側的注释需要补充原子操作API的参数说明。",
+      "elements_involved": [
+        "Note left of A",
+        "sli_queue_handle_t",
+        "sl_slist_node_t",
+        "sli_queue_manager_action_handler_t"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，那个注释要说明调用add to queue的atomic action API，涉及三个参数：队列句柄指针、链表节点指针和动作处理函数指针。",
+      "elements_involved": [
+        "Note left of A",
+        "atomic action API",
+        "sli_queue_handle_t *handle",
+        "sl_slist_node_t *node",
+        "sli_queue_manager_action_handler_t action_handler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "检查整体颜色标识：PLC_Logic用rgba包裹，TelemetryStream、MQTT_Broker、EdgeNode各自有rect块。RoutingUtility的BUS RX处理也是MQTT_Broker颜色，对吗？",
+      "elements_involved": [
+        "rect rgba(IoT_Industrial_PLC_Logic)",
+        "rect rgba(IoT_Industrial_TelemetryStream)",
+        "rect rgba(IoT_Industrial_MQTT_Broker)",
+        "rect rgba(IoT_Industrial_EdgeNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，RoutingUtility处理HAL层接收的数据包转发，属于MQTT Broker相关的数据通路。CommandEngine内部的RX包处理和响应入队也是MQTT Broker颜色。",
+      "elements_involved": [
+        "RoutingUtility",
+        "CommandEngine",
+        "IoT_Industrial_MQTT_Broker",
+        "BUS RX queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有rect颜色块已确认。现在检查消息流向：AppThread→CommandEngine（TX事件），RoutingUtility→CommandEngine（BUS RX事件），CommandEngine→AppThread（RX事件），CommandEngine→EventThread（Notification事件）。",
+      "elements_involved": [
+        "A-B: Trigger TX event",
+        "R-B: Set BUS RX event",
+        "B-A: Trigger corresponding RX Event",
+        "B-E: Trigger Notification event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有自调用箭头需要确认：AppThread有Enter/Exit Critical Section，CommandEngine有Check status/Dequeue/Add等自调用，EventThread也有Enter/Exit Critical Section。RoutingUtility也有自调用。",
+      "elements_involved": [
+        "A-A: Enter Critical Section",
+        "B-B: Check the status",
+        "E-E: Enter Critical Section",
+        "R-R: Add the packet to BUS RX queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "AppThread在响应处理部分有个拼写需要注意：'comapre function'应该是'compare function'，但既然要忠实于原文，我保持原样。另外'comamnds'也是原文拼写。",
+      "elements_involved": [
+        "comapre function",
+        "comamnds",
+        "Note over B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持原文拼写，这些细节不影响理解。整体时序图已经完整覆盖了命令发送、入队、触发处理、HAL接收、响应分发、同步响应获取和异步通知的全流程。",
+      "elements_involved": [
+        "command flow",
+        "response flow",
+        "async notification flow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终检查：所有参与者A(AppThread)、E(EventThread)、B(CommandEngine)、R(RoutingUtility)的定义正确，注释位置（over/left of）准确，opt/alt/loop嵌套结构完整，rect颜色块包裹正确。时序图已完成。",
+      "elements_involved": [
+        "participant A as AppThread",
+        "participant E as EventThread",
+        "participant B as CommandEngine",
+        "participant R as RoutingUtility"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个时序图准确反映了工业物联网场景中命令包从应用线程发起，经过队列管理、命令引擎处理、路由转发，到最终同步响应返回或异步事件通知的完整生命周期。各临界区保护点也清晰标注。",
+      "elements_involved": [
+        "critical section protection",
+        "queue management",
+        "command lifecycle",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "最后确认一下标题：%%{IoT_Industrial_TelemetryStream}%%，这是整个图的主题。所有涉及的具体组件包括ActuatorController、EdgeNode、MQTT Broker、PLC Logic、TelemetryStream都已在适当位置体现。",
+      "elements_involved": [
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "完美。这个设计确保了命令包在并发环境下的线程安全，通过sli_queue_manager系列API实现统一的原子操作，同时支持同步阻塞等待和异步事件通知两种模式，满足工业控制场景的实时性要求。",
+      "elements_involved": [
+        "thread safety",
+        "sli_queue_manager API",
+        "synchronous blocking",
+        "asynchronous event notification",
+        "real-time requirements"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已最终确认。时序图完整呈现了IoT工业遥测数据流中的包管理架构，四个核心参与者的协作关系清晰，临界区保护和队列操作的原子性设计合理，可以交付使用。",
+      "elements_involved": [
+        "sequenceDiagram",
+        "participant A",
+        "participant E",
+        "participant B",
+        "participant R"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 38,
+    "repair_count": 2,
+    "grounding_acts_count": 38,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:33Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 86756.9194,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 38
+  }
+}

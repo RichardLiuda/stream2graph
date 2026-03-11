@@ -1,0 +1,492 @@
+{
+  "id": "aug_gl_packet-beta_00360_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/llai-harmonicinc/cDS-Session-Management/blob/034fa5d6ac3372256af047d7e02f454dd09526d5/cDS%20Session%20Routing.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "llai-harmonicinc/cDS-Session-Management",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\nparticipant P as Player\nparticipant Boot as Bootstrap\nparticipant LD as DNS resolver\nparticipant AD as Authoritative DNS server\n\nparticipant SM as cDS::Session Management\nparticipant sNA as cDS::Node-A\nparticipant sNB as cDS::Node-B\nparticipant TC as cDS::TC\nparticipant NA as cDS::Node-C\nparticipant CS as cDS::Content Steering Servers\nparticipant TE as cDS::Telemetry\n\nautonumber\n    P->>Boot: get session bootstrap\n    Boot->>P: Bootstrap details e.g. endpoint, ad serving parameters, etc\n\n    %% resolve Session Management server domain name\n    P->>LD: query cDS::Session Management domain name\n    LD->>AD: query cDS::Session Management domain name\n    AD->>LD:  cDS::Session Management Server IP for that DNS resolver\n    LD->>P: cDS::Session Mangement Server IP\n\n    %% request master manifest from Session Management server\n    Note over P, SM: request master manifest from cDS::Session Management\n    P->>SM: GET /master manifest\n    Note over P, SM: #35;EXTM3U<br/> #35;EXT-X-VERSION:3<br>#35;EXT-X-CONTENT-STEERING:SERVER-URI=\"https://cs.harmonic.com/\"<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::Node-A\"<br>https://nodeA.harmonic.com/01.m3u8<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::Node-B\"<br>http://nodeB.harmonic.com/01.m3u8<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::TC\"<br>https://tc.harmonic.com/01.m3u8.....\n    SM->>P: 200 OK\\n(FinTech_FraudDetection) \n    \n    %% request steering manifest from Content Steering server\n    Note over P, CS: request steering manifest from cDS: Content Steering\n    P->>LD: query cDS::Content Steering domain name\n    LD->>AD: query cDS::Content Steering domain name\n    AD->>LD:  cDS::Content Steering Server IP for that DNS resolver\n    LD->>P: cDS::Content Steering Server IP\n\n    P->>CS: GET /steering manifest\n    Note over CS, P: {FinTech_TransactionQueue]<br>}\n    CS->>P: 200 OK\\n(FinTech_TransactionQueue)\n    \n    Note over P, sNA: request variant manifest from cDS::Node A\n    P->>LD: query cDS::Node A domain name\n    LD->>AD: query cDS::Node A domain name\n    AD->>LD:  cDS::Node A IP for that DNS resolver\n    LD->>P: cDS::Node A IP\n    P->>sNA: TCP SYN\n    Note over P, sNA: cDS::Node A is down<br>TCP retransmission timer timeout<br>Player fail over to cDS::Node B\n    Note over TE: cDS::Telemetry detect cDS::Node A is down\n    par \n        TE->>CS: update routing decision (FinTech_LedgerService)\n    and \n        TE->>SM: update routing decision (FinTech_FraudDetection)\n    end\n\n    Note over P, sNB: Player fail over to cDS::Node B\n    P->>LD: query cDS::Node B domain name\n    LD->>AD: query cDS::Node B domain name\n    AD->>LD:  cDS::Node B IP for that DNS resolver\n    LD->>P: cDS::Node B IP\n    Note over P, sNB: GET /variant manifest \n    P->>sNB: TCP SYN\n    sNB->>P: ACK, SYN\n    P->>sNB: SYN\n    Note over P, sNB: #35;EXTM3U<br>#35;EXT-X-TARGETDURATION:4<br>#35;EXT-X-MEDIA-SEQUENCE:432137172<br>#35;EXT-X-VERSION:3<br>#35;EXT-X-PROGRAM-DATE-TIME:2024-10-10T08:24:48.831Z<br>#35;EXTINF:3,<br>20240927T075714-01-432137172.ts<br>#35;EXT-X-PROGRAM-DATE-TIME:2024-10-10T08:24:52.031Z<br>EXTINF:5,<br>20240927T075714-01-432137173.ts<br>#35;.........\n    sNB->>P: 200 OK\\n(FinTech_LedgerService)\n\n    %% establish TCP connection, 3 way handshake\n    Note over P, sNB: request video segments\n    P->>sNB: GET /20240927T075714-01-432137172.ts\n\n    %% cDS:: Node start to push video segment\n    Note over sNB, P: server start pushing video segments\n    sNB->>P: TCP segment (FinTech_LedgerService)\n    sNB->>P: TCP segment (FinTech_LedgerService)\n    P->>sNB: ACK (FinTech_LedgerService)\n\n    %% packet start missing and player request retransmission\n    sNB->>P: TCP segment(FinTech_LedgerService)\n    sNB->>P: TCP segment(FinTech_LedgerService)\n    Note over sNB, P: packet loss, retransmission timer timeout, send duplicate ACK to request retransmission\n    P->>sNB: ACK (FinTech_PaymentGateway)\n    sNB->>P: reset connection\n    \n    sNB->>TE: report packet loss\n    par\n        TE->>CS: update routing decision (FinTech_LedgerService)\n    and \n        TE->>SM: update routing decision (FinTech_TransactionQueue)\n    end\n\n    %% player fail over to cDS::TC\n    Note over P, TC: Player fail over to cDS::TC\n    P->>LD: query cDS::TC domain name\n    LD->>AD: query cDS::TC  domain name\n    AD->>LD:  cDS::TC IP for that DNS resolver\n    LD->>P: cDS::TC IP\n\n    P->> TC: GET /variant manifest\n    TC->>P: 302 Found\\nLocation: cDS::Node C\n   \n    P->>LD: query cDS::Node C domain name\n    LD->>AD: query cDS::Node C domain name\n    AD->>LD:  cDS::Node C IP for that DNS resolver\n    LD->>P: cDS::Node C IP\n\n    P->>NA: GET /variant manifest\n    NA->>P: 200 OK\\n(FinTech_PaymentGateway)\n\n    loop\n        P->>NA: GET video/audio segments\n        NA->>P: 200 OK\\n(FinTech_TransactionQueue)\n    end\n    \n    Note over P, CS: steering manifest expire, request an updated steering manifest\n    P->>CS: GET /steering manifest\n    Note over CS, P: cDS::Node A and cDS::Node B are removed from the list<br>{FinTech_LedgerService]<br>}\n    CS->>P: 200 OK\\n(FinTech_PaymentGateway)\n",
+  "content_size": 5274,
+  "collected_at": "2026-02-06T14:08:15.440859",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gl_packet-beta_00360",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个cDS内容分发系统的完整时序图，核心要体现Player从启动到播放的完整链路，包括故障切换和动态路由决策。先确认一下参与者：Player、Bootstrap、DNS resolver、Authoritative DNS server，还有cDS内部的Session Management、Node-A、Node-B、TC、Node-C、Content Steering Servers和Telemetry。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Session Management",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C",
+        "cDS::Content Steering Servers",
+        "cDS::Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，十个参与者我都记下了。流程从Player向Bootstrap获取会话启动信息开始对吧？",
+      "elements_involved": [
+        "Player",
+        "Bootstrap"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Player发get session bootstrap，Bootstrap返回端点地址和广告服务参数这些Bootstrap details。然后Player需要解析cDS::Session Management的域名。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "cDS::Session Management",
+        "DNS resolver",
+        "Authoritative DNS server"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先画出Player到Bootstrap的交互，以及DNS解析链：Player查询LD，LD查询AD，AD返回cDS::Session Management Server IP，LD再回传给Player。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "DNS部分正确。接下来Player要向Session Management请求master manifest，用GET /master manifest。",
+      "elements_involved": [
+        "Player",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "master manifest的内容需要详细展开吗？比如EXTM3U、EXT-X-VERSION这些标签？",
+      "elements_involved": [
+        "Player",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，用Note over P,SM来展示完整的manifest内容，包括EXT-X-CONTENT-STEERING指向Content Steering Server的URI，以及三个PATHWAY-ID分别对应cDS::Node-A、cDS::Node-B和cDS::TC的STREAM-INF信息。最后SM返回200 OK，标注FinTech_FraudDetection。",
+      "elements_involved": [
+        "Player",
+        "cDS::Session Management",
+        "cDS::Content Steering Servers",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加master manifest请求和响应，包含完整的EXTM3U结构和三个节点的带宽、分辨率、帧率信息，响应标注了FinTech_FraudDetection。接下来是Content Steering的部分？",
+      "elements_involved": [
+        "Player",
+        "cDS::Session Management",
+        "cDS::Content Steering Servers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Player需要请求steering manifest。同样先走DNS解析链查询cDS::Content Steering的域名，获取IP后向CS服务器GET /steering manifest。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Content Steering Servers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "DNS解析链和steering manifest请求已画好。steering manifest的内容怎么体现？",
+      "elements_involved": [
+        "Player",
+        "cDS::Content Steering Servers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用Note over CS,P展示JSON格式的内容，标注FinTech_TransactionQueue，然后CS返回200 OK同样带FinTech_TransactionQueue标记。",
+      "elements_involved": [
+        "cDS::Content Steering Servers",
+        "Player"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到。现在Player应该尝试连接第一个节点了？",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-A"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，Player先尝试cDS::Node-A。走DNS解析获取Node A的IP，然后发TCP SYN。但这里要设计故障场景——Node A宕机，TCP重传超时，Player需要fail over到Node B。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Node-A",
+        "cDS::Node-B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Node A的DNS解析、TCP SYN，以及故障说明Note。同时cDS::Telemetry需要检测到这个故障对吧？",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Telemetry检测到Node A宕机后，要并行更新路由决策：一条线到Content Steering Servers更新FinTech_LedgerService，另一条线到Session Management更新FinTech_FraudDetection。用par块表示并行。",
+      "elements_involved": [
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "par并行块已添加，两条更新路由的线都画好了。接下来是Player fail over到Node B的完整流程？",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Player重新走DNS解析查询Node B域名，获取IP后建立TCP连接——这里要画完整的三次握手：TCP SYN、ACK+SYN、SYN确认。然后请求variant manifest，GET /variant manifest。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Node-B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "variant manifest的内容需要像master manifest那样详细吗？",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，包含EXTM3U、EXT-X-TARGETDURATION、MEDIA-SEQUENCE、PROGRAM-DATE-TIME、EXTINF和具体的ts片段文件名。Node B返回200 OK，标注FinTech_LedgerService。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "variant manifest和三次握手都已添加，响应标注了FinTech_LedgerService。接下来是视频片段传输？",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Player请求第一个视频片段GET /20240927T075714-01-432137172.ts，然后服务器开始推送TCP segment，标注FinTech_LedgerService。Player回复ACK也是FinTech_LedgerService。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "视频片段请求和初始传输已画好。但这里应该还有第二个故障场景？",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，设计丢包场景。继续传几个TCP segment后发生packet loss，重传定时器超时，Player发送duplicate ACK请求重传，标注FinTech_PaymentGateway。然后Node B重置连接，并向Telemetry报告丢包。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "cDS::Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "丢包场景已添加，包括duplicate ACK和连接重置。Telemetry收到报告后又要更新路由决策？",
+      "elements_involved": [
+        "cDS::Node-B",
+        "cDS::Telemetry",
+        "Player"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，同样的并行结构：Telemetry更新CS的FinTech_LedgerService决策，同时更新SM的FinTech_TransactionQueue决策。然后Player需要fail over到cDS::TC。",
+      "elements_involved": [
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "Player",
+        "cDS::TC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "并行更新和TC的fail over已添加。TC这里有什么特殊处理吗？",
+      "elements_involved": [
+        "Player",
+        "cDS::TC",
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "TC返回302 Found重定向，Location指向cDS::Node-C。Player需要再走DNS解析获取Node C的IP，然后向Node C请求variant manifest。",
+      "elements_involved": [
+        "Player",
+        "cDS::TC",
+        "cDS::Node-C",
+        "DNS resolver",
+        "Authoritative DNS server"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "302重定向和Node C的DNS解析已画好。Node C的响应是？",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-C"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Node C返回200 OK，标注FinTech_PaymentGateway。然后进入循环，Player持续请求video/audio segments，Node C返回200 OK标注FinTech_TransactionQueue。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-C"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "循环块已添加。最后还有steering manifest的更新？",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-C"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，steering manifest过期后，Player重新向CS请求GET /steering manifest。这次返回的更新内容里，cDS::Node-A和cDS::Node-B应该从列表中移除，标注FinTech_LedgerService。CS返回200 OK标注FinTech_PaymentGateway。",
+      "elements_involved": [
+        "Player",
+        "cDS::Content Steering Servers",
+        "cDS::Node-A",
+        "cDS::Node-B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "整个流程都画完了：从Bootstrap启动，经过两次故障切换（Node A宕机、Node B丢包），最终稳定到Node C，同时Telemetry实时更新路由决策，最后steering manifest同步移除故障节点。需要检查什么吗？",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::Node-C",
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下FinTech标签的使用：FraudDetection在SM的master manifest响应，LedgerService在CS第一次更新和Node B的响应，TransactionQueue在第一次steering manifest和SM第二次更新，PaymentGateway在duplicate ACK和最终Node C的响应。确认没有遗漏或错位。",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "FinTech_LedgerService",
+        "FinTech_TransactionQueue",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "核对完毕，所有FinTech标签位置正确：FraudDetection在SM首次响应，LedgerService贯穿CS首次更新和Node B响应，TransactionQueue在steering manifest首次和SM二次更新，PaymentGateway在丢包ACK和最终CS响应及Node C初始响应。",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "FinTech_LedgerService",
+        "FinTech_TransactionQueue",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美，这个时序图完整展现了cDS系统的容错机制和动态路由能力。可以定稿了。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Session Management",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C",
+        "cDS::Content Steering Servers",
+        "cDS::Telemetry"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 35,
+    "repair_count": 0,
+    "grounding_acts_count": 35,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:33Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 65207.6252,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 35
+  }
+}

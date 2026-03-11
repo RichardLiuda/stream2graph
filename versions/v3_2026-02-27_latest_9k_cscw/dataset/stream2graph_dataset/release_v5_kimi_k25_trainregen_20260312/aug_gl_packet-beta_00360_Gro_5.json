@@ -1,0 +1,517 @@
+{
+  "id": "aug_gl_packet-beta_00360_Gro_5",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/llai-harmonicinc/cDS-Session-Management/blob/034fa5d6ac3372256af047d7e02f454dd09526d5/cDS%20Session%20Routing.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "llai-harmonicinc/cDS-Session-Management",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\nparticipant P as Player\nparticipant Boot as Bootstrap\nparticipant LD as DNS resolver\nparticipant AD as Authoritative DNS server\n\nparticipant SM as cDS::Session Management\nparticipant sNA as cDS::Node-A\nparticipant sNB as cDS::Node-B\nparticipant TC as cDS::TC\nparticipant NA as cDS::Node-C\nparticipant CS as cDS::Content Steering Servers\nparticipant TE as cDS::Telemetry\n\nautonumber\n    P->>Boot: get session bootstrap\n    Boot->>P: Bootstrap details e.g. endpoint, ad serving parameters, etc\n\n    %% resolve Session Management server domain name\n    P->>LD: query cDS::Session Management domain name\n    LD->>AD: query cDS::Session Management domain name\n    AD->>LD:  cDS::Session Management Server IP for that DNS resolver\n    LD->>P: cDS::Session Mangement Server IP\n\n    %% request master manifest from Session Management server\n    Note over P, SM: request master manifest from cDS::Session Management\n    P->>SM: GET /master manifest\n    Note over P, SM: #35;EXTM3U<br/> #35;EXT-X-VERSION:3<br>#35;EXT-X-CONTENT-STEERING:SERVER-URI=\"https://cs.harmonic.com/\"<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::Node-A\"<br>https://nodeA.harmonic.com/01.m3u8<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::Node-B\"<br>http://nodeB.harmonic.com/01.m3u8<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::TC\"<br>https://tc.harmonic.com/01.m3u8.....\n    SM->>P: 200 OK\\n(Groupware_IssueTracker) \n    \n    %% request steering manifest from Content Steering server\n    Note over P, CS: request steering manifest from cDS: Content Steering\n    P->>LD: query cDS::Content Steering domain name\n    LD->>AD: query cDS::Content Steering domain name\n    AD->>LD:  cDS::Content Steering Server IP for that DNS resolver\n    LD->>P: cDS::Content Steering Server IP\n\n    P->>CS: GET /steering manifest\n    Note over CS, P: {Groupware_WikiPage]<br>}\n    CS->>P: 200 OK\\n(Groupware_IssueTracker)\n    \n    Note over P, sNA: request variant manifest from cDS::Node A\n    P->>LD: query cDS::Node A domain name\n    LD->>AD: query cDS::Node A domain name\n    AD->>LD:  cDS::Node A IP for that DNS resolver\n    LD->>P: cDS::Node A IP\n    P->>sNA: TCP SYN\n    Note over P, sNA: cDS::Node A is down<br>TCP retransmission timer timeout<br>Player fail over to cDS::Node B\n    Note over TE: cDS::Telemetry detect cDS::Node A is down\n    par \n        TE->>CS: update routing decision (Groupware_ChatRoom)\n    and \n        TE->>SM: update routing decision (Groupware_SprintBacklog)\n    end\n\n    Note over P, sNB: Player fail over to cDS::Node B\n    P->>LD: query cDS::Node B domain name\n    LD->>AD: query cDS::Node B domain name\n    AD->>LD:  cDS::Node B IP for that DNS resolver\n    LD->>P: cDS::Node B IP\n    Note over P, sNB: GET /variant manifest \n    P->>sNB: TCP SYN\n    sNB->>P: ACK, SYN\n    P->>sNB: SYN\n    Note over P, sNB: #35;EXTM3U<br>#35;EXT-X-TARGETDURATION:4<br>#35;EXT-X-MEDIA-SEQUENCE:432137172<br>#35;EXT-X-VERSION:3<br>#35;EXT-X-PROGRAM-DATE-TIME:2024-10-10T08:24:48.831Z<br>#35;EXTINF:3,<br>20240927T075714-01-432137172.ts<br>#35;EXT-X-PROGRAM-DATE-TIME:2024-10-10T08:24:52.031Z<br>EXTINF:5,<br>20240927T075714-01-432137173.ts<br>#35;.........\n    sNB->>P: 200 OK\\n(Groupware_IssueTracker)\n\n    %% establish TCP connection, 3 way handshake\n    Note over P, sNB: request video segments\n    P->>sNB: GET /20240927T075714-01-432137172.ts\n\n    %% cDS:: Node start to push video segment\n    Note over sNB, P: server start pushing video segments\n    sNB->>P: TCP segment (Groupware_IssueTracker)\n    sNB->>P: TCP segment (Groupware_KanbanBoard)\n    P->>sNB: ACK (Groupware_ChatRoom)\n\n    %% packet start missing and player request retransmission\n    sNB->>P: TCP segment(Groupware_SprintBacklog)\n    sNB->>P: TCP segment(Groupware_SprintBacklog)\n    Note over sNB, P: packet loss, retransmission timer timeout, send duplicate ACK to request retransmission\n    P->>sNB: ACK (Groupware_WikiPage)\n    sNB->>P: reset connection\n    \n    sNB->>TE: report packet loss\n    par\n        TE->>CS: update routing decision (Groupware_SprintBacklog)\n    and \n        TE->>SM: update routing decision (Groupware_IssueTracker)\n    end\n\n    %% player fail over to cDS::TC\n    Note over P, TC: Player fail over to cDS::TC\n    P->>LD: query cDS::TC domain name\n    LD->>AD: query cDS::TC  domain name\n    AD->>LD:  cDS::TC IP for that DNS resolver\n    LD->>P: cDS::TC IP\n\n    P->> TC: GET /variant manifest\n    TC->>P: 302 Found\\nLocation: cDS::Node C\n   \n    P->>LD: query cDS::Node C domain name\n    LD->>AD: query cDS::Node C domain name\n    AD->>LD:  cDS::Node C IP for that DNS resolver\n    LD->>P: cDS::Node C IP\n\n    P->>NA: GET /variant manifest\n    NA->>P: 200 OK\\n(Groupware_SprintBacklog)\n\n    loop\n        P->>NA: GET video/audio segments\n        NA->>P: 200 OK\\n(Groupware_SprintBacklog)\n    end\n    \n    Note over P, CS: steering manifest expire, request an updated steering manifest\n    P->>CS: GET /steering manifest\n    Note over CS, P: cDS::Node A and cDS::Node B are removed from the list<br>{Groupware_IssueTracker]<br>}\n    CS->>P: 200 OK\\n(Groupware_WikiPage)\n",
+  "content_size": 5274,
+  "collected_at": "2026-02-06T14:08:15.440859",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Groupware",
+  "seed_id": "gl_packet-beta_00360",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个cDS（内容分发系统）的完整会话流程图，展示Player从启动到最终播放的完整链路。核心要体现故障转移和Content Steering的机制。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "cDS::Session Management",
+        "cDS::Content Steering Servers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这个流程涉及多个节点：Node-A、Node-B、TC（流量控制节点），还有Telemetry做监控。我先确认一下层级关系——Session Management是最先接触的，然后才到Content Steering？",
+      "elements_involved": [
+        "cDS::Session Management",
+        "cDS::Content Steering Servers",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。Player先通过Bootstrap获取配置，然后DNS解析找到Session Management，拿到master manifest，里面包含多个PATHWAY-ID指向不同节点。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先画出Player、Bootstrap、DNS resolver、Authoritative DNS server和Session Management这几个参与者，标注好DNS查询的往返。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "master manifest里有个关键点：EXT-X-CONTENT-STEERING标签，SERVER-URI指向Content Steering Server。Player拿到后要再去请求steering manifest。",
+      "elements_involved": [
+        "cDS::Content Steering Servers",
+        "EXT-X-CONTENT-STEERING",
+        "SERVER-URI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Content Steering Server参与者。我注意到master manifest里列出了三个PATHWAY：Node-A、Node-B和TC，带宽和分辨率都一样，只是路径不同。",
+      "elements_involved": [
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "BANDWIDTH",
+        "PATHWAY-ID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是的，这是多CDN负载均衡的设计。Player默认先尝试Node-A，但这里要设计一个故障场景——Node-A宕机，触发failover到Node-B。",
+      "elements_involved": [
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "failover"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "那TCP连接部分要画得详细些？包括SYN超时、重传定时器这些？还有Telemetry怎么感知到故障？",
+      "elements_involved": [
+        "TCP SYN",
+        "Telemetry",
+        "retransmission timer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。Player发TCP SYN给Node-A，超时后failover。同时Telemetry独立检测到Node-A宕机，并行通知Content Steering和Session Management更新路由决策。",
+      "elements_involved": [
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "Groupware_ChatRoom",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Telemetry参与者，用par并行块画出同时通知CS和SM的场景。标注了Groupware_ChatRoom和Groupware_SprintBacklog两种通知渠道。",
+      "elements_involved": [
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "Groupware_ChatRoom",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Player切换到Node-B后，要展示完整的TCP三次握手成功，然后请求variant manifest，拿到M3U8分片列表。这里要体现EXT-X-MEDIA-SEQUENCE和PROGRAM-DATE-TIME。",
+      "elements_involved": [
+        "cDS::Node-B",
+        "TCP three-way handshake",
+        "EXT-X-MEDIA-SEQUENCE",
+        "PROGRAM-DATE-TIME",
+        "variant manifest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画出Node-B的TCP三次握手（SYN, ACK/SYN, SYN），以及GET variant manifest返回200 OK，标注Groupware_IssueTracker。分片列表里显示了时间戳和.ts文件。",
+      "elements_involved": [
+        "cDS::Node-B",
+        "ACK",
+        "SYN",
+        "Groupware_IssueTracker",
+        ".ts segment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来要设计第二个故障场景——Node-B出现丢包。Player收到部分TCP segment后，重传定时器超时，发duplicate ACK请求重传，但Node-B直接reset连接。",
+      "elements_involved": [
+        "cDS::Node-B",
+        "packet loss",
+        "duplicate ACK",
+        "reset connection",
+        "retransmission timer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有个细节：Node-B向Telemetry报告丢包，然后Telemetry再次并行更新CS和SM的路由决策。两次通知的标注需要区分吗？",
+      "elements_involved": [
+        "cDS::Node-B",
+        "cDS::Telemetry",
+        "Groupware_SprintBacklog",
+        "Groupware_IssueTracker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，第二次通知用不同的groupware标注——CS用SprintBacklog，SM用IssueTracker，体现不同优先级的处理通道。",
+      "elements_involved": [
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "Groupware_SprintBacklog",
+        "Groupware_IssueTracker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新。现在Player需要第三次failover到TC节点。TC返回302 Found重定向到Node-C，这个跳转要画清楚。",
+      "elements_involved": [
+        "cDS::TC",
+        "cDS::Node-C",
+        "302 Found",
+        "Location header"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "TC是流量控制节点，只做调度不做内容服务。302重定向后，Player重新DNS解析Node-C，然后直接和Node-C建立长期连接，用loop表示持续获取分片。",
+      "elements_involved": [
+        "cDS::TC",
+        "cDS::Node-C",
+        "DNS resolver",
+        "loop",
+        "video/audio segments"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加loop块，表示Player持续从Node-C GET video/audio segments，返回200 OK。最后还要处理steering manifest过期刷新的逻辑吗？",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-C",
+        "loop",
+        "steering manifest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，最后一步：steering manifest过期，Player重新请求，返回的manifest里Node-A和Node-B已经被移除，只剩下健康的节点。标注Groupware_IssueTracker和WikiPage。",
+      "elements_involved": [
+        "cDS::Content Steering Servers",
+        "steering manifest expiration",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "Groupware_IssueTracker",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成全部流程。我检查一下DNS解析部分——每个节点切换都有完整的LD-AD-LD-P四步查询，没有遗漏。",
+      "elements_involved": [
+        "DNS resolver",
+        "Authoritative DNS server",
+        "Player"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，Node-C那里我漏了一个细节。Node-C应该标注为cDS::Node-C，但代码里写的是NA，和其他命名风格不一致。另外TC的302响应体标注检查一下。",
+      "elements_involved": [
+        "cDS::Node-C",
+        "NA",
+        "cDS::TC",
+        "302 Found"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修复。Node-C统一标注为cDS::Node-C，TC的302 Found响应标注了Location: cDS::Node C。另外发现master manifest返回的200 OK标注是Groupware_IssueTracker，但steering manifest第一次返回也是IssueTracker，需要区分吗？",
+      "elements_involved": [
+        "cDS::Node-C",
+        "cDS::TC",
+        "Groupware_IssueTracker",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "第一次steering manifest返回的是WikiPage，不是IssueTracker。你刚才可能看混了。让我确认一下：SM返回IssueTracker，CS第一次返回WikiPage，第二次更新后返回IssueTracker，第三次又变回WikiPage。",
+      "elements_involved": [
+        "cDS::Session Management",
+        "cDS::Content Steering Servers",
+        "Groupware_IssueTracker",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "明白了，我重新核对：SM→P是IssueTracker；CS第一次→P是WikiPage；CS第二次→P是IssueTracker；CS第三次→P是WikiPage。这样交替体现不同版本状态。",
+      "elements_involved": [
+        "cDS::Session Management",
+        "cDS::Content Steering Servers",
+        "Groupware_IssueTracker",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。还有Node-B传输分片时的标注：第一个TCP segment是IssueTracker，第二个是KanbanBoard，体现不同业务类型的数据混合传输。",
+      "elements_involved": [
+        "cDS::Node-B",
+        "TCP segment",
+        "Groupware_IssueTracker",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Player的ACK标注也需要对应——给Node-B的ACK标注ChatRoom，给重传请求的duplicate ACK标注WikiPage，体现不同控制信令。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "ACK",
+        "Groupware_ChatRoom",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体流程差不多了。但Bootstrap返回的信息需要更明确——包含endpoint和ad serving parameters，这在实际部署中很重要。",
+      "elements_involved": [
+        "Bootstrap",
+        "endpoint",
+        "ad serving parameters"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已在Bootstrap到Player的返回消息中标注\"Bootstrap details e.g. endpoint, ad serving parameters, etc\"。现在检查autonumber，从1开始连续编号，目前到80多步，符合复杂交互。",
+      "elements_involved": [
+        "Bootstrap",
+        "Player",
+        "autonumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "M3U8标签的HTML实体需要确认——EXTM3U、EXT-X-VERSION这些用了#35;转义，在渲染时要能正确显示为#号。",
+      "elements_involved": [
+        "EXTM3U",
+        "EXT-X-VERSION",
+        "EXT-X-CONTENT-STEERING",
+        "#35;",
+        "HTML entity"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已检查，所有#都用了#35;转义，包括EXT-X-STREAM-INF里的PROGRAM-ID、BANDWIDTH、RESOLUTION、FRAME-RATE、PATHWAY-ID等属性。",
+      "elements_involved": [
+        "EXT-X-STREAM-INF",
+        "BANDWIDTH",
+        "PATHWAY-ID",
+        "#35;"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下参与者命名规范：sNA和sNB是Node-A和Node-B的session实例，TC是独立节点，NA是Node-C的简写但已修复。建议sNA/sNB保持和SM、CS一致的cDS::前缀风格。",
+      "elements_involved": [
+        "sNA",
+        "sNB",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已统一。sNA改为cDS::Node-A（实例交互），sNB改为cDS::Node-B，但保留sNA/sNB作为别名区分session层面的消息。实际代码中sNA/sNB是别名，显示为cDS::Node-A/B。",
+      "elements_involved": [
+        "sNA",
+        "sNB",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "participant alias"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这样处理合理。现在完整走读一遍：Player→Bootstrap→DNS→SM→DNS→CS→DNS→Node-A(失败)→failover→DNS→Node-B(部分成功)→丢包reset→DNS→TC→302→DNS→Node-C(稳定播放)→manifest刷新→移除故障节点。逻辑闭环。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "cDS::Session Management",
+        "cDS::Content Steering Servers",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部验证完成。补充了Note over的注释说明，包括\"cDS::Node A is down\"、\"packet loss, retransmission timer timeout\"等关键状态标注，以及M3U8内容的分行显示。",
+      "elements_involved": [
+        "Note over",
+        "cDS::Node-A",
+        "packet loss",
+        "retransmission timer",
+        "M3U8"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个图完整展示了cDS的多层故障转移机制：TCP层超时、HTTP层302、应用层Content Steering，以及Telemetry驱动的全局路由更新。可以定稿了。",
+      "elements_involved": [
+        "cDS",
+        "failover",
+        "Content Steering",
+        "Telemetry",
+        "routing decision"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 35,
+    "repair_count": 3,
+    "grounding_acts_count": 35,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:33Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 70231.204,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 35
+  }
+}

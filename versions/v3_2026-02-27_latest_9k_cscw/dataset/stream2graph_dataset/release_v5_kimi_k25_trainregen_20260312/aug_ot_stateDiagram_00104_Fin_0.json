@@ -1,0 +1,217 @@
+{
+  "id": "aug_ot_stateDiagram_00104_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/musel25/lab_software_eng/blob/abe7b632a47ca8035f732e0dc34d75fc4b0d8b1b/code/diagram7_2.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "musel25/lab_software_eng",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    %% ───────── Top-level flow ─────────\n    [FinTech_FraudDetection] --> WaitForEntryRequest\n\n    WaitForEntryRequest --> ProcSecCard : reqReadSecurityCard\n    ProcSecCard --> WaitForEntryRequest : flagSecurityCardFailure\n    ProcSecCard --> ProcBioData        : CardStatus==Valid\n    ProcBioData  --> UnlockLockAP      : Authenticated\n    UnlockLockAP --> WaitForEntryRequest : evAccessPointLocked\n\n    %% ───────── Composite ① ─────────\n    state \"ProcessingSecurityCardData\" as ProcSecCard {FinTech_TransactionQueue] --> ValidatingCard\n        ValidatingCard --> WaitForEntryRequest : SecCardFailure / ScFailCount&lt;3\n        ValidatingCard --> Fail3Card           : SecCardFailure / ScFailCount&gt;=3\n        ValidatingCard --> exit                : CardStatus==Valid\n\n        state Fail3Card {FinTech_PaymentGateway] --> DisableAccount\n            DisableAccount --> exit : done\n        }\n        exit --> [FinTech_LedgerService]\n    }\n\n    %% ───────── Composite ② ─────────\n    state \"ProcessingBiometricData\" as ProcBioData {FinTech_FraudDetection] --> AuthenticatingBio\n        AuthenticatingBio --> WaitForEntryRequest : BsTimeout\n        AuthenticatingBio --> Fail3Bio           : BioScanFailure / BFailCount&gt;=3\n        AuthenticatingBio --> exit               : Authenticated\n\n        state Fail3Bio {FinTech_PaymentGateway] --> DisableAccountB\n            DisableAccountB --> exit : done\n        }\n        exit --> [FinTech_PaymentGateway]\n    }\n\n    %% ───────── Composite ③ ─────────\n    state \"UnlockingAndLockingAccessPoint\" as UnlockLockAP {FinTech_FraudDetection] --> Locked\n        Locked --> Unlocking : reqUnlockAccessPoint\n        Unlocking --> Unlocked : evAccessPointUnlocked\n        Unlocked --> Locked : reqLockAccessPoint\n    }",
+  "content_size": 1667,
+  "collected_at": "2026-02-06T10:37:56.625984",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "FinTech",
+  "seed_id": "ot_stateDiagram_00104",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为FinTech的欺诈检测系统画一个门禁控制的状态图。整体流程是：先等入场请求，然后处理安全卡，再处理生物识别，最后解锁门禁。",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "WaitForEntryRequest",
+        "ProcSecCard",
+        "ProcBioData",
+        "UnlockLockAP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。安全卡处理失败的话，是回到等待状态还是直接锁账户？",
+      "elements_involved": [
+        "ProcSecCard",
+        "WaitForEntryRequest",
+        "Fail3Card"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "分两种情况：失败次数小于3次就回到WaitForEntryRequest，大于等于3次就进入Fail3Card状态，最终禁用账户。Fail3Card里面要嵌套一个子状态，用FinTech_PaymentGateway触发DisableAccount。",
+      "elements_involved": [
+        "ValidatingCard",
+        "SecCardFailure",
+        "ScFailCount",
+        "Fail3Card",
+        "DisableAccount",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，ProcSecCard复合状态画好了：TransactionQueue进来，先到ValidatingCard，验证通过走exit到LedgerService，失败按次数分流。Fail3Card子状态里PaymentGateway触发禁用账户。",
+      "elements_involved": [
+        "ProcSecCard",
+        "FinTech_TransactionQueue",
+        "ValidatingCard",
+        "FinTech_LedgerService",
+        "Fail3Card",
+        "DisableAccount"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "生物识别部分ProcBioData结构类似，但超时逻辑不一样。AuthenticatingBio如果BsTimeout就回到等待状态，生物扫描失败三次进Fail3Bio，成功则认证通过。",
+      "elements_involved": [
+        "ProcBioData",
+        "AuthenticatingBio",
+        "BsTimeout",
+        "Fail3Bio",
+        "BioScanFailure",
+        "BFailCount"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Fail3Bio的禁用账户和前面是同一个吗？",
+      "elements_involved": [
+        "Fail3Bio",
+        "DisableAccountB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "类似但分开，叫DisableAccountB，也是PaymentGateway触发。ProcBioData验证成功后exit到PaymentGateway，和ProcSecCard的出口目的地不同。",
+      "elements_involved": [
+        "DisableAccountB",
+        "FinTech_PaymentGateway",
+        "ProcBioData",
+        "exit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ProcBioData画完了，FraudDetection进来，AuthenticatingBio处理超时和失败计数，Fail3Bio子状态禁用账户B，成功出口到PaymentGateway。",
+      "elements_involved": [
+        "ProcBioData",
+        "FinTech_FraudDetection",
+        "AuthenticatingBio",
+        "Fail3Bio",
+        "DisableAccountB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后解锁部分UnlockLockAP比较简单：Locked状态收到解锁请求进入Unlocking，解锁完成到Unlocked，再收到锁门请求回到Locked。",
+      "elements_involved": [
+        "UnlockLockAP",
+        "Locked",
+        "Unlocking",
+        "Unlocked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "UnlockLockAP完成了，FraudDetection触发初始Locked状态，三个子状态循环。另外ProcSecCard失败时还要有个flagSecurityCardFailure能回到顶层等待状态。",
+      "elements_involved": [
+        "UnlockLockAP",
+        "FinTech_FraudDetection",
+        "ProcSecCard",
+        "WaitForEntryRequest",
+        "flagSecurityCardFailure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，还有UnlockLockAP在evAccessPointLocked时也要回到WaitForEntryRequest。主流程是FraudDetection开始，等请求，读卡，生物识别，解锁。",
+      "elements_involved": [
+        "UnlockLockAP",
+        "WaitForEntryRequest",
+        "evAccessPointLocked",
+        "FinTech_FraudDetection",
+        "reqReadSecurityCard",
+        "CardStatus"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下：ValidatingCard的exit条件是CardStatus==Valid，AuthenticatingBio的exit是Authenticated，这两个命名不一样但都是验证通过的意思？",
+      "elements_involved": [
+        "ValidatingCard",
+        "CardStatus",
+        "AuthenticatingBio",
+        "Authenticated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，卡验证通过用CardStatus==Valid，生物识别通过用Authenticated，保持和实际系统事件名一致。整个图应该完整了。",
+      "elements_involved": [
+        "ValidatingCard",
+        "CardStatus",
+        "Valid",
+        "AuthenticatingBio",
+        "Authenticated"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 13,
+    "repair_count": 0,
+    "grounding_acts_count": 13,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 32545.2206,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 13
+  }
+}

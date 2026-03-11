@@ -1,0 +1,167 @@
+{
+  "id": "aug_ot_stateDiagram_00201_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/cupcakearmy/master-thesis/blob/4acb9b9ae8a70a7515acf5adb04642f782a2da07/thesis/diagrams/scenario_fields.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "cupcakearmy/master-thesis",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n\n    state \"Daemon Loop\" as loop {Infra_EtcdCluster] --> action\n        action --> a\n\n        state \"Execute event\" as exec\n        note right of exec\n            status.events[Infra_WorkerNode].executed = timestamp\n        end note\n\n        \n        a --> exec: node        \n        a --> exec: link\n        a --> [Infra_LoadBalancer]: end\n    }\n\n    state \"Created\" as c\n    note left of c\n        status.created = timestamp\n    end note\n\n    state \"Finished\" as done\n    note left of done\n        status.ended = timestamp\n    end note\n    \n    [Infra_WorkerNode] --> c\n    c --> loop\n    loop --> done\n    done --> [Infra_RedisCache]\n",
+  "content_size": 612,
+  "collected_at": "2026-02-06T10:39:06.676436",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00201",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个状态图来描述工作节点（WorkerNode）的生命周期。整体流程是从创建到完成，中间有一个持续运行的守护循环。循环内部要处理Etcd集群的事件，并且要能区分节点事件和链接事件两种类型。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Daemon Loop",
+        "Created",
+        "Finished",
+        "Infra_EtcdCluster",
+        "Execute event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我梳理一下：起点是WorkerNode，先进入Created状态，然后进入Daemon Loop循环，最后到Finished。循环内部从EtcdCluster获取action，然后分流到节点事件和链接事件，都指向Execute event。这样理解对吗？另外Execute event之后有结束路径吗？",
+      "elements_involved": [
+        "Created",
+        "Daemon Loop",
+        "Finished",
+        "Infra_EtcdCluster",
+        "action",
+        "Execute event",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。Execute event执行完后，链接事件那条路径要结束到LoadBalancer。还有，每个关键状态都要记录时间戳：Created状态记status.created，Execute event记status.events[WorkerNode].executed，Finished记status.ended。",
+      "elements_involved": [
+        "Execute event",
+        "Infra_LoadBalancer",
+        "Created",
+        "Finished",
+        "status.created",
+        "status.ended",
+        "status.events"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主流程：WorkerNode指向Created，Created进入Daemon Loop，Loop最后到Finished，Finished再连到RedisCache。循环内部我把EtcdCluster到action，再到分支节点，两条线分别标\"node\"和\"link\"指向Execute event，link那条继续走到LoadBalancer。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Created",
+        "Daemon Loop",
+        "Finished",
+        "Infra_RedisCache",
+        "Infra_EtcdCluster",
+        "action",
+        "Execute event",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，RedisCache的位置我确认一下——Finished之后确实要连到RedisCache，但Daemon Loop内部的分支节点你用的是\"a\"吗？我们需要明确那个中间状态，不然action直接分叉不太清晰。",
+      "elements_involved": [
+        "Finished",
+        "Infra_RedisCache",
+        "Daemon Loop",
+        "action",
+        "a"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，我加了一个未命名的中间状态作为分支点，action指向它，然后它分出三条线：node到Execute event、link到Execute event、以及link的结束路径到LoadBalancer。需要我给这个中间状态显式命名吗？",
+      "elements_involved": [
+        "action",
+        "a",
+        "Execute event",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "不用显式命名了，保持简洁。另外三个note我都需要：Created左边标注status.created，Execute event右边标注status.events[WorkerNode].executed，Finished左边标注status.ended。这样调试时能直接看到时间戳记录点。",
+      "elements_involved": [
+        "Created",
+        "Execute event",
+        "Finished",
+        "status.created",
+        "status.events",
+        "status.ended"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部完成了。WorkerNode→Created→Daemon Loop→Finished→RedisCache的主线，循环内EtcdCluster驱动action，经分支点处理node/link事件，link路径终结于LoadBalancer，三个时间戳note分别标注在对应状态旁边。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Created",
+        "Daemon Loop",
+        "Finished",
+        "Infra_RedisCache",
+        "Infra_EtcdCluster",
+        "action",
+        "Execute event",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 26753.9167,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

@@ -1,0 +1,432 @@
+{
+  "id": "gh_architecture_01477",
+  "source": "github",
+  "source_url": "https://github.com/deploymenttheory/terraform-provider-microsoft365/blob/3d5dca09a52d5d820d4caf19d88c5443294de45f/docs/development/resource_architecture.mmd",
+  "github_repo": "deploymenttheory/terraform-provider-microsoft365",
+  "github_file_path": "docs/development/resource_architecture.mmd",
+  "diagram_type": "architecture",
+  "code": "flowchart TD\n    subgraph CRUD\n        Create[Create]\n        Read[Read]\n        Update[Update]\n        Delete[Delete]\n    end\n\n    subgraph Construction\n        constructResource[constructResource]\n        constructSettings[constructSettings/constructSettingsCatalogSettings]\n        constructAssignment[constructAssignment/ConstructConfigurationPolicyAssignment]\n    end\n\n    subgraph StateMapping\n        mapRemoteState[MapRemoteResourceStateToTerraform]\n        mapSettingsState[MapRemoteSettingsStateToTerraform/StateConfigurationPolicySettings]\n        mapAssignmentState[MapRemoteAssignmentStateToTerraform/StateAssignment]\n    end\n\n    subgraph Model\n        ResourceModel[ResourceModel]\n        AssignmentModel[AssignmentModel]\n        SettingsModel[SettingsModel]\n    end\n\n    %% CRUD to Construction\n    Create --> constructResource\n    Update --> constructResource\n    Create --> constructAssignment\n    Update --> constructAssignment\n\n    %% CRUD to State Mapping\n    Read --> mapRemoteState\n    Read --> mapSettingsState\n    Read --> mapAssignmentState\n\n    %% Construction to Model\n    constructResource --> ResourceModel\n    constructSettings --> SettingsModel\n    constructAssignment --> AssignmentModel\n\n    %% State Mapping to Model\n    mapRemoteState --> ResourceModel\n    mapSettingsState --> SettingsModel\n    mapAssignmentState --> AssignmentModel\n\n    %% CRUD relationships\n    Create --> Read\n    Update --> Read\n    Delete --> Read ",
+  "content_size": 1458,
+  "collected_at": "2026-02-06T01:46:44.594011",
+  "license": "mpl-2.0",
+  "license_name": "Mozilla Public License 2.0",
+  "compilation_status": "success",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "license_url": "https://api.github.com/licenses/mpl-2.0",
+  "repo_stars": 40,
+  "repo_forks": 6,
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要梳理一下这个Terraform provider的核心架构。整体分成四大块：CRUD操作层、Construction构造层、StateMapping状态映射层，还有底层的Model定义。先从CRUD开始吧，Create、Read、Update、Delete四个基本操作。",
+      "elements_involved": [
+        "CRUD",
+        "Create",
+        "Read",
+        "Update",
+        "Delete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，CRUD作为顶层入口。我注意到Delete操作好像比较特殊，它是不是只依赖Read，不需要走Construction流程？",
+      "elements_involved": [
+        "Delete",
+        "Read",
+        "CRUD"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Delete只需要Read获取当前状态，然后直接调用API删除，不需要构造资源。所以Delete只连到Read，不连到Construction层。",
+      "elements_involved": [
+        "Delete",
+        "Read",
+        "Construction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把CRUD四个节点画出来，Delete单向指向Read。接下来Construction层具体有哪些构造器？",
+      "elements_involved": [
+        "CRUD",
+        "Delete",
+        "Read"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Construction层有三个：constructResource处理资源构造，constructSettings处理设置构造——这个比较特殊，它还要兼容constructSettingsCatalogSettings的场景，constructAssignment处理配置策略分配构造，也叫ConstructConfigurationPolicyAssignment。",
+      "elements_involved": [
+        "Construction",
+        "constructResource",
+        "constructSettings",
+        "constructAssignment",
+        "constructSettingsCatalogSettings",
+        "ConstructConfigurationPolicyAssignment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "constructSettings和constructAssignment的命名我记一下，前者带斜杠表示别名，后者也是。那Create和Update分别触发哪些构造器？",
+      "elements_involved": [
+        "constructSettings",
+        "constructAssignment",
+        "Create",
+        "Update"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Create和Update都会触发constructResource和constructAssignment。也就是说，创建或更新资源时，既要构造资源本身，也要处理配置策略分配。",
+      "elements_involved": [
+        "Create",
+        "Update",
+        "constructResource",
+        "constructAssignment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "收到，Create和Update都指向constructResource和constructAssignment。现在看StateMapping层？",
+      "elements_involved": [
+        "Create",
+        "Update",
+        "constructResource",
+        "constructAssignment",
+        "StateMapping"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "StateMapping负责把远程状态映射到Terraform状态，也是三个：mapRemoteState对应资源，mapSettingsState对应设置——全名是MapRemoteSettingsStateToTerraform/StateConfigurationPolicySettings，mapAssignmentState对应分配策略，全名MapRemoteAssignmentStateToTerraform/StateAssignment。",
+      "elements_involved": [
+        "StateMapping",
+        "mapRemoteState",
+        "mapSettingsState",
+        "mapAssignmentState",
+        "MapRemoteSettingsStateToTerraform",
+        "StateConfigurationPolicySettings",
+        "MapRemoteAssignmentStateToTerraform",
+        "StateAssignment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这些映射器都是由Read触发的吧？因为需要读取远程状态才能映射。",
+      "elements_involved": [
+        "Read",
+        "mapRemoteState",
+        "mapSettingsState",
+        "mapAssignmentState"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确，Read操作会同时触发这三个状态映射。这是读取流程的核心。",
+      "elements_involved": [
+        "Read",
+        "mapRemoteState",
+        "mapSettingsState",
+        "mapAssignmentState"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Read指向三个状态映射节点。现在Model层怎么设计？",
+      "elements_involved": [
+        "Read",
+        "mapRemoteState",
+        "mapSettingsState",
+        "mapAssignmentState",
+        "Model"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Model层三个模型：ResourceModel、AssignmentModel、SettingsModel。构造层和状态映射层最终都要落到对应的模型上。",
+      "elements_involved": [
+        "Model",
+        "ResourceModel",
+        "AssignmentModel",
+        "SettingsModel",
+        "Construction",
+        "StateMapping"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "让我理一下连线：constructResource到ResourceModel，constructSettings到SettingsModel，constructAssignment到AssignmentModel。状态映射那边也是一一对应？",
+      "elements_involved": [
+        "constructResource",
+        "ResourceModel",
+        "constructSettings",
+        "SettingsModel",
+        "constructAssignment",
+        "AssignmentModel",
+        "mapRemoteState",
+        "mapSettingsState",
+        "mapAssignmentState"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，mapRemoteState到ResourceModel，mapSettingsState到SettingsModel，mapAssignmentState到AssignmentModel。两边汇聚到同一套模型。",
+      "elements_involved": [
+        "mapRemoteState",
+        "ResourceModel",
+        "mapSettingsState",
+        "SettingsModel",
+        "mapAssignmentState",
+        "AssignmentModel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Construction和StateMapping都连到Model层了。我检查一下CRUD内部的关系，Create、Update、Delete都依赖Read，这个画上了。",
+      "elements_involved": [
+        "Create",
+        "Update",
+        "Delete",
+        "Read",
+        "CRUD"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，constructSettings的别名你再确认下，是constructSettingsCatalogSettings还是constructSettingsCatal？我之前说的可能不够准确。",
+      "elements_involved": [
+        "constructSettings",
+        "constructSettingsCatalogSettings"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我记的是constructSettingsCatalogSettings，但让我修正一下——应该是constructSettings/constructSettingsCatalogSettings这个完整写法。另外constructAssignment那边，是ConstructConfigurationPolicyAssignment，注意C大写。",
+      "elements_involved": [
+        "constructSettings",
+        "constructSettingsCatalogSettings",
+        "constructAssignment",
+        "ConstructConfigurationPolicyAssignment"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，constructSettings带斜杠的别名要完整。constructAssignment的别名首字母C大写，因为是类名风格。",
+      "elements_involved": [
+        "constructSettings",
+        "constructAssignment",
+        "ConstructConfigurationPolicyAssignment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正constructSettings和constructAssignment的标注。再确认下mapSettingsState的别名：StateConfigurationPolicySettings，mapAssignmentState的别名：StateAssignment，对吗？",
+      "elements_involved": [
+        "mapSettingsState",
+        "StateConfigurationPolicySettings",
+        "mapAssignmentState",
+        "StateAssignment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。还有mapRemoteState的全名是MapRemoteResourceStateToTerraform，这个也标注上。",
+      "elements_involved": [
+        "mapRemoteState",
+        "MapRemoteResourceStateToTerraform"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我注意到Delete目前只画了到Read的连线，但Delete操作本身不需要触发任何Construction或StateMapping，这个理解没错吧？",
+      "elements_involved": [
+        "Delete",
+        "Read",
+        "Construction",
+        "StateMapping"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Delete的流程最简单：先Read获取状态，然后直接调用删除API，不走构造和映射。这是符合Terraform provider规范的。",
+      "elements_involved": [
+        "Delete",
+        "Read",
+        "Construction",
+        "StateMapping"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Delete保持简单连线。我整体再检查一遍：CRUD层四个节点，Construction层三个，StateMapping层三个，Model层三个。Create→constructResource/constructAssignment，Update→constructResource/constructAssignment，Read→三个StateMapping，所有Construction和StateMapping都指向对应Model。",
+      "elements_involved": [
+        "CRUD",
+        "Construction",
+        "StateMapping",
+        "Model",
+        "Create",
+        "Update",
+        "Read",
+        "constructResource",
+        "constructAssignment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "constructSettings好像还没被CRUD直接触发？让我想想——对，constructSettings是由Create和Update间接调用的吗？还是通过其他路径？",
+      "elements_involved": [
+        "constructSettings",
+        "Create",
+        "Update",
+        "CRUD"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我漏画了！constructSettings也应该被Create和Update触发。补上：Create→constructSettings，Update→constructSettings。",
+      "elements_involved": [
+        "constructSettings",
+        "Create",
+        "Update"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，三个构造器都要被Create和Update触发。现在完整了：Create和Update都指向constructResource、constructSettings、constructAssignment。",
+      "elements_involved": [
+        "Create",
+        "Update",
+        "constructResource",
+        "constructSettings",
+        "constructAssignment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补上constructSettings的两条入边。最终确认：CRUD内部Create→Read、Update→Read、Delete→Read；CRUD到Construction的六条边；CRUD到StateMapping的三条边；Construction到Model的三条边；StateMapping到Model的三条边。架构图完成。",
+      "elements_involved": [
+        "CRUD",
+        "Construction",
+        "StateMapping",
+        "Model",
+        "Create",
+        "Read",
+        "Update",
+        "Delete",
+        "constructResource",
+        "constructSettings",
+        "constructAssignment",
+        "mapRemoteState",
+        "mapSettingsState",
+        "mapAssignmentState",
+        "ResourceModel",
+        "AssignmentModel"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 28,
+    "repair_count": 2,
+    "grounding_acts_count": 28,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:39Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:37Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:37Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 59805.6595,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 28
+  }
+}

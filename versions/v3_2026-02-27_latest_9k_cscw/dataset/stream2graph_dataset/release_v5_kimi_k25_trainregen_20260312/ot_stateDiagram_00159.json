@@ -1,0 +1,168 @@
+{
+  "id": "ot_stateDiagram_00159",
+  "source": "other",
+  "source_url": "https://github.com/hispafox/260922-MicroserviciosNET-001/blob/ba7ec3b191746e569c359fdee8add32a5bedc43d/Test1/src/Demo.Api/Diagramas/Diagrama%20de%20estados%20de%20la%20Saga.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "hispafox/260922-MicroserviciosNET-001",
+  "diagram_type": "stateDiagram",
+  "code": "﻿stateDiagram-v2\ndirection LR\n\n[*] --> OrderSubmitted\nOrderSubmitted --> PaymentProcessing : ProcessPaymentCommand\nPaymentProcessing --> StockReserving : PaymentProcessedEvent\nPaymentProcessing --> OrderFailed : PaymentFailedEvent / CancelOrder\nPaymentProcessing --> OrderFailed : PaymentTimeoutEvent / CancelPayment + CancelOrder\n\nStockReserving --> ShipmentCreating : StockReservedEvent\nStockReserving --> OrderFailed : StockReservationFailedEvent / RefundPayment + CancelOrder\nStockReserving --> OrderFailed : StockTimeoutEvent / CancelOrder\n\nShipmentCreating --> OrderCompleted : ShipmentCreatedEvent / OrderCompletedEvent\nShipmentCreating --> OrderFailed : ShipmentFailedEvent / ReleaseStock + RefundPayment + CancelOrder\n\nOrderCompleted --> [*]\nOrderFailed --> [*]\n\nnote right of PaymentProcessing\n  Timeout: 5 min\n  Reintentos: exponencial (1s..5m)\nend note\n\nnote right of StockReserving\n  Timeout: 2 min\n  Compensación si falla:\n  - RefundPayment\n  - CancelOrder\nend note\n",
+  "content_size": 980,
+  "collected_at": "2026-02-06T10:38:34.705447",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个订单状态流转图，核心是从下单到最终完成或失败的全流程。起点应该是OrderSubmitted，然后进入PaymentProcessing支付处理状态。",
+      "elements_involved": [
+        "OrderSubmitted",
+        "PaymentProcessing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "支付处理之后呢？是直接进入发货环节还是有中间状态？另外支付失败的话怎么处理？",
+      "elements_involved": [
+        "PaymentProcessing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "支付成功后通过PaymentProcessedEvent进入StockReserving库存预留状态。但支付可能失败，要有PaymentFailedEvent和PaymentTimeoutEvent两种情况，都走到OrderFailed终态，超时的话还要CancelPayment。",
+      "elements_involved": [
+        "PaymentProcessedEvent",
+        "StockReserving",
+        "PaymentFailedEvent",
+        "PaymentTimeoutEvent",
+        "OrderFailed",
+        "CancelPayment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把支付相关的分支加上。另外支付处理这个节点需要标注超时策略吗？",
+      "elements_involved": [
+        "PaymentProcessing",
+        "StockReserving",
+        "OrderFailed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，PaymentProcessing右边加注释：超时5分钟，重试策略是指数退避，从1秒到5分钟。然后库存预留成功后走StockReservedEvent到ShipmentCreating发货创建状态。",
+      "elements_involved": [
+        "PaymentProcessing",
+        "5 min",
+        "1s..5m",
+        "exponencial",
+        "StockReservedEvent",
+        "ShipmentCreating"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "库存预留如果失败或者超时呢？是不是也要取消订单？",
+      "elements_involved": [
+        "StockReserving",
+        "OrderFailed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，StockReservationFailedEvent和StockTimeoutEvent都到OrderFailed。预留失败要先RefundPayment退款再CancelOrder，超时直接CancelOrder。StockReserving的注释写上超时2分钟，补偿动作包括RefundPayment和CancelOrder。",
+      "elements_involved": [
+        "StockReservationFailedEvent",
+        "StockTimeoutEvent",
+        "OrderFailed",
+        "RefundPayment",
+        "CancelOrder",
+        "2 min"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "发货创建环节怎么设计？成功和失败分别到哪里？",
+      "elements_involved": [
+        "ShipmentCreating"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ShipmentCreating成功的话ShipmentCreatedEvent触发，同时发OrderCompletedEvent，进入OrderCompleted终态。失败的话ShipmentFailedEvent要走ReleaseStock释放库存、RefundPayment退款、CancelOrder取消订单，然后到OrderFailed。",
+      "elements_involved": [
+        "ShipmentCreatedEvent",
+        "OrderCompletedEvent",
+        "OrderCompleted",
+        "ShipmentFailedEvent",
+        "ReleaseStock",
+        "RefundPayment",
+        "CancelOrder",
+        "OrderFailed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，两个终态OrderCompleted和OrderFailed都回到结束节点。整个图方向从左到右，我检查一下：支付5分钟超时指数退避，库存2分钟超时，所有失败路径的补偿动作都齐了。",
+      "elements_involved": [
+        "OrderCompleted",
+        "OrderFailed",
+        "direction LR"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 0,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:43Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:39Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:39Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 20271.2543,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

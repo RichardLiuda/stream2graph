@@ -1,0 +1,1080 @@
+{
+  "id": "gh_architecture_01399",
+  "source": "github",
+  "source_url": "https://github.com/timothywarner/az305/blob/f1dac63440bdff4359294c400acb349c6f12671c/images/private-link-topology.mmd",
+  "github_repo": "timothywarner/az305",
+  "github_file_path": "images/private-link-topology.mmd",
+  "diagram_type": "architecture",
+  "code": "%% AZ-305 Domain 4: Private Link/Private Endpoint Connectivity Patterns\n%% Reference: Azure Private Link architecture, network isolation\n%% Exam Focus: Private endpoints, DNS resolution, cross-region patterns\n\nflowchart TB\n    subgraph ONPREM[\"On-Premises Network\"]\n        direction TB\n        ONPREM_DNS[\"On-Premises DNS<br/>Conditional Forwarder\"]\n        ONPREM_CLIENT[\"On-Premises Client<br/>10.100.1.10\"]\n        ONPREM_APP[\"Legacy Application\"]\n    end\n\n    subgraph HUB_VNET[\"Hub Virtual Network (10.0.0.0/16)\"]\n        direction TB\n\n        subgraph CONNECTIVITY[\"Connectivity Services\"]\n            ER_GW[\"ExpressRoute Gateway\"]\n            VPN_GW[\"VPN Gateway\"]\n            FIREWALL[\"Azure Firewall\"]\n        end\n\n        subgraph DNS_INFRA[\"DNS Infrastructure\"]\n            DNS_RESOLVER[\"Private DNS Resolver\"]\n            DNS_INBOUND[\"Inbound Endpoint<br/>10.0.5.4\"]\n            DNS_OUTBOUND[\"Outbound Endpoint<br/>Forwarding Rules\"]\n        end\n\n        PRIVATE_DNS_ZONES[\"Private DNS Zones<br/>Linked to VNets\"]\n    end\n\n    subgraph SPOKE1[\"Spoke VNet - Application (10.1.0.0/16)\"]\n        direction TB\n\n        APP_SUBNET[\"Application Subnet<br/>10.1.1.0/24\"]\n        APP_VM[\"Application VM<br/>10.1.1.10\"]\n\n        PE_SUBNET[\"Private Endpoint Subnet<br/>10.1.2.0/24<br/>Disable Network Policies\"]\n\n        subgraph PES_APP[\"Private Endpoints\"]\n            PE_STORAGE[\"PE: Storage Account<br/>10.1.2.10<br/>blob.core.windows.net\"]\n            PE_SQL[\"PE: Azure SQL<br/>10.1.2.11<br/>database.windows.net\"]\n            PE_KV[\"PE: Key Vault<br/>10.1.2.12<br/>vault.azure.net\"]\n        end\n    end\n\n    subgraph SPOKE2[\"Spoke VNet - Data Platform (10.2.0.0/16)\"]\n        direction TB\n\n        DATA_SUBNET[\"Data Subnet<br/>10.2.1.0/24\"]\n        SYNAPSE_VM[\"Synapse Integration<br/>Runtime VM\"]\n\n        PE_SUBNET2[\"Private Endpoint Subnet<br/>10.2.2.0/24\"]\n\n        subgraph PES_DATA[\"Private Endpoints\"]\n            PE_ADLS[\"PE: ADLS Gen2<br/>10.2.2.10<br/>dfs.core.windows.net\"]\n            PE_SYNAPSE[\"PE: Synapse Analytics<br/>10.2.2.11<br/>sql.azuresynapse.net\"]\n            PE_COSMOS[\"PE: Cosmos DB<br/>10.2.2.12<br/>documents.azure.com\"]\n        end\n    end\n\n    subgraph AZURE_SERVICES[\"Azure PaaS Services (Public)\"]\n        direction TB\n\n        STORAGE[\"Storage Account<br/>mystorageacct<br/>Public endpoint disabled\"]\n        SQL_DB[\"Azure SQL Database<br/>mysqlserver<br/>Public access denied\"]\n        KEY_VAULT[\"Key Vault<br/>mykeyvault<br/>Network ACLs applied\"]\n        ADLS[\"ADLS Gen2<br/>mydatalake<br/>Private access only\"]\n        SYNAPSE[\"Synapse Workspace<br/>Managed VNet enabled\"]\n        COSMOS_DB[\"Cosmos DB<br/>Global distribution<br/>Private endpoints per region\"]\n    end\n\n    subgraph DNS_RESOLUTION[\"DNS Resolution Flow\"]\n        direction LR\n\n        DNS_QUERY[\"1. DNS Query:<br/>mystorageacct.blob.core.windows.net\"]\n        DNS_CNAME[\"2. CNAME to:<br/>mystorageacct.privatelink.blob.core.windows.net\"]\n        DNS_PRIVATE[\"3. Private DNS Zone<br/>resolves to: 10.1.2.10\"]\n        DNS_CONNECT[\"4. Traffic flows to<br/>Private Endpoint IP\"]\n    end\n\n    subgraph PATTERNS[\"Common Connectivity Patterns\"]\n        direction TB\n\n        PATTERN1[\"**Hub-Spoke Pattern**<br/>- PEs in spokes<br/>- DNS zones in hub<br/>- Cross-spoke via firewall\"]\n\n        PATTERN2[\"**Centralized PE Pattern**<br/>- All PEs in hub<br/>- Shared by all spokes<br/>- Simplified DNS\"]\n\n        PATTERN3[\"**Regional Pattern**<br/>- PE per region<br/>- Local DNS resolution<br/>- Latency optimization\"]\n\n        PATTERN4[\"**Service Endpoint vs PE**<br/>- SE: Traffic stays on MS backbone<br/>- PE: Private IP in your VNet<br/>- PE: Required for on-prem access\"]\n    end\n\n    subgraph PRIVATE_DNS_CONFIG[\"Private DNS Zone Configuration\"]\n        direction TB\n\n        BLOB_ZONE[\"privatelink.blob.core.windows.net<br/>A record: mystorageacct -> 10.1.2.10\"]\n        SQL_ZONE[\"privatelink.database.windows.net<br/>A record: mysqlserver -> 10.1.2.11\"]\n        KV_ZONE[\"privatelink.vaultcore.azure.net<br/>A record: mykeyvault -> 10.1.2.12\"]\n        DFS_ZONE[\"privatelink.dfs.core.windows.net<br/>A record: mydatalake -> 10.2.2.10\"]\n\n        VNET_LINK[\"VNet Links<br/>Hub + All Spokes<br/>Auto-registration disabled\"]\n    end\n\n    %% On-premises connectivity\n    ONPREM_DNS -->|Conditional Forward| DNS_INBOUND\n    ONPREM_CLIENT --> ER_GW\n    ER_GW --> FIREWALL\n\n    %% Hub DNS resolution\n    DNS_RESOLVER --> DNS_INBOUND\n    DNS_RESOLVER --> DNS_OUTBOUND\n    DNS_OUTBOUND --> PRIVATE_DNS_ZONES\n\n    %% VNet peering\n    HUB_VNET <-->|VNet Peering| SPOKE1\n    HUB_VNET <-->|VNet Peering| SPOKE2\n\n    %% Private endpoint connections\n    PE_STORAGE --> STORAGE\n    PE_SQL --> SQL_DB\n    PE_KV --> KEY_VAULT\n    PE_ADLS --> ADLS\n    PE_SYNAPSE --> SYNAPSE\n    PE_COSMOS --> COSMOS_DB\n\n    %% Application to PE\n    APP_VM --> PE_STORAGE\n    APP_VM --> PE_SQL\n    APP_VM --> PE_KV\n    SYNAPSE_VM --> PE_ADLS\n    SYNAPSE_VM --> PE_SYNAPSE\n\n    %% DNS resolution flow\n    DNS_QUERY --> DNS_CNAME\n    DNS_CNAME --> DNS_PRIVATE\n    DNS_PRIVATE --> DNS_CONNECT\n\n    %% DNS zone links\n    BLOB_ZONE --> VNET_LINK\n    SQL_ZONE --> VNET_LINK\n    KV_ZONE --> VNET_LINK\n    DFS_ZONE --> VNET_LINK\n\n    %% Exam notes\n    NOTE1[\"**EXAM TIP**: Private Endpoints<br/>require dedicated subnet with<br/>network policies disabled\"]\n    NOTE2[\"**EXAM TIP**: DNS resolution is critical<br/>Private DNS zones must be<br/>linked to all consuming VNets\"]\n    NOTE3[\"**EXAM TIP**: On-prem access requires<br/>conditional DNS forwarding<br/>to Azure DNS resolver\"]\n    NOTE4[\"**EXAM TIP**: Disable public access<br/>on PaaS services after<br/>configuring private endpoints\"]\n\n    %% Styling\n    classDef onpremStyle fill:#78909c,stroke:#455a64,color:#fff\n    classDef hubStyle fill:#1565c0,stroke:#0d47a1,color:#fff\n    classDef dnsStyle fill:#7e57c2,stroke:#512da8,color:#fff\n    classDef spokeStyle fill:#66bb6a,stroke:#388e3c,color:#fff\n    classDef peStyle fill:#ff7043,stroke:#e64a19,color:#fff\n    classDef paasStyle fill:#42a5f5,stroke:#1976d2,color:#fff\n    classDef flowStyle fill:#ffca28,stroke:#ff8f00,color:#000\n    classDef patternStyle fill:#26c6da,stroke:#00838f,color:#000\n    classDef zoneStyle fill:#f06292,stroke:#c2185b,color:#fff\n    classDef noteStyle fill:#fff9c4,stroke:#fbc02d,color:#000,stroke-dasharray: 5 5\n\n    class ONPREM_DNS,ONPREM_CLIENT,ONPREM_APP onpremStyle\n    class ER_GW,VPN_GW,FIREWALL hubStyle\n    class DNS_RESOLVER,DNS_INBOUND,DNS_OUTBOUND,PRIVATE_DNS_ZONES dnsStyle\n    class APP_SUBNET,APP_VM,PE_SUBNET,DATA_SUBNET,SYNAPSE_VM,PE_SUBNET2 spokeStyle\n    class PE_STORAGE,PE_SQL,PE_KV,PE_ADLS,PE_SYNAPSE,PE_COSMOS peStyle\n    class STORAGE,SQL_DB,KEY_VAULT,ADLS,SYNAPSE,COSMOS_DB paasStyle\n    class DNS_QUERY,DNS_CNAME,DNS_PRIVATE,DNS_CONNECT flowStyle\n    class PATTERN1,PATTERN2,PATTERN3,PATTERN4 patternStyle\n    class BLOB_ZONE,SQL_ZONE,KV_ZONE,DFS_ZONE,VNET_LINK zoneStyle\n    class NOTE1,NOTE2,NOTE3,NOTE4 noteStyle\n",
+  "content_size": 6947,
+  "collected_at": "2026-02-06T01:45:44.590303",
+  "license": "mit",
+  "license_name": "MIT License",
+  "compilation_status": "success",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 90,
+  "repo_forks": 81,
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"On-Premises Network\" 和 \"On-Premises DNS<br/>Conditional Forwarder\" 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"On-Premises Network\" 和 \"On-Premises DNS<br/>Conditional Forwarder\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "ONPREM",
+        "ONPREM_DNS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 \"On-Premises Client<br/>10.100.1.10\" 和 \"Legacy Application\"。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"On-Premises Client<br/>10.100.1.10\" 和 \"Legacy Application\"'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "ONPREM_CLIENT",
+        "ONPREM_APP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"Hub Virtual Network (10.0.0.0/16 和 \"Connectivity Services\" 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Hub Virtual Network (10.0.0.0/16 和 \"Connectivity Services\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "HUB_VNET",
+        "CONNECTIVITY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"ExpressRoute Gateway\" 和 \"VPN Gateway\" 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"ExpressRoute Gateway\" 和 \"VPN Gateway\"'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "ER_GW",
+        "VPN_GW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 \"Azure Firewall\" 和 \"DNS Infrastructure\"。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"Azure Firewall\" 和 \"DNS Infrastructure\"'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "FIREWALL",
+        "DNS_INFRA"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"Private DNS Resolver\" 和 \"Inbound Endpoint<br/>10.0.5.4\" 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"Private DNS Resolver\" 和 \"Inbound Endpoint<br/>10.0.5.4\"'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "DNS_RESOLVER",
+        "DNS_INBOUND"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"Outbound Endpoint<br/>Forwarding Rules\" 和 \"Private DNS Zones<br/>Linked to VNets\" 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Outbound Endpoint<br/>Forwarding Rules\" 和 \"Private DNS Zones<br/>Linked to VNets\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "DNS_OUTBOUND",
+        "PRIVATE_DNS_ZONES"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"Spoke VNet - Application (10.1.0.0/16 和 \"Application Subnet<br/>10.1.1.0/24\" 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"Spoke VNet - Application (10.1.0.0/16 和 \"Application Subnet<br/>10.1.1.0/24\"'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "SPOKE1",
+        "APP_SUBNET"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"Application VM<br/>10.1.1.10\" 和 \"Private Endpoint Subnet<br/>10.1.2.0/24<br/>Disable Network Policies\" 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Application VM<br/>10.1.1.10\" 和 \"Private Endpoint Subnet<br/>10.1.2.0/24<br/>Disable Network Policies\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "APP_VM",
+        "PE_SUBNET"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"Private Endpoints\" 和 \"PE: Storage Account<br/>10.1.2.10<br/>blob.core.windows.net\" 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Private Endpoints\" 和 \"PE: Storage Account<br/>10.1.2.10<br/>blob.core.windows.net\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "PES_APP",
+        "PE_STORAGE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"PE: Azure SQL<br/>10.1.2.11<br/>database.windows.net\" 和 \"PE: Key Vault<br/>10.1.2.12<br/>vault.azure.net\" 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "抱歉，稍微改一下，把刚才那个改成 \"PE: Azure SQL<br/>10.1.2.11<br/>database.windows.net\"处理。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 43,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"PE: Azure SQL<br/>10.1.2.11<br/>database.windows.net\"处理'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "PE_SQL",
+        "PE_KV"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"Spoke VNet - Data Platform (10.2.0.0/16 和 \"Data Subnet<br/>10.2.1.0/24\" 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我重新想了一下，应该是 \"Spoke VNet - Data Platform (10.2.0.0/16处理 才对。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"Spoke VNet - Data Platform (10.2.0.0/16处理'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "SPOKE2",
+        "DATA_SUBNET"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 \"Synapse Integration<br/>Runtime VM\" 和 \"Private Endpoint Subnet<br/>10.2.2.0/24\"。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"Synapse Integration<br/>Runtime VM\" 和 \"Private Endpoint Subnet<br/>10.2.2.0/24\"'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "SYNAPSE_VM",
+        "PE_SUBNET2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"Private Endpoints\" 和 \"PE: ADLS Gen2<br/>10.2.2.10<br/>dfs.core.windows.net\" 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"Private Endpoints\" 和 \"PE: ADLS Gen2<br/>10.2.2.10<br/>dfs.core.windows.net\"'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "PES_DATA",
+        "PE_ADLS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"PE: Synapse Analytics<br/>10.2.2.11<br/>sql.azuresynapse.net\" 和 \"PE: Cosmos DB<br/>10.2.2.12<br/>documents.azure.com\" 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不，其实叫 \"PE: Synapse Analytics<br/>10.2.2.11<br/>sql.azuresynapse.net\"处理 会更准确一点。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 61,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"PE: Synapse Analytics<br/>10.2.2.11<br/>sql.azuresynapse.net\"处理'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "PE_SYNAPSE",
+        "PE_COSMOS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"Azure PaaS Services (Public 和 \"Storage Account<br/>mystorageacct<br/>Public endpoint disabled\" 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 65,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"Azure PaaS Services (Public 和 \"Storage Account<br/>mystorageacct<br/>Public endpoint disabled\"'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 66,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 67,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "AZURE_SERVICES",
+        "STORAGE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 68,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"Azure SQL Database<br/>mysqlserver<br/>Public access denied\" 和 \"Key Vault<br/>mykeyvault<br/>Network ACLs applied\" 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 69,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"Azure SQL Database<br/>mysqlserver<br/>Public access denied\" 和 \"Key Vault<br/>mykeyvault<br/>Network ACLs applied\"'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 70,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 71,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "SQL_DB",
+        "KEY_VAULT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 72,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 \"ADLS Gen2<br/>mydatalake<br/>Private access only\" 和 \"Synapse Workspace<br/>Managed VNet enabled\"。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 73,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我重新想了一下，应该是 \"ADLS Gen2<br/>mydatalake<br/>Private access only\"处理 才对。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 74,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"ADLS Gen2<br/>mydatalake<br/>Private access only\"处理'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 75,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 76,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "ADLS",
+        "SYNAPSE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 77,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"Cosmos DB<br/>Global distribution<br/>Private endpoints per region\" 和 \"DNS Resolution Flow\" 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 78,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我重新想了一下，应该是 \"Cosmos DB<br/>Global distribution<br/>Private endpoints per region\"处理 才对。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 79,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"Cosmos DB<br/>Global distribution<br/>Private endpoints per region\"处理'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 80,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 81,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "COSMOS_DB",
+        "DNS_RESOLUTION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 82,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"1. DNS Query:<br/>mystorageacct.blob.core.windows.net\" 和 \"2. CNAME to:<br/>mystorageacct.privatelink.blob.core.windows.net\" 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 83,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"1. DNS Query:<br/>mystorageacct.blob.core.windows.net\" 和 \"2. CNAME to:<br/>mystorageacct.privatelink.blob.core.windows.net\"'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 84,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 85,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "DNS_QUERY",
+        "DNS_CNAME"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 86,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"3. Private DNS Zone<br/>resolves to: 10.1.2.10\" 和 \"4. Traffic flows to<br/>Private Endpoint IP\" 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 87,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"3. Private DNS Zone<br/>resolves to: 10.1.2.10\" 和 \"4. Traffic flows to<br/>Private Endpoint IP\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 88,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 89,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "DNS_PRIVATE",
+        "DNS_CONNECT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 90,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"Common Connectivity Patterns\" 和 \"**Hub-Spoke Pattern**<br/>- PEs in spokes<br/>- DNS zones in hub<br/>- Cross-spoke via firewall\" 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 91,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"Common Connectivity Patterns\" 和 \"**Hub-Spoke Pattern**<br/>- PEs in spokes<br/>- DNS zones in hub<br/>- Cross-spoke via firewall\"'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 92,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 93,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "PATTERNS",
+        "PATTERN1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 94,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"**Centralized PE Pattern**<br/>- All PEs in hub<br/>- Shared by all spokes<br/>- Simplified DNS\" 和 \"**Regional Pattern**<br/>- PE per region<br/>- Local DNS resolution<br/>- Latency optimization\" 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 95,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"**Centralized PE Pattern**<br/>- All PEs in hub<br/>- Shared by all spokes<br/>- Simplified DNS\" 和 \"**Regional Pattern**<br/>- PE per region<br/>- Local DNS resolution<br/>- Latency optimization\"'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 96,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 97,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "PATTERN2",
+        "PATTERN3"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 98,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"**Service Endpoint vs PE**<br/>- SE: Traffic stays on MS backbone<br/>- PE: Private IP in your VNet<br/>- PE: Required for on-prem access\" 和 \"Private DNS Zone Configuration\" 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 99,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"**Service Endpoint vs PE**<br/>- SE: Traffic stays on MS backbone<br/>- PE: Private IP in your VNet<br/>- PE: Required for on-prem access\" 和 \"Private DNS Zone Configuration\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 100,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 101,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "PATTERN4",
+        "PRIVATE_DNS_CONFIG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 102,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"privatelink.blob.core.windows.net<br/>A record: mystorageacct -> 10.1.2.10\" 和 \"privatelink.database.windows.net<br/>A record: mysqlserver -> 10.1.2.11\" 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 103,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"privatelink.blob.core.windows.net<br/>A record: mystorageacct -> 10.1.2.10\" 和 \"privatelink.database.windows.net<br/>A record: mysqlserver -> 10.1.2.11\"'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 104,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 105,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "BLOB_ZONE",
+        "SQL_ZONE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 106,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"privatelink.vaultcore.azure.net<br/>A record: mykeyvault -> 10.1.2.12\" 和 \"privatelink.dfs.core.windows.net<br/>A record: mydatalake -> 10.2.2.10\" 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 107,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"privatelink.vaultcore.azure.net<br/>A record: mykeyvault -> 10.1.2.12\" 和 \"privatelink.dfs.core.windows.net<br/>A record: mydatalake -> 10.2.2.10\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 108,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 109,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "KV_ZONE",
+        "DFS_ZONE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 110,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"VNet Links<br/>Hub + All Spokes<br/>Auto-registration disabled\" 和 \"**EXAM TIP**: Private Endpoints<br/>require dedicated subnet with<br/>network policies disabled\" 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 111,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"VNet Links<br/>Hub + All Spokes<br/>Auto-registration disabled\" 和 \"**EXAM TIP**: Private Endpoints<br/>require dedicated subnet with<br/>network policies disabled\"'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 112,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 113,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "VNET_LINK",
+        "NOTE1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 114,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"**EXAM TIP**: DNS resolution is critical<br/>Private DNS zones must be<br/>linked to all consuming VNets\" 和 \"**EXAM TIP**: On-prem access requires<br/>conditional DNS forwarding<br/>to Azure DNS resolver\" 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 115,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"**EXAM TIP**: DNS resolution is critical<br/>Private DNS zones must be<br/>linked to all consuming VNets\" 和 \"**EXAM TIP**: On-prem access requires<br/>conditional DNS forwarding<br/>to Azure DNS resolver\"'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 116,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 117,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "NOTE2",
+        "NOTE3"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 118,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"**EXAM TIP**: Disable public access<br/>on PaaS services after<br/>configuring private endpoints\" 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 119,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"**EXAM TIP**: Disable public access<br/>on PaaS services after<br/>configuring private endpoints\"'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 120,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 120,
+    "repair_count": 5,
+    "grounding_acts_count": 58,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:39Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:37Z",
+  "dialogue_regen": {
+    "enabled": false,
+    "frozen_from_source": true
+  }
+}

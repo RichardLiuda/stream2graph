@@ -1,0 +1,348 @@
+{
+  "id": "aug_gl_block-beta_00303_Sec_7",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_FIRMWARE/blob/615cebd32230a26c23013f1c75381475e12c0b93/diagrams/ACQ_AND_TRANSMIT_EXTERNAL.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_FIRMWARE",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client\n    participant DataTrans as data_transmission.c\n    participant Acquisition as acquisition.c\n    \n    Client->>DataTrans: Connect to data socket\n    activate DataTrans\n    \n    Note over DataTrans,Acquisition: External ADC already initialized during startup\n    \n    alt mode == 0 (Security_OAuth2)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(Security_IntrusionDetection)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Client: non_blocking_send(Security_ZeroTrust) buffer\n            \n            opt Socket change detected\n                DataTrans->>DataTrans: Break acquisition loop\n            end\n        end\n    else mode == 1 (Security_IntrusionDetection)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(Security_Firewall)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Acquisition: pcnt_unit_get_count(Security_IntrusionDetection)\n            Acquisition-->>DataTrans: Current counter state\n            \n            alt Edge detected (Security_Firewall)\n                DataTrans->>Client: non_blocking_send(Security_ZeroTrust) buffer\n            end\n        end\n    end\n    \n    Client->>DataTrans: Disconnect\n    DataTrans->>DataTrans: safe_close(Security_IntrusionDetection)\n    deactivate DataTrans",
+  "content_size": 1551,
+  "collected_at": "2026-02-06T14:06:49.098744",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Security",
+  "seed_id": "gl_block-beta_00303",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个时序图，描述客户端通过数据传输模块与采集模块交互的完整流程。核心是两个安全模式：OAuth2认证模式和入侵检测模式。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "Security_OAuth2",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先确认一下结构：Client作为发起方，DataTrans是数据传输模块，Acquisition是采集模块。SPI通信需要互斥锁保护，对吗？",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "spi_mutex"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，spi_mutex是必须的，因为SPI总线可能被多个任务共享。还有，外部ADC在启动时已经初始化好了，这个要在图上标注清楚。",
+      "elements_involved": [
+        "spi_mutex",
+        "External ADC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把Client连接到DataTrans，标注为\"Connect to data socket\"，然后激活DataTrans生命周期。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Connect to data socket"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来用alt分支区分两种模式。第一种mode==0是OAuth2模式，这里有个关键点：要循环直到客户端断开，每次循环都要获取spi_mutex，执行spi_device_polling_transmit，传入Security_IntrusionDetection参数。",
+      "elements_involved": [
+        "alt",
+        "mode == 0",
+        "Security_OAuth2",
+        "loop",
+        "spi_mutex",
+        "spi_device_polling_transmit",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有点疑问：OAuth2模式下为什么传入的是Security_IntrusionDetection？不是应该和OAuth2相关吗？",
+      "elements_involved": [
+        "Security_OAuth2",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "啊，我说错了。OAuth2模式下spi_device_polling_transmit的参数应该是Security_OAuth2，不是IntrusionDetection。入侵检测是另一种模式用的。",
+      "elements_involved": [
+        "Security_OAuth2",
+        "spi_device_polling_transmit"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，已修正。OAuth2模式下：获取spi_mutex → spi_device_polling_transmit(Security_OAuth2) → 等待SPI完成 → 释放spi_mutex → 用non_blocking_send发送Security_ZeroTrust缓冲区的数据到Client。",
+      "elements_involved": [
+        "spi_mutex",
+        "spi_device_polling_transmit",
+        "Security_OAuth2",
+        "non_blocking_send",
+        "Security_ZeroTrust",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OAuth2分支里还要加个opt可选块：如果检测到socket变化，DataTrans要break跳出采集循环。",
+      "elements_involved": [
+        "opt",
+        "Socket change detected",
+        "break",
+        "acquisition loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加opt分支。现在处理else分支：mode==1是Security_IntrusionDetection模式，同样循环直到客户端断开。",
+      "elements_involved": [
+        "else",
+        "mode == 1",
+        "Security_IntrusionDetection",
+        "loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "入侵检测模式更复杂一些。获取spi_mutex后，执行spi_device_polling_transmit，但这里传入的是Security_Firewall参数。",
+      "elements_involved": [
+        "spi_mutex",
+        "spi_device_polling_transmit",
+        "Security_Firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认：释放spi_mutex之后，还要调用pcnt_unit_get_count获取Security_IntrusionDetection的计数器状态，对吗？",
+      "elements_involved": [
+        "spi_mutex",
+        "pcnt_unit_get_count",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Acquisition返回当前计数器状态给DataTrans。然后加一个嵌套的alt：如果检测到Security_Firewall边沿触发，才执行non_blocking_send发送Security_ZeroTrust到Client。",
+      "elements_involved": [
+        "Acquisition",
+        "DataTrans",
+        "Current counter state",
+        "alt",
+        "Edge detected",
+        "Security_Firewall",
+        "non_blocking_send",
+        "Security_ZeroTrust",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里的发送逻辑和OAuth2模式不同：OAuth2是每次循环都发，入侵检测模式是边沿触发才发。这样设计是为了减少网络流量？",
+      "elements_involved": [
+        "non_blocking_send",
+        "OAuth2",
+        "IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正是如此。入侵检测模式下只有事件发生时才有数据推送，OAuth2模式则是持续数据流。两种模式都要支持客户端随时断开。",
+      "elements_involved": [
+        "Client",
+        "disconnect",
+        "OAuth2",
+        "IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个alt分支都已完成。最后处理断开流程：Client发送Disconnect到DataTrans，DataTrans执行safe_close(Security_IntrusionDetection)，然后结束DataTrans的生命周期。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Disconnect",
+        "safe_close",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "safe_close的参数确认一下：虽然两个模式不同，但关闭时统一用Security_IntrusionDetection标识，这是资源清理的标记名。",
+      "elements_involved": [
+        "safe_close",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解。整个流程检查一遍：启动注释说明ADC已初始化 → OAuth2模式循环（SPI传输+条件发送+可选break） → 入侵检测模式循环（SPI传输+计数器查询+边沿触发发送） → 断开清理。结构完整。",
+      "elements_involved": [
+        "External ADC",
+        "OAuth2",
+        "IntrusionDetection",
+        "SPI",
+        "break",
+        "disconnect"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有个小细节：Note的位置要放在DataTrans和Acquisition之间，说明\"External ADC already initialized during startup\"，这个注释很重要，避免误解ADC初始化时机。",
+      "elements_involved": [
+        "Note",
+        "DataTrans",
+        "Acquisition",
+        "External ADC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整Note位置。所有激活框和虚线返回都正确：Acquisition--DataTrans的SPI完成和计数器状态返回都用虚线，消息发送用实线。",
+      "elements_involved": [
+        "activate",
+        "deactivate",
+        "Acquisition",
+        "DataTrans",
+        "SPI transaction complete",
+        "Current counter state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "spi_device_polling_transmit和pcnt_unit_get_count的调用方向再确认：都是从DataTrans到Acquisition，返回是Acquisition到DataTrans，对吗？",
+      "elements_involved": [
+        "DataTrans",
+        "Acquisition",
+        "spi_device_polling_transmit",
+        "pcnt_unit_get_count"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。DataTrans是控制方，Acquisition是执行方。所有消息方向：DataTrans→Acquisition是请求，Acquisition--DataTrans是响应。",
+      "elements_involved": [
+        "DataTrans",
+        "Acquisition",
+        "request",
+        "response"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个时序图准确反映了我们嵌入式数据采集系统的双模式安全架构，OAuth2用于认证数据流，入侵检测用于事件驱动，共享SPI总线通过互斥锁保护。",
+      "elements_involved": [
+        "OAuth2",
+        "IntrusionDetection",
+        "SPI",
+        "spi_mutex",
+        "Security_ZeroTrust",
+        "Security_Firewall"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 23,
+    "repair_count": 1,
+    "grounding_acts_count": 23,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 52799.9027,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 23
+  }
+}

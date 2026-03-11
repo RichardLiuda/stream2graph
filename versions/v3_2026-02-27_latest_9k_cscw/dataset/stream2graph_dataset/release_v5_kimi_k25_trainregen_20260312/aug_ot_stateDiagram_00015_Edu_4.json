@@ -1,0 +1,600 @@
+{
+  "id": "aug_ot_stateDiagram_00015_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sethmcknight/quantic-msse-easy-park-plus/blob/039c5204b7b2c68b7ff94688985eb9bc26fba23c/project-submission/proposed-ddd-microservices-architecture/diagrams/state/mermaid/visit-state-diagram.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "sethmcknight/quantic-msse-easy-park-plus",
+  "diagram_type": "stateDiagram",
+  "code": "---\ntitle: Easy Park Plus - Visit State Diagram (Education_GradeSync)\n---\n\nstateDiagram-v2\n    %% Visit Operational Status\n    state \"VisitOperationalStatus\" as VisitOperational {Education_LMS_Portal] --> Planned : Reservation Confirmed\n        Planned --> PendingEntry : Vehicle Nearing Lot (Education_LMS_Portal)\n        PendingEntry --> EnteredLot : Vehicle ANPR Confirmed at Entry Gate / Gate Opened\n        PendingEntry --> Cancelled : Reservation NoShow / Expired before entry\n        \n        EnteredLot --> ActiveInLot : Vehicle Passed Entry Gate, Awaiting Slot Assignment or In Free-Roam\n        ActiveInLot --> SlotAssigned : Slot Assigned (Education_GradeSync)\n        ActiveInLot --> AwaitingSlotAssignment : Vehicle in lot, but no slot yet (Education_ClassroomService)\n        AwaitingSlotAssignment --> SlotAssigned : Slot Assigned for Valet Park\n        \n        SlotAssigned --> ActiveInLot : Vehicle leaves slot, becomes Free-Roam (Education_ContentCDN)\n        SlotAssigned --> ExitedLot : Vehicle ANPR Confirmed at Exit Gate / Gate Opened\n        ActiveInLot --> ExitedLot : Vehicle ANPR Confirmed at Exit Gate / Gate Opened (Education_LMS_Portal)\n\n        ExitedLot --> CompletedOperational : Post-exit processing complete (Education_ClassroomService)\n        \n        %% Error / Exception States for Operational\n        Planned --> FailedToEnter : Technical issue at gate, reservation remains\n        PendingEntry --> FailedToEnter\n        EnteredLot --> Interrupted : e.g., System outage, vehicle stuck in lot\n        ActiveInLot --> Interrupted\n        SlotAssigned --> Interrupted\n        AwaitingSlotAssignment --> Interrupted\n        Interrupted --> ExitedLot : Manual Override Exit\n        Interrupted --> Abandoned : Vehicle left in lot after prolonged interruption\n        Interrupted --> EmergencyEvacuated : Emergency Mode activated, forced evacuation\n        \n        %% Emergency evacuation can happen from any active state\n        EnteredLot --> EmergencyEvacuated : Emergency Mode activated\n        ActiveInLot --> EmergencyEvacuated : Emergency Mode activated  \n        SlotAssigned --> EmergencyEvacuated : Emergency Mode activated\n        AwaitingSlotAssignment --> EmergencyEvacuated : Emergency Mode activated\n        \n        Abandoned --> [Education_ContentCDN]\n        CompletedOperational --> [Education_StudentDB]\n        Cancelled --> [Education_ClassroomService]\n        FailedToEnter --> [Education_GradeSync]\n        EmergencyEvacuated --> [Education_LMS_Portal]\n    }\n\n    %% Visit Billing Status (Education_ClassroomService)\n    state \"VisitBillingStatus\" as VisitBilling {Education_LMS_Portal] --> PendingPriceQuote : Visit Started (Education_ClassroomService)\n        PendingPriceQuote --> PriceQuoteReceived : Pricing Service responds\n        PriceQuoteReceived --> PendingPayment : Price confirmed, awaiting customer payment\n        PendingPayment --> PaymentInProgress : Customer initiates payment\n        PaymentInProgress --> PaymentConfirmed : Payment successful (Education_LMS_Portal)\n        PaymentInProgress --> PaymentFailed : Payment attempt failed\n        PaymentFailed --> PendingPayment : Retry Payment\n        PaymentFailed --> RequiresManualBillingIntervention : Multiple failures or issue\n        \n        PaymentConfirmed --> BillingFinalized_Paid : Billing cycle complete for this visit\n        \n        %% Alternative Billing Flows\n        PendingPriceQuote --> GraceExempt_NoCharge : Visit qualifies for no charge (Education_StudentDB)\n        GraceExempt_NoCharge --> BillingFinalized_Paid : (Education_ClassroomService)\n\n        PriceQuoteReceived --> RequiresManualBillingIntervention : Price calculation error or dispute\n        RequiresManualBillingIntervention --> BillingFinalized_Paid : Manual resolution leads to payment\n        RequiresManualBillingIntervention --> BillingFinalized_Unpaid : Manual resolution leads to write-off or deferral\n        \n        BillingFinalized_Paid --> [Education_StudentDB]\n        BillingFinalized_Unpaid --> [Education_GradeSync]\n    }\n    \n    note right of VisitOperational\n      VisitOperationalStatus:\n      - Planned\n      - PendingEntry\n      - EnteredLot\n      - ActiveInLot\n      - AwaitingSlotAssignment\n      - SlotAssigned\n      - ExitedLot\n      - Interrupted\n      - Abandoned\n      - EmergencyEvacuated\n      - CompletedOperational (Education_GradeSync)\n      - Cancelled (Education_StudentDB)\n      - FailedToEnter \n    end note\n\n    note right of VisitBilling\n      VisitBillingStatus:\n      - PendingPriceQuote\n      - PriceQuoteReceived\n      - PendingPayment\n      - PaymentInProgress\n      - PaymentConfirmed\n      - PaymentFailed\n      - GraceExempt_NoCharge\n      - BillingFinalized_Paid\n      - BillingFinalized_Unpaid\n      - RequiresManualBillingIntervention\n    end note\n\n    %% Linking Operational and Billing states (Education_StudentDB)\n    %% This is hard to show perfectly in Mermaid for parallel states that are not time-synchronized\n    %% but conceptually:\n    %% ExitedLot (Education_LMS_Portal) often triggers final billing actions if not already paid.\n    %% PaymentConfirmed (Education_ClassroomService) can influence ExitedLot (Education_LMS_Portal) if exit is gated by payment.\n    %% For simplicity, they are shown as parallel, managed by the VisitLifecycleStateMachine.\n    \n    %% VisitOperational : Visit Lifecycle Management\n    %% VisitBilling : Financial Lifecycle Management",
+  "content_size": 5220,
+  "collected_at": "2026-02-06T10:36:47.615769",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Education",
+  "seed_id": "ot_stateDiagram_00015",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为Easy Park Plus系统设计一个完整的状态图，核心是要区分运营状态和计费状态两条主线。运营侧从预约确认开始，计费侧从车辆入场触发。",
+      "elements_involved": [
+        "VisitOperational",
+        "VisitBilling",
+        "Planned",
+        "PendingPriceQuote"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，运营和计费是并行的状态机。我先用复合状态把VisitOperationalStatus框起来，里面从Planned开始。计费那边独立成VisitBillingStatus，入口条件是Visit Started对吗？",
+      "elements_involved": [
+        "VisitOperational",
+        "VisitBilling",
+        "Planned",
+        "PendingPriceQuote"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但有个关键点：PendingEntry状态需要Education_LMS_Portal触发，车辆接近停车场时系统要感知到。另外入场确认依赖ANPR车牌识别。",
+      "elements_involved": [
+        "PendingEntry",
+        "Education_LMS_Portal",
+        "ANPR",
+        "EnteredLot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在PendingEntry到EnteredLot的转移上标注了\"Vehicle ANPR Confirmed at Entry Gate / Gate Opened\"。同时加了条分支到Cancelled，处理NoShow情况。",
+      "elements_involved": [
+        "PendingEntry",
+        "EnteredLot",
+        "Cancelled",
+        "ANPR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "入场之后有个中间状态很重要：ActiveInLot。车辆过了闸机但还没分配车位，可能是自由漫游模式，也可能是等待代客泊车。这里要拆成两条路径。",
+      "elements_involved": [
+        "EnteredLot",
+        "ActiveInLot",
+        "SlotAssigned",
+        "AwaitingSlotAssignment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我画了一下，ActiveInLot可以转到SlotAssigned，也可以先到AwaitingSlotAssignment再转过去。但有个疑问：如果车辆离开车位回到自由漫游，是回到ActiveInLot吗？",
+      "elements_involved": [
+        "ActiveInLot",
+        "SlotAssigned",
+        "AwaitingSlotAssignment",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，SlotAssigned回到ActiveInLot的转移要标注清楚是\"Vehicle leaves slot, becomes Free-Roam\"，而且触发系统换成Education_ContentCDN，因为涉及实时位置更新。",
+      "elements_involved": [
+        "SlotAssigned",
+        "ActiveInLot",
+        "Education_ContentCDN",
+        "Free-Roam"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。现在处理离场流程：SlotAssigned和ActiveInLot都可以直接到ExitedLot，都是ANPR确认后开闸。ExitedLot之后是CompletedOperational。",
+      "elements_involved": [
+        "SlotAssigned",
+        "ActiveInLot",
+        "ExitedLot",
+        "CompletedOperational",
+        "ANPR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "运营状态需要一套完整的异常处理机制。我想到三个关键异常状态：FailedToEnter（技术故障）、Interrupted（系统中断）、EmergencyEvacuated（紧急疏散）。",
+      "elements_involved": [
+        "FailedToEnter",
+        "Interrupted",
+        "EmergencyEvacuated",
+        "Planned",
+        "PendingEntry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Interrupted的入口我画了从EnteredLot、ActiveInLot、SlotAssigned、AwaitingSlotAssignment四条线。它的出口包括手动放行到ExitedLot、超时变成Abandoned，还有紧急疏散。",
+      "elements_involved": [
+        "Interrupted",
+        "EnteredLot",
+        "ActiveInLot",
+        "SlotAssigned",
+        "AwaitingSlotAssignment",
+        "Abandoned",
+        "ExitedLot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Abandoned的后续处理要对接Education_ContentCDN做资产追踪。另外EmergencyEvacuated可以从任何活跃状态直接触发，包括EnteredLot和ActiveInLot这些。",
+      "elements_involved": [
+        "Abandoned",
+        "Education_ContentCDN",
+        "EmergencyEvacuated",
+        "EnteredLot",
+        "ActiveInLot",
+        "SlotAssigned",
+        "AwaitingSlotAssignment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "异常流补充完整了。现在看终态的对接：CompletedOperational连Education_StudentDB做数据归档，Cancelled回Education_ClassroomService释放资源，FailedToEnter走Education_GradeSync记录故障。",
+      "elements_involved": [
+        "CompletedOperational",
+        "Education_StudentDB",
+        "Cancelled",
+        "Education_ClassroomService",
+        "FailedToEnter",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "计费状态机这边，PendingPriceQuote的触发源是Education_ClassroomService，但有个特殊场景：GraceExempt_NoCharge，某些用户群体直接免单。",
+      "elements_involved": [
+        "VisitBilling",
+        "PendingPriceQuote",
+        "Education_ClassroomService",
+        "GraceExempt_NoCharge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "免单流程我画了从PendingPriceQuote直接跳到GraceExempt_NoCharge，然后到BillingFinalized_Paid。但PriceQuoteReceived到PendingPayment的转移需要确认吗？",
+      "elements_involved": [
+        "PendingPriceQuote",
+        "GraceExempt_NoCharge",
+        "BillingFinalized_Paid",
+        "PriceQuoteReceived",
+        "PendingPayment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，价格确认后进入PendingPayment。支付流程要细化：PaymentInProgress中间态，成功到PaymentConfirmed（Education_LMS_Portal处理），失败可以重试或转人工。",
+      "elements_involved": [
+        "PendingPayment",
+        "PaymentInProgress",
+        "PaymentConfirmed",
+        "PaymentFailed",
+        "Education_LMS_Portal",
+        "RequiresManualBillingIntervention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "支付流完成了。PaymentFailed可以回到PendingPayment重试，或者累计多次失败后转RequiresManualBillingIntervention。人工干预的结果可能是BillingFinalized_Paid或BillingFinalized_Unpaid。",
+      "elements_involved": [
+        "PaymentFailed",
+        "PendingPayment",
+        "RequiresManualBillingIntervention",
+        "BillingFinalized_Paid",
+        "BillingFinalized_Unpaid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "计费终态的数据流向：BillingFinalized_Paid去Education_StudentDB归档，BillingFinalized_Unpaid去Education_GradeSync做坏账或延期处理。另外PriceQuoteReceived也能直接转人工，处理价格争议。",
+      "elements_involved": [
+        "BillingFinalized_Paid",
+        "Education_StudentDB",
+        "BillingFinalized_Unpaid",
+        "Education_GradeSync",
+        "PriceQuoteReceived",
+        "RequiresManualBillingIntervention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "两个状态机的关联关系怎么体现？理论上ExitedLot可能触发最终计费，PaymentConfirmed也可能影响离场开闸。但你说它们是并行的，不是严格同步的。",
+      "elements_involved": [
+        "ExitedLot",
+        "PaymentConfirmed",
+        "VisitOperational",
+        "VisitBilling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，用VisitLifecycleStateMachine统一管理，但图上用注释说明关联逻辑即可。另外给两个复合状态加右侧注释，列出包含的所有子状态，方便阅读。",
+      "elements_involved": [
+        "VisitLifecycleStateMachine",
+        "VisitOperational",
+        "VisitBilling",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加两条note right of，分别列出VisitOperationalStatus和VisitBillingStatus的完整子状态清单。EmergencyEvacuated的对接系统确认是Education_LMS_Portal吗？",
+      "elements_involved": [
+        "note",
+        "VisitOperational",
+        "VisitBilling",
+        "EmergencyEvacuated",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，紧急疏散触发后通知Education_LMS_Portal。AwaitingSlotAssignment的分配动作是Education_GradeSync处理，这个之前可能没说清楚。",
+      "elements_involved": [
+        "EmergencyEvacuated",
+        "Education_LMS_Portal",
+        "AwaitingSlotAssignment",
+        "Education_GradeSync",
+        "SlotAssigned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我修正一下，AwaitingSlotAssignment到SlotAssigned的转移标注加上\"Slot Assigned for Valet Park\"，并且确认触发系统是Education_GradeSync。之前只写了Slot Assigned。",
+      "elements_involved": [
+        "AwaitingSlotAssignment",
+        "SlotAssigned",
+        "Education_GradeSync",
+        "Valet Park"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ActiveInLot到AwaitingSlotAssignment的转移也要明确标注触发条件：\"Vehicle in lot, but no slot yet\"，系统用Education_ClassroomService做车位调度。",
+      "elements_involved": [
+        "ActiveInLot",
+        "AwaitingSlotAssignment",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新。现在检查所有Education系统的引用：LMS_Portal出现在PendingEntry、ActiveInLot到ExitedLot、EmergencyEvacuated；GradeSync在SlotAssignment和FailedToEnter；ClassroomService在AwaitingSlotAssignment、Cancelled、GraceExempt；StudentDB在CompletedOperational和BillingFinalized_Paid；ContentCDN在Abandoned和SlotAssigned返回。",
+      "elements_involved": [
+        "Education_LMS_Portal",
+        "Education_GradeSync",
+        "Education_ClassroomService",
+        "Education_StudentDB",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "GraceExempt_NoCharge到BillingFinalized_Paid的转移也要标注Education_ClassroomService，因为是课堂服务系统做的免单判定。另外PendingPriceQuote的触发也是它。",
+      "elements_involved": [
+        "GraceExempt_NoCharge",
+        "BillingFinalized_Paid",
+        "Education_ClassroomService",
+        "PendingPriceQuote"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "补上GraceExempt_NoCharge到BillingFinalized_Paid的Education_ClassroomService标注。再确认一下：Planned的入口标注是\"Reservation Confirmed\"，触发系统也是LMS_Portal？",
+      "elements_involved": [
+        "Planned",
+        "Education_LMS_Portal",
+        "Reservation Confirmed",
+        "GraceExempt_NoCharge",
+        "BillingFinalized_Paid"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Planned的入口就是复合状态本身的标注，用方括号表示触发源。PendingEntry到EnteredLot的ANPR确认要写完整：\"Vehicle ANPR Confirmed at Entry Gate / Gate Opened\"。",
+      "elements_involved": [
+        "Planned",
+        "PendingEntry",
+        "EnteredLot",
+        "ANPR",
+        "Gate Opened"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有转移标注已核对。现在看Interrupted的出口：Manual Override Exit到ExitedLot，Abandoned是超时滞留，EmergencyEvacuated是强制疏散。Abandoned的ContentCDN对接是做什么用？",
+      "elements_involved": [
+        "Interrupted",
+        "ExitedLot",
+        "Abandoned",
+        "EmergencyEvacuated",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Abandoned车辆需要ContentCDN持续提供位置追踪数据，直到人工拖走。另外CompletedOperational的\"Post-exit processing complete\"也要明确是ClassroomService做后续清理。",
+      "elements_involved": [
+        "Abandoned",
+        "Education_ContentCDN",
+        "CompletedOperational",
+        "Education_ClassroomService",
+        "Post-exit processing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正CompletedOperational的标注，加上\"(Education_ClassroomService)\"。Cancelled也明确是Education_ClassroomService。现在两个复合状态的注释内容需要我列全所有子状态吗？",
+      "elements_involved": [
+        "CompletedOperational",
+        "Education_ClassroomService",
+        "Cancelled",
+        "note",
+        "VisitOperational",
+        "VisitBilling"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，VisitOperational的note列出12个子状态包括CompletedOperational和Cancelled，VisitBilling的note列出10个计费状态。BillingFinalized_Paid和BillingFinalized_Unpaid要分开列。",
+      "elements_involved": [
+        "note",
+        "VisitOperational",
+        "VisitBilling",
+        "CompletedOperational",
+        "Cancelled",
+        "BillingFinalized_Paid",
+        "BillingFinalized_Unpaid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "注释已完善。最后检查标题：\"Easy Park Plus - Visit State Diagram (Education_GradeSync)\"，用Education_GradeSync作为副标题是因为它是核心调度系统吗？",
+      "elements_involved": [
+        "title",
+        "Easy Park Plus",
+        "Visit State Diagram",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，GradeSync负责车位分配和成绩同步类的调度逻辑，是教育场景的核心。另外stateDiagram-v2的语法确认支持复合状态和注释？",
+      "elements_involved": [
+        "stateDiagram-v2",
+        "Education_GradeSync",
+        "composite state",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认支持，我用的是state \"Name\" as Alias的语法定义复合状态，内部用--连接子状态。note right of语法也测试通过。",
+      "elements_involved": [
+        "stateDiagram-v2",
+        "state \"Name\" as Alias",
+        "note right of"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "补充一个细节：ActiveInLot到ExitedLot的转移也要标注Education_LMS_Portal，因为自由漫游车辆的离场同样需要门户系统确认。",
+      "elements_involved": [
+        "ActiveInLot",
+        "ExitedLot",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已补充ActiveInLot到ExitedLot的Education_LMS_Portal标注。现在所有LMS_Portal的引用点：Planned入口、PendingEntry触发、ActiveInLot离场、EmergencyEvacuated通知，共4处。",
+      "elements_involved": [
+        "ActiveInLot",
+        "ExitedLot",
+        "Education_LMS_Portal",
+        "Planned",
+        "PendingEntry",
+        "EmergencyEvacuated"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "PaymentConfirmed到BillingFinalized_Paid的转移需要标注吗？还是只保留PaymentConfirmed本身的系统标注？",
+      "elements_involved": [
+        "PaymentConfirmed",
+        "BillingFinalized_Paid",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "PaymentConfirmed本身已经标注了Education_LMS_Portal，到BillingFinalized_Paid的转移不需要额外系统标注，这是状态机内部流转。同样PendingPriceQuote到PriceQuoteReceived也是内部流转。",
+      "elements_involved": [
+        "PaymentConfirmed",
+        "BillingFinalized_Paid",
+        "PendingPriceQuote",
+        "PriceQuoteReceived",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认所有终态的数据出口：CompletedOperational→StudentDB，Cancelled→ClassroomService，FailedToEnter→GradeSync，EmergencyEvacuated→LMS_Portal，BillingFinalized_Paid→StudentDB，BillingFinalized_Unpaid→GradeSync，Abandoned→ContentCDN。",
+      "elements_involved": [
+        "CompletedOperational",
+        "Education_StudentDB",
+        "Cancelled",
+        "Education_ClassroomService",
+        "FailedToEnter",
+        "Education_GradeSync",
+        "EmergencyEvacuated",
+        "Education_LMS_Portal",
+        "BillingFinalized_Paid",
+        "BillingFinalized_Unpaid",
+        "Abandoned",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有终态出口核对完毕。图的结构完整了：两个顶层复合状态VisitOperational和VisitBilling，各自包含完整子状态机，通过注释说明并行关系，所有Education系统对接点清晰标注。",
+      "elements_involved": [
+        "VisitOperational",
+        "VisitBilling",
+        "Education_StudentDB",
+        "Education_ClassroomService",
+        "Education_GradeSync",
+        "Education_LMS_Portal",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 40,
+    "repair_count": 4,
+    "grounding_acts_count": 40,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:35Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:35Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 89468.2772,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 40
+  }
+}

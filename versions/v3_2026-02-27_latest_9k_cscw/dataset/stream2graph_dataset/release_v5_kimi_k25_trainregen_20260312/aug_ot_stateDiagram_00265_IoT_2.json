@@ -1,0 +1,413 @@
+{
+  "id": "aug_ot_stateDiagram_00265_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Coregentis/MPLP-Protocol/blob/52719b884a395ab1579588e03e6a6cac9a797ccf/docs/docs/specification/profiles/diagrams/sa-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Coregentis/MPLP-Protocol",
+  "diagram_type": "stateDiagram",
+  "code": "%%{IoT_Industrial_TelemetryStream}}}%%\n%% MPLP SA Profile Lifecycle State Machine\n%% Version: 1.0.0 | Frozen: 2025-12-03\n%% Schema Reference: schemas/v2/invariants/sa-invariants.yaml\n\nstateDiagram-v2\n    direction TB\n    \n    %% States\n    [IoT_Industrial_MQTT_Broker] --> Initialize: Boot Runtime\n    Initialize --> LoadContext: SA Created (IoT_Industrial_MQTT_Broker)\n    LoadContext --> EvaluatePlan: Context Valid (IoT_Industrial_TelemetryStream)\n    EvaluatePlan --> ExecuteStep: DAG Resolved\n    ExecuteStep --> EmitTrace: Step Done\n    EmitTrace --> ExecuteStep: More Steps\n    EmitTrace --> Complete: All Steps Done\n    Complete --> [IoT_Industrial_EdgeNode]: Terminate\n    \n    %% Error handling\n    LoadContext --> Failed: Context Invalid\n    EvaluatePlan --> Failed: Plan Invalid\n    ExecuteStep --> HandleError: Step Error\n    HandleError --> ExecuteStep: Retry\n    HandleError --> Failed: Fatal Error\n    Failed --> [IoT_Industrial_TelemetryStream]: Terminate\n    \n    %% State descriptions\n    state Initialize {IoT_Industrial_PLC_Logic] --> CreateSAInstance\n        CreateSAInstance --> GenerateSAId\n        GenerateSAId --> EmitSAInitialized\n        EmitSAInitialized --> [IoT_Industrial_TelemetryStream]\n    }\n    \n    state LoadContext {IoT_Industrial_TelemetryStream] --> ValidateContextId\n        ValidateContextId --> CheckContextStatus\n        CheckContextStatus --> EmitSAContextLoaded\n        EmitSAContextLoaded --> [IoT_Industrial_TelemetryStream]\n        \n        note right of ValidateContextId\n            sa_requires_context:\n            context_id must be UUID v4\n        end note\n        \n        note right of CheckContextStatus\n            sa_context_must_be_active:\n            context.status == 'active'\n        end note\n    }\n    \n    state EvaluatePlan {IoT_Industrial_TelemetryStream] --> ValidatePlanBinding\n        ValidatePlanBinding --> ParseSteps\n        ParseSteps --> ResolveDependencies\n        ResolveDependencies --> BuildExecutionDAG\n        BuildExecutionDAG --> EmitSAPlanEvaluated\n        EmitSAPlanEvaluated --> [IoT_Industrial_PLC_Logic]\n        \n        note right of ValidatePlanBinding\n            sa_plan_context_binding:\n            plan.context_id == context.context_id\n        end note\n        \n        note right of ParseSteps\n            sa_plan_has_steps:\n            steps.length >= 1\n            sa_steps_agent_role_if_present:\n            if agent_role present, non-empty\n        end note\n    }\n    \n    state ExecuteStep {IoT_Industrial_EdgeNode] --> SelectExecutor\n        SelectExecutor --> RunExecution\n        RunExecution --> UpdateStepStatus\n        UpdateStepStatus --> [IoT_Industrial_PLC_Logic]\n        \n        note right of SelectExecutor\n            Match agent_role to executor\n            (IoT_Industrial_ActuatorController)\n        end note\n    }\n    \n    state EmitTrace {IoT_Industrial_EdgeNode] --> WriteSegment\n        WriteSegment --> RecordOutcome\n        RecordOutcome --> EmitSATraceEmitted\n        EmitSATraceEmitted --> [IoT_Industrial_ActuatorController]\n        \n        note right of WriteSegment\n            sa_trace_context_binding:\n            trace.context_id == context.context_id\n            sa_trace_plan_binding:\n            trace.plan_id == plan.plan_id\n        end note\n    }\n    \n    state Complete {IoT_Industrial_ActuatorController] --> FinalizeTrace\n        FinalizeTrace --> EmitSACompleted\n        EmitSACompleted --> [IoT_Industrial_PLC_Logic]\n    }\n    \n    state HandleError {IoT_Industrial_TelemetryStream] --> ClassifyError\n        ClassifyError --> DecideAction\n        DecideAction --> [IoT_Industrial_EdgeNode]\n    }\n",
+  "content_size": 3394,
+  "collected_at": "2026-02-06T10:39:54.536966",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00265",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网场景设计一个SA（智能体实例）的生命周期状态机，核心是从MQTT Broker触发，经过初始化、上下文加载、计划执行到最终完成的完整流程。",
+      "elements_involved": [
+        "IoT_Industrial_MQTT_Broker",
+        "Initialize",
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "Complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这个状态机要体现SA从创建到终止的完整生命周期。我注意到有正常路径和错误处理两条线，错误处理需要独立分支吗？",
+      "elements_involved": [
+        "Failed",
+        "HandleError"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，错误处理必须独立出来。LoadContext阶段可能上下文无效，EvaluatePlan阶段计划可能不合法，ExecuteStep可能遇到步骤错误，这些都要能进入Failed终止态或HandleError重试。",
+      "elements_involved": [
+        "LoadContext",
+        "Failed",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "HandleError"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主流程框架画出来：从MQTT Broker启动，经过Initialize、LoadContext、EvaluatePlan、ExecuteStep、EmitTrace，最后Complete到EdgeNode终止。",
+      "elements_involved": [
+        "IoT_Industrial_MQTT_Broker",
+        "Initialize",
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "EmitTrace",
+        "Complete",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Initialize状态内部需要细化，这里要完成SA实例的创建。包括CreateSAInstance生成实例、GenerateSAId分配标识、最后EmitSAInitialized通知TelemetryStream。",
+      "elements_involved": [
+        "Initialize",
+        "CreateSAInstance",
+        "GenerateSAId",
+        "EmitSAInitialized",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Initialize内部结构已添加。我注意到CreateSAInstance和GenerateSAId之间有依赖关系，用顺序连接。最后EmitSAInitialized指向TelemetryStream作为信号输出。",
+      "elements_involved": [
+        "CreateSAInstance",
+        "GenerateSAId",
+        "EmitSAInitialized"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "LoadContext阶段很关键，需要验证context_id是UUID v4格式，还要检查context.status是否为active。这两个约束要作为注释标注出来。",
+      "elements_involved": [
+        "LoadContext",
+        "ValidateContextId",
+        "CheckContextStatus",
+        "EmitSAContextLoaded"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加LoadContext的内部状态：ValidateContextId验证UUID格式，CheckContextStatus检查active状态，通过后EmitSAContextLoaded。两个note注释也加上了，分别标注sa_requires_context和sa_context_must_be_active。",
+      "elements_involved": [
+        "ValidateContextId",
+        "CheckContextStatus",
+        "EmitSAContextLoaded",
+        "sa_requires_context",
+        "sa_context_must_be_active"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EvaluatePlan阶段要复杂一些，需要验证plan与context的绑定关系，解析步骤、解析依赖，最后构建执行DAG。这里也有两个关键约束：plan.context_id必须匹配context.context_id，且steps不能为空。",
+      "elements_involved": [
+        "EvaluatePlan",
+        "ValidatePlanBinding",
+        "ParseSteps",
+        "ResolveDependencies",
+        "BuildExecutionDAG",
+        "EmitSAPlanEvaluated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EvaluatePlan内部已完成：ValidateContextId之后是ParseSteps，然后是ResolveDependencies，接着BuildExecutionDAG，最后EmitSAPlanEvaluated指向PLC_Logic。注释标注了sa_plan_context_binding和sa_plan_has_steps约束。",
+      "elements_involved": [
+        "ValidatePlanBinding",
+        "ParseSteps",
+        "ResolveDependencies",
+        "BuildExecutionDAG",
+        "EmitSAPlanEvaluated",
+        "IoT_Industrial_PLC_Logic",
+        "sa_plan_context_binding",
+        "sa_plan_has_steps"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "agent_role的约束也要加上——如果存在agent_role字段，必须非空。这个在ParseSteps的注释里体现。",
+      "elements_involved": [
+        "ParseSteps",
+        "sa_steps_agent_role_if_present",
+        "agent_role"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充，ParseSteps的note现在包含两条：sa_plan_has_steps和sa_steps_agent_role_if_present。",
+      "elements_involved": [
+        "ParseSteps",
+        "sa_steps_agent_role_if_present"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ExecuteStep阶段在EdgeNode上执行，核心是SelectExecutor匹配agent_role到具体的ActuatorController，然后RunExecution，最后UpdateStepStatus回写到PLC_Logic。",
+      "elements_involved": [
+        "ExecuteStep",
+        "IoT_Industrial_EdgeNode",
+        "SelectExecutor",
+        "RunExecution",
+        "UpdateStepStatus",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ExecuteStep内部结构已画好，SelectExecutor的注释注明了匹配agent_role到ActuatorController。这里有个问题——UpdateStepStatus之后直接结束吗？",
+      "elements_involved": [
+        "SelectExecutor",
+        "RunExecution",
+        "UpdateStepStatus"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "UpdateStepStatus之后应该指向PLC_Logic，但我在描述里漏了。另外，ExecuteStep正常完成后应该进入EmitTrace，而不是直接循环。让我修正：ExecuteStep -- EmitTrace是主流程，EmitTrace之后如果还有更多步骤就回到ExecuteStep，全部完成才进Complete。",
+      "elements_involved": [
+        "ExecuteStep",
+        "EmitTrace",
+        "Complete",
+        "UpdateStepStatus",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正流程：ExecuteStep完成后进入EmitTrace，EmitTrace内部完成WriteSegment、RecordOutcome、EmitSATraceEmitted后，判断是否有更多步骤——有则返回ExecuteStep，无则进入Complete。",
+      "elements_involved": [
+        "EmitTrace",
+        "WriteSegment",
+        "RecordOutcome",
+        "EmitSATraceEmitted",
+        "ExecuteStep",
+        "Complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EmitTrace的注释需要标注两个绑定约束：trace.context_id必须匹配context.context_id，trace.plan_id必须匹配plan.plan_id。",
+      "elements_involved": [
+        "EmitTrace",
+        "WriteSegment",
+        "sa_trace_context_binding",
+        "sa_trace_plan_binding",
+        "trace",
+        "context",
+        "plan"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加，WriteSegment右侧的note包含了sa_trace_context_binding和sa_trace_plan_binding两条约束。",
+      "elements_involved": [
+        "WriteSegment",
+        "sa_trace_context_binding",
+        "sa_trace_plan_binding"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Complete阶段在ActuatorController上完成，FinalizeTrace之后EmitSACompleted，最终信号回到PLC_Logic，然后流程终止到EdgeNode。",
+      "elements_involved": [
+        "Complete",
+        "IoT_Industrial_ActuatorController",
+        "FinalizeTrace",
+        "EmitSACompleted",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Complete内部已添加：FinalizeTrace -- EmitSACompleted -- PLC_Logic。主流程的Complete到EdgeNode的终止连接也已确认。",
+      "elements_involved": [
+        "Complete",
+        "FinalizeTrace",
+        "EmitSACompleted",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在补充错误处理分支。HandleError在TelemetryStream上执行，包括ClassifyError和DecideAction，决定是重试还是终止。重试回到ExecuteStep，致命错误进入Failed。",
+      "elements_involved": [
+        "HandleError",
+        "IoT_Industrial_TelemetryStream",
+        "ClassifyError",
+        "DecideAction",
+        "ExecuteStep",
+        "Failed",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "HandleError内部已画：ClassifyError -- DecideAction -- EdgeNode。外部连接：ExecuteStep -- HandleError（步骤错误），HandleError -- ExecuteStep（重试），HandleError -- Failed（致命错误）。",
+      "elements_involved": [
+        "HandleError",
+        "ClassifyError",
+        "DecideAction",
+        "IoT_Industrial_EdgeNode",
+        "ExecuteStep",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Failed终止态要统一，不管是LoadContext失败、EvaluatePlan失败还是HandleError的致命错误，最终都终止到TelemetryStream。",
+      "elements_involved": [
+        "Failed",
+        "IoT_Industrial_TelemetryStream",
+        "LoadContext",
+        "EvaluatePlan",
+        "HandleError"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已统一Failed的出口：LoadContext -- Failed（Context Invalid），EvaluatePlan -- Failed（Plan Invalid），HandleError -- Failed（Fatal Error），最后Failed -- TelemetryStream终止。",
+      "elements_involved": [
+        "Failed",
+        "LoadContext",
+        "EvaluatePlan",
+        "HandleError",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整体结构检查一遍：方向是TB自上而下，各状态内部的工业组件标注正确——Initialize用PLC_Logic，LoadContext/EvaluatePlan/HandleError用TelemetryStream，ExecuteStep/EmitTrace用EdgeNode，Complete用ActuatorController。",
+      "elements_involved": [
+        "direction TB",
+        "Initialize",
+        "IoT_Industrial_PLC_Logic",
+        "LoadContext",
+        "EvaluatePlan",
+        "HandleError",
+        "IoT_Industrial_TelemetryStream",
+        "ExecuteStep",
+        "EmitTrace",
+        "IoT_Industrial_EdgeNode",
+        "Complete",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。版本信息已标注为1.0.0，冻结日期2025-12-03，Schema引用schemas/v2/invariants/sa-invariants.yaml。所有状态转换、内部子状态、约束注释和错误处理分支均已完成。",
+      "elements_involved": [
+        "Version: 1.0.0",
+        "Frozen: 2025-12-03",
+        "Schema Reference: schemas/v2/invariants/sa-invariants.yaml"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 26,
+    "repair_count": 1,
+    "grounding_acts_count": 26,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 56407.0771,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 26
+  }
+}

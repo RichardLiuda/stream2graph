@@ -1,0 +1,420 @@
+{
+  "id": "aug_ot_stateDiagram_00265_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Coregentis/MPLP-Protocol/blob/52719b884a395ab1579588e03e6a6cac9a797ccf/docs/docs/specification/profiles/diagrams/sa-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Coregentis/MPLP-Protocol",
+  "diagram_type": "stateDiagram",
+  "code": "%%{Education_StudentDB}}}%%\n%% MPLP SA Profile Lifecycle State Machine\n%% Version: 1.0.0 | Frozen: 2025-12-03\n%% Schema Reference: schemas/v2/invariants/sa-invariants.yaml\n\nstateDiagram-v2\n    direction TB\n    \n    %% States\n    [Education_ContentCDN] --> Initialize: Boot Runtime\n    Initialize --> LoadContext: SA Created (Education_StudentDB)\n    LoadContext --> EvaluatePlan: Context Valid (Education_GradeSync)\n    EvaluatePlan --> ExecuteStep: DAG Resolved\n    ExecuteStep --> EmitTrace: Step Done\n    EmitTrace --> ExecuteStep: More Steps\n    EmitTrace --> Complete: All Steps Done\n    Complete --> [Education_LMS_Portal]: Terminate\n    \n    %% Error handling\n    LoadContext --> Failed: Context Invalid\n    EvaluatePlan --> Failed: Plan Invalid\n    ExecuteStep --> HandleError: Step Error\n    HandleError --> ExecuteStep: Retry\n    HandleError --> Failed: Fatal Error\n    Failed --> [Education_LMS_Portal]: Terminate\n    \n    %% State descriptions\n    state Initialize {Education_GradeSync] --> CreateSAInstance\n        CreateSAInstance --> GenerateSAId\n        GenerateSAId --> EmitSAInitialized\n        EmitSAInitialized --> [Education_ContentCDN]\n    }\n    \n    state LoadContext {Education_ClassroomService] --> ValidateContextId\n        ValidateContextId --> CheckContextStatus\n        CheckContextStatus --> EmitSAContextLoaded\n        EmitSAContextLoaded --> [Education_ContentCDN]\n        \n        note right of ValidateContextId\n            sa_requires_context:\n            context_id must be UUID v4\n        end note\n        \n        note right of CheckContextStatus\n            sa_context_must_be_active:\n            context.status == 'active'\n        end note\n    }\n    \n    state EvaluatePlan {Education_StudentDB] --> ValidatePlanBinding\n        ValidatePlanBinding --> ParseSteps\n        ParseSteps --> ResolveDependencies\n        ResolveDependencies --> BuildExecutionDAG\n        BuildExecutionDAG --> EmitSAPlanEvaluated\n        EmitSAPlanEvaluated --> [Education_ContentCDN]\n        \n        note right of ValidatePlanBinding\n            sa_plan_context_binding:\n            plan.context_id == context.context_id\n        end note\n        \n        note right of ParseSteps\n            sa_plan_has_steps:\n            steps.length >= 1\n            sa_steps_agent_role_if_present:\n            if agent_role present, non-empty\n        end note\n    }\n    \n    state ExecuteStep {Education_GradeSync] --> SelectExecutor\n        SelectExecutor --> RunExecution\n        RunExecution --> UpdateStepStatus\n        UpdateStepStatus --> [Education_ClassroomService]\n        \n        note right of SelectExecutor\n            Match agent_role to executor\n            (Education_GradeSync)\n        end note\n    }\n    \n    state EmitTrace {Education_GradeSync] --> WriteSegment\n        WriteSegment --> RecordOutcome\n        RecordOutcome --> EmitSATraceEmitted\n        EmitSATraceEmitted --> [Education_ContentCDN]\n        \n        note right of WriteSegment\n            sa_trace_context_binding:\n            trace.context_id == context.context_id\n            sa_trace_plan_binding:\n            trace.plan_id == plan.plan_id\n        end note\n    }\n    \n    state Complete {Education_ContentCDN] --> FinalizeTrace\n        FinalizeTrace --> EmitSACompleted\n        EmitSACompleted --> [Education_LMS_Portal]\n    }\n    \n    state HandleError {Education_GradeSync] --> ClassifyError\n        ClassifyError --> DecideAction\n        DecideAction --> [Education_ContentCDN]\n    }\n",
+  "content_size": 3394,
+  "collected_at": "2026-02-06T10:39:54.536966",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Education",
+  "seed_id": "ot_stateDiagram_00265",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为MPLP SA的生命周期设计一个状态机。这个系统涉及教育场景，核心是从ContentCDN启动，最终要回到LMS Portal。你先帮我梳理一下整体流向？",
+      "elements_involved": [
+        "Education_ContentCDN",
+        "Education_LMS_Portal",
+        "Initialize",
+        "Complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，整体是纵向TB布局。我理解为：ContentCDN触发Initialize，经过一系列中间状态，最终Complete后终止到LMS Portal。中间有哪些关键阶段？",
+      "elements_involved": [
+        "direction TB",
+        "Initialize",
+        "Complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "核心阶段有四个：Initialize之后是LoadContext，需要验证StudentDB的数据；然后是EvaluatePlan，依赖GradeSync做计划评估；接着ExecuteStep执行具体步骤；最后EmitTrace记录轨迹。每个阶段都要有明确的触发条件。",
+      "elements_involved": [
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "EmitTrace",
+        "Education_StudentDB",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主线画出来：Initialize→LoadContext（标注SA Created），LoadContext→EvaluatePlan（标注Context Valid），EvaluatePlan→ExecuteStep（DAG Resolved），ExecuteStep→EmitTrace（Step Done），EmitTrace可以循环回ExecuteStep或者走向Complete。",
+      "elements_involved": [
+        "Initialize",
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "EmitTrace",
+        "Complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "主线对的，但EmitTrace循环的条件要写清楚——More Steps。另外Complete之后要指向LMS Portal终止。我们还需要考虑错误处理分支。",
+      "elements_involved": [
+        "EmitTrace",
+        "ExecuteStep",
+        "More Steps",
+        "Complete",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "错误处理我这样设计：LoadContext可能失败（Context Invalid），EvaluatePlan可能失败（Plan Invalid），ExecuteStep出错时进入HandleError。HandleError可以重试或走向Fatal Error。所有失败最终都终止到LMS Portal。",
+      "elements_involved": [
+        "Failed",
+        "HandleError",
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。现在细化每个状态的内部子流程。Initialize阶段需要GradeSync参与，包含CreateSAInstance、GenerateSAId、EmitSAInitialized，最后回到ContentCDN。",
+      "elements_involved": [
+        "Initialize",
+        "Education_GradeSync",
+        "CreateSAInstance",
+        "GenerateSAId",
+        "EmitSAInitialized",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Initialize子状态已添加。接下来LoadContext需要ClassroomService，包含ValidateContextId、CheckContextStatus、EmitSAContextLoaded，回ContentCDN。这里需要加约束注释吗？",
+      "elements_involved": [
+        "LoadContext",
+        "Education_ClassroomService",
+        "ValidateContextId",
+        "CheckContextStatus",
+        "EmitSAContextLoaded"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "必须加。ValidateContextId旁边注明：context_id必须是UUID v4。CheckContextStatus旁边注明：context.status必须等于active。这两个是sa_requires_context和sa_context_must_be_active约束。",
+      "elements_involved": [
+        "ValidateContextId",
+        "CheckContextStatus",
+        "sa_requires_context",
+        "sa_context_must_be_active",
+        "UUID v4",
+        "active"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "注释已添加。EvaluatePlan阶段依赖StudentDB，包含ValidatePlanBinding、ParseSteps、ResolveDependencies、BuildExecutionDAG、EmitSAPlanEvaluated，回ContentCDN。这个阶段的约束是什么？",
+      "elements_involved": [
+        "EvaluatePlan",
+        "Education_StudentDB",
+        "ValidatePlanBinding",
+        "ParseSteps",
+        "ResolveDependencies",
+        "BuildExecutionDAG",
+        "EmitSAPlanEvaluated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EvaluatePlan有两条关键约束。ValidatePlanBinding处：plan.context_id必须等于context.context_id。ParseSteps处：steps长度至少为1，且如果存在agent_role则必须非空。",
+      "elements_involved": [
+        "ValidatePlanBinding",
+        "ParseSteps",
+        "sa_plan_context_binding",
+        "sa_plan_has_steps",
+        "sa_steps_agent_role_if_present",
+        "agent_role"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到。现在处理ExecuteStep，需要GradeSync的SelectExecutor、RunExecution、UpdateStepStatus，最后到ClassroomService。SelectExecutor的注释要写什么？",
+      "elements_involved": [
+        "ExecuteStep",
+        "Education_GradeSync",
+        "SelectExecutor",
+        "RunExecution",
+        "UpdateStepStatus",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SelectExecutor处注明：匹配agent_role到executor，标注GradeSync。这是执行器选择逻辑。",
+      "elements_involved": [
+        "SelectExecutor",
+        "agent_role",
+        "executor",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ExecuteStep完成。EmitTrace同样用GradeSync，包含WriteSegment、RecordOutcome、EmitSATraceEmitted，回ContentCDN。这个轨迹写入有什么绑定要求？",
+      "elements_involved": [
+        "EmitTrace",
+        "Education_GradeSync",
+        "WriteSegment",
+        "RecordOutcome",
+        "EmitSATraceEmitted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "WriteSegment处需要两条约束：trace.context_id等于context.context_id，trace.plan_id等于plan.plan_id。即sa_trace_context_binding和sa_trace_plan_binding。",
+      "elements_involved": [
+        "WriteSegment",
+        "sa_trace_context_binding",
+        "sa_trace_plan_binding",
+        "context_id",
+        "plan_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EmitTrace注释已加。Complete阶段用ContentCDN，包含FinalizeTrace、EmitSACompleted，最终到LMS Portal。HandleError阶段用GradeSync，包含ClassifyError、DecideAction，回ContentCDN。",
+      "elements_involved": [
+        "Complete",
+        "Education_ContentCDN",
+        "FinalizeTrace",
+        "EmitSACompleted",
+        "HandleError",
+        "ClassifyError",
+        "DecideAction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下：HandleError到ExecuteStep的Retry条件，以及到Failed的Fatal Error条件都标注了吗？还有Failed到LMS Portal的终止。",
+      "elements_involved": [
+        "HandleError",
+        "ExecuteStep",
+        "Retry",
+        "Failed",
+        "Fatal Error",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都标注了。但我发现EvaluatePlan内部的BuildExecutionDAG拼写需要确认，以及整个图的版本信息。",
+      "elements_involved": [
+        "BuildExecutionDAG",
+        "version",
+        "frozen date"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "版本用1.0.0，冻结日期2025-12-03，Schema引用schemas/v2/invariants/sa-invariants.yaml。标题是MPLP SA Profile Lifecycle State Machine。",
+      "elements_involved": [
+        "1.0.0",
+        "2025-12-03",
+        "schemas/v2/invariants/sa-invariants.yaml",
+        "MPLP SA Profile Lifecycle State Machine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "元信息已添加。再确认一下：Initialize的入口是ContentCDN通过Boot Runtime触发，这个标注正确吗？",
+      "elements_involved": [
+        "Initialize",
+        "Education_ContentCDN",
+        "Boot Runtime"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。另外LoadContext的触发条件SA Created后面要标注StudentDB，EvaluatePlan的Context Valid后面标注GradeSync，这些系统标注都完整吗？",
+      "elements_involved": [
+        "LoadContext",
+        "SA Created",
+        "Education_StudentDB",
+        "EvaluatePlan",
+        "Context Valid",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现一处需要修正：EvaluatePlan内部我误写了StudentDB的闭环，应该是StudentDB启动ValidatePlanBinding，经过BuildExecutionDAG后EmitSAPlanEvaluated回到ContentCDN，不是闭环。已修正。",
+      "elements_involved": [
+        "EvaluatePlan",
+        "Education_StudentDB",
+        "ValidatePlanBinding",
+        "EmitSAPlanEvaluated",
+        "Education_ContentCDN"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ExecuteStep的终点是ClassroomService，不是ContentCDN，确认一下？UpdateStepStatus之后指向ClassroomService。",
+      "elements_involved": [
+        "ExecuteStep",
+        "UpdateStepStatus",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，ExecuteStep的UpdateStepStatus指向ClassroomService，这是状态同步点。所有子状态的系统归属我都再核对一遍：Initialize-ContentCDN入口/GradeSync处理；LoadContext-ClassroomService；EvaluatePlan-StudentDB；ExecuteStep-GradeSync处理/ClassroomService终点；EmitTrace-GradeSync；Complete-ContentCDN；HandleError-GradeSync。",
+      "elements_involved": [
+        "Initialize",
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "EmitTrace",
+        "Complete",
+        "HandleError",
+        "Education_ContentCDN",
+        "Education_GradeSync",
+        "Education_StudentDB",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认：所有EmitSA*事件都回到ContentCDN作为信号总线，Complete和Failed都终止到LMS Portal。约束注释的格式统一用note right of。",
+      "elements_involved": [
+        "EmitSAInitialized",
+        "EmitSAContextLoaded",
+        "EmitSAPlanEvaluated",
+        "EmitSATraceEmitted",
+        "EmitSACompleted",
+        "Education_ContentCDN",
+        "Complete",
+        "Failed",
+        "Education_LMS_Portal",
+        "note right of"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部确认完毕。状态机共8个主状态，5个含内部子状态，4条错误处理分支，6条约束注释，所有系统交互点正确映射到Education_ContentCDN、Education_GradeSync、Education_StudentDB、Education_ClassroomService、Education_LMS_Portal。图示符合MPLP SA生命周期规范。",
+      "elements_involved": [
+        "stateDiagram-v2",
+        "Education_ContentCDN",
+        "Education_GradeSync",
+        "Education_StudentDB",
+        "Education_ClassroomService",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 26,
+    "repair_count": 1,
+    "grounding_acts_count": 26,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 71798.8603,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 26
+  }
+}

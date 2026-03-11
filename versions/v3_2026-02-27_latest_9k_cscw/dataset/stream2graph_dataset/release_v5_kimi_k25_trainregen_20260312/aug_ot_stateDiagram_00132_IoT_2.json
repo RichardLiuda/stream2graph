@@ -1,0 +1,340 @@
+{
+  "id": "aug_ot_stateDiagram_00132_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Three-Rivers-Tech/finance_feedback_engine/blob/414c209b886adbac796e1d4ceea68c4cf81baebc/docs/diagrams/agent_state_machine.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Three-Rivers-Tech/finance_feedback_engine",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [IoT_Industrial_TelemetryStream] --> STARTUP\n\n    STARTUP --> POSITION_RECOVERY: Initialize Agent\n\n    state POSITION_RECOVERY {IoT_Industrial_ActuatorController] --> QueryPlatform\n        QueryPlatform --> ExtractPositions: get_portfolio_breakdown\n        ExtractPositions --> GenerateSyntheticDecisions: Found N positions\n        GenerateSyntheticDecisions --> RebuildMemory: Create decision records\n        RebuildMemory --> AssociateMonitor: Populate PortfolioMemoryEngine\n        AssociateMonitor --> [IoT_Industrial_MQTT_Broker]: Mark startup_complete\n\n        QueryPlatform --> RetryBackoff: Failure\n        RetryBackoff --> QueryPlatform: Exponential delay\n        QueryPlatform --> ForceComplete: Max retries\n        ForceComplete --> [IoT_Industrial_PLC_Logic]: Continue with empty state\n    }\n\n    POSITION_RECOVERY --> IDLE: Recovery Complete\n\n    state IDLE {IoT_Industrial_PLC_Logic] --> WaitInterval\n        WaitInterval --> [IoT_Industrial_MQTT_Broker]: After analysis_frequency_seconds\n    }\n\n    IDLE --> LEARNING: Timer Expires\n\n    state LEARNING {IoT_Industrial_ActuatorController] --> FetchClosedTrades\n        FetchClosedTrades --> ProcessOutcomes: get_closed_trades\n        ProcessOutcomes --> RecordMemory: PortfolioMemoryEngine\n        RecordMemory --> [IoT_Industrial_ActuatorController]: Update experience\n    }\n\n    LEARNING --> PERCEPTION\n\n    state PERCEPTION {IoT_Industrial_MQTT_Broker] --> FetchPortfolio\n        FetchPortfolio --> KillSwitchCheck: get_portfolio_breakdown\n        KillSwitchCheck --> DailyReset: P&L within limits\n        DailyReset --> [IoT_Industrial_EdgeNode]: Reset trade count\n\n        KillSwitchCheck --> HALT: P&L breached\n    }\n\n    PERCEPTION --> REASONING\n\n    state REASONING {IoT_Industrial_MQTT_Broker] --> LoopAssets\n        LoopAssets --> AnalyzeAsset: For each asset\n        AnalyzeAsset --> RetryLogic: generate_decision\n        RetryLogic --> CheckAction: Success\n        CheckAction --> NextAsset: HOLD\n        CheckAction --> [IoT_Industrial_PLC_Logic]: BUY/SELL\n\n        RetryLogic --> ExponentialBackoff: Failure\n        ExponentialBackoff --> AnalyzeAsset: Retry\n        ExponentialBackoff --> MarkFailure: Max retries\n        MarkFailure --> NextAsset: Skip\n\n        NextAsset --> LoopAssets: More assets\n        NextAsset --> [IoT_Industrial_PLC_Logic]: All processed\n    }\n\n    REASONING --> RISK_CHECK: Actionable\n    REASONING --> IDLE: No Action\n\n    state RISK_CHECK {IoT_Industrial_PLC_Logic] --> GetMonitoringContext\n        GetMonitoringContext --> ValidateTrade: RiskGatekeeper\n        ValidateTrade --> [IoT_Industrial_MQTT_Broker]: Approved\n        ValidateTrade --> [IoT_Industrial_MQTT_Broker]: Denied\n    }\n\n    RISK_CHECK --> EXECUTION: Approved\n    RISK_CHECK --> PERCEPTION: Rejected\n\n    state EXECUTION {IoT_Industrial_ActuatorController] --> SendOrder\n        SendOrder --> AssociateDecision: execute_trade\n        AssociateDecision --> IncrementCounter: TradeMonitor\n        IncrementCounter --> [IoT_Industrial_PLC_Logic]: daily_trade_count++\n\n        SendOrder --> LogFailure: Error\n        LogFailure --> EXECUTION_FAILED\n    }\n\n    EXECUTION --> LEARNING: Executed\n    EXECUTION_FAILED --> PERCEPTION: Retry\n\n    state HALT {IoT_Industrial_MQTT_Broker] --> StopAgent\n        StopAgent --> [IoT_Industrial_EdgeNode]: is_running = False\n    }\n\n    HALT --> [IoT_Industrial_TelemetryStream]: Agent Stopped\n\n    style STARTUP fill:#00BCD4,stroke:#006064,color:#fff\n    style POSITION_RECOVERY fill:#00BCD4,stroke:#006064,color:#fff\n    style IDLE fill:#9E9E9E,stroke:#424242,color:#fff\n    style LEARNING fill:#4CAF50,stroke:#2E7D32,color:#fff\n    style PERCEPTION fill:#2196F3,stroke:#0D47A1,color:#fff\n    style REASONING fill:#FF9800,stroke:#E65100,color:#fff\n    style RISK_CHECK fill:#FFC107,stroke:#F57C00,color:#333\n    style EXECUTION fill:#9C27B0,stroke:#4A148C,color:#fff\n    style HALT fill:#F44336,stroke:#C62828,color:#fff\n    style EXECUTION_FAILED fill:#F44336,stroke:#C62828,color:#fff\n",
+  "content_size": 3556,
+  "collected_at": "2026-02-06T10:38:16.459971",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 1,
+  "repo_owner": "Three-Rivers-Tech",
+  "repo_name": "finance_feedback_engine",
+  "repo_description": "Finance feedback engine is an automated portfolio simulation tool using the LLM models of your choice.",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2025-11-19T00:29:36Z",
+  "repo_updated_at": "2026-01-22T19:46:09Z",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00132",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网智能代理设计一个完整的状态机。核心流程是从遥测流启动，经过初始化后进入位置恢复阶段。我想把POSITION_RECOVERY做成一个复合状态，里面包含查询平台、提取持仓、生成决策记录这些步骤。",
+      "elements_involved": [
+        "IoT_Industrial_TelemetryStream",
+        "STARTUP",
+        "POSITION_RECOVERY",
+        "QueryPlatform",
+        "ExtractPositions",
+        "GenerateSyntheticDecisions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，POSITION_RECOVERY作为复合状态。我注意到里面有个循环逻辑——QueryPlatform失败时要走RetryBackoff，这个重试机制需要画出来吗？还有最大重试次数后的ForceComplete分支。",
+      "elements_involved": [
+        "QueryPlatform",
+        "RetryBackoff",
+        "ForceComplete",
+        "Exponential delay"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，重试机制必须有。RetryBackoff要回到QueryPlatform，用指数退避策略。ForceComplete是最后的兜底，直接继续空状态运行。另外恢复完成后要进入IDLE状态，这个状态比较简单，就是等待定时器。",
+      "elements_involved": [
+        "RetryBackoff",
+        "QueryPlatform",
+        "Exponential delay",
+        "ForceComplete",
+        "IDLE",
+        "WaitInterval"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出POSITION_RECOVERY和IDLE的结构。IDLE里面我放了WaitInterval，触发条件是analysis_frequency_seconds之后进入LEARNING。LEARNING阶段需要处理已平仓交易的学习，这个也是复合状态对吧？",
+      "elements_involved": [
+        "IDLE",
+        "WaitInterval",
+        "LEARNING",
+        "FetchClosedTrades",
+        "ProcessOutcomes"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，LEARNING要闭环学习。FetchClosedTrades获取历史交易，ProcessOutcomes处理结果，然后RecordMemory更新PortfolioMemoryEngine。完成后进入PERCEPTION感知阶段，这里要做风控检查。",
+      "elements_involved": [
+        "LEARNING",
+        "FetchClosedTrades",
+        "ProcessOutcomes",
+        "RecordMemory",
+        "PortfolioMemoryEngine",
+        "PERCEPTION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "PERCEPTION里的KillSwitchCheck我理解是核心风控节点。P&L在正常范围内走DailyReset重置交易计数，如果触及阈值直接进HALT停机。这个DailyReset要连到EdgeNode吗？",
+      "elements_involved": [
+        "PERCEPTION",
+        "KillSwitchCheck",
+        "DailyReset",
+        "HALT",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，DailyReset完成后回到EdgeNode。HALT是终止状态，最终要回到TelemetryStream标记代理停止。现在重点在REASONING阶段，这是最复杂的决策循环。",
+      "elements_involved": [
+        "DailyReset",
+        "IoT_Industrial_EdgeNode",
+        "HALT",
+        "IoT_Industrial_TelemetryStream",
+        "REASONING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在画REASONING了。LoopAssets遍历资产，AnalyzeAsset对每个资产生成决策。这里有个RetryLogic处理失败情况，成功的话CheckAction判断是HOLD还是交易动作。",
+      "elements_involved": [
+        "REASONING",
+        "LoopAssets",
+        "AnalyzeAsset",
+        "RetryLogic",
+        "CheckAction",
+        "NextAsset"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "CheckAction的分支要注意：HOLD直接NextAsset，BUY或SELL要连到PLC_Logic执行。RetryLogic失败时走ExponentialBackoff，可以重试AnalyzeAsset，但最多三次后MarkFailure跳过该资产。",
+      "elements_involved": [
+        "CheckAction",
+        "HOLD",
+        "BUY",
+        "SELL",
+        "IoT_Industrial_PLC_Logic",
+        "ExponentialBackoff",
+        "MarkFailure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "清楚了，MarkFailure之后走NextAsset继续循环。所有资产处理完回到PLC_Logic。REASONING之后有两个出口：有交易信号进RISK_CHECK，无操作回IDLE。",
+      "elements_involved": [
+        "MarkFailure",
+        "NextAsset",
+        "RISK_CHECK",
+        "IDLE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RISK_CHECK也是复合状态，GetMonitoringContext获取监控上下文，ValidateTrade由RiskGatekeeper审核。通过的话进EXECUTION执行，拒绝则回到PERCEPTION重新感知。",
+      "elements_involved": [
+        "RISK_CHECK",
+        "GetMonitoringContext",
+        "ValidateTrade",
+        "RiskGatekeeper",
+        "EXECUTION",
+        "PERCEPTION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EXECUTION我画了SendOrder发送订单，成功走AssociateDecision关联决策，然后IncrementCounter更新TradeMonitor的daily_trade_count。但失败分支我需要确认。",
+      "elements_involved": [
+        "EXECUTION",
+        "SendOrder",
+        "AssociateDecision",
+        "IncrementCounter",
+        "TradeMonitor",
+        "daily_trade_count"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SendOrder失败时走LogFailure，进入EXECUTION_FAILED状态，然后回到PERCEPTION重试。成功执行后进入LEARNING闭环学习。这个失败状态要标红。",
+      "elements_involved": [
+        "SendOrder",
+        "LogFailure",
+        "EXECUTION_FAILED",
+        "PERCEPTION",
+        "LEARNING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "状态流转都画好了。现在需要设置颜色区分：STARTUP和POSITION_RECOVERY用青色，IDLE灰色，LEARNING绿色，PERCEPTION蓝色，REASONING橙色，RISK_CHECK琥珀色，EXECUTION紫色，HALT和EXECUTION_FAILED红色。",
+      "elements_involved": [
+        "STARTUP",
+        "POSITION_RECOVERY",
+        "IDLE",
+        "LEARNING",
+        "PERCEPTION",
+        "REASONING",
+        "RISK_CHECK",
+        "EXECUTION",
+        "HALT",
+        "EXECUTION_FAILED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "颜色方案可以。但RISK_CHECK用琥珀色时文字要用深色确保可读性，其他状态白字。另外检查一下MQTT_Broker的连接点，它在PERCEPTION、RISK_CHECK和HALT都有出现。",
+      "elements_involved": [
+        "RISK_CHECK",
+        "IoT_Industrial_MQTT_Broker",
+        "PERCEPTION",
+        "HALT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现个问题：PERCEPTION里的FetchPortfolio我标成了从MQTT_Broker开始，但代码里应该是MQTT_Broker触发FetchPortfolio。还有REASONING里的LoopAssets入口也是MQTT_Broker。我调整一下连接方向。",
+      "elements_involved": [
+        "PERCEPTION",
+        "FetchPortfolio",
+        "IoT_Industrial_MQTT_Broker",
+        "REASONING",
+        "LoopAssets"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "修正得好。另外确认下POSITION_RECOVERY里的AssociateMonitor，它完成时要标记startup_complete并连到MQTT_Broker。还有RebuildMemory到AssociateMonitor的流转。",
+      "elements_involved": [
+        "POSITION_RECOVERY",
+        "AssociateMonitor",
+        "startup_complete",
+        "IoT_Industrial_MQTT_Broker",
+        "RebuildMemory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都调整好了。现在复合状态内部的初始状态我都用方括号标注了入口，比如POSITION_RECOVERY从ActuatorController进入，IDLE从PLC_Logic进入，LEARNING也是从ActuatorController进入。",
+      "elements_involved": [
+        "POSITION_RECOVERY",
+        "IoT_Industrial_ActuatorController",
+        "IDLE",
+        "IoT_Industrial_PLC_Logic",
+        "LEARNING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "LEARNING的入口确认是ActuatorController。但PERCEPTION的入口应该是MQTT_Broker，REASONING也是。RISK_CHECK是PLC_Logic，EXECUTION回到ActuatorController。这些入口节点别搞混了。",
+      "elements_involved": [
+        "LEARNING",
+        "PERCEPTION",
+        "REASONING",
+        "RISK_CHECK",
+        "EXECUTION",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部核对完毕，入口节点都正确。HALT的StopAgent最后设置is_running为False并回到TelemetryStream。整个状态机从启动、恢复、空闲、学习、感知、推理、风控到执行，形成了完整的闭环。",
+      "elements_involved": [
+        "HALT",
+        "StopAgent",
+        "is_running",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 20,
+    "repair_count": 1,
+    "grounding_acts_count": 20,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 43388.0496,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 20
+  }
+}

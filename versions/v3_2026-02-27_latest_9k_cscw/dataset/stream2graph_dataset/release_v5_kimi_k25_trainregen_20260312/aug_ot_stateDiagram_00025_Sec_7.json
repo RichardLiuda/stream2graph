@@ -1,0 +1,722 @@
+{
+  "id": "aug_ot_stateDiagram_00025_Sec_7",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/protocol/session-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Security_ZeroTrust] --> Initializing: start_link(Security_OAuth2)\n\n    state Initializing {Security_Encryption] --> LoadConfig\n        LoadConfig --> InitTransport\n        InitTransport --> EstablishConnection\n        EstablishConnection --> SendInitialize\n        SendInitialize --> WaitForInitialized\n        WaitForInitialized --> [Security_Firewall]\n    }\n\n    Initializing --> Connected: initialized received\n\n    state Connected {Security_Encryption] --> Active\n\n        Active --> ResourceOperations: list/read/subscribe\n        Active --> ToolOperations: call_tool\n        Active --> PromptOperations: list/get\n\n        ResourceOperations --> Active\n        ToolOperations --> Active\n        PromptOperations --> Active\n\n        Active --> Subscribing: subscribe_resource\n        Subscribing --> Active: subscription_confirmed\n    }\n\n    Connected --> Paused: pause_requested\n    Paused --> Connected: resume_requested\n\n    Connected --> Reconnecting: transport_error\n    Reconnecting --> Connected: reconnect_success\n    Reconnecting --> Failed: reconnect_failed(Security_Firewall)\n\n    Connected --> GracefulShutdown: shutdown notification\n    GracefulShutdown --> [Security_Encryption]: cleanup_complete\n\n    Connected --> AbnormalShutdown: critical_error\n    AbnormalShutdown --> [Security_OAuth2]: cleanup_complete\n\n    %% Session Backend Transitions\n    note right of Connected\n        Session Persistence:\n        - ETS: In-memory\n        - DETS: Disk-based\n        - Mnesia: Cluster\n    end note\n\n    %% Reconnection Strategy\n    state Reconnecting {Security_Firewall] --> Backoff\n        Backoff --> ReconnectAttempt\n        ReconnectAttempt --> Success\n        ReconnectAttempt --> Failure\n\n        Success --> [Security_Encryption]\n        Failure --> IncrementRetryCount\n        IncrementRetryCount --> CheckMaxRetries\n\n        CheckMaxRetries --> Backoff: below_max\n        CheckMaxRetries --> [Security_Firewall]: exceeded_max\n    }\n\n    %% State Transition Details\n    Connected --> SessionValidation: periodic_health_check\n    SessionValidation --> Connected: healthy\n    SessionValidation --> Failed: unhealthy(Security_Encryption)\n\n    %% Session Restoration (Security_ZeroTrust)\n    note right of Reconnecting\n        Failover Modes:\n        - Local: Restart process\n        - Remote: Mnesia replica\n        - Recovery: Load from DETS\n    end note\n\n    %% Subscription Management\n    state Subscribing {Security_Encryption] --> RegisterSubscription\n        RegisterSubscription --> SetupWatcher\n        SetupWatcher --> ConfirmSubscription\n        ConfirmSubscription --> [Security_OAuth2]\n    }\n\n    %% Cleanup on Shutdown\n    state GracefulShutdown {Security_IntrusionDetection] --> UnsubscribeResources\n        UnsubscribeResources --> DrainPendingRequests\n        DrainPendingRequests --> CloseTransport\n        CloseTransport --> PersistSession\n        PersistSession --> TerminateProcess\n        TerminateProcess --> [Security_Encryption]\n    }\n\n    %% Error States\n    state AbnormalShutdown {Security_ZeroTrust] --> LogError\n        LogError --> PersistCrashDump\n        PersistCrashDump --> NotifyDependents\n        NotifyDependents --> TerminateProcess\n        TerminateProcess --> [Security_OAuth2]\n    }\n\n    %% Session State Fields\n    note right of Connected\n        Session State:\n        - session_id: UUID\n        - transport_pid: PID\n        - pending_requests: map(Security_Firewall)\n        - subscriptions: map(Security_IntrusionDetection)\n        - capabilities: #capabilities{Security_Encryption}\n        - last_activity: timestamp(Security_Firewall)\n        - backend: ets | dets | mnesia\n    end note\n\n    %% Activity Monitoring\n    Connected --> IdleTimeout: no_activity(Security_OAuth2)\n    IdleTimeout --> [Security_ZeroTrust]: session_expired\n\n    %% Rate Limiting\n    Connected --> RateLimited: request_rate_exceeded\n    RateLimited --> Connected: backoff_complete\n    RateLimited --> Failed: rate_limit_persistent\n\n    %% Resource Watcher Lifecycle\n    state ResourceOperations {Security_ZeroTrust] --> Watching\n        Watching --> NotificationReceived: resource_changed\n        NotificationReceived --> DeliverNotification\n        DeliverNotification --> Watching\n    }\n\n    %% Tool Execution Lifecycle\n    state ToolOperations {Security_ZeroTrust] --> Executing\n        Executing --> InProgress: long_running_op\n        InProgress --> ProgressUpdate: send_progress\n        ProgressUpdate --> InProgress\n        InProgress --> Complete: finished\n        Complete --> [Security_IntrusionDetection]\n    }\n\n    %% Session Backend Selection\n    note left of Initializing\n        Backend Selection:\n        {Security_ZeroTrust}\n        - Fastest: O(Security_OAuth2) access\n        - Volatile: Lost on crash\n\n        {Security_IntrusionDetection}\n        - Durable: Disk persistence\n        - Slower: I/O overhead\n\n        {Security_OAuth2}\n        - Distributed: Cluster sync\n        - CAP: Consistency trade-offs\n    end note\n\n    %% Health Check States\n    Connected --> HealthCheck: periodic_timer\n    HealthCheck --> Connected: all_systems_go\n    HealthCheck --> Degraded: subsystem_failure\n    Degraded --> Connected: recovery_complete\n    Degraded --> Failed: recovery_failed\n\n    %% Session Restoration Flow\n    note right of Reconnecting\n        Restoration Priority:\n        1. Restore subscriptions\n        2. Replay pending requests\n        3. Restore capabilities\n        4. Resume monitoring\n    end note",
+  "content_size": 5160,
+  "collected_at": "2026-02-06T10:36:55.656398",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Security",
+  "seed_id": "ot_stateDiagram_00025",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个基于Security_ZeroTrust架构的MCP客户端状态机。核心是OAuth2启动链路，然后进入初始化流程。",
+      "elements_involved": [
+        "Security_ZeroTrust",
+        "Security_OAuth2",
+        "Initializing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。初始化阶段需要包含哪些具体步骤？我看到有LoadConfig和InitTransport，中间需要EstablishConnection吗？",
+      "elements_involved": [
+        "LoadConfig",
+        "InitTransport",
+        "EstablishConnection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，流程是：Security_Encryption先加载配置，然后初始化传输层，建立连接后发送初始化消息，最后等待初始化完成并通过Security_Firewall验证。",
+      "elements_involved": [
+        "Security_Encryption",
+        "LoadConfig",
+        "InitTransport",
+        "EstablishConnection",
+        "SendInitialize",
+        "WaitForInitialized",
+        "Security_Firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Initializing复合状态已构建完成。现在处理状态转移：当收到initialized消息后，进入Connected状态。",
+      "elements_involved": [
+        "Initializing",
+        "Connected",
+        "initialized received"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Connected状态比较复杂，需要支持三种操作类型：资源操作、工具操作和提示操作，都从Active状态分支出去。",
+      "elements_involved": [
+        "Connected",
+        "Active",
+        "ResourceOperations",
+        "ToolOperations",
+        "PromptOperations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这三种操作完成后都回到Active吗？还有订阅功能怎么处理？",
+      "elements_involved": [
+        "Active",
+        "Subscribing",
+        "subscription_confirmed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，操作完成后返回Active。订阅是独立流程：从Active进入Subscribing，确认后返回。Subscribing内部需要Security_Encryption注册订阅，经过SetupWatcher，最终通过Security_OAuth2确认。",
+      "elements_involved": [
+        "Active",
+        "Subscribing",
+        "Security_Encryption",
+        "RegisterSubscription",
+        "SetupWatcher",
+        "ConfirmSubscription",
+        "Security_OAuth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Connected复合状态和Subscribing子状态已添加。现在补充会话持久化的注释说明。",
+      "elements_involved": [
+        "Connected",
+        "ETS",
+        "DETS",
+        "Mnesia"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Connected还需要支持暂停和恢复。另外传输错误时要进入重连逻辑，重连成功回Connected，失败则进入Failed状态并触发Security_Firewall。",
+      "elements_involved": [
+        "Connected",
+        "Paused",
+        "resume_requested",
+        "Reconnecting",
+        "transport_error",
+        "Failed",
+        "Security_Firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "暂停恢复和重连转移已添加。关于Reconnecting，需要设计内部的退避策略吗？",
+      "elements_involved": [
+        "Reconnecting",
+        "Backoff",
+        "ReconnectAttempt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要。Reconnecting内部：Security_Firewall触发退避，然后尝试重连。成功返回Security_Encryption路径，失败则增加重试计数，检查是否超过最大值。没超过继续退避，超过则回到Security_Firewall并进入Failed。",
+      "elements_involved": [
+        "Reconnecting",
+        "Security_Firewall",
+        "Backoff",
+        "ReconnectAttempt",
+        "Success",
+        "Failure",
+        "IncrementRetryCount",
+        "CheckMaxRetries"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "重连策略复合状态完成。我注意到有Failover模式的注释，需要加上吗？",
+      "elements_involved": [
+        "Reconnecting",
+        "Local",
+        "Remote",
+        "Recovery"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "加上，说明三种故障转移模式：本地进程重启、Mnesia远程副本、从DETS恢复。另外Connected还需要优雅关闭和异常关闭两条路径。",
+      "elements_involved": [
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "cleanup_complete",
+        "Security_Encryption",
+        "Security_OAuth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "GracefulShutdown和AbnormalShutdown的内部流程有区别吗？",
+      "elements_involved": [
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "Security_IntrusionDetection",
+        "Security_ZeroTrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "区别很大。GracefulShutdown由Security_IntrusionDetection启动：先取消资源订阅，排空待处理请求，关闭传输，持久化会话，最后终止进程回到Security_Encryption。AbnormalShutdown由Security_ZeroTrust处理：记录错误、持久化崩溃转储、通知依赖方，终止后回到Security_OAuth2。",
+      "elements_involved": [
+        "GracefulShutdown",
+        "Security_IntrusionDetection",
+        "UnsubscribeResources",
+        "DrainPendingRequests",
+        "CloseTransport",
+        "PersistSession",
+        "TerminateProcess",
+        "AbnormalShutdown",
+        "Security_ZeroTrust",
+        "LogError",
+        "PersistCrashDump",
+        "NotifyDependents"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两种关闭流程都已完成。现在添加会话状态字段的详细注释。",
+      "elements_involved": [
+        "session_id",
+        "transport_pid",
+        "pending_requests",
+        "subscriptions",
+        "capabilities",
+        "last_activity",
+        "backend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要活动监控：Connected在Security_OAuth2无活动时会进入IdleTimeout，最终会话过期回到Security_ZeroTrust。另外加上速率限制：请求超限进入RateLimited，退避完成可恢复，持续超限则失败。",
+      "elements_involved": [
+        "IdleTimeout",
+        "no_activity",
+        "session_expired",
+        "RateLimited",
+        "request_rate_exceeded",
+        "backoff_complete",
+        "rate_limit_persistent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "活动监控和速率限制已添加。ResourceOperations内部需要细化吗？",
+      "elements_involved": [
+        "ResourceOperations",
+        "Security_ZeroTrust",
+        "Watching",
+        "NotificationReceived",
+        "DeliverNotification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要。ResourceOperations由Security_ZeroTrust启动Watching状态，资源变更时接收通知并投递，然后回到Watching循环。",
+      "elements_involved": [
+        "ResourceOperations",
+        "Security_ZeroTrust",
+        "Watching",
+        "NotificationReceived",
+        "resource_changed",
+        "DeliverNotification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ToolOperations也需要类似的细化吗？看起来有长时间运行的操作。",
+      "elements_involved": [
+        "ToolOperations",
+        "Executing",
+        "InProgress",
+        "ProgressUpdate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，ToolOperations更复杂：Security_ZeroTrust启动执行，长操作进入InProgress，可以发送进度更新，完成后进入Complete并通过Security_IntrusionDetection结束。",
+      "elements_involved": [
+        "ToolOperations",
+        "Security_ZeroTrust",
+        "Executing",
+        "InProgress",
+        "long_running_op",
+        "ProgressUpdate",
+        "send_progress",
+        "Complete",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "资源操作和工具操作的生命周期都已完成。需要添加后端选择的注释吗？",
+      "elements_involved": [
+        "Backend Selection",
+        "Security_ZeroTrust",
+        "Security_IntrusionDetection",
+        "Security_OAuth2",
+        "CAP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，在Initializing左侧添加：Security_ZeroTrust对应O(Security_OAuth2)快速访问但易失；Security_IntrusionDetection提供磁盘持久化但有I/O开销；Security_OAuth2支持集群同步但有CAP权衡。",
+      "elements_involved": [
+        "Security_ZeroTrust",
+        "Security_IntrusionDetection",
+        "Security_OAuth2",
+        "Fastest",
+        "Volatile",
+        "Durable",
+        "Distributed",
+        "CAP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "后端选择注释已添加。Connected还需要健康检查机制吗？",
+      "elements_involved": [
+        "Connected",
+        "SessionValidation",
+        "periodic_health_check",
+        "healthy",
+        "unhealthy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要定期健康检查：Connected进入SessionValidation，健康则返回，不健康触发Security_Encryption并进入Failed。另外再加一个HealthCheck状态用于定时器检查，支持降级模式。",
+      "elements_involved": [
+        "Connected",
+        "SessionValidation",
+        "periodic_health_check",
+        "healthy",
+        "unhealthy",
+        "Security_Encryption",
+        "HealthCheck",
+        "periodic_timer",
+        "Degraded",
+        "subsystem_failure",
+        "recovery_complete",
+        "recovery_failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "健康检查和降级机制已添加。Reconnecting旁边还需要恢复优先级的注释吗？",
+      "elements_involved": [
+        "Reconnecting",
+        "Restoration Priority",
+        "Restore subscriptions",
+        "Replay pending requests",
+        "Restore capabilities",
+        "Resume monitoring"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "加上，说明四步恢复优先级。现在检查整体结构，Initializing到Connected的转移条件应该是\"initialized received\"对吧？",
+      "elements_involved": [
+        "Initializing",
+        "Connected",
+        "initialized received"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确认一下，我记录的是\"initialized received\"，但之前好像写的是\"initialized\"，需要统一为带received的版本吗？",
+      "elements_involved": [
+        "Initializing",
+        "Connected",
+        "initialized received"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，统一用\"initialized received\"，表示收到初始化完成的消息。另外Paused到Connected应该是\"resume_requested\"。",
+      "elements_involved": [
+        "Paused",
+        "Connected",
+        "resume_requested",
+        "pause_requested"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。检查Subscribing的确认条件，应该是\"subscription_confirmed\"吗？",
+      "elements_involved": [
+        "Subscribing",
+        "Active",
+        "subscription_confirmed",
+        "subscribe_resource"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，subscribe_resource进入Subscribing，subscription_confirmed返回Active。Reconnecting的成功条件是什么？",
+      "elements_involved": [
+        "Reconnecting",
+        "Connected",
+        "reconnect_success",
+        "transport_error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是\"reconnect_success\"返回Connected，\"reconnect_failed(Security_Firewall)\"进入Failed。内部Success状态到Security_Encryption的路径需要标注吗？",
+      "elements_involved": [
+        "Success",
+        "Security_Encryption",
+        "ReconnectAttempt",
+        "Success",
+        "Failure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "内部Success直接连到Security_Encryption即可，不需要额外标注。但CheckMaxRetries的两个分支要清晰：below_max回到Backoff，exceeded_max到Security_Firewall。",
+      "elements_involved": [
+        "CheckMaxRetries",
+        "Backoff",
+        "below_max",
+        "exceeded_max",
+        "Security_Firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "重连内部逻辑已完善。GracefulShutdown的最终状态是Security_Encryption，AbnormalShutdown是Security_OAuth2，确认无误。",
+      "elements_involved": [
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "Security_Encryption",
+        "Security_OAuth2",
+        "cleanup_complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "会话状态字段里pending_requests和subscriptions的括号标注对吗？应该是Security_Firewall和Security_IntrusionDetection？",
+      "elements_involved": [
+        "pending_requests",
+        "subscriptions",
+        "Security_Firewall",
+        "Security_IntrusionDetection",
+        "capabilities",
+        "Security_Encryption",
+        "last_activity"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认：pending_requests是map(Security_Firewall)，subscriptions是map(Security_IntrusionDetection)，capabilities是#capabilities{Security_Encryption}，last_activity是timestamp(Security_Firewall)。",
+      "elements_involved": [
+        "pending_requests",
+        "subscriptions",
+        "capabilities",
+        "last_activity",
+        "Security_Firewall",
+        "Security_IntrusionDetection",
+        "Security_Encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "backend字段的枚举值是ets | dets | mnesia，需要确认。还有IdleTimeout的触发条件是no_activity(Security_OAuth2)。",
+      "elements_involved": [
+        "backend",
+        "ets",
+        "dets",
+        "mnesia",
+        "IdleTimeout",
+        "no_activity",
+        "Security_OAuth2",
+        "session_expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认。RateLimited的两个出口：backoff_complete回Connected，rate_limit_persistent到Failed。",
+      "elements_involved": [
+        "RateLimited",
+        "Connected",
+        "Failed",
+        "backoff_complete",
+        "rate_limit_persistent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "HealthCheck和SessionValidation有什么区别？看起来都是健康相关。",
+      "elements_involved": [
+        "HealthCheck",
+        "SessionValidation",
+        "periodic_timer",
+        "periodic_health_check",
+        "all_systems_go",
+        "healthy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "HealthCheck基于periodic_timer，结果all_systems_go或subsystem_failure进入Degraded；SessionValidation基于periodic_health_check，结果healthy或unhealthy(Security_Encryption)。两者粒度不同，可以共存。",
+      "elements_involved": [
+        "HealthCheck",
+        "SessionValidation",
+        "periodic_timer",
+        "periodic_health_check",
+        "all_systems_go",
+        "healthy",
+        "Degraded",
+        "unhealthy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意，HealthCheck侧重系统级，SessionValidation侧重会话级。Degraded的恢复路径是recovery_complete回Connected，recovery_failed到Failed。",
+      "elements_involved": [
+        "Degraded",
+        "Connected",
+        "Failed",
+        "recovery_complete",
+        "recovery_failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有状态和转移已完整实现。最后确认一下ToolOperations的Complete状态指向Security_IntrusionDetection是否正确？",
+      "elements_involved": [
+        "ToolOperations",
+        "Complete",
+        "Security_IntrusionDetection",
+        "InProgress",
+        "ProgressUpdate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确，工具执行完成通过Security_IntrusionDetection进行后续处理。整个状态机覆盖了从零信任启动到完整会话生命周期，包括正常关闭、异常处理、重连恢复和多种后端支持。",
+      "elements_involved": [
+        "Security_ZeroTrust",
+        "Security_OAuth2",
+        "Security_Encryption",
+        "Security_Firewall",
+        "Security_IntrusionDetection",
+        "Complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "最终检查：所有安全组件Security_ZeroTrust、Security_OAuth2、Security_Encryption、Security_Firewall、Security_IntrusionDetection都已正确嵌入状态边界和转移中。复合状态嵌套层级正确，注释完整。",
+      "elements_involved": [
+        "Security_ZeroTrust",
+        "Security_OAuth2",
+        "Security_Encryption",
+        "Security_Firewall",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "很好。最后确认Initializing复合状态的入口：从Security_ZeroTrust通过start_link(Security_OAuth2)进入，内部Security_Encryption作为起始状态。",
+      "elements_involved": [
+        "Security_ZeroTrust",
+        "Initializing",
+        "start_link",
+        "Security_OAuth2",
+        "Security_Encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "状态图已完成。所有元素核对无误，安全架构与MCP客户端状态机完全融合，支持生产级部署的会话管理需求。",
+      "elements_involved": [
+        "stateDiagram-v2",
+        "Initializing",
+        "Connected",
+        "Reconnecting",
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "Subscribing"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 46,
+    "repair_count": 1,
+    "grounding_acts_count": 46,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:35Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:35Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 75717.3936,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 46
+  }
+}

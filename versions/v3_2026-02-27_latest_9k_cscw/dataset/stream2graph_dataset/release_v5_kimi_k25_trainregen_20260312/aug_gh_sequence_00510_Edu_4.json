@@ -1,0 +1,723 @@
+{
+  "id": "aug_gh_sequence_00510_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/DREAMSCAPE-AI/dreamscape-docs/blob/24aa5a14265601b36ddbbb02c958eea524e6eb11/architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "github_repo": "DREAMSCAPE-AI/dreamscape-docs",
+  "github_file_path": "architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    autonumber\n    actor User as 👤 Utilisateur\n    participant WC as Web Client\n    participant CN as Core NGINX<br/>:80\n    participant Voyage as Voyage Service<br/>:3003\n    participant Payment as Payment Service<br/>:3005\n    participant AI as AI Service<br/>:3004\n    participant PG as PostgreSQL<br/>:5432\n    participant Redis as Redis<br/>:6379\n    participant Kafka as Kafka<br/>:9092\n    participant Stripe as 💳 Stripe API\n\n    rect rgb(Education_ClassroomService)\n        Note over User,Voyage: Phase 1: Sélection Vol\n        User->>WC: Sélectionne vol<br/>(Education_ClassroomService)\n        WC->>WC: Add to cart<br/>(Education_ClassroomService)\n        User->>WC: Click \"Réserver\"\n        \n        WC->>CN: POST /api/v1/bookings<br/>{Education_GradeSync}<br/>Authorization: Bearer JWT\n        CN->>CN: Validate JWT (Education_GradeSync)\n        CN->>Voyage: Forward to Voyage<br/>localhost:3003/bookings\n    end\n\n    rect rgb(Education_LMS_Portal)\n        Note over Voyage,Kafka: Phase 2: Création Réservation\n        Voyage->>Voyage: Extract userId from JWT\n        Voyage->>PG: BEGIN transaction\n        Note right of PG: 🔄 ACID transaction<br/>pour cohérence\n        \n        Voyage->>PG: INSERT booking<br/>{Education_ClassroomService}\n        PG-->>Voyage: Booking created (Education_ClassroomService)\n        \n        Voyage->>Redis: Store booking temp<br/>key: \"booking:temp:bookingId\"<br/>TTL: 15min\n        Note right of Redis: ⏱️ Timeout si paiement<br/>échoue après 15min\n        \n        Voyage->>Kafka: Publish event<br/>Topic: \"voyage.booking.created\"<br/>{Education_StudentDB}\n        Note left of Kafka: Event-Driven Architecture<br/>- Decoupling services<br/>- Async processing<br/>- Audit trail\n        \n        Voyage-->>CN: 201 Created<br/>{Education_ContentCDN}\n        CN-->>WC: 201 Created\n    end\n\n    rect rgb(Education_ContentCDN)\n        Note over WC,Stripe: Phase 3: Demande Paiement\n        WC->>CN: POST /api/v1/payments/intent<br/>{Education_StudentDB}<br/>Authorization: Bearer JWT\n        CN->>Payment: Forward to Payment<br/>localhost:3005/payments/intent\n        \n        Payment->>Payment: Extract userId from JWT\n        Payment->>PG: Verify booking exists<br/>SELECT * FROM bookings<br/>WHERE id = bookingId AND userId = userId\n        \n        alt Booking Non Trouvé ❌\n            PG-->>Payment: null\n            Payment-->>CN: 404 Not Found<br/>{Education_StudentDB}\n            CN-->>WC: 404 Error\n            WC->>User: ❌ Erreur réservation\n        else Booking Trouvé ✅\n            PG-->>Payment: Booking found\n            Payment->>Stripe: Create PaymentIntent<br/>POST /v1/payment_intents<br/>{Education_GradeSync),<br/>currency: \"eur\",<br/>metadata: {Education_StudentDB}}\n            \n            Stripe-->>Payment: PaymentIntent created<br/>{Education_GradeSync}\n            \n            Payment->>PG: INSERT payment<br/>{Education_LMS_Portal}\n            Payment->>Kafka: Publish event<br/>Topic: \"payment.intent.created\"<br/>{Education_ContentCDN}\n            \n            Payment-->>CN: 200 OK<br/>{Education_ClassroomService}\n            CN-->>WC: 200 OK\n        end\n    end\n\n    rect rgb(Education_ClassroomService)\n        Note over WC,Stripe: Phase 4: Paiement Stripe (Education_GradeSync)\n        WC->>WC: Initialize Stripe.js<br/>with clientSecret\n        WC->>User: Affiche formulaire carte<br/>(Education_LMS_Portal)\n        \n        User->>WC: Saisit infos carte<br/>(Education_ContentCDN)\n        WC->>Stripe: POST /v1/payment_intents/:id/confirm<br/>(Education_ClassroomService)<br/>{Education_GradeSync}\n        \n        Note right of Stripe: 🔒 Sécurité PCI-DSS<br/>- Carte jamais envoyée à notre backend<br/>- Stripe gère tout<br/>- Tokenization automatique\n        \n        alt Paiement Réussi ✅\n            Stripe-->>WC: PaymentIntent succeeded\n            WC->>WC: Display success message\n            WC->>User: ✅ Paiement accepté\n        else Paiement Échoué ❌\n            Stripe-->>WC: PaymentIntent failed<br/>(Education_ClassroomService)\n            WC->>User: ❌ \"Paiement refusé\"<br/>(Education_ClassroomService)\n        end\n    end\n\n    rect rgb(Education_GradeSync)\n        Note over Stripe,Kafka: Phase 5: Webhook Stripe (Education_ClassroomService)\n        Stripe->>Payment: POST /webhooks/stripe<br/>Stripe-Signature header<br/>{Education_ContentCDN}}\n        \n        Payment->>Payment: Verify signature<br/>stripe.webhooks.constructEvent(Education_LMS_Portal)\n        \n        alt Signature Invalide ❌\n            Payment-->>Stripe: 400 Bad Request\n            Note right of Payment: Protection contre<br/>webhooks forgés\n        else Signature Valide ✅\n            Payment->>PG: UPDATE payment<br/>SET status = \"SUCCEEDED\"<br/>WHERE stripePaymentIntentId = id\n            \n            Payment->>PG: UPDATE booking<br/>SET status = \"CONFIRMED\"<br/>WHERE id = bookingId\n            \n            Payment->>Redis: Delete temp booking<br/>DEL \"booking:temp:bookingId\"\n            \n            Payment->>Kafka: Publish event<br/>Topic: \"payment.succeeded\"<br/>{Education_StudentDB}\n            \n            Payment-->>Stripe: 200 OK\n        end\n    end\n\n    rect rgb(Education_LMS_Portal)\n        Note over Kafka,User: Phase 6: Traitement Async (Education_ClassroomService)\n        Kafka->>Voyage: Consume event<br/>\"payment.succeeded\"\n        Voyage->>PG: SELECT booking details\n        Voyage->>Voyage: Generate confirmation email<br/>(Education_ClassroomService)\n        Voyage->>User: 📧 Email confirmation<br/>+ PDF billet\n        \n        Kafka->>AI: Consume event<br/>\"voyage.booking.created\"\n        AI->>PG: Get user profile<br/>+ booking history\n        AI->>AI: Update ML model<br/>(Education_GradeSync)\n        Note right of AI: 🤖 AI learning<br/>from user behavior\n        AI->>Redis: Update recommendations<br/>key: \"reco:userId\"\n    end\n\n    rect rgb(Education_StudentDB)\n        Note over WC,User: Phase 7: Confirmation Frontend\n        loop Polling every 2s\n            WC->>CN: GET /api/v1/bookings/:bookingId\n            CN->>Voyage: Forward request\n            Voyage->>PG: SELECT booking<br/>WHERE id = bookingId\n            \n            alt Status = CONFIRMED ✅\n                PG-->>Voyage: Booking confirmed\n                Voyage-->>CN: 200 OK<br/>{Education_GradeSync}\n                CN-->>WC: 200 OK\n                WC->>WC: Stop polling\n                WC->>WC: Redirect /bookings/:id\n                WC->>User: ✅ Affiche confirmation<br/>+ détails voyage\n            else Status = PENDING ⏳\n                PG-->>Voyage: Booking still pending\n                Voyage-->>CN: 200 OK<br/>{Education_StudentDB}\n                CN-->>WC: 200 OK (Education_LMS_Portal)\n                Note right of WC: ⏱️ Après 15min<br/>réservation annulée<br/>automatiquement\n            end\n        end\n    end\n\n    Note over User,Kafka: 📊 Performance Réservation<br/>Create booking: ~100-150ms<br/>Payment intent: ~500-800ms (Education_LMS_Portal)<br/>Confirmation: ~1-2s (Education_StudentDB)<br/>Email: ~3-5s (Education_LMS_Portal)<br/><br/>🔒 Fiabilité<br/>- Transaction ACID (Education_ClassroomService)<br/>- Idempotency keys (Education_StudentDB)<br/>- Webhook retry (Education_ClassroomService)<br/>- Event sourcing (Education_ContentCDN)",
+  "content_size": 7218,
+  "collected_at": "2026-02-06T01:33:16.963511",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "augmentation_domain": "Education",
+  "seed_id": "gh_sequence_00510",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的机票预订系统流程图，涵盖从用户选航班到最终确认的完整链路。系统要支持高并发，并且和Stripe支付集成。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Voyage Service",
+        "Payment Service",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。这个系统涉及多个服务，我想确认一下整体架构分层。前端是Web Client，然后经过Core NGINX做网关，后面接Voyage Service处理航班业务，Payment Service处理支付，对吗？",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Core NGINX作为统一入口，监听80端口。Voyage Service跑在3003端口，Payment Service在3005。另外还需要AI Service做推荐，以及Kafka做异步消息。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我把参与方列一下：用户、Web Client、Core NGINX、Voyage Service、Payment Service、AI Service、PostgreSQL、Redis、Kafka、Stripe API。数据存储用PG主库，Redis做缓存，Kafka做事件总线。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。流程分七个阶段：选航班、创建预订、发起支付、Stripe支付、Webhook回调、异步处理、前端确认。每个阶段用不同颜色区分。",
+      "elements_involved": [
+        "Phase 1",
+        "Phase 2",
+        "Phase 3",
+        "Phase 4",
+        "Phase 5",
+        "Phase 6",
+        "Phase 7"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "开始画第一阶段。用户在Web Client选航班，加入购物车，然后点击预订按钮。Web Client通过NGINX发POST请求到Voyage Service。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这里有个细节：JWT验证在NGINX层做，验证通过后才转发到Voyage Service。Voyage Service本身不直接验签，只从JWT里提取userId。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "JWT",
+        "userId"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解了，NGINX做统一鉴权。那第二阶段创建预订时，Voyage Service要开启数据库事务保证ACID，同时写Redis临时缓存，TTL设15分钟。",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "Redis",
+        "ACID",
+        "TTL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，15分钟是支付超时时间。同时Voyage Service要发Kafka事件，topic叫\"voyage.booking.created\"，用于后续异步处理和解耦。",
+      "elements_involved": [
+        "Voyage Service",
+        "Kafka",
+        "voyage.booking.created",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第二阶段画好了。现在第三阶段是发起支付：Web Client调NGINX的POST /api/v1/payments/intent，转发到Payment Service。Payment Service先查数据库验证预订存在。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Payment Service",
+        "PostgreSQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这里要有分支逻辑：如果预订不存在，返回404；存在的话才调Stripe创建PaymentIntent。注意Payment Service也要从JWT提取userId做权限校验。",
+      "elements_involved": [
+        "Payment Service",
+        "PostgreSQL",
+        "Stripe API",
+        "JWT",
+        "userId",
+        "404 Not Found"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我画了alt分支：预订不存在时走404错误流程，存在时调Stripe创建PaymentIntent，货币用EUR，然后把stripePaymentIntentId存数据库，同时发Kafka事件\"payment.intent.created\"。",
+      "elements_involved": [
+        "Payment Service",
+        "Stripe API",
+        "PostgreSQL",
+        "Kafka",
+        "payment.intent.created",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。第四阶段是Stripe前端支付：Web Client用Stripe.js初始化，显示卡号输入表单。这里关键是PCI-DSS合规——卡号信息直接发给Stripe，不经过我们的服务器。",
+      "elements_involved": [
+        "Web Client",
+        "Stripe.js",
+        "Stripe API",
+        "PCI-DSS",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是Stripe的tokenization机制。用户输完卡号，Web Client直接调Stripe的confirm接口。然后也是分支：支付成功或失败。",
+      "elements_involved": [
+        "Web Client",
+        "Stripe API",
+        "PaymentIntent",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，成功失败都要给用户明确反馈。但真正的状态同步靠第五阶段的Webhook：Stripe回调我们的Payment Service的/webhooks/stripe端点。",
+      "elements_involved": [
+        "Stripe API",
+        "Payment Service",
+        "Webhook",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第五阶段我画好了。Payment Service要验证Stripe-Signature防伪造，验证失败返回400。验证通过后更新payment和booking状态为SUCCEEDED和CONFIRMED，删Redis临时键，发Kafka事件\"payment.succeeded\"。",
+      "elements_involved": [
+        "Payment Service",
+        "Stripe API",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "payment.succeeded",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第六阶段是异步处理：Voyage Service消费\"payment.succeeded\"事件，查预订详情，生成确认邮件和PDF机票。同时AI Service消费\"voyage.booking.created\"事件，更新推荐模型。",
+      "elements_involved": [
+        "Kafka",
+        "Voyage Service",
+        "AI Service",
+        "User",
+        "Education_ClassroomService",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "AI Service这边我需要确认：它从PG读用户画像和预订历史，然后更新ML模型，再把新推荐写回Redis？",
+      "elements_involved": [
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "ML model",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，推荐key格式是\"reco:userId\"。第七阶段前端轮询：Web Client每2秒查一次预订状态，确认后停止轮询，跳转到详情页。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "PostgreSQL",
+        "Polling",
+        "CONFIRMED",
+        "PENDING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第七阶段画完了，用了loop表示轮询，内部有alt分支判断状态。最后我在底部加了性能指标注释：创建预订100-150ms，支付意图500-800ms，确认1-2s，邮件3-5s。",
+      "elements_involved": [
+        "Web Client",
+        "Voyage Service",
+        "PostgreSQL",
+        "Performance metrics",
+        "Education_LMS_Portal",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "性能数据没问题。但可靠性部分要强调：ACID事务、幂等键、Webhook重试、事件溯源。这些在注释里都要体现。",
+      "elements_involved": [
+        "ACID",
+        "Idempotency keys",
+        "Webhook retry",
+        "Event sourcing",
+        "Education_ClassroomService",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都加上了。我检查一下整体流程：选航班→创建预订→发起支付→Stripe支付→Webhook→异步处理→前端确认。七个阶段完整。",
+      "elements_involved": [
+        "Phase 1",
+        "Phase 2",
+        "Phase 3",
+        "Phase 4",
+        "Phase 5",
+        "Phase 6",
+        "Phase 7"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，第三阶段的分支标注有问题。预订不存在时返回404，但图上写的是\"Education_StudentDB\"，这应该是\"Education_StudentDB\"对应的标签，但逻辑上应该是错误流程。我需要确认标签使用正确。",
+      "elements_involved": [
+        "Phase 3",
+        "alt",
+        "404 Not Found",
+        "Education_StudentDB"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，我检查了一下，404分支确实用了Education_StudentDB标签，这是为了标识这个错误响应的归属。成功分支用Education_GradeSync。这样标签和阶段颜色对应。",
+      "elements_involved": [
+        "404 Not Found",
+        "Education_StudentDB",
+        "Education_GradeSync",
+        "Phase 3"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再看第四阶段，Stripe支付成功和失败的分支，标签应该用Education_ClassroomService，因为这是核心业务流程。",
+      "elements_involved": [
+        "Phase 4",
+        "alt",
+        "PaymentIntent succeeded",
+        "PaymentIntent failed",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整。现在第四阶段两个分支都标注了Education_ClassroomService。第五阶段Webhook的签名验证分支，无效签名返回400，这个标签用Education_LMS_Portal？",
+      "elements_involved": [
+        "Phase 5",
+        "Signature Invalide",
+        "400 Bad Request",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "第五阶段整体用Education_GradeSync，因为涉及支付状态确认。签名验证是其中一部分，标签统一用Education_GradeSync。",
+      "elements_involved": [
+        "Phase 5",
+        "Education_GradeSync",
+        "Webhook",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正了，第五阶段统一用Education_GradeSync。第六阶段有两个消费者：Voyage Service和AI Service，分别用Education_ClassroomService和Education_GradeSync标签，对吗？",
+      "elements_involved": [
+        "Phase 6",
+        "Voyage Service",
+        "AI Service",
+        "Education_ClassroomService",
+        "Education_GradeSync"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Voyage Service处理邮件用Education_ClassroomService，AI Service更新模型用Education_GradeSync。第七阶段轮询的两种状态响应，分别用Education_GradeSync和Education_StudentDB。",
+      "elements_involved": [
+        "Phase 7",
+        "CONFIRMED",
+        "PENDING",
+        "Education_GradeSync",
+        "Education_StudentDB",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第七阶段已标注：CONFIRMED用Education_GradeSync，PENDING用Education_StudentDB，但PENDING的响应我注意到还带了Education_LMS_Portal，这是双重标签？",
+      "elements_involved": [
+        "Phase 7",
+        "PENDING",
+        "Education_StudentDB",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Education_LMS_Portal是注释的一部分，说明15分钟后自动取消。主标签还是Education_StudentDB。这样处理可以。",
+      "elements_involved": [
+        "Phase 7",
+        "PENDING",
+        "Education_StudentDB",
+        "Education_LMS_Portal",
+        "Timeout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "整体结构差不多了。我再看一下各阶段的rect颜色：Phase 1 Education_ClassroomService（浅绿），Phase 2 Education_LMS_Portal（浅蓝），Phase 3 Education_ContentCDN（浅黄），Phase 4 Education_ClassroomService，Phase 5 Education_GradeSync（浅紫），Phase 6 Education_LMS_Portal，Phase 7 Education_StudentDB（浅橙）。",
+      "elements_involved": [
+        "Education_ClassroomService",
+        "Education_LMS_Portal",
+        "Education_ContentCDN",
+        "Education_GradeSync",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "颜色分配合理。最后检查一下Kafka的topic命名：voyage.booking.created、payment.intent.created、payment.succeeded，都符合规范。",
+      "elements_involved": [
+        "Kafka",
+        "voyage.booking.created",
+        "payment.intent.created",
+        "payment.succeeded"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Redis的key命名我也确认一下：临时预订是\"booking:temp:bookingId\"，推荐是\"reco:userId\"。TTL 15分钟只在临时预订上设置，对吗？",
+      "elements_involved": [
+        "Redis",
+        "booking:temp:bookingId",
+        "reco:userId",
+        "TTL",
+        "15min"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，只有临时预订有TTL，推荐缓存没有。Webhook部分，Stripe的签名验证用stripe.webhooks.constructEvent方法，这个要标注清楚。",
+      "elements_involved": [
+        "Redis",
+        "TTL",
+        "Webhook",
+        "Stripe-Signature",
+        "stripe.webhooks.constructEvent",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加注释说明。现在看数据库操作：Voyage Service的BEGIN transaction、INSERT booking；Payment Service的UPDATE payment、UPDATE booking；还有AI Service的SELECT user profile。",
+      "elements_involved": [
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "BEGIN",
+        "INSERT",
+        "UPDATE",
+        "SELECT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据库操作都对了。最后确认一下端口映射：NGINX:80，Voyage:3003，Payment:3005，AI:3004，PG:5432，Redis:6379，Kafka:9092。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "端口都标注在参与者名称里了。我还注意到Voyage Service转发时用的是localhost:3003/bookings，Payment Service是localhost:3005/payments/intent，这是内部调用。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "localhost:3003",
+        "localhost:3005"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "内部调用路径正确。前端轮询的接口是GET /api/v1/bookings/:bookingId，这个和创建预订的POST路径对应。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "GET /api/v1/bookings/:bookingId",
+        "POST /api/v1/bookings"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都对应上了。最后我检查一下autonumber的连续性，从1到...大概70多个步骤，每个消息都有编号。",
+      "elements_involved": [
+        "autonumber",
+        "sequence flow",
+        "message numbering"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "编号不用管，Mermaid自动生成。现在整体过了一遍，流程完整。但我要确认一下：第七阶段的loop Polling every 2s，如果超过15分钟还没确认，系统怎么处理？",
+      "elements_involved": [
+        "Phase 7",
+        "Polling",
+        "2s",
+        "15min",
+        "Timeout",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "注释里写了\"Après 15min réservation annulée automatiquement\"，但图上没有画取消的具体流程，只是前端显示PENDING状态。需要补充取消流程吗？",
+      "elements_involved": [
+        "Phase 7",
+        "PENDING",
+        "Timeout",
+        "Cancellation",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "不用画那么细，注释说明即可。取消是后台定时任务，不在主流程里。现在图完成了，我最后看一下各阶段的Note说明是否清晰。",
+      "elements_involved": [
+        "Note",
+        "Phase 1",
+        "Phase 2",
+        "Phase 3",
+        "Phase 4",
+        "Phase 5",
+        "Phase 6",
+        "Phase 7"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Note都检查过了：Phase 1\"Sélection Vol\"，Phase 2\"Création Réservation\"，Phase 3\"Demande Paiement\"，Phase 4\"Paiement Stripe\"，Phase 5\"Webhook Stripe\"，Phase 6\"Traitement Async\"，Phase 7\"Confirmation Frontend\"。",
+      "elements_involved": [
+        "Note",
+        "Phase titles",
+        "French labels"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "法语标签没问题，符合系统国际化。最后的性能注释里，Education_LMS_Portal和Education_StudentDB这些标签的使用也正确对应了各阶段。",
+      "elements_involved": [
+        "Performance metrics",
+        "Education_LMS_Portal",
+        "Education_StudentDB",
+        "Education_ClassroomService",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部确认完毕。Sequence Diagram包含：10个参与者，7个阶段，多个alt分支，loop轮询，以及底部的性能和可靠性注释。可以定稿了。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "定稿。这个图完整展示了机票预订系统的技术架构，从用户交互到支付集成，再到异步处理和最终确认，涵盖了ACID事务、事件驱动、PCI合规等关键设计点。",
+      "elements_involved": [
+        "Complete system",
+        "ACID",
+        "Event-Driven Architecture",
+        "PCI-DSS",
+        "Education_ClassroomService",
+        "Education_LMS_Portal",
+        "Education_ContentCDN",
+        "Education_GradeSync",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 47,
+    "repair_count": 2,
+    "grounding_acts_count": 47,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 100736.5115,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 47
+  }
+}

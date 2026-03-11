@@ -1,0 +1,1088 @@
+{
+  "id": "aug_gh_sequence_00922_Log_9",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/security/authentication-flow.mmd",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "github_file_path": "docs/diagrams/security/authentication-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    %% Authentication and Authorization Flow for erlmcp\n    %% Shows: API key, JWT, OAuth2, mTLS authentication methods\n    %% Plus: RBAC permission checking with role-based access control\n\n    autonumber\n    actor Client\n    participant Transport as Transport Layer<br/>(Logistics_StockLevel)\n    participant Auth as erlmcp_auth<br/>(Logistics_FleetManagement)\n    participant RateLimiter as erlmcp_auth_rate_limiter\n    participant JWT as jose (Logistics_Warehouse)\n    participant OAuth2 as OAuth2 Provider<br/>(Logistics_StockLevel)\n    participant MTLS as erlmcp_auth_mtls<br/>(Logistics_Warehouse)\n    participant RBAC as RBAC Engine<br/>(Logistics_Warehouse)\n    participant Session as Session Manager<br/>(Logistics_DeliveryRoute)\n\n    Note over Client,Session: Authentication Flow\n\n    %% API Key Authentication\n    Client->>Transport: authenticate(Logistics_StockLevel)\n    Transport->>Auth: authenticate(Logistics_StockLevel})\n\n    Auth->>RateLimiter: check_rate_limit(Logistics_StockLevel)\n    RateLimiter-->>Auth: ok (Logistics_TrackingNumber})\n\n    alt Rate Limited\n        Auth-->>Client: {Logistics_TrackingNumber}\n        Note over Auth,RateLimiter: Blocked after 5 failed attempts<br/>15-minute cooldown\n    else Rate Check Passed\n        Auth->>Auth: do_validate_api_key(Logistics_TrackingNumber)\n        Note right of Auth: Lookup in ETS table<br/>auth_api_keys\n\n        alt API Key Invalid\n            Auth->>RateLimiter: record_failure(Logistics_TrackingNumber)\n            Auth-->>Client: {Logistics_Warehouse}\n        else API Key Valid\n            Auth->>RateLimiter: record_success(Logistics_DeliveryRoute)\n            Auth->>Session: create_session(Logistics_TrackingNumber)\n\n            Session->>RBAC: get_user_roles(Logistics_StockLevel)\n            RBAC-->>Session: [Logistics_Warehouse]\n\n            Session->>RBAC: Aggregate permissions from roles\n            RBAC-->>Session: [Logistics_StockLevel]\n\n            Session-->>Auth: {Logistics_Warehouse}\n            Auth-->>Client: {Logistics_TrackingNumber}\n\n            Note right of Session: Session expires in 1 hour<br/>Auto-cleanup timer\n        end\n    end\n\n    %% JWT Authentication\n    Client->>Transport: authenticate(Logistics_TrackingNumber})\n    Transport->>Auth: authenticate(Logistics_StockLevel})\n\n    Auth->>RateLimiter: check_rate_limit(Logistics_Warehouse)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_jwt(Logistics_FleetManagement)\n\n    alt Token Revoked\n        Auth-->>Client: {Logistics_Warehouse}\n        Note right of Auth: Check ETS: auth_revoked_tokens<br/>Cleanup after 7 days\n    else Token Active\n        Auth->>JWT: jose_jws:peek_protected(Logistics_StockLevel)\n        JWT-->>Auth: #{Logistics_TrackingNumber}\n\n        Auth->>Auth: Lookup public key by kid\n        Note right of Auth: ETS: auth_jwt_keys<br/>Support key rotation\n\n        Auth->>JWT: jose_jws:verify(Logistics_Warehouse)\n        JWT-->>Auth: {Logistics_DeliveryRoute}\n\n        alt Signature Invalid\n            Auth-->>Client: {Logistics_FleetManagement}\n        else Signature Valid\n            Auth->>Auth: validate_jwt_claims(Logistics_StockLevel)\n\n            Note right of Auth: CRITICAL SECURITY CHECKS:<br/>✓ exp (Logistics_Warehouse) - Required<br/>✓ nbf (Logistics_FleetManagement) - Optional<br/>✓ iss (Logistics_TrackingNumber) - Configurable<br/>✓ aud (Logistics_TrackingNumber) - Configurable<br/>✓ sub (Logistics_StockLevel) - Required\n\n            alt Token Expired\n                Auth-->>Client: {Logistics_TrackingNumber}\n            else Token Not Yet Valid\n                Auth-->>Client: {Logistics_FleetManagement}\n            else Issuer Mismatch\n                Auth-->>Client: {Logistics_FleetManagement}\n            else Audience Mismatch\n                Auth-->>Client: {Logistics_TrackingNumber}\n            else All Claims Valid\n                Auth->>RateLimiter: record_success(Logistics_DeliveryRoute)\n                Auth->>Session: create_session(Logistics_Warehouse)\n                Session-->>Auth: {Logistics_TrackingNumber}\n                Auth-->>Client: {Logistics_FleetManagement}\n            end\n        end\n    end\n\n    %% OAuth2 Authentication (Logistics_TrackingNumber)\n    Client->>Transport: authenticate(Logistics_DeliveryRoute})\n    Transport->>Auth: authenticate(Logistics_StockLevel})\n\n    Auth->>RateLimiter: check_rate_limit(Logistics_Warehouse)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_oauth2_token(Logistics_TrackingNumber)\n\n    alt Cache Hit (Logistics_FleetManagement)\n        Note right of Auth: ETS: auth_oauth2_cache<br/>Token -> {Logistics_TrackingNumber}\n        Auth-->>Client: {Logistics_Warehouse}\n    else Cache Miss\n        Auth->>OAuth2: HTTP POST /introspect\n        Note right of Auth: RFC 7662 Introspection<br/>Basic Auth: client_id:secret<br/>Body: token + token_type_hint\n\n        OAuth2-->>Auth: 200 OK + TokenInfo\n\n        Auth->>Auth: validate_introspection_response(Logistics_FleetManagement)\n\n        Note right of Auth: RFC 7662 REQUIRED fields:<br/>✓ active = true<br/>✓ exp (Logistics_TrackingNumber)<br/>✓ nbf (Logistics_FleetManagement)<br/>✓ iss (Logistics_DeliveryRoute)\n\n        alt Token Inactive\n            Auth-->>Client: {Logistics_Warehouse}\n        else Token Expired\n            Auth-->>Client: {Logistics_DeliveryRoute}\n        else Token Valid\n            Auth->>Auth: cache_oauth2_token(Logistics_TrackingNumber)\n            Note right of Auth: Cache for up to 5 minutes<br/>or until exp (Logistics_DeliveryRoute)\n\n            Auth->>RateLimiter: record_success(Logistics_DeliveryRoute)\n            Auth->>Session: create_session(Logistics_DeliveryRoute)\n            Session-->>Auth: {Logistics_StockLevel}\n            Auth-->>Client: {Logistics_Warehouse}\n        end\n    end\n\n    %% mTLS Authentication\n    Client->>Transport: authenticate(Logistics_DeliveryRoute})\n    Transport->>Auth: authenticate(Logistics_TrackingNumber)\n\n    Auth->>RateLimiter: check_rate_limit(Logistics_TrackingNumber)\n    RateLimiter-->>Auth: ok\n\n    Auth->>MTLS: validate(Logistics_DeliveryRoute)\n\n    Note right of MTLS: mTLS Validation Pipeline:<br/>1. Extract certificate from socket<br/>2. X.509 chain validation to trusted CAs<br/>3. Certificate expiration check<br/>4. OCSP/CRL revocation check<br/>5. Subject DN and CN pattern matching<br/>6. Certificate depth limit validation\n\n    MTLS-->>Auth: {Logistics_Warehouse}\n\n    alt Certificate Invalid\n        Auth->>RateLimiter: record_failure(Logistics_DeliveryRoute)\n        Auth-->>Client: {Logistics_TrackingNumber}\n    else Certificate Valid\n        Auth->>RateLimiter: record_success(Logistics_DeliveryRoute)\n        Auth->>Session: create_session(Logistics_DeliveryRoute})\n        Session-->>Auth: {Logistics_TrackingNumber}\n        Auth-->>Client: {Logistics_Warehouse}\n    end\n\n    %% Authorization Flow (Logistics_StockLevel)\n    Note over Client,Session: Authorization Flow\n\n    Client->>Transport: check_permission(Logistics_StockLevel)\n    Transport->>Auth: check_permission(Logistics_Warehouse)\n\n    Auth->>Session: lookup session\n    Session-->>Auth: #session{Logistics_TrackingNumber}\n\n    alt Session Not Found\n        Auth-->>Client: {Logistics_TrackingNumber}\n    else Session Found\n        Auth->>RBAC: check_user_permission(Logistics_StockLevel)\n\n        RBAC->>RBAC: Get user roles from ETS\n        Note right of RBAC: auth_user_roles:<br/>UserId -> [Logistics_Warehouse]\n\n        RBAC->>RBAC: Get allowed roles for resource+permission\n        Note right of RBAC: auth_acls:<br/>{Logistics_Warehouse} -> [Logistics_Warehouse]\n\n        RBAC->>RBAC: Check intersection\n        Note right of RBAC: lists:any/2<br/>UserRole ∩ AllowedRoles ≠ ∅\n\n        alt Permission Denied\n            RBAC-->>Auth: {Logistics_DeliveryRoute}\n            Auth-->>Client: {Logistics_DeliveryRoute}\n        else Permission Granted\n            RBAC-->>Auth: ok\n            Auth-->>Client: ok\n        end\n    end\n\n    %% Default RBAC Roles\n    Note over RBAC: Default Roles (Logistics_TrackingNumber):<br/>🔹 admin: [Logistics_TrackingNumber]<br/>🔹 user: [Logistics_StockLevel]<br/>🔹 guest: [Logistics_FleetManagement]\n\n    %% Token Rotation\n    Note over Client,Session: Token Rotation (Logistics_Warehouse)\n\n    Client->>Auth: rotate_token(Logistics_StockLevel)\n    Auth->>Session: lookup session\n\n    Auth->>Auth: generate new SessionId\n    Note right of Auth: crypto:strong_rand_bytes(Logistics_FleetManagement)<br/>base64 encoded\n\n    Auth->>Session: insert new session\n    Auth->>Session: delete old session\n\n    Auth-->>Client: {Logistics_FleetManagement}\n    Note right of Auth: Old session invalidated immediately<br/>Prevents session hijacking\n\n    %% Token Revocation\n    Note over Client,Session: Token Revocation (Logistics_DeliveryRoute)\n\n    Client->>Auth: revoke_token(Logistics_DeliveryRoute)\n    Auth->>Auth: insert into auth_revoked_tokens\n    Note right of Auth: Store: Token -> RevokedAt<br/>Auto-cleanup after 7 days\n\n    Auth-->>Client: ok\n    Note over Auth,JWT: Revoked tokens rejected immediately<br/>Even if exp claim valid\n\n    %% Session Cleanup\n    Note over Session: Auto-cleanup every 60 seconds:<br/>• Expired sessions (Logistics_FleetManagement)<br/>• Revoked tokens (Logistics_TrackingNumber)<br/>• OAuth2 cache (Logistics_DeliveryRoute)\n",
+  "content_size": 8727,
+  "collected_at": "2026-02-06T01:50:47.821294",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "augmentation_domain": "Logistics",
+  "seed_id": "gh_sequence_00922",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为erlmcp系统绘制一个完整的认证授权时序图，涵盖API Key、JWT、OAuth2和mTLS四种认证方式，以及RBAC权限检查。先确定参与者和整体结构吧。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth mtls",
+        "erlmcp auth rate limiter",
+        "jose",
+        "oauth2 provider",
+        "rbac engine",
+        "session manager",
+        "transport layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我注意到代码里有些参与者标注了物流相关的别名，比如Transport Layer后面跟着Logistics_StockLevel，Auth是Logistics_FleetManagement。这些别名是业务映射还是技术别名？需要保留吗？",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "logistics stocklevel",
+        "logistics fleetmanagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这些是业务域映射。erlmcp系统实际服务于物流平台，所以每个核心组件都对应一个物流子系统。保留这些别名有助于团队理解业务上下文。",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "logistics stocklevel",
+        "logistics fleetmanagement",
+        "logistics warehouse",
+        "logistics deliveryroute",
+        "logistics trackingnumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，那我先画出顶层参与者：Client、Transport Layer（Logistics_StockLevel）、erlmcp_auth（Logistics_FleetManagement）、RateLimiter、jose（Logistics_Warehouse）、OAuth2 Provider（Logistics_StockLevel）、erlmcp_auth_mtls（Logistics_Warehouse）、RBAC Engine（Logistics_Warehouse）、Session Manager（Logistics_DeliveryRoute）。这样九方参与者是否完整？",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "rbac engine",
+        "session manager",
+        "logistics stocklevel",
+        "logistics fleetmanagement",
+        "logistics warehouse",
+        "logistics deliveryroute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "参与者完整。现在从API Key认证开始。Client先向Transport Layer发起authenticate调用，带上Logistics_StockLevel标识。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "logistics stocklevel",
+        "authenticate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：Client-Transport: authenticate(Logistics_StockLevel)。接下来Transport转发给Auth模块？",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "logistics stocklevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Transport-Auth: authenticate(Logistics_StockLevel})，注意这里右花括号是代码里的写法，保持原样。然后Auth要先调RateLimiter做限流检查。",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "logistics stocklevel",
+        "erlmcp auth rate limiter",
+        "check_rate_limit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Auth-RateLimiter: check_rate_limit(Logistics_StockLevel)。限流通过后返回ok，带上Logistics_TrackingNumber？",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "logistics stocklevel",
+        "logistics trackingnumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，RateLimiter--Auth: ok (Logistics_TrackingNumber})。这里要画虚线返回。然后需要分支：如果触发限流，直接返回错误；否则继续验证API Key。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "erlmcp auth",
+        "logistics trackingnumber",
+        "rate limited",
+        "blocked after 5 failed attempts",
+        "15-minute cooldown"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加alt Rate Limited分支：Auth--Client返回{Logistics_TrackingNumber}，并加上注释说明5次失败后15分钟冷却。然后是else Rate Check Passed分支？",
+      "elements_involved": [
+        "erlmcp auth",
+        "client",
+        "logistics trackingnumber",
+        "rate check passed",
+        "do_validate_api_key"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "在通过分支里，Auth自调用do_validate_api_key(Logistics_TrackingNumber)，需要标注ETS表查询的细节。然后继续分支：API Key无效或有效两种情况。",
+      "elements_involved": [
+        "erlmcp auth",
+        "logistics trackingnumber",
+        "do_validate_api_key",
+        "ets table",
+        "auth_api_keys",
+        "api key invalid",
+        "api key valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Auth-Auth: do_validate_api_key和右侧注释。无效分支：Auth-RateLimiter: record_failure，然后返回{Logistics_Warehouse}给Client。有效分支呢？",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "logistics trackingnumber",
+        "logistics warehouse",
+        "record_failure",
+        "record_success"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "有效分支：record_success后创建Session，然后Session要去RBAC获取用户角色。这里涉及Logistics_StockLevel查询，返回Logistics_Warehouse角色列表，再聚合权限。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "session manager",
+        "rbac engine",
+        "logistics deliveryroute",
+        "logistics stocklevel",
+        "logistics warehouse",
+        "get_user_roles",
+        "aggregate permissions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：Auth-Session: create_session，Session-RBAC: get_user_roles(Logistics_StockLevel)，RBAC--Session返回[Logistics_Warehouse]，然后Session-RBAC: Aggregate permissions，返回[Logistics_StockLevel]。最后Session--Auth返回{Logistics_Warehouse}，Auth--Client返回{Logistics_TrackingNumber}。",
+      "elements_involved": [
+        "auth",
+        "session manager",
+        "rbac engine",
+        "logistics stocklevel",
+        "logistics warehouse",
+        "logistics deliveryroute",
+        "logistics trackingnumber",
+        "create_session",
+        "session expires in 1 hour",
+        "auto-cleanup timer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "API Key流程完整。加上Session过期1小时的注释。现在进入JWT认证流程，Client重新发起authenticate，这次带Logistics_TrackingNumber}。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "logistics trackingnumber",
+        "jwt authentication",
+        "token revoked",
+        "token active"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加JWT流程起点：Client-Transport: authenticate(Logistics_TrackingNumber})，Transport-Auth: authenticate(Logistics_StockLevel})。同样的限流检查通过后，Auth自调用do_validate_jwt(Logistics_FleetManagement)。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "logistics trackingnumber",
+        "logistics stocklevel",
+        "logistics fleetmanagement",
+        "do_validate_jwt",
+        "check_rate_limit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "JWT要先检查token是否被吊销。需要分支：Token Revoked或Token Active。吊销的token要查ETS表auth_revoked_tokens，7天后清理。",
+      "elements_involved": [
+        "erlmcp auth",
+        "token revoked",
+        "token active",
+        "auth_revoked_tokens",
+        "cleanup after 7 days",
+        "logistics warehouse"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加alt Token Revoked分支：Auth--Client返回{Logistics_Warehouse}，带ETS注释。Active分支需要调用jose库？",
+      "elements_involved": [
+        "erlmcp auth",
+        "client",
+        "logistics warehouse",
+        "jose",
+        "jose_jws:peek_protected",
+        "logistics stocklevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Auth-JWT: jose_jws:peek_protected(Logistics_StockLevel)，返回#{Logistics_TrackingNumber}。然后Auth根据kid查找公钥，支持密钥轮换。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "logistics stocklevel",
+        "logistics trackingnumber",
+        "kid",
+        "public key",
+        "auth_jwt_keys",
+        "key rotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加peek_protected调用和返回，以及公钥查找注释。下一步是jose_jws:verify？",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "logistics warehouse",
+        "jose_jws:verify",
+        "logistics deliveryroute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Auth-JWT: jose_jws:verify(Logistics_Warehouse)，返回{Logistics_DeliveryRoute}。然后分支：签名无效或有效。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "logistics warehouse",
+        "logistics deliveryroute",
+        "signature invalid",
+        "signature valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加verify调用和返回。无效分支返回{Logistics_FleetManagement}。有效分支需要验证JWT claims，这里claims比较多。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "logistics fleetmanagement",
+        "logistics stocklevel",
+        "validate_jwt_claims",
+        "exp",
+        "nbf",
+        "iss",
+        "aud",
+        "sub"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Claims验证是关键安全检查：exp必需、nbf可选、iss可配置、aud可配置、sub必需。每个失败情况都要单独分支返回不同错误。",
+      "elements_involved": [
+        "erlmcp auth",
+        "logistics stocklevel",
+        "logistics fleetmanagement",
+        "logistics trackingnumber",
+        "logistics warehouse",
+        "token expired",
+        "token not yet valid",
+        "issuer mismatch",
+        "audience mismatch",
+        "all claims valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加多层alt分支：Token Expired返回{Logistics_TrackingNumber}，Not Yet Valid返回{Logistics_FleetManagement}，Issuer Mismatch返回{Logistics_FleetManagement}，Audience Mismatch返回{Logistics_TrackingNumber}。全部通过后呢？",
+      "elements_involved": [
+        "erlmcp auth",
+        "logistics trackingnumber",
+        "logistics fleetmanagement",
+        "record_success",
+        "create_session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "All Claims Valid分支：record_success，然后create_session，返回{Logistics_TrackingNumber}给Client，同时Auth--Client返回{Logistics_FleetManagement}。JWT流程结束。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "session manager",
+        "logistics deliveryroute",
+        "logistics warehouse",
+        "logistics trackingnumber",
+        "logistics fleetmanagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成JWT流程。现在进入OAuth2认证，标注为Logistics_TrackingNumber流程。Client-Transport: authenticate(Logistics_DeliveryRoute})？",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "oauth2 provider",
+        "logistics trackingnumber",
+        "logistics deliveryroute",
+        "oauth2 authentication"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，这里有个问题。OAuth2的Client调用应该是authenticate(Logistics_DeliveryRoute})，但Transport转发给Auth时，应该是authenticate(Logistics_StockLevel})，和前面保持一致。你刚才说的Transport转发目标对了，但Client发起的参数需要确认。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "logistics deliveryroute",
+        "logistics stocklevel",
+        "oauth2 authentication"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，Client-Transport: authenticate(Logistics_DeliveryRoute})，然后Transport-Auth: authenticate(Logistics_StockLevel})。限流检查后，Auth自调用do_validate_oauth2_token(Logistics_TrackingNumber)。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "logistics deliveryroute",
+        "logistics stocklevel",
+        "logistics trackingnumber",
+        "do_validate_oauth2_token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OAuth2有缓存机制。先检查ETS: auth_oauth2_cache，命中直接返回；未命中才调用OAuth2 Provider的introspect端点。",
+      "elements_involved": [
+        "erlmcp auth",
+        "auth_oauth2_cache",
+        "cache hit",
+        "cache miss",
+        "logistics fleetmanagement",
+        "logistics trackingnumber",
+        "logistics warehouse"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加alt Cache Hit分支：带注释说明Token-{Logistics_TrackingNumber}映射，直接返回{Logistics_Warehouse}。Cache Miss分支需要HTTP调用？",
+      "elements_involved": [
+        "erlmcp auth",
+        "oauth2 provider",
+        "logistics fleetmanagement",
+        "logistics trackingnumber",
+        "logistics warehouse",
+        "http post",
+        "introspect",
+        "rfc 7662"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Auth-OAuth2: HTTP POST /introspect，按RFC 7662，用Basic Auth传client_id:secret，body带token和token_type_hint。",
+      "elements_involved": [
+        "erlmcp auth",
+        "oauth2 provider",
+        "rfc 7662",
+        "basic auth",
+        "client_id",
+        "client_secret",
+        "token",
+        "token_type_hint"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加introspect调用和RFC 7662注释。OAuth2返回200 OK + TokenInfo后，Auth要验证响应？",
+      "elements_involved": [
+        "oauth2 provider",
+        "erlmcp auth",
+        "tokeninfo",
+        "validate_introspection_response",
+        "logistics fleetmanagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "验证introspection响应，检查RFC 7662必需字段：active=true、exp、nbf、iss。然后分支：Token Inactive、Expired或Valid。",
+      "elements_involved": [
+        "erlmcp auth",
+        "logistics warehouse",
+        "logistics deliveryroute",
+        "logistics trackingnumber",
+        "token inactive",
+        "token expired",
+        "token valid",
+        "active",
+        "exp",
+        "nbf",
+        "iss"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加验证注释和三层分支：Inactive返回{Logistics_Warehouse}，Expired返回{Logistics_DeliveryRoute}，Valid分支需要缓存token？",
+      "elements_involved": [
+        "erlmcp auth",
+        "logistics warehouse",
+        "logistics deliveryroute",
+        "cache_oauth2_token",
+        "logistics trackingnumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Valid分支：先缓存，最多5分钟或到exp。然后record_success，create_session，返回{Logistics_StockLevel}和{Logistics_Warehouse}。OAuth2完成。",
+      "elements_involved": [
+        "erlmcp auth",
+        "auth_oauth2_cache",
+        "session manager",
+        "logistics trackingnumber",
+        "logistics deliveryroute",
+        "logistics stocklevel",
+        "logistics warehouse",
+        "record_success",
+        "create_session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成OAuth2流程。现在mTLS认证，Client-Transport: authenticate(Logistics_DeliveryRoute})，Transport-Auth: authenticate(Logistics_TrackingNumber)。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "logistics deliveryroute",
+        "logistics trackingnumber",
+        "erlmcp auth mtls",
+        "mtls authentication"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "mTLS限流通过后，Auth-MTLS: validate(Logistics_DeliveryRoute)。这里需要详细注释说明6步验证流程。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "erlmcp auth mtls",
+        "logistics trackingnumber",
+        "logistics deliveryroute",
+        "mtls validation pipeline",
+        "x.509",
+        "ocsp",
+        "crl",
+        "subject dn",
+        "cn pattern"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加MTLS调用和6步验证注释：提取证书、X.509链验证、过期检查、OCSP/CRL吊销检查、Subject DN/CN匹配、证书深度限制。返回{Logistics_Warehouse}后分支？",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "erlmcp auth",
+        "logistics warehouse",
+        "logistics deliveryroute",
+        "certificate invalid",
+        "certificate valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "分支：Certificate Invalid时record_failure，返回{Logistics_TrackingNumber}；Valid时record_success，create_session，返回{Logistics_TrackingNumber}。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "erlmcp auth mtls",
+        "session manager",
+        "logistics deliveryroute",
+        "logistics trackingnumber",
+        "logistics warehouse",
+        "record_failure",
+        "record_success",
+        "create_session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成mTLS认证流程。四种认证方式都画完了。现在进入Authorization Flow部分？",
+      "elements_involved": [
+        "authorization flow",
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "session manager",
+        "rbac engine",
+        "logistics stocklevel",
+        "logistics warehouse",
+        "logistics trackingnumber",
+        "check_permission"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，加上Note over Client,Session标注Authorization Flow。Client-Transport: check_permission(Logistics_StockLevel)，Transport-Auth: check_permission(Logistics_Warehouse)。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "session manager",
+        "logistics stocklevel",
+        "logistics warehouse",
+        "check_permission",
+        "lookup session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加授权流程起点。Auth-Session: lookup session，返回#session{Logistics_TrackingNumber}。然后分支：Session Not Found或Found。",
+      "elements_involved": [
+        "erlmcp auth",
+        "session manager",
+        "logistics trackingnumber",
+        "session not found",
+        "session found"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Not Found返回{Logistics_TrackingNumber}。Found时Auth-RBAC: check_user_permission(Logistics_StockLevel)，RBAC内部查ETS获取用户角色和ACL。",
+      "elements_involved": [
+        "erlmcp auth",
+        "rbac engine",
+        "logistics stocklevel",
+        "logistics warehouse",
+        "logistics deliveryroute",
+        "auth_user_roles",
+        "auth_acls",
+        "check_user_permission"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加RBAC调用和内部注释：auth_user_roles表UserId-[Logistics_Warehouse]，auth_acls表{Logistics_Warehouse}-[Logistics_Warehouse]。然后用lists:any检查交集？",
+      "elements_involved": [
+        "rbac engine",
+        "logistics warehouse",
+        "lists:any",
+        "userrole",
+        "allowedroles",
+        "intersection",
+        "permission denied",
+        "permission granted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，UserRole ∩ AllowedRoles ≠ ∅。Denied时返回{Logistics_DeliveryRoute}，Granted返回ok。授权流程完成。",
+      "elements_involved": [
+        "rbac engine",
+        "erlmcp auth",
+        "client",
+        "logistics deliveryroute",
+        "ok",
+        "permission denied",
+        "permission granted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成授权流程。需要加上Default RBAC Roles的注释吗？代码里有admin、user、guest三个默认角色。",
+      "elements_involved": [
+        "rbac engine",
+        "default roles",
+        "admin",
+        "user",
+        "guest",
+        "logistics trackingnumber",
+        "logistics stocklevel",
+        "logistics fleetmanagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "加上Note over RBAC：admin有Logistics_TrackingNumber权限，user有Logistics_StockLevel，guest只有Logistics_FleetManagement。现在画Token Rotation流程。",
+      "elements_involved": [
+        "token rotation",
+        "client",
+        "erlmcp auth",
+        "session manager",
+        "logistics warehouse",
+        "logistics stocklevel",
+        "logistics fleetmanagement",
+        "rotate_token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加角色注释和Token Rotation标注。Client-Auth: rotate_token(Logistics_StockLevel)，Auth先lookup session，然后generate new SessionId。",
+      "elements_involved": [
+        "client",
+        "erlmcp auth",
+        "session manager",
+        "logistics stocklevel",
+        "rotate_token",
+        "lookup session",
+        "generate new sessionid",
+        "crypto:strong_rand_bytes"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "生成SessionId用crypto:strong_rand_bytes(Logistics_FleetManagement)，base64编码。然后insert new session，delete old session，返回{Logistics_FleetManagement}。",
+      "elements_involved": [
+        "erlmcp auth",
+        "session manager",
+        "logistics fleetmanagement",
+        "insert new session",
+        "delete old session",
+        "old session invalidated immediately",
+        "prevents session hijacking"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加rotation流程和防止劫持的注释。接下来Token Revocation流程？",
+      "elements_involved": [
+        "token revocation",
+        "client",
+        "erlmcp auth",
+        "logistics deliveryroute",
+        "revoke_token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Client-Auth: revoke_token(Logistics_DeliveryRoute)，Auth插入auth_revoked_tokens表，记录Token-RevokedAt，7天后自动清理。",
+      "elements_involved": [
+        "client",
+        "erlmcp auth",
+        "logistics deliveryroute",
+        "revoke_token",
+        "auth_revoked_tokens",
+        "revokedat",
+        "auto-cleanup after 7 days"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加revocation流程。需要加上注释说明revoked tokens立即拒绝，即使exp claim还有效？",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "revoked tokens rejected immediately",
+        "exp claim valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "加上Note over Auth,JWT。最后加上Session Cleanup的注释，说明每60秒清理过期session、吊销token和OAuth2缓存。",
+      "elements_involved": [
+        "session cleanup",
+        "session manager",
+        "expired sessions",
+        "logistics fleetmanagement",
+        "revoked tokens",
+        "logistics trackingnumber",
+        "oauth2 cache",
+        "logistics deliveryroute",
+        "auto-cleanup every 60 seconds"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加所有清理注释。整个图看起来完整了。我检查一下：API Key、JWT、OAuth2、mTLS四个认证，RBAC授权，Token Rotation、Revocation，Session Cleanup。数量对吗？",
+      "elements_involved": [
+        "api key",
+        "jwt",
+        "oauth2",
+        "mtls",
+        "rbac",
+        "token rotation",
+        "token revocation",
+        "session cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "流程完整，但我注意到JWT claims验证那里，代码里有五个并行的else分支，你画的是嵌套alt吗？需要确认结构是否正确。",
+      "elements_involved": [
+        "jwt claims",
+        "exp",
+        "nbf",
+        "iss",
+        "aud",
+        "sub",
+        "token expired",
+        "token not yet valid",
+        "issuer mismatch",
+        "audience mismatch",
+        "all claims valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我检查一下...确实，代码里是连续的else分支，不是嵌套。我应该调整成：Signature Valid后进入claims验证，然后expired、not yet valid、issuer mismatch、audience mismatch、all claims valid是同级分支。",
+      "elements_involved": [
+        "erlmcp auth",
+        "signature valid",
+        "validate_jwt_claims",
+        "logistics trackingnumber",
+        "logistics fleetmanagement",
+        "logistics stocklevel",
+        "logistics warehouse"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "修正后结构对了。还有OAuth2的缓存注释，代码里是\"Token - {Logistics_TrackingNumber}\"，注意空格和格式。",
+      "elements_involved": [
+        "erlmcp auth",
+        "auth_oauth2_cache",
+        "logistics trackingnumber",
+        "token",
+        "cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正OAuth2缓存注释格式。再确认一下mTLS的返回：Certificate Valid分支，Session--Auth返回{Logistics_TrackingNumber}，但代码里是Auth--Client返回{Logistics_Warehouse}，同时Session--Auth返回。让我核对。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "erlmcp auth",
+        "session manager",
+        "client",
+        "logistics deliveryroute",
+        "logistics trackingnumber",
+        "logistics warehouse",
+        "certificate valid"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "mTLS Valid分支：Auth-Session: create_session(Logistics_DeliveryRoute})，注意右花括号，然后Session--Auth: {Logistics_TrackingNumber}，Auth--Client: {Logistics_Warehouse}。你现在的版本对吗？",
+      "elements_involved": [
+        "erlmcp auth",
+        "session manager",
+        "client",
+        "logistics deliveryroute",
+        "logistics trackingnumber",
+        "logistics warehouse",
+        "create_session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我漏了Logistics_DeliveryRoute}的右花括号！现在修正：Auth-Session: create_session(Logistics_DeliveryRoute})，Session--Auth: {Logistics_TrackingNumber}，Auth--Client: {Logistics_Warehouse}。",
+      "elements_involved": [
+        "erlmcp auth",
+        "session manager",
+        "client",
+        "logistics deliveryroute",
+        "logistics trackingnumber",
+        "logistics warehouse"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "还有API Key流程最后的返回，Session--Auth是{Logistics_Warehouse}，Auth--Client是{Logistics_TrackingNumber}，这个对吗？",
+      "elements_involved": [
+        "erlmcp auth",
+        "session manager",
+        "client",
+        "logistics warehouse",
+        "logistics trackingnumber",
+        "api key valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认正确。最后检查：所有autonumber应该连续，从1开始。Note的位置：Authentication Flow在Client到Session上方，Authorization Flow也在上方，Token Rotation和Revocation都有标注。",
+      "elements_involved": [
+        "autonumber",
+        "authentication flow",
+        "authorization flow",
+        "token rotation",
+        "token revocation",
+        "client",
+        "session manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "完整了。再确认一下RateLimiter的record_failure和record_success调用，参数分别是Logistics_TrackingNumber、Logistics_DeliveryRoute，这些物流标识在不同场景下是动态变化的，符合业务设计。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "logistics trackingnumber",
+        "logistics deliveryroute",
+        "record_failure",
+        "record_success"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已全部核对完毕。erlmcp认证授权时序图完整呈现：四种认证方式、RBAC授权、Token生命周期管理、自动清理机制，所有物流业务映射准确，注释详细。可以输出最终代码了。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth mtls",
+        "erlmcp auth rate limiter",
+        "jose",
+        "oauth2 provider",
+        "rbac engine",
+        "session manager",
+        "transport layer",
+        "client",
+        "logistics stocklevel",
+        "logistics fleetmanagement",
+        "logistics warehouse",
+        "logistics deliveryroute",
+        "logistics trackingnumber"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 4,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 114956.8985,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

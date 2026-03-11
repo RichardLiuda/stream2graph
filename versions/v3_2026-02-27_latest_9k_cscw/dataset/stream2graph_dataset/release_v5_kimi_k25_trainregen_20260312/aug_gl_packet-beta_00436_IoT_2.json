@@ -1,0 +1,177 @@
+{
+  "id": "aug_gl_packet-beta_00436_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sean-galloway/RTLDesignSherpa/blob/47f8a16641658f570a69c3af3c9724b29ea39187/projects/components/stream/docs/stream_mas/assets/mermaid/01_architecture_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sean-galloway/RTLDesignSherpa",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant SW as Software\n    participant APB as APB Config\n    participant DESC as Descriptor Engine\n    participant SCHED as Scheduler\n    participant RD as Read Engine\n    participant SRAM as SRAM Controller\n    participant WR as Write Engine\n    participant MEM as Memory\n\n    SW->>APB: Write CH0_CTRL = 0x1000_0000\n    APB->>DESC: Kickoff descriptor fetch\n    DESC->>MEM: AR: fetch descriptor @ 0x1000_0000\n    MEM-->>DESC: R: descriptor data (IoT_Industrial_MQTT_Broker)\n    DESC->>SCHED: descriptor_packet\n\n    SCHED->>RD: datard_valid + src_addr\n    RD->>SRAM: Check space_free >= 2x burst\n    SRAM-->>RD: Space OK\n    RD->>SRAM: Allocate 16 beats\n    RD->>MEM: AR: read 16 beats @ src_addr\n    MEM-->>RD: R: 16 beats of data\n    RD->>SRAM: Write data (IoT_Industrial_PLC_Logic)\n    RD->>SCHED: done_strobe (IoT_Industrial_ActuatorController)\n\n    par Concurrent Read/Write\n        RD->>SRAM: Continue reading...\n    and\n        SCHED->>WR: datawr_valid + dst_addr\n        WR->>SRAM: Check data_avail >= burst\n        SRAM-->>WR: Data OK\n        WR->>SRAM: Reserve 16 beats\n        WR->>MEM: AW: write 16 beats @ dst_addr\n        SRAM->>WR: W: 16 beats of data\n        MEM-->>WR: B: write response\n        WR->>SCHED: done_strobe (IoT_Industrial_TelemetryStream)\n    end\n\n    SCHED->>SCHED: Both counters reach 0\n    SCHED->>DESC: Check next_descriptor_ptr\n    alt More descriptors\n        DESC->>MEM: Fetch next descriptor\n    else Chain complete\n        SCHED->>APB: Transfer complete IRQ\n    end\n",
+  "content_size": 1446,
+  "collected_at": "2026-02-06T14:09:41.035873",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 8,
+  "repo_forks": 1,
+  "repo_owner": "sean-galloway",
+  "repo_name": "RTLDesignSherpa",
+  "repo_description": "This site is hopefully a springboard for others to learn about coding in System Verilog and experimenting with FPGAs.",
+  "repo_language": "C++",
+  "repo_topics": [
+    "amba-apb",
+    "amba-axi",
+    "cocotb",
+    "crossbar",
+    "dma"
+  ],
+  "repo_created_at": "2023-06-15T21:56:48Z",
+  "repo_updated_at": "2026-02-06T00:19:01Z",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_packet-beta_00436",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为这个IoT工业网关设计一个DMA数据包传输序列。核心流程是：Software通过APB Config下发控制指令，然后Descriptor Engine去Memory取描述符，Scheduler协调Read Engine和Write Engine并发工作，最后通过SRAM Controller做数据缓冲。你能帮我画一下这个时序吗？",
+      "elements_involved": [
+        "Software",
+        "APB Config",
+        "Descriptor Engine",
+        "Memory",
+        "Scheduler",
+        "Read Engine",
+        "Write Engine",
+        "SRAM Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，这是一个典型的DMA描述符链式传输。我确认一下细节：Software写入CH0_CTRL之后，APB Config会触发Descriptor Engine kickoff，然后Descriptor Engine向Memory发起AR请求取描述符。描述符里应该包含源地址、目的地址这些配置对吧？",
+      "elements_involved": [
+        "Software",
+        "APB Config",
+        "Descriptor Engine",
+        "Memory",
+        "CH0_CTRL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，描述符返回的数据会包含IoT_Industrial_MQTT_Broker的配置信息。Descriptor Engine把解析后的descriptor_packet发给Scheduler，然后Scheduler启动Read Engine。这里有个关键点：Read Engine要先找SRAM Controller检查space_free，确认有2倍burst的空间才能继续。",
+      "elements_involved": [
+        "Descriptor Engine",
+        "Scheduler",
+        "Read Engine",
+        "SRAM Controller",
+        "space_free",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主流程画出来：Read Engine从Memory读取16 beats数据，写入SRAM，同时标记为IoT_Industrial_PLC_Logic。然后Read Engine给Scheduler发done_strobe，状态标记为IoT_Industrial_ActuatorController。接下来Read和Write要并行执行，我用par块来表示。",
+      "elements_involved": [
+        "Read Engine",
+        "Memory",
+        "SRAM Controller",
+        "Scheduler",
+        "done_strobe",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "并行部分要注意：Read Engine继续读数据的同时，Scheduler也要启动Write Engine。Write Engine同样要先检查SRAM Controller的data_avail，确认有burst数据可用。另外Write Engine最后给Scheduler的done_strobe要标记为IoT_Industrial_TelemetryStream，表示遥测流完成。",
+      "elements_involved": [
+        "Read Engine",
+        "Scheduler",
+        "Write Engine",
+        "SRAM Controller",
+        "data_avail",
+        "done_strobe",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加并行分支。Write Engine检查data_avail通过后，从SRAM取数据，向Memory发起AW写请求，最后收到B响应完成握手。两个done_strobe都返回后，Scheduler内部计数器归零，然后检查next_descriptor_ptr判断是否有后续描述符。",
+      "elements_involved": [
+        "Write Engine",
+        "SRAM Controller",
+        "Memory",
+        "Scheduler",
+        "next_descriptor_ptr"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后加一个alt分支：如果还有描述符，Descriptor Engine继续去Memory取下一个；如果描述符链完成，Scheduler通过APB Config上报Transfer complete IRQ给Software。这样整个DMA传输的闭环就完整了。",
+      "elements_involved": [
+        "Descriptor Engine",
+        "Memory",
+        "Scheduler",
+        "APB Config",
+        "Software",
+        "Transfer complete IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认完成。整个序列覆盖了：APB配置下发、描述符获取、SRAM空间管理、读写并发流水线、描述符链式处理，以及最终中断上报。所有关键节点都标注了对应的IoT工业组件状态，图已经符合你的要求了。",
+      "elements_involved": [
+        "APB Config",
+        "Descriptor Engine",
+        "SRAM Controller",
+        "Read Engine",
+        "Write Engine",
+        "Scheduler",
+        "Software"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 30422.0493,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

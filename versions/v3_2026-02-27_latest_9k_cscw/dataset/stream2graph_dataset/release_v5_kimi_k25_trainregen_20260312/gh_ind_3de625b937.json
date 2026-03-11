@@ -1,0 +1,156 @@
+{
+  "id": "gh_ind_3de625b937",
+  "source": "github_industrial",
+  "repo": "FabioHAraujo/ShardBox",
+  "license": "gpl-3.0",
+  "code": "stateDiagram-v2\n    [*] --> Inicializando: Nodo inicia\n    \n    Inicializando --> AguardandoSync: Servidor TCP pronto\n    AguardandoSync --> Ativo: Aguarda 10s<br/>Servidor HTTP pronto\n    \n    note right of AguardandoSync\n        Período de graça de 10s\n        para sincronização inicial\n    end note\n    \n    Ativo --> Monitorando: Inicia heartbeat\n    \n    Monitorando --> Monitorando: Heartbeat OK<br/>Todos vivos\n    Monitorando --> DetectandoFalha: Sem resposta\n    \n    DetectandoFalha --> Monitorando: Timeout < 30s<br/>Aguarda\n    DetectandoFalha --> ConfirmandoMorte: Timeout > 30s\n    \n    ConfirmandoMorte --> AguardandoCooldown: Em período de<br/>inicialização (<15s)\n    ConfirmandoMorte --> AguardandoCooldown: Cooldown ativo<br/>(última tentativa <60s)\n    ConfirmandoMorte --> Recuperando: Condições OK<br/>para recuperação\n    \n    note right of ConfirmandoMorte\n        Proteções contra\n        recuperação prematura\n    end note\n    \n    AguardandoCooldown --> Monitorando: Volta ao monitoramento\n    \n    Recuperando --> IniciaProcesso: subprocess.Popen<br/>python node.py N\n    IniciaProcesso --> RegistraTentativa: Armazena timestamp\n    RegistraTentativa --> Monitorando: Continua monitorando\n    \n    IniciaProcesso --> [*]: Novo processo<br/>do nodo\n    \n    note left of Recuperando\n        Inicia novo processo\n        em background, desacoplado\n        do processo pai\n    end note\n",
+  "diagram_type": "node size:900..1500",
+  "collected_at": "2026-02-27T05:29:52.167147",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个节点监控与故障恢复的状态机。核心流程是：节点启动后先进入初始化状态，等TCP服务器就绪后进入同步等待期，这个同步期要有10秒的宽限期。",
+      "elements_involved": [
+        "Inicializando",
+        "AguardandoSync",
+        "Servidor TCP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以初始化完成后不是直接激活，而是先有个AguardandoSync状态。那10秒宽限期结束后进入什么状态？是直接进入活跃状态吗？",
+      "elements_involved": [
+        "AguardandoSync",
+        "Ativo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，同步完成后进入Ativo状态，同时HTTP服务器也要就绪。然后立即启动心跳监控，进入Monitorando状态。心跳正常的话就在Monitorando里自循环。",
+      "elements_involved": [
+        "Ativo",
+        "Monitorando",
+        "heartbeat"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我画了一下，Monitorando检测到无响应时进入DetectandoFalha。这里需要区分两种情况：30秒内恢复就回到Monitorando，超过30秒才确认死亡。这样设计可以吗？",
+      "elements_involved": [
+        "Monitorando",
+        "DetectandoFalha",
+        "ConfirmandoMorte"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，但ConfirmandoMorte之后要有防抖动机制。如果节点刚启动不到15秒，或者距离上次重启尝试不到60秒，都要进入AguardandoCooldown冷却期，避免频繁重启。",
+      "elements_involved": [
+        "ConfirmandoMorte",
+        "AguardandoCooldown",
+        "<15s",
+        "<60s"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我添加了AguardandoCooldown到Monitorando的返回路径。那如果条件满足，从ConfirmandoMorte应该直接进入Recuperando对吧？",
+      "elements_involved": [
+        "ConfirmandoMorte",
+        "Recuperando"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，Recuperando阶段要用subprocess.Popen启动新进程，节点脚本叫node.py，参数是N。这个步骤我命名为IniciaProcesso，然后需要RegistraTentativa记录时间戳，最后回到Monitorando。",
+      "elements_involved": [
+        "Recuperando",
+        "IniciaProcesso",
+        "RegistraTentativa",
+        "subprocess.Popen",
+        "node.py"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "有个细节：IniciaProcesso启动新进程后，原进程怎么处理？是直接终止还是保持？",
+      "elements_involved": [
+        "IniciaProcesso",
+        "Novo processo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "新进程是后台独立运行的，和父进程解耦。所以IniciaProcesso应该有个指向终止状态的箭头，表示当前监控进程结束，新节点进程接管。",
+      "elements_involved": [
+        "IniciaProcesso",
+        "Novo processo",
+        "processo pai"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成了。我还在ConfirmandoMorte旁边加了注释说明防抖动保护，Recuperando旁边加了注释说明后台进程解耦。整体状态流转应该符合你的需求了。",
+      "elements_involved": [
+        "ConfirmandoMorte",
+        "Recuperando",
+        "notes"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 0,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:40Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:37Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:37Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 33177.881,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

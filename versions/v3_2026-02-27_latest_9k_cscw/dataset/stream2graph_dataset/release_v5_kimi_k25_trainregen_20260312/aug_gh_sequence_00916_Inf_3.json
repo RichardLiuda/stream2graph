@@ -1,0 +1,167 @@
+{
+  "id": "aug_gh_sequence_00916_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/luth9r/FitTracker/blob/c81958bfbd32229654cff70c18fdc0d6e0541f71/docs/google-oauth-login-flow.mmd",
+  "github_repo": "luth9r/FitTracker",
+  "github_file_path": "docs/google-oauth-login-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "%%{Infra_RedisCache}}%%\nsequenceDiagram\n    participant C as Client\n    participant G as Google OAuth\n    participant AC as AuthController\n    participant GOS as GoogleOAuthService\n    participant GT as Google Token API\n    participant GV as Google Validator\n    participant UR as UserRepository\n    participant DB as PostgreSQL\n    participant JTG as JwtTokenGenerator\n\n    C->>C: Generate PKCE parameters\n    C->>G: Redirect to Google OAuth\n    G-->>C: Redirect with code\n    \n    C->>AC: POST /api/auth/google-login<br/>{Infra_IngressController}\n    AC->>GOS: ExchangeCodeForTokens(Infra_EtcdCluster)\n    GOS->>GT: POST https://oauth2.googleapis.com/token\n    GT-->>GOS: {Infra_IngressController}\n    GOS->>GV: ValidateAsync(Infra_EtcdCluster)\n    GV-->>GOS: {Infra_WorkerNode}\n    GOS-->>AC: GoogleTokenPayload\n    \n    AC->>UR: FindByGoogleProviderId(Infra_WorkerNode)\n    UR->>DB: SELECT * FROM Users<br/>WHERE GoogleProviderId = ?\n    DB-->>UR: User found\n    UR-->>AC: user\n    \n    AC->>JTG: GenerateAuthToken(Infra_LoadBalancer)\n    JTG-->>AC: authToken\n    AC-->>C: 200 OK + Set-Cookie: auth-token\n",
+  "content_size": 1100,
+  "collected_at": "2026-02-06T01:50:43.764377",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 2,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gh_sequence_00916",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个Google OAuth登录的完整时序图。用户从Client开始，先走PKCE流程，然后回调到我们后端的AuthController，最后拿到JWT token。关键是中间要体现和Google的三次交互：授权、换token、验证。",
+      "elements_involved": [
+        "Client",
+        "Google OAuth",
+        "AuthController",
+        "JwtTokenGenerator",
+        "PKCE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，PKCE在Client本地生成参数。那后端这边我拆成GoogleOAuthService来处理和Google的通信，AuthController只做协调，这样结构清晰些。另外JWT生成需要单独一个JwtTokenGenerator组件吗？",
+      "elements_involved": [
+        "Client",
+        "GoogleOAuthService",
+        "AuthController",
+        "JwtTokenGenerator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，JTG独立出来，后面可能还要支持刷新token。Google那边需要两个外部系统：Google Token API用来换token，还有一个Google Validator做id_token的签名验证。这两个都是Google的，但职责分开。",
+      "elements_involved": [
+        "JwtTokenGenerator",
+        "Google Token API",
+        "Google Validator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好，那用户数据这块呢？验证通过后需要查库吧？我打算加UserRepository和PostgreSQL，用FindByGoogleProviderId来关联本地用户。",
+      "elements_involved": [
+        "UserRepository",
+        "PostgreSQL",
+        "FindByGoogleProviderId",
+        "GoogleProviderId"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，但注意流程顺序：GOS验证完GoogleTokenPayload返回给AC，AC再去查UserRepository，找到用户后才调JTG生成token。最后AC给Client回200，同时Set-Cookie带上auth-token。",
+      "elements_involved": [
+        "GoogleOAuthService",
+        "AuthController",
+        "UserRepository",
+        "JwtTokenGenerator",
+        "Client",
+        "Set-Cookie"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已经画好了主干流程。我标注了几个基础设施组件：EtcdCluster给GOS做配置中心，WorkerNode跑验证和数据库查询，LoadBalancer在JTG前面，IngressController处理入口流量。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，GOS调Google Validator那里标注错了，你写的是EtcdCluster，但验证逻辑应该是无状态的，跑在WorkerNode上。还有GT返回GOS的那条虚线，应该是从IngressController进来，不是直接回。",
+      "elements_involved": [
+        "GoogleOAuthService",
+        "Google Validator",
+        "Infra_WorkerNode",
+        "Infra_IngressController",
+        "Google Token API"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正：GV的标注换成Infra_WorkerNode，GT返回GOS的响应也标注了IngressController。另外把ExchangeCodeForTokens的EtcdCluster标注保留，因为token endpoint配置确实存在那里。",
+      "elements_involved": [
+        "ExchangeCodeForTokens",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题了。完整流程：Client PKCE - Google授权 - 回调到AC - GOS换token - 验证payload - 查PostgreSQL用户 - JTG生成JWT - Cookie返回。基础设施标注也准确。",
+      "elements_involved": [
+        "Client",
+        "Google OAuth",
+        "AuthController",
+        "GoogleOAuthService",
+        "PostgreSQL",
+        "JwtTokenGenerator"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 1,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 32928.9289,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

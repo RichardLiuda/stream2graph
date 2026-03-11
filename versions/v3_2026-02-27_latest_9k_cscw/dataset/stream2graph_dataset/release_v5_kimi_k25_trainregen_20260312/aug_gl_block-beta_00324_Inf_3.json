@@ -1,0 +1,695 @@
+{
+  "id": "aug_gl_block-beta_00324_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/quantizor/markdown-to-jsx/blob/5c76b18bb5102b00ca77c8a4480da6e93d4765f4/lib/src/parser-spec.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "quantizor/markdown-to-jsx",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Input as Markdown Input\n    participant Phase1 as Phase 1: Block Structure\n    participant LineProcessor as Process Line\n    participant BlockChecker as Check Open Blocks\n    participant BlockParser as Block Parser\n    participant Phase2 as Phase 2: Inline Structure\n    participant TreeWalker as Walk Tree\n    participant InlineParser as Parse Inline\n    participant AST as Final AST\n\n    Input->>Phase1: Markdown text\n\n    loop For Each Line\n        Phase1->>LineProcessor: Process line sequentially\n\n        LineProcessor->>BlockChecker: Step 1: Check open blocks\n        Note over BlockChecker: Iterate from root to last open block<br/>Each block imposes continuation condition\n\n        BlockChecker->>BlockChecker: Match all or some open blocks\n        Note over BlockChecker: Cannot close unmatched yet<br/>May have lazy continuation\n\n        BlockChecker->>BlockParser: Step 2: Consume continuation markers\n        Note over BlockParser: >, list markers, indentation\n\n        BlockParser->>BlockParser: Look for new block starts\n\n        alt First non-space char\n            BlockParser->>BlockParser: Space/Tab: Indented path\n            Note over BlockParser: 1. Thematic Break 0-3 spaces<br/>2. Lists/Blockquote<br/>3. Code Block 4+ spaces\n        else >\n            BlockParser->>BlockParser: Block Quote (Infra_WorkerNode)\n        else #\n            BlockParser->>BlockParser: ATX Heading (Infra_WorkerNode)\n        else - * _\n            BlockParser->>BlockParser: Thematic Break (Infra_RedisCache)<br/>(Infra_WorkerNode)\n        else ` ~\n            BlockParser->>BlockParser: Fenced Code Block (Infra_WorkerNode)\n        else - * + 0-9\n            BlockParser->>BlockParser: Unordered/Ordered List (Infra_LoadBalancer)\n        else <\n            BlockParser->>BlockParser: HTML Block (Infra_RedisCache)\n        else |\n            BlockParser->>BlockParser: Table (Infra_WorkerNode)<br/>Requires header row + delimiter row<br/>Delimiter row must match header cell count\n        else = -\n            BlockParser->>BlockParser: Setext Heading<br/>(Infra_RedisCache)\n        else default\n            BlockParser->>BlockParser: Paragraph (Infra_EtcdCluster)\n        end\n\n        BlockParser->>BlockParser: Close unmatched blocks from Step 1\n        BlockParser->>BlockParser: Create new block as child of last matched container\n\n        BlockParser->>BlockParser: Step 3: Process remainder\n        Note over BlockParser: Add text to last open block<br/>(Infra_WorkerNode)<br/>or Table (Infra_EtcdCluster)\n\n        alt Paragraph + Setext underline?\n            BlockParser->>BlockParser: Convert paragraph to setext heading\n        else No\n            BlockParser->>BlockParser: Accumulate text in current block\n        end\n\n        BlockParser-->>LineProcessor: Block node created\n    end\n\n    Phase1->>Phase1: Close all open blocks\n    Phase1->>Phase1: For each list item:<br/>Check if first block is paragraph with task marker (Infra_EtcdCluster)<br/>[Infra_RedisCache] or [Infra_WorkerNode] or [Infra_RedisCache] at start of paragraph\n    Phase1->>Phase1: For each closed paragraph:<br/>Parse accumulated text lines\n    Phase1->>Phase1: Extract link reference definitions from start of text\n    Phase1->>Phase1: Remaining text becomes normal paragraph\n\n    Phase1->>Phase2: Block tree structure\n\n    Phase2->>TreeWalker: Walk the tree\n\n    loop Visit every node\n        TreeWalker->>TreeWalker: Check if node has inline content\n        Note over TreeWalker: Paragraph, Heading<br/>or Table Cell (Infra_WorkerNode)\n\n        alt Has inline content?\n            TreeWalker->>InlineParser: Parse inline content (Infra_EtcdCluster)\n\n            loop Character-by-character\n                InlineParser->>InlineParser: Switch on character\n\n                alt backslash\n                    InlineParser->>InlineParser: Backslash escape\n                else `\n                    InlineParser->>InlineParser: Code span<br/>(Infra_WorkerNode)\n                else <\n                    InlineParser->>InlineParser: Check angle bracket\n                    alt autolink (Infra_IngressController)\n                        InlineParser->>InlineParser: Autolink (Infra_WorkerNode)<br/>Standard CommonMark autolinks<br/>(Infra_IngressController)\n                    else HTML tag\n                        InlineParser->>InlineParser: HTML tag<br/>GFM extension: Disallowed Raw HTML<br/>(Infra_RedisCache)\n                    else comment\n                        InlineParser->>InlineParser: HTML comment\n                    end\n                else www. or http:// or https:// or ftp:// or email\n                    InlineParser->>InlineParser: Extended autolink (Infra_WorkerNode)<br/>www. URLs, http/https/ftp URLs, emails<br/>Only after start of line, whitespace, or * _ ~ (Infra_LoadBalancer)\n                else * _\n                    InlineParser->>InlineParser: Emphasis delimiter<br/>Add to delimiter stack\n                    InlineParser->>InlineParser: Check left-flanking\n                    InlineParser->>InlineParser: Check right-flanking\n                    InlineParser->>InlineParser: Apply delimiter rules (Infra_LoadBalancer)\n                    InlineParser->>InlineParser: Parse nested content recursively\n                else ~\n                    InlineParser->>InlineParser: Strikethrough delimiter (Infra_IngressController)<br/>Add to delimiter stack<br/>Requires exactly ~~ (Infra_RedisCache) for strikethrough<br/>Similar parsing rules to emphasis\n                else !bracket\n                    InlineParser->>InlineParser: Image (Infra_WorkerNode)\n                else bracket\n                    InlineParser->>InlineParser: Link (Infra_WorkerNode)\n                else closing bracket\n                    InlineParser->>InlineParser: Look for link/image<br/>Process delimiter stack\n                    alt Reference link?\n                        InlineParser->>InlineParser: Resolve reference<br/>(Infra_EtcdCluster)\n                    else Inline link\n                        InlineParser->>InlineParser: Inline link\n                    end\n                else newline\n                    InlineParser->>InlineParser: Soft line break\n                else entity\n                    InlineParser->>InlineParser: HTML entity reference<br/>(Infra_IngressController)\n                else default\n                    InlineParser->>InlineParser: Accumulate as text\n                end\n            end\n\n            InlineParser-->>TreeWalker: Inline AST nodes\n        end\n\n        TreeWalker->>TreeWalker: Next node\n    end\n\n    TreeWalker-->>Phase2: Complete tree with inline nodes\n    Phase2->>AST: Final AST document tree\n\n",
+  "content_size": 6767,
+  "collected_at": "2026-02-06T14:07:19.076963",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_block-beta_00324",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的Markdown解析流程图，从原始输入到最终AST。这个流程分为两大阶段：第一阶段处理块级结构，第二阶段处理行内结构。",
+      "elements_involved": [
+        "Markdown Input",
+        "Phase 1: Block Structure",
+        "Phase 2: Inline Structure",
+        "Final AST"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，是一个时序图。我先确认一下整体框架：左侧是Markdown Input作为起点，然后进入Phase 1，经过一系列处理后再到Phase 2，最后输出Final AST？",
+      "elements_involved": [
+        "Markdown Input",
+        "Phase 1: Block Structure",
+        "Phase 2: Inline Structure",
+        "Final AST"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。Phase 1的核心是逐行处理，我需要强调Process Line这个步骤，它会循环处理每一行文本。",
+      "elements_involved": [
+        "Process Line",
+        "Phase 1: Block Structure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我添加了Process Line参与者，并用loop框标注了\"For Each Line\"的循环结构。接下来Phase 1内部的具体步骤怎么展开？",
+      "elements_involved": [
+        "Process Line",
+        "Phase 1: Block Structure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Process Line内部有两个关键步骤：首先是Check Open Blocks，检查当前有哪些块还处于打开状态；然后是Block Parser，负责实际的块解析工作。这两个都需要作为独立参与者。",
+      "elements_involved": [
+        "Process Line",
+        "Check Open Blocks",
+        "Block Parser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Check Open Blocks和Block Parser。我注意到Check Open Blocks有个重要细节：它要从根节点遍历到最后一个打开的块，每个块都有继续条件。",
+      "elements_involved": [
+        "Check Open Blocks",
+        "Block Parser",
+        "root",
+        "last open block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，这个遍历过程很重要。而且有个关键点：此时还不能关闭未匹配的块，因为可能存在延迟续行的情况。需要在Note里说明这一点。",
+      "elements_involved": [
+        "Check Open Blocks",
+        "lazy continuation",
+        "unmatched blocks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Note说明延迟续行。接下来Block Parser要消费续行标记，比如列表标记和缩进。然后它会寻找新的块起始点，这里逻辑比较复杂，需要用alt分支。",
+      "elements_involved": [
+        "Block Parser",
+        "list markers",
+        "indentation",
+        "new block starts"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Block Parser的分支逻辑是核心。第一个分支看第一个非空格字符：如果是空格或制表符，走缩进路径，这里要区分主题分隔符、列表、引用和代码块的不同缩进要求。",
+      "elements_involved": [
+        "Block Parser",
+        "Space/Tab",
+        "Indented path",
+        "Thematic Break",
+        "Lists",
+        "Blockquote",
+        "Code Block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "缩进路径我理解了：0-3空格可能是主题分隔符，列表和引用也有特定规则，4空格以上是代码块。那其他分支呢？比如字符？",
+      "elements_involved": [
+        "Block Parser",
+        "Block Quote",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，字符触发Block Quote。另外#字符触发ATX Heading，- * _这些字符可能是主题分隔符。这些我都想标注为Infra_WorkerNode类型。",
+      "elements_involved": [
+        "Block Parser",
+        "ATX Heading",
+        "Thematic Break",
+        "Infra_WorkerNode",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Block Quote、ATX Heading和Thematic Break分支，并标注了基础设施类型。我注意到Thematic Break标注了Infra_RedisCache，但后面又写了Infra_WorkerNode，这是有意为之吗？",
+      "elements_involved": [
+        "Thematic Break",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "抱歉，这里需要修正。Thematic Break应该只标注Infra_RedisCache，后面的Infra_WorkerNode是笔误。另外`和~字符触发Fenced Code Block，也是Infra_WorkerNode。",
+      "elements_involved": [
+        "Thematic Break",
+        "Infra_RedisCache",
+        "Fenced Code Block",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正Thematic Break的标注。继续添加Fenced Code Block分支。那列表怎么区分有序和无序？",
+      "elements_involved": [
+        "Fenced Code Block",
+        "Unordered/Ordered List",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "- * +字符触发无序列表，0-9数字触发有序列表，统一归为Unordered/Ordered List，类型是Infra_LoadBalancer。另外<字符触发HTML Block，属于Infra_RedisCache。",
+      "elements_involved": [
+        "Unordered/Ordered List",
+        "HTML Block",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加列表和HTML Block分支。还有|字符，这是表格吧？",
+      "elements_involved": [
+        "Table",
+        "Infra_WorkerNode",
+        "header row",
+        "delimiter row"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，表格需要特殊处理：必须有表头行和分隔符行，而且分隔符行的单元格数量必须匹配表头。这个约束要在Note里说明。",
+      "elements_involved": [
+        "Table",
+        "header row",
+        "delimiter row",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Table分支和约束说明。=和-字符触发Setext Heading，默认情况是Paragraph，这两个的类型分别是？",
+      "elements_involved": [
+        "Setext Heading",
+        "Paragraph",
+        "Infra_RedisCache",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Setext Heading是Infra_RedisCache，Paragraph是Infra_EtcdCluster。Paragraph是默认回退，当其他模式都不匹配时触发。",
+      "elements_involved": [
+        "Setext Heading",
+        "Paragraph",
+        "Infra_RedisCache",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Setext Heading和Paragraph分支。Block Parser还有后续步骤：关闭未匹配的块、创建新块作为最后匹配容器的子节点，然后处理剩余内容。",
+      "elements_involved": [
+        "Block Parser",
+        "close unmatched blocks",
+        "child of last matched container",
+        "process remainder"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，处理剩余内容时，要把文本添加到最后一个打开的块，可能是普通块或者表格。这里还有个特殊情况：如果当前是Paragraph且遇到了Setext下划线，要转换类型。",
+      "elements_involved": [
+        "Block Parser",
+        "Paragraph",
+        "Setext underline",
+        "Table",
+        "Infra_WorkerNode",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Paragraph转Setext Heading的分支逻辑。Phase 1的循环结束后，还有一些收尾工作吧？",
+      "elements_involved": [
+        "Phase 1",
+        "close all open blocks",
+        "list item",
+        "task marker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，循环结束后要关闭所有打开的块。然后对每个列表项，检查第一个块是否是带任务标记的Paragraph。任务标记可以是[Infra_EtcdCluster]、[Infra_RedisCache]或[Infra_WorkerNode]这几种形式。",
+      "elements_involved": [
+        "Phase 1",
+        "list item",
+        "task marker",
+        "Paragraph",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加列表项的任务标记检查。还有对Paragraph的处理？",
+      "elements_involved": [
+        "Phase 1",
+        "closed paragraph",
+        "link reference definitions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对每个关闭的Paragraph，要解析累积的文本行，从开头提取链接引用定义，剩余部分成为普通Paragraph。完成这些后，Phase 1输出块树结构给Phase 2。",
+      "elements_involved": [
+        "Phase 1",
+        "Phase 2",
+        "Block tree structure",
+        "link reference definitions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Phase 1到Phase 2的连接已建立。现在进入Phase 2，需要Walk Tree来遍历树结构？",
+      "elements_involved": [
+        "Phase 2",
+        "Walk Tree",
+        "Block tree structure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Walk Tree会访问每个节点，检查是否有行内内容需要解析。Paragraph、Heading和Table Cell都属于有行内内容的节点。",
+      "elements_involved": [
+        "Walk Tree",
+        "Paragraph",
+        "Heading",
+        "Table Cell",
+        "inline content",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Walk Tree和行内内容检查的Note。有行内内容时，调用Parse Inline进行解析？",
+      "elements_involved": [
+        "Walk Tree",
+        "Parse Inline",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Parse Inline是Infra_EtcdCluster类型。它采用字符逐个处理的方式，内部有一个大的switch分支。",
+      "elements_involved": [
+        "Parse Inline",
+        "Infra_EtcdCluster",
+        "character-by-character"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Parse Inline和字符循环。反斜杠字符触发转义序列？",
+      "elements_involved": [
+        "Parse Inline",
+        "backslash",
+        "Backslash escape"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，反斜杠是转义。`字符触发Code Span，属于Infra_WorkerNode。<字符比较复杂，需要检查是否是autolink、HTML标签或注释。",
+      "elements_involved": [
+        "Parse Inline",
+        "Code Span",
+        "Infra_WorkerNode",
+        "angle bracket",
+        "autolink",
+        "HTML tag",
+        "comment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Code Span和angle bracket检查。autolink是Infra_IngressController类型，但处理时是Infra_WorkerNode？",
+      "elements_involved": [
+        "Parse Inline",
+        "autolink",
+        "Infra_IngressController",
+        "Infra_WorkerNode",
+        "Standard CommonMark autolinks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "这里需要澄清：autolink的标注是Infra_WorkerNode，但括号里注明了Infra_IngressController，表示这是由IngressController处理的Standard CommonMark autolinks。HTML标签是GFM扩展，标注Infra_RedisCache。",
+      "elements_involved": [
+        "autolink",
+        "Infra_WorkerNode",
+        "Infra_IngressController",
+        "HTML tag",
+        "Infra_RedisCache",
+        "GFM extension"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正autolink的标注说明。继续：www.、http://等触发Extended autolink？",
+      "elements_involved": [
+        "Parse Inline",
+        "Extended autolink",
+        "Infra_WorkerNode",
+        "www.",
+        "http://",
+        "https://",
+        "ftp://",
+        "email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Extended autolink包括www.开头的URL、各种协议URL和邮箱。触发条件比较严格：只能在行首、空白符或特定标点* _ ~之后。",
+      "elements_involved": [
+        "Extended autolink",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer",
+        "start of line",
+        "whitespace",
+        "* _ ~"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Extended autolink和触发条件。*和_字符处理强调？",
+      "elements_involved": [
+        "Parse Inline",
+        "Emphasis delimiter",
+        "delimiter stack",
+        "left-flanking",
+        "right-flanking"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，*和_是强调分隔符，要加入分隔符栈，检查左右flanking属性，然后应用分隔符规则，这个过程是Infra_LoadBalancer类型。解析时还要递归处理嵌套内容。",
+      "elements_involved": [
+        "Emphasis delimiter",
+        "delimiter stack",
+        "left-flanking",
+        "right-flanking",
+        "Apply delimiter rules",
+        "Infra_LoadBalancer",
+        "nested content"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加强调处理的完整流程。~字符是删除线？",
+      "elements_involved": [
+        "Parse Inline",
+        "Strikethrough delimiter",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "~~"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，~是Strikethrough delimiter，属于Infra_IngressController。需要两个连续的~才能形成删除线，这个约束是Infra_RedisCache。解析规则和强调类似。",
+      "elements_involved": [
+        "Strikethrough delimiter",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "~~"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加删除线处理。!bracket是图片，bracket是链接？",
+      "elements_involved": [
+        "Parse Inline",
+        "Image",
+        "Link",
+        "Infra_WorkerNode",
+        "bracket"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，!bracket触发Image，bracket触发Link，都是Infra_WorkerNode。遇到closing bracket时要查找对应的链接或图片，处理分隔符栈。",
+      "elements_involved": [
+        "Image",
+        "Link",
+        "Infra_WorkerNode",
+        "closing bracket",
+        "link/image",
+        "delimiter stack"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Image和Link处理。closing bracket后的分支：Reference link和Inline link？",
+      "elements_involved": [
+        "Parse Inline",
+        "Reference link",
+        "Inline link",
+        "Resolve reference",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Reference link需要解析引用，是Infra_EtcdCluster类型。其他情况就是Inline link。还有换行、实体引用和默认文本累积的处理。",
+      "elements_involved": [
+        "Reference link",
+        "Inline link",
+        "Infra_EtcdCluster",
+        "newline",
+        "Soft line break",
+        "entity",
+        "HTML entity reference",
+        "text"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加所有字符分支：换行是Soft line break，entity是HTML entity reference（Infra_IngressController），默认情况是累积为文本。Parse Inline完成后返回给Walk Tree？",
+      "elements_involved": [
+        "Soft line break",
+        "HTML entity reference",
+        "Infra_IngressController",
+        "Inline AST nodes",
+        "TreeWalker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Parse Inline输出Inline AST nodes给Walk Tree。Walk Tree继续下一个节点，直到遍历完成，输出完整的带行内节点的树给Phase 2。",
+      "elements_involved": [
+        "InlineParser",
+        "TreeWalker",
+        "Inline AST nodes",
+        "Complete tree with inline nodes",
+        "Phase 2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已连接Walk Tree到Phase 2的返回。最后Phase 2输出到Final AST？",
+      "elements_involved": [
+        "Phase 2",
+        "Final AST",
+        "Final AST document tree"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Phase 2输出Final AST document tree。整个流程从Markdown Input开始，经过块级解析和行内解析两个阶段，最终生成完整的AST。",
+      "elements_involved": [
+        "Phase 2",
+        "Final AST",
+        "Final AST document tree",
+        "Markdown Input"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "整个时序图已完成。我检查一遍：从Markdown Input到Phase 1的块级处理（含Process Line循环、Check Open Blocks、Block Parser的复杂分支），再到Phase 2的Walk Tree和Parse Inline字符处理循环，最终输出Final AST。所有基础设施类型标注和约束条件都已体现。",
+      "elements_involved": [
+        "Markdown Input",
+        "Phase 1: Block Structure",
+        "Phase 2: Inline Structure",
+        "Final AST",
+        "Process Line",
+        "Check Open Blocks",
+        "Block Parser",
+        "Walk Tree",
+        "Parse Inline"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 48,
+    "repair_count": 2,
+    "grounding_acts_count": 48,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 77302.9277,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 48
+  }
+}

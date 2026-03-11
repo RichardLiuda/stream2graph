@@ -1,0 +1,590 @@
+{
+  "id": "aug_gl_packet-beta_00353_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/SiliconLabs/wiseconnect/blob/dbddc46f86fab9728a390680290781b7d1ae8bb5/components/sli_queue_manager/queue_manager.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "SiliconLabs/wiseconnect",
+  "diagram_type": "packet-beta",
+  "code": "%%{FinTech_FraudDetection} }%%\r\nsequenceDiagram\r\n    participant A as AppThread\r\n    participant E as EventThread\r\n    participant B as CommandEngine\r\n    participant R as RoutingUtility\r\n\r\n    Note over A: User calls API to send a command<br>A command packet is prepared with<br>all the command parameters\r\n    A->>A: Enter Critical Section\r\n    Note over A: Allocate unique packet id for the command<br>packet before it is being added to the queue\r\n    A->>A: Exit Critical Section\r\n    Note over A: Prepared command packet to be added<br>into respected command queue using<br>sli_queue_manager_enqueue(FinTech_PaymentGateway)\r\n    Note left of A: Invoke the add to queue with atomic action API with<br>sli_queue_handle_t *handle<br>sl_slist_node_t *node<br>sli_queue_manager_action_handler_t action_handler\r\n\r\n    rect rgba(FinTech_PaymentGateway)\r\n        opt sli_queue_manager_enqueue(FinTech_LedgerService)\r\n            A->>A: Enter Critical Section\r\n\r\n            Note over A: This API facilitates user to perform an action<br>under the protection of queue's critical section\r\n            alt if handler is not NULL\r\n                A->>A: Invoke the handler with user specific data\r\n            end\r\n\r\n            A->>A: Add the command packet data to the queue\r\n            A->>A: Exit Critical Section\r\n        end\r\n    end\r\n\r\n    Note over A: Once the packet is queued in the respective command queue,<br>packet is dequeued in Command Engine and processed\r\n    A->>B: Trigger TX event to Command Engine\r\n\r\n    rect rgba(FinTech_PaymentGateway)\r\n        B->>B: Check the status of the queues<br>using SLI_QUEUE_GET_STATUS(FinTech_PaymentGateway)\r\n\r\n        opt SLI_QUEUE_GET_STATUS(FinTech_AuthVault)\r\n            B->>B: Return true if list is empty\r\n        end\r\n\r\n        Note over B: If the corresponding queue is not Empty, <br>then Command Engine will process the<br>comamnds in the commanmd queues\r\n    end\r\n\r\n    rect rgba(FinTech_LedgerService)\r\n        Note over R: When the underlying HAL layer receives <br>a packet, it will forward it to command <br>engine through routing utility\r\n        R->>R: Add the packet to BUS RX queue\r\n\r\n        opt sli_queue_manager_enqueue(FinTech_FraudDetection)\r\n            R->>R: Enter Critical Section\r\n            R->>R: Add the command response <br>packet data to the queue\r\n            R->>R: Exit critical section\r\n        end\r\n\r\n        R->>B: Set BUS RX event for Command Engine\r\n    end\r\n\r\n    rect rgba(FinTech_TransactionQueue)\r\n        Note over B: When a command response or a asynchronous data<br>packet is received, Command Engine will add the packet<br>to either response queue or the notification queue\r\n\r\n        B->>B: Dequeue the RX Packet\r\n        opt sli_queue_manager_dequeue(FinTech_PaymentGateway)\r\n            B->>B: Enter Critical Section\r\n            B->>B: Remove the BUS RX packet data from the queue head\r\n            B->>B: Exit Critical Section\r\n            B->>B: Return the data to Command Engine\r\n        end\r\n\r\n        opt sli_queue_manager_enqueue(FinTech_FraudDetection)\r\n            B->>B: Enter Critical Section\r\n            B->>B: Add the command response packet data to<br>the response or Async notification queue\r\n            B->>B: Exit critical section\r\n        end\r\n    end\r\n\r\n    B->>A: If the response is a synchronous command response<br>Trigger corresponding RX Event\r\n    rect rgba(FinTech_PaymentGateway)\r\n        A->>A: The thread waiting on the corresponding response wakes up\r\n        Note over A: After waking up from desired event, thread checks if<br>and dequeues the response for expected packet id<br>using sli_queue_manager_remove_node_from_queue(FinTech_TransactionQueue)\r\n\r\n        opt sli_queue_manager_remove_node_from_queue(FinTech_FraudDetection)\r\n            A->>A: Enter Critical Section\r\n\r\n            alt if queue is empty\r\n                A->>A: Exit Critical Section\r\n                A->>A: Return SL_STATUS_EMPTY\r\n            end\r\n\r\n            loop Iterate through the nodes in the list\r\n                A->>A: Invoke the compare function to identify the node\r\n                Note over A: In this situation, packet_id identification<br>function is invoked\r\n            end\r\n\r\n            alt if comapre function returns true\r\n                A->>A: Remove node from list \r\n                A->>A: Exit Critical Section\r\n                A->>A: Return the response packet\r\n            else\r\n                A->>A: Exit Critical Section\r\n                A->>A: Return SL_STATUS_NOT_FOUND\r\n            end\r\n        end\r\n    end\r\n\r\n    rect rgba(FinTech_TransactionQueue)\r\n        alt if the received data packet is a Async data packet\r\n            B->>B: Add received data packet to corresponding<br>notification event queue\r\n            B->>E: Trigger Notification event to event handler thread\r\n\r\n            Note over E: Event thread will be waiting for<br>notification events to be triggered\r\n            Note over E: Once the Event is triggered, the<br> notification events are dequeued<br>from respective notification event queues<br>using sli_queue_manager_dequeue(FinTech_FraudDetection)\r\n\r\n            opt sli_queue_manager_dequeue(FinTech_TransactionQueue)\r\n                E->>E: Enter Critical Section\r\n                E->>E: Remove the Notification event packet data from the queue head\r\n                E->>E: Exit Critical Section\r\n                E->>E: Return the data to the application\r\n            end\r\n\r\n            Note over E: Invoke appropriate event handler with the event data\r\n        end\r\n    end",
+  "content_size": 5561,
+  "collected_at": "2026-02-06T14:08:07.626730",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "repo_stars": 23,
+  "repo_forks": 26,
+  "repo_owner": "SiliconLabs",
+  "repo_name": "wiseconnect",
+  "repo_description": "Next-generation Silicon Labs Wi-Fi API for SiWx91x chipset family.",
+  "repo_language": "C",
+  "repo_topics": [
+    "siwx917-dk2605a",
+    "siwx917-wireless-soc",
+    "wi-fi",
+    "wifi"
+  ],
+  "repo_created_at": "2023-06-06T16:26:11Z",
+  "repo_updated_at": "2026-01-22T17:46:41Z",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gl_packet-beta_00353",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为FinTech系统绘制一个完整的命令包处理时序图，核心要体现从AppThread发起命令到最终响应返回的全链路。我建议先确定四个关键参与者：AppThread、EventThread、CommandEngine，还有一个RoutingUtility来处理底层HAL的转发。",
+      "elements_involved": [
+        "AppThread",
+        "EventThread",
+        "CommandEngine",
+        "RoutingUtility"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，四个参与者已经就位。我注意到RoutingUtility是连接HAL层和CommandEngine的关键节点。接下来我们先刻画AppThread的发送流程？",
+      "elements_involved": [
+        "RoutingUtility",
+        "CommandEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，AppThread这边有个关键细节：用户调用API发送命令时，需要先进入临界区分配唯一的packet id，这个必须在入队前完成。然后使用sli_queue_manager_enqueue把包放入FinTech_PaymentGateway队列。",
+      "elements_involved": [
+        "AppThread",
+        "Enter Critical Section",
+        "Exit Critical Section",
+        "FinTech_PaymentGateway",
+        "sli_queue_manager_enqueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在AppThread上添加了两个自循环表示临界区的进入和退出，中间用Note标注了packet id的分配逻辑。然后画了一个指向自身的enqueue操作，用rect包裹了FinTech_PaymentGateway的着色区域。",
+      "elements_involved": [
+        "AppThread",
+        "Enter Critical Section",
+        "Exit Critical Section",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，enqueue操作这里有个opt分支——实际上AppThread可能会根据配置把包放入FinTech_LedgerService队列，这个可选路径要体现出来。而且opt内部还有handler是否为NULL的判断。",
+      "elements_involved": [
+        "FinTech_LedgerService",
+        "opt",
+        "handler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我调整一下。刚才只画了主路径，现在我在FinTech_PaymentGateway的rect内部添加opt分支，标注sli_queue_manager_enqueue(FinTech_LedgerService)，内部包含临界区和handler调用的alt判断。",
+      "elements_involved": [
+        "FinTech_LedgerService",
+        "opt",
+        "alt",
+        "handler",
+        "Enter Critical Section",
+        "Exit Critical Section"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这样更准确了。包入队后，AppThread要触发TX事件给CommandEngine，这个用虚线箭头表示异步触发。",
+      "elements_involved": [
+        "AppThread",
+        "CommandEngine",
+        "Trigger TX event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加A到B的TX事件触发线。接下来CommandEngine的处理逻辑怎么安排？",
+      "elements_involved": [
+        "AppThread",
+        "CommandEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CommandEngine收到事件后，先用SLI_QUEUE_GET_STATUS检查FinTech_PaymentGateway队列状态，如果FinTech_AuthVault的队列为空就返回true。这里用opt包裹这个检查逻辑，然后在Note里说明非空时才会处理命令。",
+      "elements_involved": [
+        "CommandEngine",
+        "SLI_QUEUE_GET_STATUS",
+        "FinTech_PaymentGateway",
+        "FinTech_AuthVault",
+        "opt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成，CommandEngine的自循环标注了状态检查，opt分支处理FinTech_AuthVault的空队列判断。现在进入下半场的响应处理？",
+      "elements_involved": [
+        "CommandEngine",
+        "FinTech_AuthVault",
+        "SLI_QUEUE_GET_STATUS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，RoutingUtility这边要独立一个rect区域，用FinTech_LedgerService着色。HAL层收到包后通过RoutingUtility转发，它要把包加入BUS RX队列，然后可能通过sli_queue_manager_enqueue放入FinTech_FraudDetection队列。",
+      "elements_involved": [
+        "RoutingUtility",
+        "FinTech_LedgerService",
+        "BUS RX queue",
+        "FinTech_FraudDetection",
+        "sli_queue_manager_enqueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RoutingUtility的rect已用FinTech_LedgerService颜色标注，内部包含BUS RX队列入队，以及FinTech_FraudDetection的opt分支。最后它要设置BUS RX事件给CommandEngine。",
+      "elements_involved": [
+        "RoutingUtility",
+        "BUS RX queue",
+        "FinTech_FraudDetection",
+        "CommandEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "RoutingUtility到CommandEngine的事件设置要清晰，这是驱动后续处理的关键。接下来CommandEngine收到响应包后的处理比较复杂，需要单独一个rect用FinTech_TransactionQueue着色。",
+      "elements_involved": [
+        "RoutingUtility",
+        "CommandEngine",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，FinTech_TransactionQueue区域要处理响应包和异步数据的分流。具体怎么分解？",
+      "elements_involved": [
+        "FinTech_TransactionQueue",
+        "CommandEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CommandEngine先Dequeue RX Packet，然后用sli_queue_manager_dequeue从FinTech_PaymentGateway移除BUS RX包。之后根据包类型，可能用sli_queue_manager_enqueue放入FinTech_FraudDetection的响应队列或通知队列。",
+      "elements_involved": [
+        "CommandEngine",
+        "Dequeue RX Packet",
+        "FinTech_PaymentGateway",
+        "sli_queue_manager_dequeue",
+        "FinTech_FraudDetection",
+        "sli_queue_manager_enqueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加CommandEngine的自循环dequeue操作，opt分支处理FinTech_PaymentGateway的移除，另一个opt分支处理FinTech_FraudDetection的入队。临界区都标注清楚了。",
+      "elements_involved": [
+        "CommandEngine",
+        "FinTech_PaymentGateway",
+        "FinTech_FraudDetection",
+        "Enter Critical Section",
+        "Exit Critical Section"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "如果是同步响应，CommandEngine要触发RX Event给AppThread。AppThread唤醒后，需要用sli_queue_manager_remove_node_from_queue从FinTech_TransactionQueue中按packet_id查找并移除特定节点。",
+      "elements_involved": [
+        "CommandEngine",
+        "AppThread",
+        "RX Event",
+        "sli_queue_manager_remove_node_from_queue",
+        "FinTech_TransactionQueue",
+        "packet_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了B到A的RX Event触发线。AppThread的处理我先用FinTech_PaymentGateway着色，包含唤醒和remove_node_from_queue操作。",
+      "elements_involved": [
+        "CommandEngine",
+        "AppThread",
+        "RX Event",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "这里有个问题——sli_queue_manager_remove_node_from_queue的参数应该是FinTech_FraudDetection，不是FinTech_PaymentGateway。而且内部逻辑很复杂：要先检查队列是否为空，然后用loop遍历节点，调用compare函数匹配packet_id，最后根据结果移除或返回NOT_FOUND。",
+      "elements_involved": [
+        "sli_queue_manager_remove_node_from_queue",
+        "FinTech_FraudDetection",
+        "FinTech_PaymentGateway",
+        "loop",
+        "compare function",
+        "packet_id",
+        "SL_STATUS_EMPTY",
+        "SL_STATUS_NOT_FOUND"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正了，把rect的着色和opt分支都改为FinTech_FraudDetection。内部添加了alt判断队列是否为空返回SL_STATUS_EMPTY，loop遍历节点，内嵌alt根据compare结果分别处理移除成功和返回SL_STATUS_NOT_FOUND。",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "alt",
+        "loop",
+        "SL_STATUS_EMPTY",
+        "SL_STATUS_NOT_FOUND",
+        "Exit Critical Section"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这下AppThread的响应处理完整了。最后还有异步数据的分支——如果是Async数据包，CommandEngine要添加到通知事件队列，然后触发Notification event给EventThread。",
+      "elements_involved": [
+        "Async data packet",
+        "CommandEngine",
+        "notification event queue",
+        "EventThread",
+        "Notification event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "在FinTech_TransactionQueue的rect内部添加了alt分支处理Async数据，CommandEngine自循环入队后，画线触发事件给EventThread。",
+      "elements_involved": [
+        "FinTech_TransactionQueue",
+        "alt",
+        "CommandEngine",
+        "EventThread",
+        "Notification event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EventThread的处理也需要opt分支：它用sli_queue_manager_dequeue从FinTech_TransactionQueue移除通知事件，然后调用对应的事件handler。注意这里也可能操作FinTech_FraudDetection队列。",
+      "elements_involved": [
+        "EventThread",
+        "sli_queue_manager_dequeue",
+        "FinTech_TransactionQueue",
+        "FinTech_FraudDetection",
+        "event handler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EventThread的opt分支已添加，内部包含临界区操作和返回数据给应用。最后用Note标注handler调用。",
+      "elements_involved": [
+        "EventThread",
+        "Enter Critical Section",
+        "Exit Critical Section",
+        "FinTech_FraudDetection",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "整体结构差不多了，但我发现RoutingUtility的Note描述需要更精确：要强调HAL层收到包后通过RoutingUtility转发给CommandEngine。",
+      "elements_involved": [
+        "RoutingUtility",
+        "HAL layer",
+        "CommandEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新RoutingUtility的Note文本，明确HAL层到CommandEngine的转发路径。",
+      "elements_involved": [
+        "RoutingUtility",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "AppThread左侧还有一个重要Note，要说明sli_queue_manager_enqueue的原子操作API参数：handle、node和action_handler。这个技术细节对理解代码很关键。",
+      "elements_involved": [
+        "AppThread",
+        "sli_queue_manager_enqueue",
+        "sli_queue_handle_t",
+        "sl_slist_node_t",
+        "sli_queue_manager_action_handler_t"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "在AppThread左侧添加了Note left of，详细列出了三个API参数。",
+      "elements_involved": [
+        "AppThread",
+        "Note left of",
+        "sli_queue_handle_t",
+        "sl_slist_node_t",
+        "sli_queue_manager_action_handler_t"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。再检查一下CommandEngine的Note：\"If the corresponding queue is not Empty\"这里的处理逻辑描述要准确。",
+      "elements_involved": [
+        "CommandEngine",
+        "Note",
+        "queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认了CommandEngine的Note内容，描述了非空队列时的处理流程。现在所有rect的着色都对应正确的FinTech模块了吗？",
+      "elements_involved": [
+        "CommandEngine",
+        "Note",
+        "FinTech_PaymentGateway",
+        "FinTech_LedgerService",
+        "FinTech_TransactionQueue",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我核对一下：AppThread的响应处理rect应该是FinTech_PaymentGateway着色，RoutingUtility是FinTech_LedgerService，CommandEngine的RX处理是FinTech_TransactionQueue，EventThread也在FinTech_TransactionQueue的alt内部。看起来都对。",
+      "elements_involved": [
+        "FinTech_PaymentGateway",
+        "FinTech_LedgerService",
+        "FinTech_TransactionQueue",
+        "AppThread",
+        "RoutingUtility",
+        "CommandEngine",
+        "EventThread"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "有个细节想确认：AppThread在opt内部调用handler时，是自循环的\"Invoke the handler\"，这个要画成自循环箭头吗？",
+      "elements_involved": [
+        "AppThread",
+        "handler",
+        "Invoke"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，handler调用是AppThread内部的自循环，用A-A表示。而且要在alt内部，条件是handler不为NULL。",
+      "elements_involved": [
+        "AppThread",
+        "handler",
+        "alt",
+        "Invoke the handler with user specific data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整为A-A自循环，放在alt if handler is not NULL内部。整个图现在包含约15个Note、6个rect区域、多个opt/alt/loop嵌套，结构比较完整了。",
+      "elements_involved": [
+        "AppThread",
+        "alt",
+        "handler",
+        "rect",
+        "Note",
+        "opt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后确认一下标题和元信息：顶部要有%%{FinTech_FraudDetection}%%的标识， participant的别名也要清晰——A是AppThread，E是EventThread，B是CommandEngine，R是RoutingUtility。",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "AppThread",
+        "EventThread",
+        "CommandEngine",
+        "RoutingUtility",
+        "A",
+        "E",
+        "B",
+        "R"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "标题和participant别名都已设置：A as AppThread, E as EventThread, B as CommandEngine, R as RoutingUtility。整个时序图从命令发送、队列管理、路由转发、响应处理到异步通知的完整链路都覆盖到了。",
+      "elements_involved": [
+        "A",
+        "E",
+        "B",
+        "R",
+        "AppThread",
+        "EventThread",
+        "CommandEngine",
+        "RoutingUtility"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "非常好。这个图准确反映了FinTech系统中命令包的生命周期：从AppThread的临界区保护入队，到CommandEngine的状态检查和 dequeue，再到RoutingUtility的HAL层转发，最后区分同步响应和异步通知两条返回路径。所有关键的sli_queue_manager API调用都体现出来了。",
+      "elements_involved": [
+        "AppThread",
+        "CommandEngine",
+        "RoutingUtility",
+        "EventThread",
+        "sli_queue_manager_enqueue",
+        "sli_queue_manager_dequeue",
+        "sli_queue_manager_remove_node_from_queue",
+        "critical section",
+        "synchronous response",
+        "asynchronous notification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "是否需要添加任何关于错误处理或超时机制的补充说明？目前主要聚焦在正常流程上。",
+      "elements_involved": [
+        "error handling",
+        "timeout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "当前版本先保持聚焦核心流程，错误处理可以留给后续迭代。现在的39轮对话已经完整覆盖了从API调用到事件响应的全链路，可以定稿了。",
+      "elements_involved": [
+        "API call",
+        "event response",
+        "full lifecycle"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 39,
+    "repair_count": 3,
+    "grounding_acts_count": 39,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:33Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 68903.8398,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 39
+  }
+}

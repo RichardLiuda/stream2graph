@@ -1,0 +1,170 @@
+{
+  "id": "aug_gl_block-beta_00230_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/HewlettPackard/llmesh/blob/a1a843f3cb0eb11e9964a7425fb99239f450b52b/docs/design/rag/sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "HewlettPackard/llmesh",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant User\n    participant RAGService\n    participant QueryAugmentor\n    participant Retriever\n    participant Reranker\n    participant Summarizer\n    participant ChunkFormatter\n\n    User->>RAGService: retrieve(Infra_EtcdCluster)\n    alt augmentation enabled\n        RAGService->>QueryAugmentor: augment(Infra_WorkerNode)\n        QueryAugmentor-->>RAGService: augmented_query\n    else no augmentation\n        RAGService->>RAGService: use original query\n    end\n    RAGService->>Retriever: retrieve top chunks\n    Retriever-->>RAGService: retrieved_elements\n\n    alt rerank enabled\n        RAGService->>Reranker: rerank(Infra_LoadBalancer)\n        Reranker-->>RAGService: sorted_elements\n    else no rerank\n        RAGService->>RAGService: use original order\n    end\n\n    RAGService->>Summarizer: summarize(Infra_IngressController)\n    Summarizer-->>RAGService: summary\n\n    RAGService->>ChunkFormatter: format chunks to JSON\n    ChunkFormatter-->>RAGService: json_block\n\n    RAGService-->>User: summary + json_block",
+  "content_size": 1034,
+  "collected_at": "2026-02-06T14:04:59.367783",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_block-beta_00230",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为RAG系统画一个完整的时序图，展示从用户查询到最终返回的完整链路。核心参与者包括User、RAGService，还有QueryAugmentor、Retriever、Reranker、Summarizer和ChunkFormatter这几个内部组件。",
+      "elements_involved": [
+        "User",
+        "RAGService",
+        "QueryAugmentor",
+        "Retriever",
+        "Reranker",
+        "Summarizer",
+        "ChunkFormatter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我注意到QueryAugmentor和Reranker这两个环节，是不是应该做成可选分支？实际部署中有些场景可能不需要查询增强，或者不需要重排序。",
+      "elements_involved": [
+        "QueryAugmentor",
+        "Reranker",
+        "augmentation",
+        "rerank"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，用alt-else结构很合适。augmentation enabled的时候走QueryAugmentor，否则RAGService直接用原始查询；rerank enabled的时候走Reranker，否则保持原顺序。另外，为了和基础设施层呼应，调用augment的时候标注一下Infra_WorkerNode，rerank的时候用Infra_LoadBalancer。",
+      "elements_involved": [
+        "augmentation",
+        "rerank",
+        "QueryAugmentor",
+        "Reranker",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主链路：User发起retrieve请求到RAGService，参数带上Infra_EtcdCluster。然后第一个alt分支处理增强逻辑，第二个alt分支处理重排序。Summarizer那一步我标注了Infra_IngressController，最后ChunkFormatter输出JSON格式。",
+      "elements_involved": [
+        "User",
+        "RAGService",
+        "Infra_EtcdCluster",
+        "Summarizer",
+        "Infra_IngressController",
+        "ChunkFormatter",
+        "JSON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ChunkFormatter到RAGService的返回，建议明确叫json_block，这样和最后的summary + json_block回包给User对应上。还有，Retriever返回的命名为retrieved_elements，Reranker返回的是sorted_elements，Summarizer返回summary，这些中间态命名要统一。",
+      "elements_involved": [
+        "ChunkFormatter",
+        "json_block",
+        "Retriever",
+        "retrieved_elements",
+        "Reranker",
+        "sorted_elements",
+        "Summarizer",
+        "summary"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已调整。现在检查一遍：RAGService调用Retriever是retrieve top chunks，返回retrieved_elements；rerank分支返回sorted_elements；Summarizer返回summary；ChunkFormatter返回json_block；最终RAGService把summary和json_block一起返回给User。命名都对应上了。",
+      "elements_involved": [
+        "RAGService",
+        "Retriever",
+        "Reranker",
+        "Summarizer",
+        "ChunkFormatter",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，Retriever那一步的调用描述不够准确。应该是retrieve(Infra_EtcdCluster)吗？不对，EtcdCluster是用户初始查询带的参数，Retriever这一步应该是retrieve top chunks，参数不用重复写Infra_EtcdCluster。让我再看一下——实际上RAGService调用Retriever时，前面已经用过Infra_EtcdCluster了，这里保持retrieve top chunks的描述就行，但调用augment和rerank的基础设施标注要保留。",
+      "elements_involved": [
+        "Retriever",
+        "Infra_EtcdCluster",
+        "QueryAugmentor",
+        "Reranker",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "理解了，已修正。最终结构：User带着Infra_EtcdCluster请求RAGService；增强分支用Infra_WorkerNode调用QueryAugmentor；Retriever直接检索返回；重排序分支用Infra_LoadBalancer调用Reranker；Summarizer用Infra_IngressController生成摘要；最后格式化JSON返回。整个流程完整了。",
+      "elements_involved": [
+        "User",
+        "RAGService",
+        "Infra_EtcdCluster",
+        "QueryAugmentor",
+        "Infra_WorkerNode",
+        "Retriever",
+        "Reranker",
+        "Infra_LoadBalancer",
+        "Summarizer",
+        "Infra_IngressController",
+        "ChunkFormatter"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 31287.0831,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

@@ -1,0 +1,180 @@
+{
+  "id": "aug_ot_stateDiagram_00350_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/jwt-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "stateDiagram",
+  "code": "%%{Infra_RedisCache}\n}}%%\nstateDiagram-v2\n    [Infra_WorkerNode] --> ChallengeRequested: User initiates login\n\n    ChallengeRequested --> ChallengeGenerated: Generate challenge\n    ChallengeGenerated --> ChallengeExpired: TTL expires (Infra_EtcdCluster)\n    ChallengeExpired --> [Infra_IngressController]: Challenge invalid\n\n    ChallengeGenerated --> SignatureCreated: User signs challenge\n    SignatureCreated --> SignatureVerified: Backend verifies\n    SignatureCreated --> VerificationFailed: Invalid signature\n    VerificationFailed --> [Infra_WorkerNode]: Authentication failed\n\n    SignatureVerified --> TokenGenerated: Create JWT\n    TokenGenerated --> SessionCreated: Create session\n    SessionCreated --> TokenActive: Token in use\n\n    TokenActive --> TokenUsed: API request\n    TokenUsed --> TokenActive: Update activity\n    TokenActive --> TokenRefreshed: Refresh request\n    TokenRefreshed --> NewTokenGenerated: Generate new token\n    NewTokenGenerated --> TokenActive: Continue session\n\n    TokenActive --> TokenExpired: 24h TTL\n    TokenExpired --> TokenRefreshed: Auto-refresh\n    TokenExpired --> SessionExpired: No refresh\n    SessionExpired --> [Infra_IngressController]: Requires re-authentication\n\n    TokenActive --> TokenRevoked: User logout\n    TokenRevoked --> SessionTerminated: Clear session\n    SessionTerminated --> [Infra_LoadBalancer]: Logged out\n\n    TokenActive --> SessionRevoked: Admin action\n    SessionRevoked --> [Infra_RedisCache]: Force logout\n\n    note right of ChallengeGenerated\n        Challenge stored with:\n        - 5 minute TTL\n        - Unique nonce\n        - Pubkey binding\n    end note\n\n    note right of TokenActive\n        Token contains:\n        - NOSTR pubkey\n        - Session ID\n        - Role (Infra_RedisCache)\n        - Issue/Expiry times\n    end note\n\n    note right of TokenRefreshed\n        Refresh maintains:\n        - Same session\n        - Updated timestamps\n        - Activity tracking\n    end note",
+  "content_size": 2111,
+  "collected_at": "2026-02-06T10:41:04.795580",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00350",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个基于挑战-响应的认证状态机。用户从WorkerNode发起登录，系统生成Challenge，然后用户签名验证。整个流程要覆盖Token生命周期，包括自动刷新、管理员强制登出这些场景。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "ChallengeRequested",
+        "ChallengeGenerated",
+        "SignatureCreated",
+        "TokenActive"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。Challenge的存储和过期机制怎么处理？我看到有提到TTL，是用EtcdCluster来存吗？还有ChallengeExpired之后的流向是回到IngressController重新发起？",
+      "elements_involved": [
+        "ChallengeExpired",
+        "Infra_EtcdCluster",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Challenge存在EtcdCluster里，5分钟TTL。过期后直接判定无效，流量回到IngressController那边，用户需要重新走登录流程。另外Challenge生成时要绑定公钥和唯一nonce。",
+      "elements_involved": [
+        "ChallengeGenerated",
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "ChallengeExpired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把ChallengeGenerated到ChallengeExpired的流转画好了，也加了note说明存储细节。现在继续往后：SignatureCreated之后分两条支路，验证通过走TokenGenerated，失败回到WorkerNode？",
+      "elements_involved": [
+        "SignatureCreated",
+        "SignatureVerified",
+        "VerificationFailed",
+        "TokenGenerated",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。Token生成后要创建Session，然后进入TokenActive状态。这里有个循环：API请求时TokenUsed，然后回到TokenActive并更新活动时间。TokenActive还要能响应刷新请求。",
+      "elements_involved": [
+        "TokenGenerated",
+        "SessionCreated",
+        "TokenActive",
+        "TokenUsed",
+        "TokenRefreshed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "刷新机制我画成TokenRefreshed到NewTokenGenerated再到TokenActive，保持Same Session。那24小时TTL到期后的自动刷新怎么区分？还有用户主动logout和管理员强制登出两条路径？",
+      "elements_involved": [
+        "TokenRefreshed",
+        "NewTokenGenerated",
+        "TokenExpired",
+        "TokenRevoked",
+        "SessionRevoked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "TokenExpired如果触发了自动刷新，走TokenRefreshed分支；如果没刷新，就进入SessionExpired，最终要求重新认证，回到IngressController。用户logout走TokenRevoked到SessionTerminated，最后到LoadBalancer。管理员强制登出直接到RedisCache做Force logout。",
+      "elements_involved": [
+        "TokenExpired",
+        "TokenRefreshed",
+        "SessionExpired",
+        "Infra_IngressController",
+        "TokenRevoked",
+        "SessionTerminated",
+        "Infra_LoadBalancer",
+        "SessionRevoked",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。我在TokenActive和TokenRefreshed旁边加了note，说明Token里包含NOSTR公钥、Session ID、Role信息，以及刷新时保持Same Session和Activity tracking的机制。您看下整体结构对吗？",
+      "elements_involved": [
+        "TokenActive",
+        "TokenRefreshed",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "有个细节：SessionRevoked到RedisCache的标注应该是Force logout，不是Clear session——Clear session是SessionTerminated的动作。还有TokenActive的note里Role后面标注一下存储位置是RedisCache。",
+      "elements_involved": [
+        "SessionRevoked",
+        "Infra_RedisCache",
+        "SessionTerminated",
+        "TokenActive"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。SessionRevoked标注为Force logout指向RedisCache，TokenActive的Role信息来源也补充了。现在整个状态机从WorkerNode登录到各种终止场景都完整了，包括EtcdCluster的Challenge存储、RedisCache的会话管理和LoadBalancer的流量出口。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 32055.0096,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

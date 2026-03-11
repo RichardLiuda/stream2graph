@@ -1,0 +1,156 @@
+{
+  "id": "aug_ot_stateDiagram_00125_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/guglxni/amplifi/blob/2b2cbbb17dc15f7b550940cdfe97d27ef858ab58/docs/diagrams/rsc-state-machine.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "guglxni/amplifi",
+  "diagram_type": "stateDiagram",
+  "code": "%%{HealthTech_PatientRecords}}}%%\n\nstateDiagram-v2\n    [HealthTech_HIPAA_Vault] --> Idle\n    \n    Idle --> Monitoring: CRON tick / YieldSnapshot event\n    \n    Monitoring --> Comparing: Collect APY data\n    \n    Comparing --> NoAction: APY diff < 0.5%\n    Comparing --> SmallRebalance: APY diff >= 0.5% && change < 50%\n    Comparing --> LargeRebalance: APY diff >= 0.5% && change >= 50%\n    \n    NoAction --> Idle: emit RebalanceSkipped\n    \n    SmallRebalance --> Executing: emit Callback(HealthTech_DiagnosticEngine)\n    \n    LargeRebalance --> PendingFinality: Queue rebalance\n    PendingFinality --> PendingFinality: Wait 64 blocks\n    PendingFinality --> Executing: Finality reached\n    \n    Executing --> Completed: Rebalance executed\n    Completed --> Idle: Reset\n    \n    note right of Monitoring\n        Every ~12 minutes\n        or on manual trigger\n    end note\n    \n    note right of PendingFinality\n        Safety measure for\n        large TVL changes\n    end note\n",
+  "content_size": 990,
+  "collected_at": "2026-02-06T10:38:10.955720",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "ot_stateDiagram_00125",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个患者资产再平衡的状态机，核心是从HealthTech_HIPAA_Vault出发，先进入Idle状态，然后通过CRON触发或者手动触发进入Monitoring。这个流程要体现安全性和HIPAA合规。",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault",
+        "Idle",
+        "Monitoring",
+        "CRON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，Monitoring之后是收集APY数据对吧？那对比完APY差异后，是不是要分支处理？比如差异小的时候不做操作？",
+      "elements_involved": [
+        "Monitoring",
+        "Comparing",
+        "APY",
+        "NoAction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Comparing这个状态很关键。APY差异小于0.5%就走到NoAction，然后发RebalanceSkipped事件回到Idle。如果等于0.5%，就要看资金变动幅度——小于50%是小额再平衡，等于50%是大额再平衡，这两条路径安全级别不一样。",
+      "elements_involved": [
+        "Comparing",
+        "NoAction",
+        "SmallRebalance",
+        "LargeRebalance",
+        "RebalanceSkipped"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主干画出来：SmallRebalance直接触发Executing，同时回调HealthTech_DiagnosticEngine。但LargeRebalance我放了一个PendingFinality状态，这里需要等待64个区块确认，这是为了防止大额TVL变动被闪电贷攻击。",
+      "elements_involved": [
+        "SmallRebalance",
+        "Executing",
+        "Callback",
+        "HealthTech_DiagnosticEngine",
+        "LargeRebalance",
+        "PendingFinality"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "64个区块等待是对的，这是我们的安全底线。PendingFinality到Executing的条件要写清楚是Finality reached。另外Executing完成后到Completed，最后Reset回Idle，形成闭环。",
+      "elements_involved": [
+        "PendingFinality",
+        "Executing",
+        "Finality",
+        "Completed",
+        "Idle",
+        "Reset"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我在Monitoring和PendingFinality旁边加了注释说明。Monitoring那边注明每12分钟或手动触发，PendingFinality那边强调是大额资金变动的安全措施。这样运维同事看的时候更清楚。",
+      "elements_involved": [
+        "Monitoring",
+        "PendingFinality",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，SmallRebalance那条线我刚才说错了——不是直接Executing，要先emit Callback到HealthTech_DiagnosticEngine，然后再进入Executing。这个回调是异步的，让诊断引擎先做健康检查。",
+      "elements_involved": [
+        "SmallRebalance",
+        "Callback",
+        "HealthTech_DiagnosticEngine",
+        "Executing"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已修正，SmallRebalance现在标注为emit Callback(HealthTech_DiagnosticEngine)再到Executing。整个状态机从Vault开始，经过Idle、Monitoring、Comparing的分支判断，区分NoAction、SmallRebalance、LargeRebalance三种处置路径，大额操作有64区块等待期，最终都回到Idle。结构完整了。",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault",
+        "Idle",
+        "Monitoring",
+        "Comparing",
+        "NoAction",
+        "SmallRebalance",
+        "LargeRebalance",
+        "PendingFinality",
+        "Executing",
+        "Completed"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 24707.9272,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

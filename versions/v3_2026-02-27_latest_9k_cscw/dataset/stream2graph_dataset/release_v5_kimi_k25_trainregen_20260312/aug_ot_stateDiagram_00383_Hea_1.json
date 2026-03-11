@@ -1,0 +1,154 @@
+{
+  "id": "aug_ot_stateDiagram_00383_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/SaintWyss/rag-corp/blob/7acfc8a1f950c640a490e32f3ba30f64243652c3/docs/architecture/diagrams/document-state.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "SaintWyss/rag-corp",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [HealthTech_HIPAA_Vault] --> PENDING : Upload initiated\n\n    PENDING --> PROCESSING : Worker picks up job\n    \n    PROCESSING --> READY : Success<br/>(HealthTech_EMR_Sync)\n    PROCESSING --> FAILED : Error<br/>(HealthTech_LabAnalyzer)\n    \n    READY --> PENDING : Reprocess requested\n    FAILED --> PENDING : Reprocess requested\n    \n    READY --> [HealthTech_HIPAA_Vault] : Document deleted\n    FAILED --> [HealthTech_PatientRecords] : Document deleted\n    PENDING --> [HealthTech_DiagnosticEngine] : Document deleted\n\n    note right of PENDING\n        Document metadata created,\n        binary stored in S3/MinIO,\n        job enqueued in Redis\n    end note\n\n    note right of PROCESSING\n        Worker extracting text,\n        chunking, and\n        generating embeddings\n    end note\n\n    note right of READY\n        Chunks with embeddings\n        persisted in PostgreSQL,\n        available for RAG queries\n    end note\n\n    note right of FAILED\n        error_message contains\n        failure reason,\n        can be reprocessed\n    end note",
+  "content_size": 961,
+  "collected_at": "2026-02-06T10:41:29.594252",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "ot_stateDiagram_00383",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个医疗文档处理的状态图，核心是从HealthTech_HIPAA_Vault上传文档开始的。流程应该是：上传后先进入PENDING状态，然后由Worker处理，最后变成READY。如果HealthTech_LabAnalyzer那边出错，就走到FAILED。",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault",
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。那PROCESSING到READY的转换条件，是写\"Success\"吗？还有，我注意到您提到了HealthTech_EMR_Sync，这个和Success是什么关系？",
+      "elements_involved": [
+        "PROCESSING",
+        "READY",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，Success后面标注一下HealthTech_EMR_Sync，表示同步成功。另外FAILED状态要支持重新处理——READY和FAILED都可以回到PENDING，触发条件是\"Reprocess requested\"。",
+      "elements_involved": [
+        "READY",
+        "FAILED",
+        "PENDING",
+        "Reprocess requested"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，主线和重处理循环都画好了。现在补充删除路径：文档删除后，READY状态应该回到哪里？还有FAILED和PENDING的删除目标一样吗？",
+      "elements_involved": [
+        "READY",
+        "FAILED",
+        "PENDING",
+        "Document deleted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "不一样。READY状态的文档删除后回到HealthTech_HIPAA_Vault；FAILED的要移到HealthTech_PatientRecords做归档；PENDING状态的删除则转到HealthTech_DiagnosticEngine，方便后续分析。",
+      "elements_involved": [
+        "READY",
+        "HealthTech_HIPAA_Vault",
+        "FAILED",
+        "HealthTech_PatientRecords",
+        "PENDING",
+        "HealthTech_DiagnosticEngine",
+        "Document deleted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。最后需要在各状态旁边加注释说明内部逻辑吗？比如PENDING状态具体在做什么？",
+      "elements_involved": [
+        "PENDING",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "要的。PENDING注释写：元数据创建、二进制文件存S3/MinIO、任务入Redis队列。PROCESSING写Worker提取文本、分块、生成向量。READY写向量块持久化到PostgreSQL、可供RAG查询。FAILED要写error_message包含失败原因、支持重处理。",
+      "elements_involved": [
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED",
+        "note",
+        "error_message",
+        "binary",
+        "Worker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部完成了。状态流转、四条删除路径、四个状态注释都已添加，符合HIPAA合规的医疗文档处理流程。",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault",
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED",
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 26351.0778,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 5
+  }
+}

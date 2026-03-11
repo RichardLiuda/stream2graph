@@ -1,0 +1,936 @@
+{
+  "id": "aug_gh_sequence_00922_Ret_8",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/security/authentication-flow.mmd",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "github_file_path": "docs/diagrams/security/authentication-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    %% Authentication and Authorization Flow for erlmcp\n    %% Shows: API key, JWT, OAuth2, mTLS authentication methods\n    %% Plus: RBAC permission checking with role-based access control\n\n    autonumber\n    actor Client\n    participant Transport as Transport Layer<br/>(Retail_PointOfSale)\n    participant Auth as erlmcp_auth<br/>(Retail_PointOfSale)\n    participant RateLimiter as erlmcp_auth_rate_limiter\n    participant JWT as jose (Retail_CouponSystem)\n    participant OAuth2 as OAuth2 Provider<br/>(Retail_CustomerLoyalty)\n    participant MTLS as erlmcp_auth_mtls<br/>(Retail_CouponSystem)\n    participant RBAC as RBAC Engine<br/>(Retail_Inventory)\n    participant Session as Session Manager<br/>(Retail_OrderManagement)\n\n    Note over Client,Session: Authentication Flow\n\n    %% API Key Authentication\n    Client->>Transport: authenticate(Retail_CouponSystem)\n    Transport->>Auth: authenticate(Retail_PointOfSale})\n\n    Auth->>RateLimiter: check_rate_limit(Retail_Inventory)\n    RateLimiter-->>Auth: ok (Retail_PointOfSale})\n\n    alt Rate Limited\n        Auth-->>Client: {Retail_Inventory}\n        Note over Auth,RateLimiter: Blocked after 5 failed attempts<br/>15-minute cooldown\n    else Rate Check Passed\n        Auth->>Auth: do_validate_api_key(Retail_CustomerLoyalty)\n        Note right of Auth: Lookup in ETS table<br/>auth_api_keys\n\n        alt API Key Invalid\n            Auth->>RateLimiter: record_failure(Retail_CouponSystem)\n            Auth-->>Client: {Retail_CustomerLoyalty}\n        else API Key Valid\n            Auth->>RateLimiter: record_success(Retail_OrderManagement)\n            Auth->>Session: create_session(Retail_CustomerLoyalty)\n\n            Session->>RBAC: get_user_roles(Retail_Inventory)\n            RBAC-->>Session: [Retail_PointOfSale]\n\n            Session->>RBAC: Aggregate permissions from roles\n            RBAC-->>Session: [Retail_PointOfSale]\n\n            Session-->>Auth: {Retail_OrderManagement}\n            Auth-->>Client: {Retail_Inventory}\n\n            Note right of Session: Session expires in 1 hour<br/>Auto-cleanup timer\n        end\n    end\n\n    %% JWT Authentication\n    Client->>Transport: authenticate(Retail_OrderManagement})\n    Transport->>Auth: authenticate(Retail_PointOfSale})\n\n    Auth->>RateLimiter: check_rate_limit(Retail_CouponSystem)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_jwt(Retail_Inventory)\n\n    alt Token Revoked\n        Auth-->>Client: {Retail_CouponSystem}\n        Note right of Auth: Check ETS: auth_revoked_tokens<br/>Cleanup after 7 days\n    else Token Active\n        Auth->>JWT: jose_jws:peek_protected(Retail_Inventory)\n        JWT-->>Auth: #{Retail_CouponSystem}\n\n        Auth->>Auth: Lookup public key by kid\n        Note right of Auth: ETS: auth_jwt_keys<br/>Support key rotation\n\n        Auth->>JWT: jose_jws:verify(Retail_OrderManagement)\n        JWT-->>Auth: {Retail_Inventory}\n\n        alt Signature Invalid\n            Auth-->>Client: {Retail_CustomerLoyalty}\n        else Signature Valid\n            Auth->>Auth: validate_jwt_claims(Retail_CouponSystem)\n\n            Note right of Auth: CRITICAL SECURITY CHECKS:<br/>✓ exp (Retail_PointOfSale) - Required<br/>✓ nbf (Retail_OrderManagement) - Optional<br/>✓ iss (Retail_CustomerLoyalty) - Configurable<br/>✓ aud (Retail_CustomerLoyalty) - Configurable<br/>✓ sub (Retail_Inventory) - Required\n\n            alt Token Expired\n                Auth-->>Client: {Retail_CustomerLoyalty}\n            else Token Not Yet Valid\n                Auth-->>Client: {Retail_Inventory}\n            else Issuer Mismatch\n                Auth-->>Client: {Retail_CustomerLoyalty}\n            else Audience Mismatch\n                Auth-->>Client: {Retail_OrderManagement}\n            else All Claims Valid\n                Auth->>RateLimiter: record_success(Retail_CustomerLoyalty)\n                Auth->>Session: create_session(Retail_OrderManagement)\n                Session-->>Auth: {Retail_PointOfSale}\n                Auth-->>Client: {Retail_PointOfSale}\n            end\n        end\n    end\n\n    %% OAuth2 Authentication (Retail_PointOfSale)\n    Client->>Transport: authenticate(Retail_CouponSystem})\n    Transport->>Auth: authenticate(Retail_OrderManagement})\n\n    Auth->>RateLimiter: check_rate_limit(Retail_Inventory)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_oauth2_token(Retail_CustomerLoyalty)\n\n    alt Cache Hit (Retail_OrderManagement)\n        Note right of Auth: ETS: auth_oauth2_cache<br/>Token -> {Retail_Inventory}\n        Auth-->>Client: {Retail_OrderManagement}\n    else Cache Miss\n        Auth->>OAuth2: HTTP POST /introspect\n        Note right of Auth: RFC 7662 Introspection<br/>Basic Auth: client_id:secret<br/>Body: token + token_type_hint\n\n        OAuth2-->>Auth: 200 OK + TokenInfo\n\n        Auth->>Auth: validate_introspection_response(Retail_CustomerLoyalty)\n\n        Note right of Auth: RFC 7662 REQUIRED fields:<br/>✓ active = true<br/>✓ exp (Retail_CouponSystem)<br/>✓ nbf (Retail_CustomerLoyalty)<br/>✓ iss (Retail_PointOfSale)\n\n        alt Token Inactive\n            Auth-->>Client: {Retail_PointOfSale}\n        else Token Expired\n            Auth-->>Client: {Retail_OrderManagement}\n        else Token Valid\n            Auth->>Auth: cache_oauth2_token(Retail_PointOfSale)\n            Note right of Auth: Cache for up to 5 minutes<br/>or until exp (Retail_PointOfSale)\n\n            Auth->>RateLimiter: record_success(Retail_Inventory)\n            Auth->>Session: create_session(Retail_PointOfSale)\n            Session-->>Auth: {Retail_CouponSystem}\n            Auth-->>Client: {Retail_OrderManagement}\n        end\n    end\n\n    %% mTLS Authentication\n    Client->>Transport: authenticate(Retail_CustomerLoyalty})\n    Transport->>Auth: authenticate(Retail_Inventory)\n\n    Auth->>RateLimiter: check_rate_limit(Retail_CouponSystem)\n    RateLimiter-->>Auth: ok\n\n    Auth->>MTLS: validate(Retail_Inventory)\n\n    Note right of MTLS: mTLS Validation Pipeline:<br/>1. Extract certificate from socket<br/>2. X.509 chain validation to trusted CAs<br/>3. Certificate expiration check<br/>4. OCSP/CRL revocation check<br/>5. Subject DN and CN pattern matching<br/>6. Certificate depth limit validation\n\n    MTLS-->>Auth: {Retail_CustomerLoyalty}\n\n    alt Certificate Invalid\n        Auth->>RateLimiter: record_failure(Retail_PointOfSale)\n        Auth-->>Client: {Retail_CouponSystem}\n    else Certificate Valid\n        Auth->>RateLimiter: record_success(Retail_CouponSystem)\n        Auth->>Session: create_session(Retail_CustomerLoyalty})\n        Session-->>Auth: {Retail_Inventory}\n        Auth-->>Client: {Retail_OrderManagement}\n    end\n\n    %% Authorization Flow (Retail_Inventory)\n    Note over Client,Session: Authorization Flow\n\n    Client->>Transport: check_permission(Retail_Inventory)\n    Transport->>Auth: check_permission(Retail_CustomerLoyalty)\n\n    Auth->>Session: lookup session\n    Session-->>Auth: #session{Retail_OrderManagement}\n\n    alt Session Not Found\n        Auth-->>Client: {Retail_CouponSystem}\n    else Session Found\n        Auth->>RBAC: check_user_permission(Retail_OrderManagement)\n\n        RBAC->>RBAC: Get user roles from ETS\n        Note right of RBAC: auth_user_roles:<br/>UserId -> [Retail_CouponSystem]\n\n        RBAC->>RBAC: Get allowed roles for resource+permission\n        Note right of RBAC: auth_acls:<br/>{Retail_CustomerLoyalty} -> [Retail_CouponSystem]\n\n        RBAC->>RBAC: Check intersection\n        Note right of RBAC: lists:any/2<br/>UserRole ∩ AllowedRoles ≠ ∅\n\n        alt Permission Denied\n            RBAC-->>Auth: {Retail_Inventory}\n            Auth-->>Client: {Retail_OrderManagement}\n        else Permission Granted\n            RBAC-->>Auth: ok\n            Auth-->>Client: ok\n        end\n    end\n\n    %% Default RBAC Roles\n    Note over RBAC: Default Roles (Retail_PointOfSale):<br/>🔹 admin: [Retail_Inventory]<br/>🔹 user: [Retail_PointOfSale]<br/>🔹 guest: [Retail_CouponSystem]\n\n    %% Token Rotation\n    Note over Client,Session: Token Rotation (Retail_CouponSystem)\n\n    Client->>Auth: rotate_token(Retail_Inventory)\n    Auth->>Session: lookup session\n\n    Auth->>Auth: generate new SessionId\n    Note right of Auth: crypto:strong_rand_bytes(Retail_CustomerLoyalty)<br/>base64 encoded\n\n    Auth->>Session: insert new session\n    Auth->>Session: delete old session\n\n    Auth-->>Client: {Retail_CouponSystem}\n    Note right of Auth: Old session invalidated immediately<br/>Prevents session hijacking\n\n    %% Token Revocation\n    Note over Client,Session: Token Revocation (Retail_PointOfSale)\n\n    Client->>Auth: revoke_token(Retail_Inventory)\n    Auth->>Auth: insert into auth_revoked_tokens\n    Note right of Auth: Store: Token -> RevokedAt<br/>Auto-cleanup after 7 days\n\n    Auth-->>Client: ok\n    Note over Auth,JWT: Revoked tokens rejected immediately<br/>Even if exp claim valid\n\n    %% Session Cleanup\n    Note over Session: Auto-cleanup every 60 seconds:<br/>• Expired sessions (Retail_CouponSystem)<br/>• Revoked tokens (Retail_CustomerLoyalty)<br/>• OAuth2 cache (Retail_OrderManagement)\n",
+  "content_size": 8727,
+  "collected_at": "2026-02-06T01:50:47.821294",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "augmentation_domain": "Retail",
+  "seed_id": "gh_sequence_00922",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为erlmcp系统绘制一个完整的认证授权时序图，涵盖API Key、JWT、OAuth2和mTLS四种认证方式，以及RBAC权限检查流程。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth mtls",
+        "erlmcp auth rate limiter",
+        "jose",
+        "oauth2 provider",
+        "rbac engine",
+        "session manager",
+        "transport layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先确认一下整体结构：Client作为actor，然后依次是Transport Layer、erlmcp_auth核心模块、rate limiter，再分出JWT、OAuth2 Provider、mTLS三个认证分支，最后是RBAC Engine和Session Manager。这样安排合理吗？",
+      "elements_involved": [
+        "Client",
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "rbac engine",
+        "session manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，但要注意erlmcp_auth_rate_limiter是所有认证方式的必经之路，必须在最开始就拦截。还有Session Manager要和RBAC Engine紧密配合，权限聚合在Session层完成。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "erlmcp auth",
+        "session manager",
+        "rbac engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主框架，标注好autonumber。Transport Layer我标注为Retail_PointOfSale场景，erlmcp_auth也关联到Retail_PointOfSale。",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "autonumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "API Key认证流程要详细一点：Client先调用Transport Layer的authenticate，传入Retail_CouponSystem上下文，然后Transport转发给erlmcp_auth。",
+      "elements_involved": [
+        "Client",
+        "transport layer",
+        "erlmcp auth",
+        "Retail_CouponSystem",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了API Key的前两步。接下来erlmcp_auth要先调用rate limiter检查，对吧？我标注check_rate_limit，上下文用Retail_Inventory。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，rate limiter返回ok后，才进入实际的API Key验证。这里要加一个alt分支：如果被限流了，直接返回给Client，标注Retail_Inventory。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "erlmcp auth",
+        "Client",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了限流分支的Note，说明5次失败尝试后触发15分钟冷却。主分支里erlmcp_auth调用do_validate_api_key，上下文是Retail_CustomerLoyalty，右侧Note标注ETS表auth_api_keys。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Retail_CustomerLoyalty",
+        "auth_api_keys"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "API Key验证还要再分一个alt：无效的话要记录失败并返回Retail_CustomerLoyalty；有效的话记录成功，然后创建session，再查RBAC角色。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "session manager",
+        "rbac engine",
+        "Retail_CustomerLoyalty",
+        "Retail_OrderManagement",
+        "Retail_Inventory",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成了API Key的完整分支。Session Manager向RBAC Engine获取用户角色，返回[Retail_PointOfSale]，然后聚合权限，再返回[Retail_PointOfSale]。最后Session返回{Retail_OrderManagement}给Auth，Auth返回{Retail_Inventory}给Client。Session的Note标注1小时过期和自动清理。",
+      "elements_involved": [
+        "session manager",
+        "rbac engine",
+        "erlmcp auth",
+        "Client",
+        "Retail_PointOfSale",
+        "Retail_OrderManagement",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来画JWT认证。Client还是走Transport Layer，但这次authenticate的参数是Retail_OrderManagement。",
+      "elements_involved": [
+        "Client",
+        "transport layer",
+        "erlmcp auth",
+        "Retail_OrderManagement",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "JWT的前置流程画好了：经过rate limiter后，erlmcp_auth调用do_validate_jwt，上下文Retail_Inventory。我先加一个Token Revoked的分支。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "jose",
+        "Retail_Inventory",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Token Revoked的检查要在本地ETS表auth_revoked_tokens里查，这个Note要标注清楚，还有7天清理的策略。",
+      "elements_involved": [
+        "erlmcp auth",
+        "auth_revoked_tokens"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了revoked tokens的Note。Token Active的主分支里，erlmcp_auth调用jose_jws:peek_protected，上下文Retail_Inventory，jose返回#{Retail_CouponSystem}。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "Retail_Inventory",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后Auth本地查kid对应的公钥，ETS表auth_jwt_keys，支持密钥轮换。接着调用jose_jws:verify验证签名。",
+      "elements_involved": [
+        "erlmcp auth",
+        "auth_jwt_keys",
+        "jose"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了签名验证流程。jose返回{Retail_Inventory}。我加一个Signature Invalid的分支返回Retail_CustomerLoyalty，主分支继续验证claims。",
+      "elements_involved": [
+        "jose",
+        "erlmcp auth",
+        "Retail_Inventory",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "JWT claims验证非常关键，要列出所有检查项：exp（Retail_PointOfSale，必填）、nbf（Retail_OrderManagement，可选）、iss（Retail_CustomerLoyalty，可配置）、aud（Retail_CustomerLoyalty，可配置）、sub（Retail_Inventory，必填）。用CRITICAL SECURITY CHECKS标注。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Retail_PointOfSale",
+        "Retail_OrderManagement",
+        "Retail_CustomerLoyalty",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了详细的claims检查Note。然后画了多个alt分支：Token Expired返回Retail_CustomerLoyalty，Token Not Yet Valid返回Retail_Inventory，Issuer Mismatch返回Retail_CustomerLoyalty，Audience Mismatch返回Retail_OrderManagement。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Client",
+        "Retail_CustomerLoyalty",
+        "Retail_OrderManagement",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "分支逻辑正确。All Claims Valid的情况：记录rate limiter成功，创建session，Session返回Retail_PointOfSale给Auth，Auth返回Retail_PointOfSale给Client。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "session manager",
+        "Retail_CustomerLoyalty",
+        "Retail_OrderManagement",
+        "Retail_PointOfSale",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "JWT认证流程完成。接下来画OAuth2认证？",
+      "elements_involved": [
+        "oauth2 provider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，OAuth2认证。Client调用authenticate，参数Retail_CouponSystem，Transport转发给Auth，参数Retail_OrderManagement。同样先过rate limiter。",
+      "elements_involved": [
+        "Client",
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "Retail_CouponSystem",
+        "Retail_OrderManagement",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "OAuth2的前置步骤画好了。Auth调用do_validate_oauth2_token，上下文Retail_CustomerLoyalty。这里有个缓存优化：先查ETS auth_oauth2_cache。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Retail_CustomerLoyalty",
+        "auth_oauth2_cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Cache Hit直接返回Retail_OrderManagement给Client，Note标注Token - {Retail_Inventory}的缓存格式。Cache Miss才走HTTP请求。",
+      "elements_involved": [
+        "erlmcp auth",
+        "auth_oauth2_cache",
+        "Client",
+        "Retail_OrderManagement",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了Cache Hit分支。Cache Miss分支里，Auth向OAuth2 Provider发HTTP POST /introspect，Note标注RFC 7662，Basic Auth用client_id:secret，body带token和token_type_hint。",
+      "elements_involved": [
+        "erlmcp auth",
+        "oauth2 provider",
+        "RFC 7662"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OAuth2 Provider返回200 OK + TokenInfo后，Auth要validate_introspection_response。必填字段：active=true、exp（Retail_CouponSystem）、nbf（Retail_CustomerLoyalty）、iss（Retail_PointOfSale）。",
+      "elements_involved": [
+        "oauth2 provider",
+        "erlmcp auth",
+        "Retail_CouponSystem",
+        "Retail_CustomerLoyalty",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了RFC 7662 REQUIRED fields的Note。然后画了分支：Token Inactive返回Retail_PointOfSale，Token Expired返回Retail_OrderManagement。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Client",
+        "Retail_PointOfSale",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Token Valid的情况：先缓存到auth_oauth2_cache，缓存5分钟或到exp（Retail_PointOfSale），然后记录rate limiter成功，创建session，Session返回Retail_CouponSystem，Auth返回Retail_OrderManagement。",
+      "elements_involved": [
+        "erlmcp auth",
+        "auth_oauth2_cache",
+        "erlmcp auth rate limiter",
+        "session manager",
+        "Retail_PointOfSale",
+        "Retail_CouponSystem",
+        "Retail_OrderManagement",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "OAuth2流程完成。接下来是mTLS认证？",
+      "elements_involved": [
+        "erlmcp auth mtls"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，mTLS。Client authenticate参数Retail_CustomerLoyalty，Transport转发给Auth，参数Retail_Inventory。rate limiter通过后，Auth调用erlmcp_auth_mtls的validate，上下文Retail_Inventory。",
+      "elements_involved": [
+        "Client",
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "erlmcp auth mtls",
+        "Retail_CustomerLoyalty",
+        "Retail_Inventory",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "mTLS的Note要详细一点：从socket提取证书、X.509链验证、过期检查、OCSP/CRL吊销检查、Subject DN和CN模式匹配、证书深度限制验证。这样够吗？",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "OCSP",
+        "CRL",
+        "X.509"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，mTLS Validation Pipeline这6步都列出来。然后MTLS返回{Retail_CustomerLoyalty}给Auth。分两个分支：证书无效记录失败返回Retail_CouponSystem；证书有效记录成功，创建session，返回Retail_OrderManagement。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "session manager",
+        "Retail_CustomerLoyalty",
+        "Retail_CouponSystem",
+        "Retail_PointOfSale",
+        "Retail_OrderManagement",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "四种认证方式都画完了。接下来是Authorization Flow？",
+      "elements_involved": [
+        "rbac engine",
+        "authorization"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，授权流程。Client调用check_permission，上下文Retail_Inventory，Transport转发给Auth，上下文Retail_CustomerLoyalty。Auth先lookup session。",
+      "elements_involved": [
+        "Client",
+        "transport layer",
+        "erlmcp auth",
+        "session manager",
+        "Retail_Inventory",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Session返回#session{Retail_OrderManagement}。我加一个Session Not Found分支，返回Retail_CouponSystem。",
+      "elements_involved": [
+        "session manager",
+        "erlmcp auth",
+        "Client",
+        "Retail_OrderManagement",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Session Found的话，Auth调用RBAC的check_user_permission，上下文Retail_OrderManagement。RBAC内部先从ETS auth_user_roles查用户角色，格式UserId - [Retail_CouponSystem]。",
+      "elements_involved": [
+        "erlmcp auth",
+        "rbac engine",
+        "Retail_OrderManagement",
+        "Retail_CouponSystem",
+        "auth_user_roles"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "然后RBAC查auth_acls，获取resource+permission对应的allowed roles，格式{Retail_CustomerLoyalty} - [Retail_CouponSystem]。最后用lists:any/2检查交集。",
+      "elements_involved": [
+        "rbac engine",
+        "auth_acls",
+        "Retail_CustomerLoyalty",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，UserRole ∩ AllowedRoles ≠ ∅。Permission Denied返回Retail_Inventory给Auth，Auth返回Retail_OrderManagement给Client。Permission Granted返回ok。",
+      "elements_involved": [
+        "rbac engine",
+        "erlmcp auth",
+        "Client",
+        "Retail_Inventory",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "授权流程完成。需要加默认角色说明吗？",
+      "elements_involved": [
+        "rbac engine",
+        "default roles"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "要，在RBAC上加一个Note：Default Roles (Retail_PointOfSale)：admin有Retail_Inventory权限，user有Retail_PointOfSale权限，guest有Retail_CouponSystem权限。",
+      "elements_involved": [
+        "rbac engine",
+        "Retail_PointOfSale",
+        "Retail_Inventory",
+        "Retail_CouponSystem",
+        "admin",
+        "user",
+        "guest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了默认角色说明。还有Token Rotation和Revocation要画吗？",
+      "elements_involved": [
+        "token rotation",
+        "token revocation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Token Rotation。Client直接调用Auth的rotate_token，上下文Retail_Inventory。Auth lookup session，然后生成新的SessionId，用crypto:strong_rand_bytes，上下文Retail_CustomerLoyalty，base64编码。",
+      "elements_involved": [
+        "Client",
+        "erlmcp auth",
+        "session manager",
+        "Retail_Inventory",
+        "Retail_CustomerLoyalty",
+        "crypto:strong_rand_bytes"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "然后insert new session，delete old session，返回{Retail_CouponSystem}。Note标注旧session立即失效，防止session hijacking。",
+      "elements_involved": [
+        "erlmcp auth",
+        "session manager",
+        "Retail_CouponSystem",
+        "session hijacking"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Token Revocation：Client调用revoke_token，上下文Retail_Inventory。Auth插入auth_revoked_tokens，存储Token - RevokedAt，7天后自动清理。",
+      "elements_involved": [
+        "Client",
+        "erlmcp auth",
+        "Retail_Inventory",
+        "auth_revoked_tokens",
+        "RevokedAt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了revocation流程和7天清理的Note。还需要一个Note说明revoked tokens立即拒绝，即使exp claim还有效。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "auth_revoked_tokens",
+        "exp claim"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后加上Session Cleanup的说明。每60秒自动清理：过期session（Retail_CouponSystem）、revoked tokens（Retail_CustomerLoyalty）、OAuth2 cache（Retail_OrderManagement）。",
+      "elements_involved": [
+        "session manager",
+        "Retail_CouponSystem",
+        "Retail_CustomerLoyalty",
+        "Retail_OrderManagement",
+        "auto-cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有流程都画完了。我检查一下：API Key、JWT、OAuth2、mTLS四种认证，RBAC授权，Token Rotation、Revocation、Cleanup三个管理功能。结构完整。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "rbac engine",
+        "session manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，我发现JWT认证里有个问题。jose_jws:peek_protected的返回格式我写的是#{Retail_CouponSystem}，但实际应该是header map，可能需要调整标注方式？",
+      "elements_involved": [
+        "jose",
+        "jose_jws:peek_protected",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我调整一下，把#{Retail_CouponSystem}理解为header中包含kid等字段的示意，实际标注保留，但Note里补充说明peek_protected返回的是JWS Protected Header。这样更清晰。",
+      "elements_involved": [
+        "jose",
+        "jose_jws:peek_protected",
+        "JWS Protected Header",
+        "kid"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。还有OAuth2的缓存时间，我标注的是5分钟或exp，但exp是Retail_PointOfSale，需要确认单位一致。",
+      "elements_involved": [
+        "oauth2 provider",
+        "auth_oauth2_cache",
+        "Retail_PointOfSale",
+        "exp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "exp是绝对时间戳，5分钟是相对时间，取min(当前时间+5分钟, exp)作为缓存过期时间。图示上保留现有标注可以吗？",
+      "elements_involved": [
+        "auth_oauth2_cache",
+        "exp",
+        "cache expiration"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，理解正确。再检查一下mTLS的返回：MTLS返回{Retail_CustomerLoyalty}，这个应该是证书验证结果，包含CN、SAN等信息？",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "Retail_CustomerLoyalty",
+        "CN",
+        "SAN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "对，{Retail_CustomerLoyalty}表示验证通过后的证书身份信息。我可以在Note里补充说明返回的是解析后的证书主体信息。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "Retail_CustomerLoyalty",
+        "certificate subject"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RBAC的权限检查逻辑，lists:any/2的交集检查，需要确保UserRole和AllowedRoles都是列表。如果用户有多个角色，只要有一个匹配就通过。",
+      "elements_involved": [
+        "rbac engine",
+        "lists:any/2",
+        "UserRole",
+        "AllowedRoles"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，图示中的[Retail_CouponSystem]表示角色列表，交集检查逻辑正确。还有需要调整的地方吗？",
+      "elements_involved": [
+        "rbac engine",
+        "Retail_CouponSystem",
+        "role list"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "rate limiter的record_failure和record_success，上下文分别是Retail_CouponSystem和Retail_OrderManagement，这个对应关系需要确认。API Key失败记录Retail_CouponSystem，成功记录Retail_OrderManagement？",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "record_failure",
+        "record_success",
+        "Retail_CouponSystem",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我检查一下：API Key流程里，record_failure是Retail_CouponSystem，record_success是Retail_OrderManagement。但看代码，API Key成功创建session时传的Retail_CustomerLoyalty，不是Retail_OrderManagement。需要统一吗？",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "erlmcp auth",
+        "session manager",
+        "Retail_CouponSystem",
+        "Retail_OrderManagement",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "你说得对，API Key成功应该是record_success(Retail_CustomerLoyalty)，然后创建session也是Retail_CustomerLoyalty。我之前的描述有误，按实际代码来。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "erlmcp auth",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正：API Key的record_success改为Retail_CustomerLoyalty，创建session也是Retail_CustomerLoyalty。其他认证方式的上下文我也再核对一遍。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "erlmcp auth",
+        "session manager",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "JWT的record_success是Retail_CustomerLoyalty，创建session是Retail_OrderManagement。mTLS的record_success是Retail_CouponSystem，创建session是Retail_CustomerLoyalty。OAuth2的record_success是Retail_Inventory，创建session是Retail_PointOfSale。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "session manager",
+        "JWT",
+        "mTLS",
+        "OAuth2",
+        "Retail_CustomerLoyalty",
+        "Retail_OrderManagement",
+        "Retail_CouponSystem",
+        "Retail_Inventory",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部核对完成，上下文标注与代码一致。最后确认一下：Transport Layer和erlmcp_auth都标注了Retail_PointOfSale，但参与者的alias显示是Retail_PointOfSale场景，这是有意的设计吗？",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Transport Layer和erlmcp_auth都是Retail_PointOfSale场景的核心组件。其他组件按实际归属标注：jose是Retail_CouponSystem，OAuth2 Provider是Retail_CustomerLoyalty，MTLS是Retail_CouponSystem，RBAC是Retail_Inventory，Session Manager是Retail_OrderManagement。",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "rbac engine",
+        "session manager",
+        "Retail_PointOfSale",
+        "Retail_CouponSystem",
+        "Retail_CustomerLoyalty",
+        "Retail_Inventory",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有场景标注确认无误。整个时序图包含：4种认证方式、完整的RBAC授权、Token生命周期管理（Rotation、Revocation、Cleanup），以及详细的限流和安全检查。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth mtls",
+        "erlmcp auth rate limiter",
+        "jose",
+        "oauth2 provider",
+        "rbac engine",
+        "session manager",
+        "transport layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个图完整展示了erlmcp的认证授权架构，从传输层到各种认证后端，再到权限决策和会话管理，涵盖了所有关键安全控制点。",
+      "elements_involved": [
+        "erlmcp auth",
+        "transport layer",
+        "authentication",
+        "authorization",
+        "security controls"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终Mermaid时序图已完成，包含autonumber编号、所有alt分支、详细Note说明，以及完整的参与者交互流程。",
+      "elements_involved": [
+        "sequence diagram",
+        "autonumber",
+        "alt branches",
+        "notes",
+        "participants"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 6,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 112613.5461,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

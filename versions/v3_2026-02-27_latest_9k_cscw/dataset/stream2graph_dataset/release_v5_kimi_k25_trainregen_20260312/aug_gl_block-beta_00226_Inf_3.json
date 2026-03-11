@@ -1,0 +1,689 @@
+{
+  "id": "aug_gl_block-beta_00226_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/bsbodden/barudb/blob/dc97c4d833ff103d104f2e68bfec8fba50980d8e/final_report/diagrams/block_cache_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "bsbodden/barudb",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client Code\n    participant BlockCache as Block Cache\n    participant EvictionPolicy as Eviction Policy\n    participant TTLManager as TTL Manager\n    participant Storage as Storage Layer\n    \n    %% Define participant boxes with consistent colors\n    rect rgba(Infra_IngressController)\n        note right of BlockCache: Cache components\n        note right of EvictionPolicy: Policy components\n        note right of TTLManager: TTL components\n    end\n    rect rgba(Infra_WorkerNode)\n        note right of Storage: Storage components\n    end\n    \n    %% Block cache operations\n    Client->>BlockCache: get_block(Infra_WorkerNode)\n    \n    %% Check if block is in cache\n    BlockCache->>BlockCache: lookup(Infra_EtcdCluster)\n    \n    alt block found in cache\n        %% Update access statistics\n        BlockCache->>EvictionPolicy: record_access(Infra_LoadBalancer)\n        EvictionPolicy-->>BlockCache: updated_metadata\n        \n        %% Check if TTL expired\n        BlockCache->>TTLManager: is_expired(Infra_WorkerNode)\n        \n        alt block expired\n            TTLManager-->>BlockCache: true\n            BlockCache->>BlockCache: remove_from_cache(Infra_IngressController)\n            \n            %% Load from storage\n            BlockCache->>Storage: read_block(Infra_EtcdCluster)\n            Storage-->>BlockCache: block_data\n            \n            %% Insert back with refreshed TTL\n            BlockCache->>TTLManager: set_expiry(Infra_LoadBalancer)\n            BlockCache->>EvictionPolicy: add_entry(Infra_EtcdCluster)\n            \n            BlockCache-->>Client: block_data\n        else block not expired\n            TTLManager-->>BlockCache: false\n            BlockCache-->>Client: cached_block_data\n        end\n    else block not found in cache\n        %% Load from storage\n        BlockCache->>Storage: read_block(Infra_RedisCache)\n        Storage-->>BlockCache: block_data\n        \n        %% Check if cache is full\n        BlockCache->>EvictionPolicy: is_cache_full(Infra_WorkerNode)\n        \n        alt cache full - need eviction\n            EvictionPolicy-->>BlockCache: true\n            \n            %% Policy determines what to evict\n            BlockCache->>EvictionPolicy: select_victim(Infra_IngressController)\n            \n            alt using LRU policy\n                note right of EvictionPolicy: Least Recently Used block selected\n            else using LFU policy\n                note right of EvictionPolicy: Least Frequently Used block selected\n            else using TinyLFU policy\n                note right of EvictionPolicy: Frequency sketch determines victim\n            end\n            \n            EvictionPolicy-->>BlockCache: victim_block_id\n            \n            %% Evict the selected block\n            BlockCache->>BlockCache: evict_block(Infra_WorkerNode)\n            BlockCache->>TTLManager: remove_expiry(Infra_EtcdCluster)\n        else cache has space\n            EvictionPolicy-->>BlockCache: false\n        end\n        \n        %% Insert new block\n        BlockCache->>BlockCache: insert_block(Infra_IngressController)\n        BlockCache->>EvictionPolicy: add_entry(Infra_LoadBalancer)\n        EvictionPolicy-->>BlockCache: success\n        BlockCache->>TTLManager: set_expiry(Infra_LoadBalancer)\n        TTLManager-->>BlockCache: success\n        \n        BlockCache-->>Client: block_data\n    end\n    \n    %% Periodic TTL cleanup (Infra_RedisCache)\n    loop TTL cleanup interval\n        TTLManager->>TTLManager: check_expired_entries(Infra_EtcdCluster)\n        \n        loop For each expired entry\n            TTLManager->>BlockCache: notify_expired(Infra_EtcdCluster)\n            BlockCache->>BlockCache: remove_from_cache(Infra_IngressController)\n            BlockCache->>EvictionPolicy: remove_entry(Infra_EtcdCluster)\n        end\n    end",
+  "content_size": 3655,
+  "collected_at": "2026-02-06T14:04:54.927677",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_block-beta_00226",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个Block Cache的完整交互流程图，核心是让Client Code能高效读取数据块，同时处理好缓存失效和淘汰策略。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这个场景里Client Code是主动发起方，Block Cache是核心中介。那Storage Layer作为最终数据源，也要作为独立参与者出现吧？",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Storage Layer是必须的。另外还要有两个关键组件：Eviction Policy负责决定淘汰哪块数据，TTL Manager处理过期时间。",
+      "elements_involved": [
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，五个参与者：Client Code、Block Cache、Eviction Policy、TTL Manager、Storage Layer。我想用rect框把相关组件分组，比如Cache components、Policy components、TTL components放一组，Storage components单独放。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "分组思路可以，但注意Infra层面：IngressController、WorkerNode这些基础设施标签要体现在note里，用来标识组件运行的位置。",
+      "elements_involved": [
+        "Infra_IngressController",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "了解了，我会在note right of BlockCache等位置标注Cache components，并关联Infra_IngressController颜色。现在开始画主流程：Client Code先向Block Cache发起get_block请求。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "get_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "get_block的参数要带上Infra_WorkerNode，表示从哪个工作节点读取。接下来Block Cache要先做本地lookup，查Infra_EtcdCluster。",
+      "elements_involved": [
+        "get_block",
+        "Infra_WorkerNode",
+        "lookup",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "lookup之后分两支：alt block found in cache 和 block not found in cache。命中缓存的情况，要先更新访问统计。",
+      "elements_involved": [
+        "block found in cache",
+        "record_access"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "record_access要发给Eviction Policy，参数是Infra_LoadBalancer。Eviction Policy返回updated_metadata给Block Cache。",
+      "elements_involved": [
+        "record_access",
+        "Infra_LoadBalancer",
+        "Eviction Policy",
+        "updated_metadata"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了：BlockCache-EvictionPolicy: record_access(Infra_LoadBalancer)，然后EvictionPolicy--BlockCache: updated_metadata。接下来检查TTL？",
+      "elements_involved": [
+        "record_access",
+        "Infra_LoadBalancer",
+        "updated_metadata"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Block Cache问TTL Manager：is_expired(Infra_WorkerNode)。这里要嵌套一个alt：block expired 和 block not expired。",
+      "elements_involved": [
+        "is_expired",
+        "Infra_WorkerNode",
+        "TTL Manager",
+        "block expired",
+        "block not expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "嵌套alt画好了。block not expired分支简单：TTLManager返回false，BlockCache直接把cached_block_data返回给Client。",
+      "elements_involved": [
+        "block not expired",
+        "cached_block_data",
+        "Client Code"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "block expired的分支要复杂些：TTLManager返回true后，Block Cache要先remove_from_cache(Infra_IngressController)，然后从Storage Layer重新读。",
+      "elements_involved": [
+        "block expired",
+        "remove_from_cache",
+        "Infra_IngressController",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "read_block的参数是Infra_EtcdCluster吗？还是继续用Infra_WorkerNode？",
+      "elements_involved": [
+        "read_block",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "这里我之前说错了，read_block应该带Infra_EtcdCluster，因为Storage Layer访问的是etcd集群。不是WorkerNode。",
+      "elements_involved": [
+        "read_block",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "修正为BlockCache-Storage: read_block(Infra_EtcdCluster)，Storage返回block_data。然后重新插入缓存时要刷新TTL。",
+      "elements_involved": [
+        "read_block",
+        "Infra_EtcdCluster",
+        "block_data",
+        "set_expiry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "set_expiry发给TTL Manager，参数Infra_LoadBalancer。同时调用Eviction Policy的add_entry(Infra_EtcdCluster)更新索引。",
+      "elements_involved": [
+        "set_expiry",
+        "Infra_LoadBalancer",
+        "add_entry",
+        "Infra_EtcdCluster",
+        "TTL Manager",
+        "Eviction Policy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成：BlockCache-TTLManager: set_expiry(Infra_LoadBalancer)，BlockCache-EvictionPolicy: add_entry(Infra_EtcdCluster)，最后BlockCache--Client: block_data。现在处理缓存未命中的分支？",
+      "elements_involved": [
+        "set_expiry",
+        "Infra_LoadBalancer",
+        "add_entry",
+        "Infra_EtcdCluster",
+        "block_data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，block not found in cache时，直接从Storage Layer读，但这里参数要换成Infra_RedisCache。",
+      "elements_involved": [
+        "block not found in cache",
+        "read_block",
+        "Infra_RedisCache",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "为什么未命中时用RedisCache，而前面过期重读时用EtcdCluster？",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "设计如此：冷数据首次加载走RedisCache加速，而过期数据的元信息修复走EtcdCluster保证一致性。这是分层存储策略。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "Infra_EtcdCluster",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "理解了。画好BlockCache-Storage: read_block(Infra_RedisCache)，返回block_data。接下来要检查缓存是否已满？",
+      "elements_involved": [
+        "read_block",
+        "Infra_RedisCache",
+        "block_data",
+        "is_cache_full"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Block Cache问Eviction Policy：is_cache_full(Infra_WorkerNode)。这里又要分alt：cache full和cache has space。",
+      "elements_involved": [
+        "is_cache_full",
+        "Infra_WorkerNode",
+        "Eviction Policy",
+        "cache full",
+        "cache has space"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了。cache has space分支简单：EvictionPolicy返回false，直接跳到插入新块。cache full分支需要先select_victim。",
+      "elements_involved": [
+        "cache has space",
+        "cache full",
+        "select_victim"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "select_victim(Infra_IngressController)之后，要展示三种淘汰策略的选择：LRU、LFU、TinyLFU。用alt嵌套。",
+      "elements_involved": [
+        "select_victim",
+        "Infra_IngressController",
+        "LRU policy",
+        "LFU policy",
+        "TinyLFU policy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "三种策略都用note right of EvictionPolicy说明吗？比如\"Least Recently Used block selected\"这样的描述？",
+      "elements_involved": [
+        "Eviction Policy",
+        "LRU policy",
+        "LFU policy",
+        "TinyLFU policy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，LRU写\"Least Recently Used block selected\"，LFU写\"Least Frequently Used block selected\"，TinyLFU写\"Frequency sketch determines victim\"。",
+      "elements_involved": [
+        "LRU policy",
+        "LFU policy",
+        "TinyLFU policy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "三种策略的note都加好了。然后EvictionPolicy返回victim_block_id给Block Cache，执行evict_block(Infra_WorkerNode)。",
+      "elements_involved": [
+        "victim_block_id",
+        "evict_block",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "evict_block之后，还要通知TTL Manager移除过期记录：remove_expiry(Infra_EtcdCluster)。",
+      "elements_involved": [
+        "remove_expiry",
+        "Infra_EtcdCluster",
+        "TTL Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成：BlockCache-TTLManager: remove_expiry(Infra_EtcdCluster)。然后回到主流程，无论是否淘汰，都要insert_block。",
+      "elements_involved": [
+        "remove_expiry",
+        "Infra_EtcdCluster",
+        "insert_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "insert_block(Infra_IngressController)是自调用，然后add_entry(Infra_LoadBalancer)给Eviction Policy，set_expiry(Infra_LoadBalancer)给TTL Manager。",
+      "elements_involved": [
+        "insert_block",
+        "Infra_IngressController",
+        "add_entry",
+        "Infra_LoadBalancer",
+        "set_expiry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都画好了，最后BlockCache--Client: block_data。主流程结束。还需要补充周期性TTL清理的后台任务吗？",
+      "elements_involved": [
+        "insert_block",
+        "add_entry",
+        "set_expiry",
+        "block_data",
+        "TTL cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "非常重要！加一个loop：TTL cleanup interval，由Infra_RedisCache触发。TTL Manager自己check_expired_entries(Infra_EtcdCluster)。",
+      "elements_involved": [
+        "TTL cleanup interval",
+        "Infra_RedisCache",
+        "check_expired_entries",
+        "Infra_EtcdCluster",
+        "TTL Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这个loop是嵌套在另一个loop里吗？还是单层？",
+      "elements_involved": [
+        "TTL cleanup interval",
+        "check_expired_entries"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "双层loop：外层是TTL cleanup interval，内层是For each expired entry，遍历每个过期项做清理。",
+      "elements_involved": [
+        "TTL cleanup interval",
+        "For each expired entry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了双层loop。内层里TTLManager-BlockCache: notify_expired(Infra_EtcdCluster)，然后Block Cache执行remove_from_cache(Infra_IngressController)。",
+      "elements_involved": [
+        "notify_expired",
+        "Infra_EtcdCluster",
+        "remove_from_cache",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "还要通知Eviction Policy移除索引：remove_entry(Infra_EtcdCluster)。这样清理才完整。",
+      "elements_involved": [
+        "remove_entry",
+        "Infra_EtcdCluster",
+        "Eviction Policy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成：BlockCache-EvictionPolicy: remove_entry(Infra_EtcdCluster)。整个图结构应该完整了，我检查一下参与者颜色和分组。",
+      "elements_involved": [
+        "remove_entry",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "颜色分组再确认下：IngressController色给Cache/Policiy/TTL components，WorkerNode色给Storage components。",
+      "elements_involved": [
+        "Infra_IngressController",
+        "Infra_WorkerNode",
+        "Cache components",
+        "Policy components",
+        "TTL components",
+        "Storage components"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认：rect rgba(Infra_IngressController)包含BlockCache、EvictionPolicy、TTLManager的note；rect rgba(Infra_WorkerNode)包含Storage的note。",
+      "elements_involved": [
+        "Infra_IngressController",
+        "Infra_WorkerNode",
+        "rect grouping"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "流程上再检查一个细节：缓存命中时的record_access，是不是应该在确认未过期之后再做？否则刚更新统计就发现过期，有点浪费。",
+      "elements_involved": [
+        "record_access",
+        "block expired",
+        "block not expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "但现在的顺序是先record_access再is_expired，如果要改，整个alt结构都要调整。您的建议是先检查过期？",
+      "elements_involved": [
+        "record_access",
+        "is_expired",
+        "order"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不，我想了一下，先record_access是对的。因为即使过期，这次访问行为本身也要被统计，用于后续淘汰决策。保持现有顺序。",
+      "elements_involved": [
+        "record_access",
+        "is_expired"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，访问统计优先于过期检查。那Eviction Policy的三种策略选择，TinyLFU的\"Frequency sketch\"需要额外解释吗？",
+      "elements_involved": [
+        "TinyLFU policy",
+        "Frequency sketch"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "note里已经写\"Frequency sketch determines victim\"就够了，这是TinyLFU的核心机制。整个图还有遗漏的infra标签吗？",
+      "elements_involved": [
+        "TinyLFU policy",
+        "Frequency sketch",
+        "Infra labels"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我梳理一下：get_block(WorkerNode)、lookup(EtcdCluster)、record_access(LoadBalancer)、is_expired(WorkerNode)、remove_from_cache(IngressController)、read_block(EtcdCluster/RedisCache)、set_expiry(LoadBalancer)、add_entry(EtcdCluster/LoadBalancer)、is_cache_full(WorkerNode)、select_victim(IngressController)、evict_block(WorkerNode)、remove_expiry(EtcdCluster)、insert_block(IngressController)、check_expired_entries(EtcdCluster)、notify_expired(EtcdCluster)。",
+      "elements_involved": [
+        "all infra labels"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "参数都对上了。最后确认：loop TTL cleanup interval的触发源是Infra_RedisCache，这个标注在注释里。",
+      "elements_involved": [
+        "TTL cleanup interval",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加注释：%% Periodic TTL cleanup (Infra_RedisCache)。整个sequenceDiagram完成了，52个交互步骤左右，符合预期。",
+      "elements_involved": [
+        "Periodic TTL cleanup",
+        "Infra_RedisCache",
+        "sequenceDiagram complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再补充一个细节：Eviction Policy返回success的地方，最好明确标注，让成功路径更清晰。",
+      "elements_involved": [
+        "Eviction Policy",
+        "success"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "在add_entry和set_expiry后都加上了EvictionPolicy--BlockCache: success 和 TTLManager--BlockCache: success。",
+      "elements_involved": [
+        "success",
+        "Eviction Policy",
+        "TTL Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个图完整展示了Block Cache的读取流程、三种淘汰策略、TTL过期处理、以及后台清理机制。可以定稿了。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer",
+        "Client Code"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "定稿完成。所有参与者、交互、alt分支、loop循环、infra标签和颜色分组都已落实。",
+      "elements_involved": [
+        "sequenceDiagram",
+        "participants",
+        "interactions",
+        "alt branches",
+        "loops",
+        "infra labels",
+        "color grouping"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 52,
+    "repair_count": 2,
+    "grounding_acts_count": 52,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 73533.4871,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 52
+  }
+}

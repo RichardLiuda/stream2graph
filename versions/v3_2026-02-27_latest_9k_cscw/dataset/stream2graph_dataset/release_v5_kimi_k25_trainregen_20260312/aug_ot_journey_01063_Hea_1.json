@@ -1,0 +1,155 @@
+{
+  "id": "aug_ot_journey_01063_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/AlmatJuvashev/phd-students-portal/blob/b88b252ccf22627eafd166ab2c48dbd64fab7deb/docs/diagrams/01_document_approval.mmd",
+  "source_type": "github_search",
+  "github_repo": "AlmatJuvashev/phd-students-portal",
+  "diagram_type": "journey",
+  "code": "sequenceDiagram\n    participant S as Student\n    participant API as AttachUpload Handler\n    participant S3 as S3 Storage\n    participant DB as PostgreSQL\n    participant N as NotifyAdvisors\n    participant A as Advisor\n\n    S->>API: POST /journey/nodes/:id/uploads/presign\n    API->>S3: PresignPut(HealthTech_PatientRecords)\n    S3-->>API: Signed URL\n    API-->>S: {HealthTech_EMR_Sync}\n    \n    S->>S3: PUT file to presigned URL\n    S3-->>S: 200 OK + ETag\n    \n    S->>API: POST /journey/nodes/:id/uploads/attach\n    API->>DB: Begin transaction\n    API->>DB: INSERT document_versions\n    API->>DB: INSERT node_instance_slot_attachments\n    API->>DB: UPDATE node_instances.state = 'submitted'\n    API->>DB: Commit transaction\n    API-->>N: NotifyAdvisorsOnSubmission (HealthTech_LabAnalyzer)\n    N->>DB: Get advisors for student\n    N->>DB: INSERT admin_notifications\n    API-->>S: 200 OK\n    \n    A->>API: PATCH /admin/attachments/:id/review\n    API->>DB: Verify advisor assigned to student\n    API->>DB: UPDATE attachment.status\n    API->>DB: UPDATE node_instances.state\n    API-->>A: 200 OK",
+  "content_size": 1066,
+  "collected_at": "2026-02-06T11:02:44.926104",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "ot_journey_01063",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个学生上传健康档案的完整流程。核心场景是：学生通过HealthTech_PatientRecords系统提交体检报告，上传后要自动通知对应的Advisor审核。这里涉及到S3存储、PostgreSQL记录版本，还要保证事务一致性。",
+      "elements_involved": [
+        "Student",
+        "HealthTech_PatientRecords",
+        "Advisor",
+        "S3 Storage",
+        "PostgreSQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。上传部分我理解需要分两步：先拿预签名URL，再直传S3，这样可以减轻API压力。但通知Advisor的时机我有点疑问——是在事务提交前还是提交后触发？还有HealthTech_LabAnalyzer在这里是什么角色？",
+      "elements_involved": [
+        "AttachUpload Handler",
+        "S3 Storage",
+        "NotifyAdvisors",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "通知必须在事务提交之后，否则可能出现通知发出但数据没入库的情况。HealthTech_LabAnalyzer是通知服务的一个业务标识，代表实验室分析相关的通知类型。另外Advisor审核时要验证权限，只能处理自己assigned的学生。",
+      "elements_involved": [
+        "NotifyAdvisorsOnSubmission",
+        "HealthTech_LabAnalyzer",
+        "Advisor",
+        "Verify advisor assigned to student"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主流程画出来：Student调用AttachUpload Handler获取presign URL，直传S3后返回ETag，再调attach接口。这里API会开启事务，插入document_versions和node_instance_slot_attachments，更新node_instances.state为submitted，提交事务后触发NotifyAdvisors。",
+      "elements_involved": [
+        "Student",
+        "AttachUpload Handler",
+        "S3 Storage",
+        "PostgreSQL",
+        "NotifyAdvisors",
+        "presign",
+        "PUT",
+        "Begin transaction",
+        "INSERT document_versions",
+        "UPDATE node_instances.state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，但通知部分还要再细化。NotifyAdvisors需要查询该学生的assigned advisors，然后写入admin_notifications表。另外审核流程也加上：Advisor通过PATCH接口提交review，API要verify权限后才能更新attachment.status和node_instances.state。",
+      "elements_involved": [
+        "NotifyAdvisors",
+        "Get advisors for student",
+        "INSERT admin_notifications",
+        "Advisor",
+        "PATCH /admin/attachments/:id/review",
+        "Verify advisor assigned to student",
+        "UPDATE attachment.status",
+        "UPDATE node_instances.state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我注意到之前写的notifyAdvisorsOnSubmissi拼写不完整，应该是notifyAdvisorsOnSubmission。还有HealthTech_EMR_Sync这个返回给学生的对象，需要明确是从S3的Signed URL包装而来的。我修正一下。",
+      "elements_involved": [
+        "NotifyAdvisorsOnSubmission",
+        "HealthTech_EMR_Sync",
+        "Signed URL"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "修正没问题。最后确认一下状态流转：node_instances.state从初始状态变为submitted，Advisor审核后再变为最终状态。attachment.status也需要同步更新。整个流程覆盖了学生上传、系统通知、Advisor审核三个核心环节。",
+      "elements_involved": [
+        "node_instances.state",
+        "submitted",
+        "attachment.status",
+        "UPDATE node_instances.state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。最终序列包含六个参与者：Student、AttachUpload Handler、S3 Storage、PostgreSQL、NotifyAdvisors和Advisor。关键路径是presign-put-attach的三段式上传，事务包裹的版本记录，异步通知查询与写入，以及带权限校验的审核闭环。",
+      "elements_involved": [
+        "Student",
+        "AttachUpload Handler",
+        "S3 Storage",
+        "PostgreSQL",
+        "NotifyAdvisors",
+        "Advisor"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:35Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:35Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 29808.305,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

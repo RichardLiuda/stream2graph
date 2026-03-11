@@ -1,0 +1,494 @@
+{
+  "id": "gh_ind_4121f6effb",
+  "source": "github_industrial",
+  "repo": "Migorithm/duva",
+  "license": "apache-2.0",
+  "code": "---\ntitle : Idempotent receiver\n---\nsequenceDiagram\n    participant A as NodeA\n    participant B as NodeB\n    participant C as NodeC\n    Actor Migo\n\n    C ->> C : elected, term=1\n\n    Migo ->> C : register()\n    C ->>C : generate unique id\n    C ->>C : repl(cliend_id = 'migo')\n\n    C ->>B : repl(cliend_id = 'migo')\n    C ->>A : repl(cliend_id = 'migo')\n\n    C ->>Migo : client_id = 'migo'\n\n    Note over A,C : nodes maintain a client request table for registered table\n\n    Migo ->> C : client_id = 'migo', request_id=1, payload\n    C ->>C : rep(migo:1:payload, term=1)\n    C ->>B : rep(migo:1:payload, term=1)\n    C ->>A : rep(migo:1:payload, term=1)\n    B --)C : ack\n    C ->>C : is_quorum_reached\n    C ->>C : apply(migo:1:payload, term=1)\n\n    Note right of C: ClientTable<br>==migo==<br>1:payload<br>term=1\n\n    rect rgb(134, 35, 44)\n    C --xC : crash\n    end\n\n    A <<-->> B : elect leader\n    B --> B : elected (term=2)\n    B ->> A : repl(migo:1:palyoad, term=2)\n    A ->> B : ack\n    B ->> B : is_quorum_reached\n    B ->> B : apply(migo:1:payload)\n    Note right of B: ClientTable<br>==migo==<br>1:payload<br>term=2\n\n\n    Migo ->> B: client_id = 'migo', request_id=1, payload\n    rect rgb(40, 80, 120)\n    B ->> B : is_already_applied(migo:1)\n    end\n    B ->> Migo : Success\n\n    \n\n    \n   \n\n    \n\n\n",
+  "diagram_type": "actor size:900..1500",
+  "collected_at": "2026-02-27T04:27:33.983519",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个幂等接收器的时序图，展示当leader崩溃后，客户端重试请求时系统如何避免重复执行。核心场景是Migo客户端向三节点集群发送请求。",
+      "elements_involved": [
+        "Migo",
+        "NodeA",
+        "NodeB",
+        "NodeC",
+        "幂等接收器"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。三个节点A、B、C，Migo作为外部Actor。我先确认一下初始状态：C节点是leader，term=1？然后Migo需要向C注册获取client_id？",
+      "elements_involved": [
+        "NodeC",
+        "elected",
+        "term=1",
+        "Migo",
+        "register()",
+        "client_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，C先完成选举成为leader，term=1。Migo调用register()，C生成唯一ID并返回'client_id = migo'。这个ID需要复制到A和B，三个节点都要维护client request table。",
+      "elements_involved": [
+        "NodeC",
+        "elected",
+        "term=1",
+        "Migo",
+        "register()",
+        "client_id = 'migo'",
+        "repl",
+        "NodeA",
+        "NodeB",
+        "client request table"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我画出C自循环标注elected term=1，然后Migo到C的register()调用，C生成ID后通过repl同步给B和A，最后返回给Migo。我加个Note说明三个节点维护registered table。",
+      "elements_involved": [
+        "NodeC",
+        "elected",
+        "term=1",
+        "Migo",
+        "register()",
+        "repl",
+        "NodeA",
+        "NodeB",
+        "Note over A,C"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是核心请求流程。Migo带着client_id='migo'、request_id=1和payload发给C。C需要把migo:1:payload在term=1下复制给A和B，等quorum达成后再apply。",
+      "elements_involved": [
+        "Migo",
+        "NodeC",
+        "client_id = 'migo'",
+        "request_id=1",
+        "payload",
+        "migo:1:payload",
+        "term=1",
+        "NodeA",
+        "NodeB",
+        "is_quorum_reached",
+        "apply"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里rep和repl有什么区别？另外B返回给C的是虚线ack吗？",
+      "elements_involved": [
+        "rep",
+        "repl",
+        "NodeB",
+        "NodeC",
+        "ack"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "rep是replicate的缩写，用于日志复制；repl是之前register的复制。B返回虚线ack给C。C自循环检查is_quorum_reached，然后apply，并在右侧Note展示ClientTable内容。",
+      "elements_involved": [
+        "rep",
+        "repl",
+        "NodeB",
+        "NodeC",
+        "ack",
+        "is_quorum_reached",
+        "apply",
+        "Note right of C",
+        "ClientTable",
+        "migo:1:payload",
+        "term=1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了。Migo到C的请求，C用rep同步给B和A（都带term=1），B虚线ack回C，C自循环判断quorum并apply。右侧Note显示ClientTable里migo的1:payload和term=1。",
+      "elements_involved": [
+        "Migo",
+        "NodeC",
+        "rep",
+        "migo:1:payload",
+        "term=1",
+        "NodeB",
+        "NodeA",
+        "ack",
+        "is_quorum_reached",
+        "apply",
+        "Note right of C",
+        "ClientTable"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在进入故障场景。C崩溃，用红色rect包裹crash。然后B和A之间发生选举，B成为新leader，term=2。这里有个关键点：B需要把之前未完成的migo:1请求继续复制。",
+      "elements_involved": [
+        "NodeC",
+        "crash",
+        "rect rgb(134, 35, 44)",
+        "NodeB",
+        "NodeA",
+        "elect leader",
+        "elected",
+        "term=2",
+        "migo:1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "C崩溃我用红色背景标出。B和A之间的选举用虚线箭头？B当选后term=2，然后B向A复制migo:1？但这里payload拼写好像有个问题，原先是payload，你刚才说palyoad？",
+      "elements_involved": [
+        "NodeC",
+        "crash",
+        "rect rgb(134, 35, 44)",
+        "NodeB",
+        "NodeA",
+        "elect leader",
+        "elected",
+        "term=2",
+        "migo:1:payload",
+        "migo:1:palyoad"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "啊，是拼写错误，应该是payload不是palyoad。但等等，让我检查一下——实际上在B向A复制时，故意保留palyoad这个typo，表示这是从C继承的日志，但B在apply时会用正确的payload。不对，这样太 confusing，统一用payload吧。",
+      "elements_involved": [
+        "migo:1:palyoad",
+        "migo:1:payload",
+        "NodeB",
+        "NodeA",
+        "repl"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认统一用payload。我画B向A复制migo:1:payload, term=2，A返回ack给B，B自循环检查quorum和apply，然后右侧Note显示B的ClientTable也是migo:1:payload但term=2。",
+      "elements_involved": [
+        "NodeB",
+        "NodeA",
+        "repl",
+        "migo:1:payload",
+        "term=2",
+        "ack",
+        "is_quorum_reached",
+        "apply",
+        "Note right of B",
+        "ClientTable"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "完美。现在最关键的部分：Migo没收到C的响应，超时后重试，向B发送完全相同的请求——client_id='migo', request_id=1, payload。这就是幂等性要解决的场景。",
+      "elements_involved": [
+        "Migo",
+        "NodeB",
+        "client_id = 'migo'",
+        "request_id=1",
+        "payload",
+        "幂等性"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "B收到这个请求后，需要检查是否已处理过。我用蓝色rect包裹is_already_applied检查？然后直接返回Success而不重复执行？",
+      "elements_involved": [
+        "NodeB",
+        "is_already_applied",
+        "migo:1",
+        "rect rgb(40, 80, 120)",
+        "Success"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，用蓝色rect标出is_already_applied(migo:1)检查。B发现这个请求在term=1已经apply过了，所以直接返回Success，不会重复应用到状态机。这就是幂等接收器的核心。",
+      "elements_involved": [
+        "NodeB",
+        "is_already_applied",
+        "migo:1",
+        "rect rgb(40, 80, 120)",
+        "Success",
+        "term=1",
+        "幂等接收器"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成了。蓝色框内是B的自循环检查is_already_applied，然后虚线返回Success给Migo。整个流程展示了即使leader切换+客户端重试，也不会重复执行请求。",
+      "elements_involved": [
+        "NodeB",
+        "is_already_applied",
+        "migo:1",
+        "rect rgb(40, 80, 120)",
+        "Migo",
+        "Success"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们再检查一下Note的位置。C的Note应该覆盖A到C的范围，说明nodes maintain a client request table for registered table。B的Note在右侧，展示具体的ClientTable内容。",
+      "elements_involved": [
+        "Note over A,C",
+        "nodes maintain a client request table for registered table",
+        "Note right of B",
+        "ClientTable"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "C的Note我写了\"nodes maintain a client request table for registered table\"，但这句话有点拗口，应该是\"for registered clients\"？还是保持原样？",
+      "elements_involved": [
+        "Note over A,C",
+        "nodes maintain a client request table for registered table",
+        "registered clients"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "你说得对，应该是\"for registered clients\"。另外B的ClientTable内容格式，用<br换行，显示==migo==，然后1:payload，然后term=2。C那边是term=1。",
+      "elements_involved": [
+        "Note over A,C",
+        "registered clients",
+        "Note right of B",
+        "ClientTable",
+        "migo",
+        "1:payload",
+        "term=2",
+        "term=1"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已修正。C的Note改为\"nodes maintain a client request table for registered clients\"，B的ClientTable用<br分行：==migo==、1:payload、term=2。C那边对应的是term=1。",
+      "elements_involved": [
+        "Note over A,C",
+        "registered clients",
+        "Note right of C",
+        "Note right of B",
+        "ClientTable",
+        "term=1",
+        "term=2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再看一下颜色值。C崩溃用rgb(134, 35, 44)，is_already_applied检查用rgb(40, 80, 120)。这些颜色在图例中能区分故障场景和幂等检查场景。",
+      "elements_involved": [
+        "rect rgb(134, 35, 44)",
+        "crash",
+        "rect rgb(40, 80, 120)",
+        "is_already_applied"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认颜色：134,35,44是深红色给crash；40,80,120是深蓝色给幂等检查。标题用\"Idempotent receiver\"，三个节点分别标注NodeA、NodeB、NodeC，Migo作为Actor。",
+      "elements_involved": [
+        "title",
+        "Idempotent receiver",
+        "NodeA",
+        "NodeB",
+        "NodeC",
+        "Actor Migo",
+        "rgb(134, 35, 44)",
+        "rgb(40, 80, 120)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有个小细节：B当选leader后，向A复制时term=2，这个term要比之前的term=1大，表示新任期。A和B之间的选举箭头用<<--表示选举消息。",
+      "elements_involved": [
+        "NodeB",
+        "elected",
+        "term=2",
+        "NodeA",
+        "elect leader",
+        "<<--"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整。A<<--B是选举消息，然后B自循环elected (term=2)。所有term=2的地方都检查过了，比term=1大，符合Raft的term递增逻辑。",
+      "elements_involved": [
+        "NodeA",
+        "NodeB",
+        "elect leader",
+        "<<--",
+        "elected",
+        "term=2",
+        "term=1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后确认一下Migo的第二次请求：Migo - B: client_id = 'migo', request_id=1, payload。这里的箭头是实线还是虚线？",
+      "elements_involved": [
+        "Migo",
+        "NodeB",
+        "client_id = 'migo'",
+        "request_id=1",
+        "payload"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "实线，和第一次请求C的样式一致，表示正常的请求调用。只有ack、选举消息、Success响应用虚线。",
+      "elements_involved": [
+        "Migo",
+        "NodeB",
+        "实线",
+        "虚线",
+        "ack",
+        "elect leader",
+        "Success"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好的，整体结构完成了。再确认一下C崩溃后的流程：B复制给A的是migo:1:payload（不是palyoad了），term=2，然后B的apply和ClientTable更新。",
+      "elements_involved": [
+        "NodeC",
+        "crash",
+        "NodeB",
+        "NodeA",
+        "migo:1:payload",
+        "term=2",
+        "apply",
+        "ClientTable"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部确认无误。B向A复制的是正确的migo:1:payload, term=2，A返回ack，B完成quorum判断和apply，ClientTable更新为term=2。然后Migo重试，B通过is_already_applied识别重复请求，返回Success。幂等接收器流程完整。",
+      "elements_involved": [
+        "NodeB",
+        "NodeA",
+        "migo:1:payload",
+        "term=2",
+        "ack",
+        "is_quorum_reached",
+        "apply",
+        "ClientTable",
+        "Migo",
+        "is_already_applied",
+        "Success",
+        "幂等接收器"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 28,
+    "repair_count": 2,
+    "grounding_acts_count": 28,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:40Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:37Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:37Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 69967.9573,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 28
+  }
+}

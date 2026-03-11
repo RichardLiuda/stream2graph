@@ -1,0 +1,152 @@
+{
+  "id": "aug_ot_stateDiagram_00125_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/guglxni/amplifi/blob/2b2cbbb17dc15f7b550940cdfe97d27ef858ab58/docs/diagrams/rsc-state-machine.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "guglxni/amplifi",
+  "diagram_type": "stateDiagram",
+  "code": "%%{FinTech_AuthVault}}}%%\n\nstateDiagram-v2\n    [FinTech_LedgerService] --> Idle\n    \n    Idle --> Monitoring: CRON tick / YieldSnapshot event\n    \n    Monitoring --> Comparing: Collect APY data\n    \n    Comparing --> NoAction: APY diff < 0.5%\n    Comparing --> SmallRebalance: APY diff >= 0.5% && change < 50%\n    Comparing --> LargeRebalance: APY diff >= 0.5% && change >= 50%\n    \n    NoAction --> Idle: emit RebalanceSkipped\n    \n    SmallRebalance --> Executing: emit Callback(FinTech_FraudDetection)\n    \n    LargeRebalance --> PendingFinality: Queue rebalance\n    PendingFinality --> PendingFinality: Wait 64 blocks\n    PendingFinality --> Executing: Finality reached\n    \n    Executing --> Completed: Rebalance executed\n    Completed --> Idle: Reset\n    \n    note right of Monitoring\n        Every ~12 minutes\n        or on manual trigger\n    end note\n    \n    note right of PendingFinality\n        Safety measure for\n        large TVL changes\n    end note\n",
+  "content_size": 990,
+  "collected_at": "2026-02-06T10:38:10.955720",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "ot_stateDiagram_00125",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要给LedgerService画一个状态流转图，核心场景是自动再平衡。系统启动后先进入Idle状态，然后有个Monitoring监控态，每12分钟由CRON触发或者手动触发。",
+      "elements_involved": [
+        "FinTech_LedgerService",
+        "Idle",
+        "Monitoring",
+        "CRON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，Idle到Monitoring的触发条件我写\"CRON tick / YieldSnapshot event\"可以吗？另外Monitoring之后做什么？",
+      "elements_involved": [
+        "Idle",
+        "Monitoring"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。Monitoring之后进入Comparing状态，去收集各池子的APY数据做比对。这里要分出三条分支：APY差异小于0.5%就走NoAction；等于0.5%且变动小于50%走SmallRebalance；等于0.5%且变动达到50%走LargeRebalance。",
+      "elements_involved": [
+        "Monitoring",
+        "Comparing",
+        "NoAction",
+        "SmallRebalance",
+        "LargeRebalance",
+        "APY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，三条分支都画好了。NoAction之后emit RebalanceSkipped回到Idle。SmallRebalance需要先调FinTech_FraudDetection做风控回调，然后进入Executing。",
+      "elements_involved": [
+        "NoAction",
+        "Idle",
+        "SmallRebalance",
+        "Executing",
+        "FinTech_FraudDetection",
+        "Callback"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "LargeRebalance那条线要加一个PendingFinality状态，大额资金变动必须等64个区块确认，这是安全机制。等Finality reached之后再进Executing。",
+      "elements_involved": [
+        "LargeRebalance",
+        "PendingFinality",
+        "Executing",
+        "64 blocks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解了，PendingFinality有个自循环Wait 64 blocks，确认完成后到Executing，最后Completed重置回Idle。我在Monitoring和PendingFinality旁边加两个注释说明触发频率和安全机制，你看可以吗？",
+      "elements_involved": [
+        "PendingFinality",
+        "Executing",
+        "Completed",
+        "Idle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "稍等，SmallRebalance到Executing的箭头条件应该是\"emit Callback(FinTech_FraudDetection)\"，不是直接执行。还有PendingFinality的自循环条件写成\"Wait 64 blocks\"更准确，不是简单的循环。",
+      "elements_involved": [
+        "SmallRebalance",
+        "Executing",
+        "Callback",
+        "PendingFinality",
+        "Wait 64 blocks"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，SmallRebalance的触发条件改成emit Callback(FinTech_FraudDetection)，PendingFinality的自循环标注为Wait 64 blocks。整个状态图从LedgerService启动到Idle，经过监控、比对、风控或等待确认，最终完成再平衡后重置，流程已经完整。",
+      "elements_involved": [
+        "FinTech_LedgerService",
+        "Idle",
+        "Monitoring",
+        "Comparing",
+        "PendingFinality",
+        "Executing",
+        "Completed"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 30206.0697,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

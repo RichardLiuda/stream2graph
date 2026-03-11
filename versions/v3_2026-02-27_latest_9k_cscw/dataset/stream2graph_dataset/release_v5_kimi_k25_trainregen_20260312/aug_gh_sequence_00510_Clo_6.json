@@ -1,0 +1,653 @@
+{
+  "id": "aug_gh_sequence_00510_Clo_6",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/DREAMSCAPE-AI/dreamscape-docs/blob/24aa5a14265601b36ddbbb02c958eea524e6eb11/architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "github_repo": "DREAMSCAPE-AI/dreamscape-docs",
+  "github_file_path": "architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    autonumber\n    actor User as 👤 Utilisateur\n    participant WC as Web Client\n    participant CN as Core NGINX<br/>:80\n    participant Voyage as Voyage Service<br/>:3003\n    participant Payment as Payment Service<br/>:3005\n    participant AI as AI Service<br/>:3004\n    participant PG as PostgreSQL<br/>:5432\n    participant Redis as Redis<br/>:6379\n    participant Kafka as Kafka<br/>:9092\n    participant Stripe as 💳 Stripe API\n\n    rect rgb(CloudNative_DockerImage)\n        Note over User,Voyage: Phase 1: Sélection Vol\n        User->>WC: Sélectionne vol<br/>(CloudNative_DockerImage)\n        WC->>WC: Add to cart<br/>(CloudNative_ServiceMesh)\n        User->>WC: Click \"Réserver\"\n        \n        WC->>CN: POST /api/v1/bookings<br/>{CloudNative_DockerImage}<br/>Authorization: Bearer JWT\n        CN->>CN: Validate JWT (CloudNative_DockerImage)\n        CN->>Voyage: Forward to Voyage<br/>localhost:3003/bookings\n    end\n\n    rect rgb(CloudNative_Serverless)\n        Note over Voyage,Kafka: Phase 2: Création Réservation\n        Voyage->>Voyage: Extract userId from JWT\n        Voyage->>PG: BEGIN transaction\n        Note right of PG: 🔄 ACID transaction<br/>pour cohérence\n        \n        Voyage->>PG: INSERT booking<br/>{CloudNative_DockerImage}\n        PG-->>Voyage: Booking created (CloudNative_DockerImage)\n        \n        Voyage->>Redis: Store booking temp<br/>key: \"booking:temp:bookingId\"<br/>TTL: 15min\n        Note right of Redis: ⏱️ Timeout si paiement<br/>échoue après 15min\n        \n        Voyage->>Kafka: Publish event<br/>Topic: \"voyage.booking.created\"<br/>{CloudNative_ServiceMesh}\n        Note left of Kafka: Event-Driven Architecture<br/>- Decoupling services<br/>- Async processing<br/>- Audit trail\n        \n        Voyage-->>CN: 201 Created<br/>{CloudNative_K8sCluster}\n        CN-->>WC: 201 Created\n    end\n\n    rect rgb(CloudNative_Serverless)\n        Note over WC,Stripe: Phase 3: Demande Paiement\n        WC->>CN: POST /api/v1/payments/intent<br/>{CloudNative_HelmChart}<br/>Authorization: Bearer JWT\n        CN->>Payment: Forward to Payment<br/>localhost:3005/payments/intent\n        \n        Payment->>Payment: Extract userId from JWT\n        Payment->>PG: Verify booking exists<br/>SELECT * FROM bookings<br/>WHERE id = bookingId AND userId = userId\n        \n        alt Booking Non Trouvé ❌\n            PG-->>Payment: null\n            Payment-->>CN: 404 Not Found<br/>{CloudNative_Serverless}\n            CN-->>WC: 404 Error\n            WC->>User: ❌ Erreur réservation\n        else Booking Trouvé ✅\n            PG-->>Payment: Booking found\n            Payment->>Stripe: Create PaymentIntent<br/>POST /v1/payment_intents<br/>{CloudNative_HelmChart),<br/>currency: \"eur\",<br/>metadata: {CloudNative_Serverless}}\n            \n            Stripe-->>Payment: PaymentIntent created<br/>{CloudNative_Serverless}\n            \n            Payment->>PG: INSERT payment<br/>{CloudNative_Serverless}\n            Payment->>Kafka: Publish event<br/>Topic: \"payment.intent.created\"<br/>{CloudNative_DockerImage}\n            \n            Payment-->>CN: 200 OK<br/>{CloudNative_DockerImage}\n            CN-->>WC: 200 OK\n        end\n    end\n\n    rect rgb(CloudNative_Serverless)\n        Note over WC,Stripe: Phase 4: Paiement Stripe (CloudNative_ServiceMesh)\n        WC->>WC: Initialize Stripe.js<br/>with clientSecret\n        WC->>User: Affiche formulaire carte<br/>(CloudNative_Serverless)\n        \n        User->>WC: Saisit infos carte<br/>(CloudNative_K8sCluster)\n        WC->>Stripe: POST /v1/payment_intents/:id/confirm<br/>(CloudNative_DockerImage)<br/>{CloudNative_DockerImage}\n        \n        Note right of Stripe: 🔒 Sécurité PCI-DSS<br/>- Carte jamais envoyée à notre backend<br/>- Stripe gère tout<br/>- Tokenization automatique\n        \n        alt Paiement Réussi ✅\n            Stripe-->>WC: PaymentIntent succeeded\n            WC->>WC: Display success message\n            WC->>User: ✅ Paiement accepté\n        else Paiement Échoué ❌\n            Stripe-->>WC: PaymentIntent failed<br/>(CloudNative_Serverless)\n            WC->>User: ❌ \"Paiement refusé\"<br/>(CloudNative_K8sCluster)\n        end\n    end\n\n    rect rgb(CloudNative_ServiceMesh)\n        Note over Stripe,Kafka: Phase 5: Webhook Stripe (CloudNative_HelmChart)\n        Stripe->>Payment: POST /webhooks/stripe<br/>Stripe-Signature header<br/>{CloudNative_Serverless}}\n        \n        Payment->>Payment: Verify signature<br/>stripe.webhooks.constructEvent(CloudNative_HelmChart)\n        \n        alt Signature Invalide ❌\n            Payment-->>Stripe: 400 Bad Request\n            Note right of Payment: Protection contre<br/>webhooks forgés\n        else Signature Valide ✅\n            Payment->>PG: UPDATE payment<br/>SET status = \"SUCCEEDED\"<br/>WHERE stripePaymentIntentId = id\n            \n            Payment->>PG: UPDATE booking<br/>SET status = \"CONFIRMED\"<br/>WHERE id = bookingId\n            \n            Payment->>Redis: Delete temp booking<br/>DEL \"booking:temp:bookingId\"\n            \n            Payment->>Kafka: Publish event<br/>Topic: \"payment.succeeded\"<br/>{CloudNative_Serverless}\n            \n            Payment-->>Stripe: 200 OK\n        end\n    end\n\n    rect rgb(CloudNative_DockerImage)\n        Note over Kafka,User: Phase 6: Traitement Async (CloudNative_DockerImage)\n        Kafka->>Voyage: Consume event<br/>\"payment.succeeded\"\n        Voyage->>PG: SELECT booking details\n        Voyage->>Voyage: Generate confirmation email<br/>(CloudNative_HelmChart)\n        Voyage->>User: 📧 Email confirmation<br/>+ PDF billet\n        \n        Kafka->>AI: Consume event<br/>\"voyage.booking.created\"\n        AI->>PG: Get user profile<br/>+ booking history\n        AI->>AI: Update ML model<br/>(CloudNative_ServiceMesh)\n        Note right of AI: 🤖 AI learning<br/>from user behavior\n        AI->>Redis: Update recommendations<br/>key: \"reco:userId\"\n    end\n\n    rect rgb(CloudNative_Serverless)\n        Note over WC,User: Phase 7: Confirmation Frontend\n        loop Polling every 2s\n            WC->>CN: GET /api/v1/bookings/:bookingId\n            CN->>Voyage: Forward request\n            Voyage->>PG: SELECT booking<br/>WHERE id = bookingId\n            \n            alt Status = CONFIRMED ✅\n                PG-->>Voyage: Booking confirmed\n                Voyage-->>CN: 200 OK<br/>{CloudNative_Serverless}\n                CN-->>WC: 200 OK\n                WC->>WC: Stop polling\n                WC->>WC: Redirect /bookings/:id\n                WC->>User: ✅ Affiche confirmation<br/>+ détails voyage\n            else Status = PENDING ⏳\n                PG-->>Voyage: Booking still pending\n                Voyage-->>CN: 200 OK<br/>{CloudNative_HelmChart}\n                CN-->>WC: 200 OK (CloudNative_ServiceMesh)\n                Note right of WC: ⏱️ Après 15min<br/>réservation annulée<br/>automatiquement\n            end\n        end\n    end\n\n    Note over User,Kafka: 📊 Performance Réservation<br/>Create booking: ~100-150ms<br/>Payment intent: ~500-800ms (CloudNative_DockerImage)<br/>Confirmation: ~1-2s (CloudNative_HelmChart)<br/>Email: ~3-5s (CloudNative_Serverless)<br/><br/>🔒 Fiabilité<br/>- Transaction ACID (CloudNative_K8sCluster)<br/>- Idempotency keys (CloudNative_DockerImage)<br/>- Webhook retry (CloudNative_DockerImage)<br/>- Event sourcing (CloudNative_DockerImage)",
+  "content_size": 7218,
+  "collected_at": "2026-02-06T01:33:16.963511",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "augmentation_domain": "CloudNative",
+  "seed_id": "gh_sequence_00510",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为机票预订系统设计一个完整的时序图，涵盖从用户选航班到最终确认的完整流程。这个系统涉及多个微服务，我想先确认一下整体架构思路。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。这个系统看起来是典型的云原生架构，涉及服务网格和容器化部署。我想确认一下参与者的划分：用户作为Actor，然后前端是Web Client，反向代理用Core NGINX，后面接Voyage Service处理预订逻辑，Payment Service处理支付，还有AI Service做推荐，对吗？",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，还有数据层：PostgreSQL做主数据库，Redis做缓存，Kafka做事件总线。另外支付环节需要对接Stripe API。我建议把整个流程分成7个阶段，每个阶段用不同颜色的rect区分，对应云原生的不同部署形态。",
+      "elements_involved": [
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，第一阶段是航班选择。用户通过Web Client选航班，加入购物车，然后点击预订按钮。这时候Web Client向NGINX发送POST请求到/api/v1/bookings，携带JWT Token。NGINX做JWT校验后转发给Voyage Service。这个流程我理解正确吗？",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "JWT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，第一阶段主要是DockerImage形态的服务。注意JWT校验在NGINX层完成，这样Voyage Service就能直接拿到userId。进入第二阶段后，Voyage Service要开启PostgreSQL的ACID事务来创建预订记录。",
+      "elements_involved": [
+        "CloudNative_DockerImage",
+        "JWT",
+        "PostgreSQL",
+        "ACID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "关于ACID事务，我需要在图上标注出来强调数据一致性。另外Redis这里是用临时存储对吧？我打算标注key为\"booking:temp:bookingId\"，TTL设15分钟，如果支付超时就自动释放。",
+      "elements_involved": [
+        "PostgreSQL",
+        "Redis",
+        "booking:temp:bookingId",
+        "TTL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。同时Voyage Service要向Kafka发布\"voyage.booking.created\"事件，这是事件驱动架构的核心，实现服务解耦和审计追踪。第二阶段整体是Serverless形态。",
+      "elements_involved": [
+        "Kafka",
+        "voyage.booking.created",
+        "Event-Driven Architecture",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，第二阶段我画好了。现在进入第三阶段支付意图创建。Web Client再次通过NGINX转发到Payment Service，这里需要验证预订是否存在。我想用alt分支来处理\"预订不存在\"和\"预订存在\"两种情况。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Payment Service",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "对的，验证逻辑是SELECT * FROM bookings WHERE id = bookingId AND userId = userId。如果找不到返回404，找到了就调用Stripe API创建PaymentIntent。注意Payment Service这里也是Serverless形态，但调用Stripe的部分要标注HelmChart，因为涉及外部API集成配置。",
+      "elements_involved": [
+        "Payment Service",
+        "PostgreSQL",
+        "Stripe API",
+        "PaymentIntent",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "理解了。创建PaymentIntent成功后，Payment Service要记录支付信息到PostgreSQL，同时发布\"payment.intent.created\"事件到Kafka。然后返回200给前端。第三阶段我标注为HelmChart形态，因为涉及外部服务集成。",
+      "elements_involved": [
+        "Payment Service",
+        "PostgreSQL",
+        "Kafka",
+        "payment.intent.created",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。第四阶段是Stripe前端支付，这里比较特殊：Web Client直接用Stripe.js初始化，用户输入卡信息后直接发送到Stripe，不经过我们的后端。这是PCI-DSS合规要求。",
+      "elements_involved": [
+        "Web Client",
+        "Stripe.js",
+        "Stripe API",
+        "PCI-DSS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这个设计很重要，我需要标注清楚\"卡片信息绝不发送到我们的后端，Stripe全权处理，自动Token化\"。支付结果也用alt分支：成功显示确认，失败显示\"支付被拒绝\"。第四阶段是ServiceMesh形态吗？",
+      "elements_involved": [
+        "Web Client",
+        "Stripe API",
+        "Tokenization",
+        "CloudNative_ServiceMesh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，第四阶段应该是Serverless形态，主要是前端交互。ServiceMesh留给第五阶段的Webhook处理。第五阶段Stripe通过Webhook回调我们的Payment Service，这里需要验证签名防伪造。",
+      "elements_involved": [
+        "CloudNative_Serverless",
+        "Stripe",
+        "Webhook",
+        "Payment Service"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，我调整一下。第五阶段Webhook用HelmChart形态，签名验证失败返回400，成功则更新payment表状态为SUCCEEDED，booking表状态为CONFIRMED，删除Redis临时key，发布\"payment.succeeded\"事件。",
+      "elements_involved": [
+        "Stripe",
+        "Payment Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "payment.succeeded",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第六阶段是异步处理，Voyage Service消费\"payment.succeeded\"事件，生成确认邮件和PDF机票。同时AI Service消费\"voyage.booking.created\"事件，更新用户画像和推荐模型。这个阶段用DockerImage形态。",
+      "elements_involved": [
+        "Voyage Service",
+        "AI Service",
+        "Kafka",
+        "payment.succeeded",
+        "voyage.booking.created",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "AI Service这里我需要确认：它从PostgreSQL获取用户画像和预订历史，然后更新ML模型，最后把推荐结果写回Redis。这个学习过程是异步的，不影响主流程。对吗？",
+      "elements_involved": [
+        "AI Service",
+        "PostgreSQL",
+        "ML model",
+        "Redis",
+        "recommendations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。第七阶段是前端轮询确认，Web Client每2秒查询一次预订状态。这里用loop表示轮询，内部用alt分支：状态为CONFIRMED时停止轮询并跳转详情页，状态为PENDING时继续轮询，直到15分钟超时。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "loop",
+        "PENDING",
+        "CONFIRMED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "轮询部分我画好了。最后我需要在底部加一个性能指标注释框：创建预订100-150ms，支付意图500-800ms，确认1-2秒，邮件3-5秒。还有可靠性说明：ACID事务、幂等键、Webhook重试、事件溯源。",
+      "elements_involved": [
+        "Performance metrics",
+        "ACID",
+        "Idempotency",
+        "Webhook retry",
+        "Event sourcing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "很好，但性能指标里的形态标注需要对应：创建预订是DockerImage，支付意图是DockerImage，确认是HelmChart，邮件是Serverless。可靠性部分：ACID对应K8sCluster，幂等键和Webhook重试、事件溯源都是DockerImage。",
+      "elements_involved": [
+        "Performance metrics",
+        "CloudNative_DockerImage",
+        "CloudNative_HelmChart",
+        "CloudNative_Serverless",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，我调整一下标注。现在整体检查一遍：7个阶段，6种rect颜色对应不同云原生形态，所有关键交互都有标注。需要我补充什么细节吗？",
+      "elements_involved": [
+        "Phase 1-7",
+        "CloudNative_DockerImage",
+        "CloudNative_Serverless",
+        "CloudNative_HelmChart",
+        "CloudNative_ServiceMesh",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我需要再确认一下NGINX的端口标注。Core NGINX应该是:80，Voyage Service是:3003，Payment Service是:3005，AI Service是:3004，PostgreSQL是:5432，Redis是:6379，Kafka是:9092。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "端口都加上了。另外我在每个阶段开头加了Note说明阶段名称，比如\"Phase 1: Sélection Vol\"用法语标注，这样更贴近实际业务场景。",
+      "elements_involved": [
+        "Note",
+        "Phase labels",
+        "Sélection Vol",
+        "Création Réservation",
+        "Demande Paiement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "法语标注很好，保持业务一致性。我注意到第三阶段你用了HelmChart形态，但Payment Service本身是Serverless，只有调用Stripe的部分用HelmChart。这里会不会混淆？",
+      "elements_involved": [
+        "Phase 3",
+        "Payment Service",
+        "CloudNative_HelmChart",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "您说得对，我重新调整：第三阶段整体标注为Serverless，但在调用Stripe的箭头上标注HelmChart。第四阶段改为ServiceMesh，第五阶段Webhook是HelmChart。这样更准确。",
+      "elements_involved": [
+        "Phase 3",
+        "Phase 4",
+        "Phase 5",
+        "CloudNative_Serverless",
+        "CloudNative_ServiceMesh",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这样清晰多了。另外Kafka相关的箭头，发布事件的地方要标注ServiceMesh或DockerImage，消费事件的地方标注对应的形态。事件驱动架构的Note也要保留，强调解耦、异步处理和审计追踪。",
+      "elements_involved": [
+        "Kafka",
+        "Event-Driven Architecture",
+        "Decoupling",
+        "Async processing",
+        "Audit trail"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都调整好了。我检查一下autonumber的连续性，确保每个交互都有序号。现在从1到...大概会有60多个交互点，序号会自动生成。",
+      "elements_involved": [
+        "autonumber",
+        "sequence numbering"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：第七阶段的轮询，当状态为PENDING时，需要在Note里说明15分钟后自动取消预订。这个业务规则很重要，避免资源长期占用。",
+      "elements_involved": [
+        "Phase 7",
+        "PENDING",
+        "15min timeout",
+        "automatic cancellation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "加上了，Note标注\"Après 15min réservation annulée automatiquement\"。另外我在第六阶段AI Service的Note里加了\"AI learning from user behavior\"的emoji说明。",
+      "elements_involved": [
+        "Phase 7 Note",
+        "Phase 6 Note",
+        "AI learning"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "很好。最后确认一下错误处理：第三阶段预订不存在返回404，第四阶段支付失败显示\"Paiement refusé\"，第五阶段Webhook签名无效返回400。这些错误场景都要清晰标注。",
+      "elements_involved": [
+        "404 Not Found",
+        "Paiement refusé",
+        "400 Bad Request",
+        "error handling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都标注了，用❌和✅的emoji区分失败和成功分支。第五阶段的签名验证失败我特意加了Note说明\"Protection contre webhooks forgés\"，强调安全设计。",
+      "elements_involved": [
+        "Error branches",
+        "Webhook security",
+        "Signature verification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体差不多了。我想再强化一下云原生的视觉区分：DockerImage用蓝色系，Serverless用绿色系，HelmChart用橙色系，ServiceMesh用紫色系，K8sCluster用红色系。这样一眼能看出部署形态分布。",
+      "elements_involved": [
+        "Color coding",
+        "CloudNative_DockerImage",
+        "CloudNative_Serverless",
+        "CloudNative_HelmChart",
+        "CloudNative_ServiceMesh",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "颜色方案已应用。我统计一下各形态分布：Phase 1主要是DockerImage，Phase 2和3是Serverless，Phase 4是ServiceMesh，Phase 5是HelmChart，Phase 6是DockerImage，Phase 7是Serverless。最后性能指标部分混合了多种形态。",
+      "elements_involved": [
+        "Phase distribution",
+        "CloudNative morphology"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Phase 4我重新想了一下，用户直接和Stripe交互，我们的Web Client只是载体，应该还是Serverless形态。ServiceMesh更适合第五阶段Webhook之后的服务间通信。",
+      "elements_involved": [
+        "Phase 4",
+        "Phase 5",
+        "CloudNative_Serverless",
+        "CloudNative_ServiceMesh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "调整完成。现在Phase 4是Serverless，Phase 5的Webhook接收是HelmChart，但后面的服务间通信我保持HelmChart。其实第五阶段内部也有ServiceMesh的特征，但为了简化先用HelmChart统一标注。",
+      "elements_involved": [
+        "Phase 4",
+        "Phase 5",
+        "CloudNative_Serverless",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，保持简洁。我注意到第六阶段Voyage Service和AI Service是并行消费不同Topic的事件，这个并行关系用Note分开说明即可，不需要复杂的并行块。",
+      "elements_involved": [
+        "Phase 6",
+        "Voyage Service",
+        "AI Service",
+        "parallel consumption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "是的，我分别写了两个Note over Kafka,Voyage和Kafka,AI，清晰展示各自的处理逻辑。Voyage侧是生成邮件和PDF，AI侧是更新模型和推荐。",
+      "elements_involved": [
+        "Phase 6",
+        "Kafka-Voyage",
+        "Kafka-AI",
+        "confirmation email",
+        "ML model update"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查一下Actor的标注，User用👤 Utilisateur，Stripe用💳 Stripe API，这样更直观。其他参与者用标准的技术名称加端口。",
+      "elements_involved": [
+        "User",
+        "Stripe API",
+        "Actor styling",
+        "participant naming"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都设置好了。User标注为👤 Utilisateur，Stripe标注为💳 Stripe API。其他参与者如Core NGINX<br/:80用了换行显示端口，更清晰。",
+      "elements_involved": [
+        "👤 Utilisateur",
+        "💳 Stripe API",
+        "Core NGINX:80",
+        "Voyage Service:3003"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "关于JWT的处理，第一阶段NGINX校验后，Voyage Service和Payment Service都需要从JWT提取userId。这个重复逻辑需要标注清楚，说明无状态服务的设计。",
+      "elements_involved": [
+        "JWT",
+        "userId extraction",
+        "stateless services",
+        "Voyage Service",
+        "Payment Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "在Phase 2和Phase 3分别加了\"Extract userId from JWT\"的自循环标注。这样体现了每个服务独立处理认证信息的云原生原则。",
+      "elements_involved": [
+        "JWT extraction",
+        "Phase 2",
+        "Phase 3",
+        "stateless design"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体结构我很满意。最后确认一下：所有异步操作都用Kafka事件，所有同步操作都是直接HTTP调用，缓存用Redis，数据库用PostgreSQL事务保证一致性。这个技术栈选择要能从图中一目了然。",
+      "elements_involved": [
+        "Kafka",
+        "HTTP",
+        "Redis",
+        "PostgreSQL",
+        "ACID",
+        "async vs sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "完全体现出来了。同步调用用实线箭头，异步事件用虚线箭头返回或Kafka发布。Redis操作都是键值存储的明确标注。PostgreSQL的BEGIN transaction和具体的SELECT/INSERT/UPDATE操作都详细列出。",
+      "elements_involved": [
+        "Arrow styles",
+        "sync vs async",
+        "Redis operations",
+        "PostgreSQL transactions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "好的，这个时序图可以定稿了。它完整展示了从用户选航班、创建预订、支付、Webhook回调、异步处理到最终确认的完整业务流程，同时体现了云原生架构的各种部署形态和最佳实践。",
+      "elements_involved": [
+        "Complete flow",
+        "CloudNative architecture",
+        "best practices"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "定稿完成。最终版本包含7个阶段，6种云原生形态，完整的错误处理分支，性能指标和可靠性说明。所有参与者、端口、协议、数据格式都清晰标注。",
+      "elements_involved": [
+        "Final diagram",
+        "7 phases",
+        "6 CloudNative types",
+        "error handling",
+        "performance metrics"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美，这个时序图可以直接用于技术评审和开发指导了。感谢你的协作！",
+      "elements_involved": [
+        "Technical review",
+        "development guidance"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 45,
+    "repair_count": 3,
+    "grounding_acts_count": 45,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 84612.1871,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 45
+  }
+}

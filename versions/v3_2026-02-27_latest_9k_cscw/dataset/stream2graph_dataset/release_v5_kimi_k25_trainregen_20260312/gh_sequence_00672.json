@@ -1,0 +1,70 @@
+{
+  "id": "gh_sequence_00672",
+  "source": "github",
+  "source_url": "https://github.com/Youknow2509/cio_verify_face/blob/64dd1b1eb75e62b25244067fb046f81672585bbe/doc/sequence_diagrams/identity_org/create_employee.mmd",
+  "github_repo": "Youknow2509/cio_verify_face",
+  "github_file_path": "doc/sequence_diagrams/identity_org/create_employee.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Admin as Company Admin\n    participant LB as Load Balancer\n    participant Gateway as API Gateway\n    participant Auth as Auth Service\n    participant Identity as Identity Service\n    participant Cache as Redis Cache\n    participant DB as PostgreSQL\n    participant Queue as Message Queue\n    participant Notification as Notification Service\n\n    Admin->>+LB: POST /api/v1/users\n    Note over Admin,LB: {name, email, employee_id, department, position, phone}\n    \n    LB->>+Gateway: Forward request\n    Gateway->>+Auth: Validate admin token\n    Auth->>Auth: Extract company_id from token\n    Auth-->>-Gateway: Admin authorized for company\n    \n    Gateway->>+Identity: POST /api/v1/users\n    Note over Gateway,Identity: Include company_id in request context\n    \n    Identity->>Identity: Validate employee data\n    Note over Identity: Email format, employee_id uniqueness within company\n    \n    Identity->>+DB: Check email & employee_id uniqueness\n    Note over Identity,DB: Scoped to company for employee_id uniqueness\n    DB-->>-Identity: Uniqueness validation result\n    \n    alt Email or employee_id already exists\n        Identity-->>Gateway: 409 Conflict - Duplicate email/employee_id\n    else Data is unique\n        Identity->>+DB: BEGIN TRANSACTION\n        DB-->>-Identity: Transaction started\n        \n        par Create user record\n            Identity->>+DB: INSERT INTO users\n            Note over Identity,DB: Generate user_id, link to company\n            DB-->>-Identity: User created\n        and Create employee profile\n            Identity->>+DB: INSERT INTO employee_profiles\n            Note over Identity,DB: Department, position, hire date\n            DB-->>-Identity: Profile created\n        and Initialize permissions\n            Identity->>+DB: INSERT INTO user_permissions\n            Note over Identity,DB: Default employee permissions\n            DB-->>-Identity: Permissions set\n        end\n        \n        Identity->>+DB: COMMIT TRANSACTION\n        DB-->>-Identity: Transaction committed\n        \n        par Cache new employee data\n            Identity->>+Cache: Set user_profile:{user_id}\n            Note over Identity,Cache: TTL: 1 hour\n            Cache-->>-Identity: Profile cached\n        and Clear company user lists\n            Identity->>+Cache: DELETE company_users:{company_id}:*\n            Note over Identity,Cache: Invalidate cached user listings\n            Cache-->>-Identity: Cache cleared\n        and Queue onboarding workflow\n            Identity->>+Queue: Publish EmployeeCreated event\n            Note over Identity,Queue: Trigger onboarding process\n            Queue-->>-Identity: Event published\n        and Send welcome notification\n            Identity->>+Notification: Send welcome email\n            Note over Identity,Notification: Include setup instructions\n            Notification-->>-Identity: Email queued\n        end\n        \n        Identity-->>-Gateway: 201 Created - Employee added successfully\n    end\n    \n    Gateway-->>-LB: Response\n    LB-->>-Admin: Employee creation result\n    \n    Note over Admin,DB: Employee management optimizations:\n    Note over Admin,DB: 1. Bulk employee import capabilities\n    Note over Admin,DB: 2. Active Directory/LDAP integration\n    Note over Admin,DB: 3. Automated onboarding workflows\n    Note over Admin,DB: 4. Employee lifecycle management\n    Note over Admin,DB: 5. Self-service employee registration",
+  "content_size": 3441,
+  "collected_at": "2026-02-06T01:35:29.454399",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 2,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 主架构 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '主架构'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "root"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 4,
+    "repair_count": 0,
+    "grounding_acts_count": 2,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": false,
+    "frozen_from_source": true
+  }
+}

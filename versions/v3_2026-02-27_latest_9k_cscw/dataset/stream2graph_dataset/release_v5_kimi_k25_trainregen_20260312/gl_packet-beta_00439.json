@@ -1,0 +1,429 @@
+{
+  "id": "gl_packet-beta_00439",
+  "source": "gitlab",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/ARG_OSCI_SEQ_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    actor User\n    participant Main\n    participant Initializer\n    participant SetupScreen\n    participant SetupService\n    participant NetworkInfoService\n    participant ModeSelectionScreen\n    participant GraphScreen\n    participant UserSettings\n    participant DataAcqProvider\n    participant DataAcqService\n    participant SocketIsolate\n    participant ProcessingIsolate\n    participant OscilloChartProvider\n    participant FFTChartProvider\n    participant OscilloChart\n    participant FFTChart\n    participant ChartPainter\n\n    %% Application Initialization\n    User->>Main: Launch application\n    Main->>Initializer: init()\n    Note over Initializer: Configure system dependencies\n    Initializer->>Initializer: ensureInitialized()\n    Initializer->>Initializer: Register configurations (HttpConfig, SocketConnection)\n    Initializer->>Initializer: Register services (HttpService, DataAcquisitionService)\n    Initializer->>Initializer: Register providers (DeviceConfigProvider, etc.)\n    Initializer-->>Main: Initialization complete\n    Main->>SetupScreen: Navigate to setup screen\n    \n    %% Device Connection Flow\n    SetupScreen->>User: Display connection options\n    User->>SetupScreen: Select connection mode\n    \n    alt External AP Selected\n        SetupScreen->>SetupService: connectToLocalAP()\n        SetupService->>NetworkInfoService: Connect to ESP32 access point\n        NetworkInfoService->>NetworkInfoService: connectWithRetries()\n        NetworkInfoService-->>SetupService: Connection established\n        SetupService->>SetupService: scanForWiFiNetworks()\n        SetupService->>SetupService: Fetch public key from device\n        SetupService-->>SetupScreen: Return available networks\n        SetupScreen->>User: Show WiFi network selection\n        User->>SetupScreen: Select network & enter password\n        SetupScreen->>SetupService: connectToWiFi(credentials)\n        SetupService->>SetupService: encriptWithPublicKey(password)\n        SetupService->>SetupService: Send credentials to device\n        SetupService->>SetupService: waitForNetworkChange(ssid)\n        SetupService->>SetupService: handleNetworkChangeAndConnect()\n        SetupService->>SetupService: Test connection with encrypted challenge\n        SetupService->>SetupService: fetchDeviceConfig()\n        SetupService-->>SetupScreen: Connection successful\n    else Internal AP Selected\n        SetupScreen->>SetupService: selectMode(\"Internal AP\")\n        SetupService->>SetupService: initializeGlobalHttpConfig()\n        SetupService->>SetupService: initializeGlobalSocketConnection()\n        SetupService->>SetupService: fetchDeviceConfig()\n        SetupService-->>SetupScreen: Configuration successful\n    end\n    \n    SetupScreen->>ModeSelectionScreen: Navigate to mode selection\n    \n    %% Mode Selection\n    ModeSelectionScreen->>User: Display oscilloscope modes\n    User->>ModeSelectionScreen: Select mode (Oscilloscope/FFT)\n    ModeSelectionScreen->>GraphScreen: navigateToMode(selectedMode)\n    \n    %% Graph Screen Initialization\n    GraphScreen->>DataAcqProvider: stopAcquisition() (clean start)\n    GraphScreen->>GraphScreen: Initialize controller\n    GraphScreen->>UserSettings: Set mode (Oscilloscope/FFT)\n    \n    %% Start Data Acquisition\n    GraphScreen->>DataAcqProvider: startAcquisition()\n    DataAcqProvider->>DataAcqService: fetchData(ip, port)\n    DataAcqService->>DataAcqService: initialize()\n    \n    %% Create Isolates\n    DataAcqService->>ProcessingIsolate: Create processing isolate\n    ProcessingIsolate-->>DataAcqService: Return SendPort\n    DataAcqService->>SocketIsolate: Create socket isolate\n    SocketIsolate->>SocketIsolate: Connect to device\n    \n    %% Data Processing Workflow\n    loop Data Acquisition\n        SocketIsolate->>SocketIsolate: Receive binary data packet\n        SocketIsolate->>ProcessingIsolate: Send raw data\n        ProcessingIsolate->>ProcessingIsolate: Parse binary data\n        ProcessingIsolate->>ProcessingIsolate: Apply trigger logic\n        ProcessingIsolate->>ProcessingIsolate: Process signal based on config\n        ProcessingIsolate->>DataAcqService: Send processed data points\n        DataAcqService->>DataAcqProvider: Update data streams\n        \n        alt Oscilloscope Mode\n            DataAcqProvider->>OscilloChartProvider: Update time domain data\n            OscilloChartProvider->>OscilloChart: Refresh chart display\n            OscilloChart->>ChartPainter: Draw waveform\n        else FFT Mode\n            DataAcqProvider->>FFTChartProvider: Update frequency domain data\n            FFTChartProvider->>FFTChart: Refresh chart display\n            FFTChart->>ChartPainter: Draw spectrum\n        end\n    end\n    \n    %% User Settings Interaction\n    User->>UserSettings: Change settings (trigger, filter, etc.)\n    UserSettings->>DataAcqProvider: Update configuration\n    DataAcqProvider->>DataAcqService: updateConfig()\n    DataAcqService->>ProcessingIsolate: Send UpdateConfigMessage\n    ProcessingIsolate->>ProcessingIsolate: Apply new configuration\n    \n    %% Chart Interaction\n    User->>OscilloChart: Zoom/Pan gesture\n    OscilloChart->>OscilloChartProvider: handleZoom()/setHorizontalOffset()\n    OscilloChartProvider->>OscilloChart: Update display parameters\n    \n    %% Mode Switching\n    User->>GraphScreen: Request mode change\n    GraphScreen->>UserSettings: setMode(newMode)\n    UserSettings->>DataAcqProvider: Pause current acquisition\n    UserSettings->>GraphScreen: Update chart display\n    GraphScreen->>DataAcqProvider: Resume acquisition with new mode\n    \n    %% Error Handling Flow\n    alt Connection Error\n        SocketIsolate->>DataAcqService: Report connection error\n        DataAcqService->>DataAcqService: _handleConnectionError()\n        DataAcqService->>DataAcqService: Attempt reconnection\n        \n        alt Reconnection Failed\n            DataAcqService->>DataAcqProvider: handleCriticalError()\n            DataAcqProvider->>SetupScreen: Navigate back to setup\n        end\n    end",
+  "content_size": 5996,
+  "collected_at": "2026-02-06T14:09:45.143092",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为示波器应用设计一个完整的时序图，涵盖从启动到数据采集的完整流程。首先考虑应用初始化阶段，User启动应用后，Main模块需要调用Initializer来完成系统配置。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。Initializer具体要配置哪些依赖？我看到有HttpConfig和SocketConnection，还有服务注册的部分。",
+      "elements_involved": [
+        "Initializer",
+        "HttpConfig",
+        "SocketConnection",
+        "HttpService",
+        "DataAcquisitionService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Initializer内部需要ensureInitialized，然后注册三类东西：配置类包括HttpConfig和SocketConnection；服务类有HttpService和DataAcquisitionService；还有Provider比如DeviceConfigProvider等。完成后返回Main，再导航到SetupScreen。",
+      "elements_involved": [
+        "Initializer",
+        "DeviceConfigProvider",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，初始化部分我画好了。现在进入设备连接流程，SetupScreen向User展示连接选项，然后User选择连接模式。这里有两个分支对吧？",
+      "elements_involved": [
+        "SetupScreen",
+        "User",
+        "SetupService",
+        "NetworkInfoService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，两个分支：External AP和Internal AP。先看External AP的情况——SetupScreen调用SetupService的connectToLocalAP()，然后SetupService让NetworkInfoService去连接ESP32的AP。",
+      "elements_involved": [
+        "SetupService",
+        "NetworkInfoService",
+        "ESP32"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "NetworkInfoService这里有个重试机制connectWithRetries()，成功后返回SetupService。接下来是扫描WiFi网络并获取设备的公钥？",
+      "elements_involved": [
+        "NetworkInfoService",
+        "SetupService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。SetupService执行scanForWiFiNetworks()和Fetch public key from device，然后把可用网络列表返回给SetupScreen展示给用户。用户选择网络并输入password后，SetupScreen调用connectToWiFi(credentials)。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "credentials",
+        "password"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "credentials的处理有个加密步骤对吧？我看到encriptWithPublicKey(password)，然后发送给设备。",
+      "elements_involved": [
+        "SetupService",
+        "password",
+        "public key"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，SetupService用公钥加密password，发送credentials给设备，然后waitForNetworkChange(ssid)，接着handleNetworkChangeAndConnect()，还要用加密challenge测试连接，最后fetchDeviceConfig()。成功后才返回SetupScreen。",
+      "elements_involved": [
+        "SetupService",
+        "ssid",
+        "DeviceConfigProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "External AP分支画完了。那Internal AP分支呢？看起来简单很多。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "Internal AP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Internal AP分支确实更直接。SetupService调用selectMode(\"Internal AP\")，然后initializeGlobalHttpConfig()和initializeGlobalSocketConnection()，再fetchDeviceConfig()就完成了。两个分支结束后都导航到ModeSelectionScreen。",
+      "elements_involved": [
+        "SetupService",
+        "HttpConfig",
+        "SocketConnection",
+        "ModeSelectionScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "连接流程完成了。现在ModeSelectionScreen向User展示oscilloscope modes，User选择Oscilloscope或FFT模式，然后导航到GraphScreen。",
+      "elements_involved": [
+        "ModeSelectionScreen",
+        "User",
+        "GraphScreen",
+        "Oscilloscope",
+        "FFT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "GraphScreen的初始化很重要。首先要调用DataAcqProvider的stopAcquisition()做clean start，然后初始化controller，再通过UserSettings设置mode。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "UserSettings",
+        "clean start"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "clean start是为了避免之前的数据干扰对吧？然后开始数据采集，GraphScreen调用DataAcqProvider的startAcquisition()，这会触发DataAcqService的fetchData(ip, port)。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "DataAcqService",
+        "ip",
+        "port"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。DataAcqService先initialize()，然后创建两个isolate：ProcessingIsolate和SocketIsolate。ProcessingIsolate创建后返回SendPort，SocketIsolate负责连接设备。",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "SendPort"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "isolate部分我画好了。现在进入核心的数据采集循环。SocketIsolate接收binary data packet，发送raw data给ProcessingIsolate。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "binary data packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ProcessingIsolate内部要parse binary data，apply trigger logic，再根据config处理signal，然后把processed data points发给DataAcqService，DataAcqService更新DataAcqProvider的数据流。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "trigger",
+        "filter",
+        "DataAcqService",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里分成两个模式分支：Oscilloscope Mode和FFT Mode。Oscilloscope路径是DataAcqProvider→OscilloChartProvider→OscilloChart→ChartPainter；FFT路径类似，只是换成FFTChartProvider和FFTChart。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "OscilloChart",
+        "FFTChartProvider",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。Oscilloscope画waveform，FFT画spectrum。循环一直持续直到用户干预。现在加上用户设置交互——User在UserSettings修改trigger、filter等参数。",
+      "elements_involved": [
+        "User",
+        "UserSettings",
+        "trigger",
+        "filter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "UserSettings更新后通知DataAcqProvider，DataAcqService发送UpdateConfigMessage给ProcessingIsolate，ProcessingIsolate应用new configuration。",
+      "elements_involved": [
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate",
+        "UpdateConfigMessage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有图表交互部分。User在OscilloChart上做Zoom或Pan手势，OscilloChart调用OscilloChartProvider的handleZoom()或setHorizontalOffset()，然后更新display parameters。",
+      "elements_involved": [
+        "User",
+        "OscilloChart",
+        "OscilloChartProvider",
+        "zoom",
+        "pan"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "模式切换也要体现吧？User请求mode change，GraphScreen通过UserSettings设置newMode，先pause current acquisition，更新chart display，再resume acquisition with new mode。",
+      "elements_involved": [
+        "User",
+        "GraphScreen",
+        "UserSettings",
+        "newMode",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这个流程很重要。最后还要加上错误处理——特别是connection error的情况。",
+      "elements_involved": [
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SocketIsolate报告connection error给DataAcqService，DataAcqService执行_handleConnectionError()并attempt reconnection。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "connection error",
+        "reconnection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "重试失败的话，DataAcqService通知DataAcqProvider的handleCriticalError()，然后DataAcqProvider把用户导航回SetupScreen重新配置。",
+      "elements_involved": [
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen",
+        "critical error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "整体结构差不多了。我确认一下participant列表：User, Main, Initializer, SetupScreen, SetupService, NetworkInfoService, ModeSelectionScreen, GraphScreen, UserSettings, DataAcqProvider, DataAcqService, SocketIsolate, ProcessingIsolate, OscilloChartProvider, FFTChartProvider, OscilloChart, FFTChart, ChartPainter。一共17个，没错吧？",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，Initializer里的Note写\"Configure system dependencies\"，但具体注册内容我前面说漏了一个——Provider部分除了DeviceConfigProvider还有etc.，需要标注清楚是泛指其他providers。另外，DataAcqService和ProcessingIsolate之间的SendPort返回要画虚线箭头。",
+      "elements_involved": [
+        "Initializer",
+        "DeviceConfigProvider",
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SendPort"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。Initializer的Note保持简洁，SendPort返回改为虚线。还有需要调整的吗？",
+      "elements_involved": [
+        "Initializer",
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题了。整个流程覆盖了应用启动、设备连接（双分支）、模式选择、数据采集循环（双isolate架构）、实时图表渲染、用户交互和错误恢复，结构完整。",
+      "elements_involved": [
+        "application",
+        "device connection",
+        "mode selection",
+        "data acquisition",
+        "chart rendering",
+        "error handling"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 29,
+    "repair_count": 1,
+    "grounding_acts_count": 29,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 54014.333,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 29
+  }
+}

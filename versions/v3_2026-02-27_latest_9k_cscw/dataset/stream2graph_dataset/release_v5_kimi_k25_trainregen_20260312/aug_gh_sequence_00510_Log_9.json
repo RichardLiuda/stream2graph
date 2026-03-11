@@ -1,0 +1,587 @@
+{
+  "id": "aug_gh_sequence_00510_Log_9",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/DREAMSCAPE-AI/dreamscape-docs/blob/24aa5a14265601b36ddbbb02c958eea524e6eb11/architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "github_repo": "DREAMSCAPE-AI/dreamscape-docs",
+  "github_file_path": "architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    autonumber\n    actor User as 👤 Utilisateur\n    participant WC as Web Client\n    participant CN as Core NGINX<br/>:80\n    participant Voyage as Voyage Service<br/>:3003\n    participant Payment as Payment Service<br/>:3005\n    participant AI as AI Service<br/>:3004\n    participant PG as PostgreSQL<br/>:5432\n    participant Redis as Redis<br/>:6379\n    participant Kafka as Kafka<br/>:9092\n    participant Stripe as 💳 Stripe API\n\n    rect rgb(Logistics_Warehouse)\n        Note over User,Voyage: Phase 1: Sélection Vol\n        User->>WC: Sélectionne vol<br/>(Logistics_StockLevel)\n        WC->>WC: Add to cart<br/>(Logistics_Warehouse)\n        User->>WC: Click \"Réserver\"\n        \n        WC->>CN: POST /api/v1/bookings<br/>{Logistics_StockLevel}<br/>Authorization: Bearer JWT\n        CN->>CN: Validate JWT (Logistics_StockLevel)\n        CN->>Voyage: Forward to Voyage<br/>localhost:3003/bookings\n    end\n\n    rect rgb(Logistics_FleetManagement)\n        Note over Voyage,Kafka: Phase 2: Création Réservation\n        Voyage->>Voyage: Extract userId from JWT\n        Voyage->>PG: BEGIN transaction\n        Note right of PG: 🔄 ACID transaction<br/>pour cohérence\n        \n        Voyage->>PG: INSERT booking<br/>{Logistics_DeliveryRoute}\n        PG-->>Voyage: Booking created (Logistics_TrackingNumber)\n        \n        Voyage->>Redis: Store booking temp<br/>key: \"booking:temp:bookingId\"<br/>TTL: 15min\n        Note right of Redis: ⏱️ Timeout si paiement<br/>échoue après 15min\n        \n        Voyage->>Kafka: Publish event<br/>Topic: \"voyage.booking.created\"<br/>{Logistics_TrackingNumber}\n        Note left of Kafka: Event-Driven Architecture<br/>- Decoupling services<br/>- Async processing<br/>- Audit trail\n        \n        Voyage-->>CN: 201 Created<br/>{Logistics_Warehouse}\n        CN-->>WC: 201 Created\n    end\n\n    rect rgb(Logistics_FleetManagement)\n        Note over WC,Stripe: Phase 3: Demande Paiement\n        WC->>CN: POST /api/v1/payments/intent<br/>{Logistics_TrackingNumber}<br/>Authorization: Bearer JWT\n        CN->>Payment: Forward to Payment<br/>localhost:3005/payments/intent\n        \n        Payment->>Payment: Extract userId from JWT\n        Payment->>PG: Verify booking exists<br/>SELECT * FROM bookings<br/>WHERE id = bookingId AND userId = userId\n        \n        alt Booking Non Trouvé ❌\n            PG-->>Payment: null\n            Payment-->>CN: 404 Not Found<br/>{Logistics_TrackingNumber}\n            CN-->>WC: 404 Error\n            WC->>User: ❌ Erreur réservation\n        else Booking Trouvé ✅\n            PG-->>Payment: Booking found\n            Payment->>Stripe: Create PaymentIntent<br/>POST /v1/payment_intents<br/>{Logistics_DeliveryRoute),<br/>currency: \"eur\",<br/>metadata: {Logistics_StockLevel}}\n            \n            Stripe-->>Payment: PaymentIntent created<br/>{Logistics_TrackingNumber}\n            \n            Payment->>PG: INSERT payment<br/>{Logistics_DeliveryRoute}\n            Payment->>Kafka: Publish event<br/>Topic: \"payment.intent.created\"<br/>{Logistics_TrackingNumber}\n            \n            Payment-->>CN: 200 OK<br/>{Logistics_TrackingNumber}\n            CN-->>WC: 200 OK\n        end\n    end\n\n    rect rgb(Logistics_FleetManagement)\n        Note over WC,Stripe: Phase 4: Paiement Stripe (Logistics_FleetManagement)\n        WC->>WC: Initialize Stripe.js<br/>with clientSecret\n        WC->>User: Affiche formulaire carte<br/>(Logistics_TrackingNumber)\n        \n        User->>WC: Saisit infos carte<br/>(Logistics_DeliveryRoute)\n        WC->>Stripe: POST /v1/payment_intents/:id/confirm<br/>(Logistics_DeliveryRoute)<br/>{Logistics_DeliveryRoute}\n        \n        Note right of Stripe: 🔒 Sécurité PCI-DSS<br/>- Carte jamais envoyée à notre backend<br/>- Stripe gère tout<br/>- Tokenization automatique\n        \n        alt Paiement Réussi ✅\n            Stripe-->>WC: PaymentIntent succeeded\n            WC->>WC: Display success message\n            WC->>User: ✅ Paiement accepté\n        else Paiement Échoué ❌\n            Stripe-->>WC: PaymentIntent failed<br/>(Logistics_StockLevel)\n            WC->>User: ❌ \"Paiement refusé\"<br/>(Logistics_Warehouse)\n        end\n    end\n\n    rect rgb(Logistics_StockLevel)\n        Note over Stripe,Kafka: Phase 5: Webhook Stripe (Logistics_TrackingNumber)\n        Stripe->>Payment: POST /webhooks/stripe<br/>Stripe-Signature header<br/>{Logistics_TrackingNumber}}\n        \n        Payment->>Payment: Verify signature<br/>stripe.webhooks.constructEvent(Logistics_FleetManagement)\n        \n        alt Signature Invalide ❌\n            Payment-->>Stripe: 400 Bad Request\n            Note right of Payment: Protection contre<br/>webhooks forgés\n        else Signature Valide ✅\n            Payment->>PG: UPDATE payment<br/>SET status = \"SUCCEEDED\"<br/>WHERE stripePaymentIntentId = id\n            \n            Payment->>PG: UPDATE booking<br/>SET status = \"CONFIRMED\"<br/>WHERE id = bookingId\n            \n            Payment->>Redis: Delete temp booking<br/>DEL \"booking:temp:bookingId\"\n            \n            Payment->>Kafka: Publish event<br/>Topic: \"payment.succeeded\"<br/>{Logistics_Warehouse}\n            \n            Payment-->>Stripe: 200 OK\n        end\n    end\n\n    rect rgb(Logistics_DeliveryRoute)\n        Note over Kafka,User: Phase 6: Traitement Async (Logistics_Warehouse)\n        Kafka->>Voyage: Consume event<br/>\"payment.succeeded\"\n        Voyage->>PG: SELECT booking details\n        Voyage->>Voyage: Generate confirmation email<br/>(Logistics_StockLevel)\n        Voyage->>User: 📧 Email confirmation<br/>+ PDF billet\n        \n        Kafka->>AI: Consume event<br/>\"voyage.booking.created\"\n        AI->>PG: Get user profile<br/>+ booking history\n        AI->>AI: Update ML model<br/>(Logistics_FleetManagement)\n        Note right of AI: 🤖 AI learning<br/>from user behavior\n        AI->>Redis: Update recommendations<br/>key: \"reco:userId\"\n    end\n\n    rect rgb(Logistics_Warehouse)\n        Note over WC,User: Phase 7: Confirmation Frontend\n        loop Polling every 2s\n            WC->>CN: GET /api/v1/bookings/:bookingId\n            CN->>Voyage: Forward request\n            Voyage->>PG: SELECT booking<br/>WHERE id = bookingId\n            \n            alt Status = CONFIRMED ✅\n                PG-->>Voyage: Booking confirmed\n                Voyage-->>CN: 200 OK<br/>{Logistics_Warehouse}\n                CN-->>WC: 200 OK\n                WC->>WC: Stop polling\n                WC->>WC: Redirect /bookings/:id\n                WC->>User: ✅ Affiche confirmation<br/>+ détails voyage\n            else Status = PENDING ⏳\n                PG-->>Voyage: Booking still pending\n                Voyage-->>CN: 200 OK<br/>{Logistics_Warehouse}\n                CN-->>WC: 200 OK (Logistics_StockLevel)\n                Note right of WC: ⏱️ Après 15min<br/>réservation annulée<br/>automatiquement\n            end\n        end\n    end\n\n    Note over User,Kafka: 📊 Performance Réservation<br/>Create booking: ~100-150ms<br/>Payment intent: ~500-800ms (Logistics_TrackingNumber)<br/>Confirmation: ~1-2s (Logistics_TrackingNumber)<br/>Email: ~3-5s (Logistics_FleetManagement)<br/><br/>🔒 Fiabilité<br/>- Transaction ACID (Logistics_DeliveryRoute)<br/>- Idempotency keys (Logistics_StockLevel)<br/>- Webhook retry (Logistics_StockLevel)<br/>- Event sourcing (Logistics_DeliveryRoute)",
+  "content_size": 7218,
+  "collected_at": "2026-02-06T01:33:16.963511",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "augmentation_domain": "Logistics",
+  "seed_id": "gh_sequence_00510",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的机票预订系统时序图，涵盖从用户选航班到最终确认的完整流程。这个系统涉及多个微服务，包括Voyage Service、Payment Service，还有AI推荐服务。",
+      "elements_involved": [
+        "Voyage Service",
+        "Payment Service",
+        "AI Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，这是一个典型的电商预订流程。我先确认一下参与者的架构：用户通过Web Client访问，经过Core NGINX做网关和负载均衡，后面接各个业务服务，数据层用PostgreSQL和Redis，消息队列用Kafka，支付走Stripe API。这样理解对吗？",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，架构就是这样。我特别想强调几个关键点：一是库存扣减要用ACID事务保证一致性，二是Redis要做15分钟的临时订单锁定，三是Kafka要实现事件驱动的异步处理。",
+      "elements_involved": [
+        "ACID",
+        "Redis",
+        "Kafka",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我把整个流程分成7个阶段来画。第一阶段是航班选择，用户选航班加入购物车，然后点击预订。这里Web Client会向Core NGINX发送POST请求到/api/v1/bookings，带上JWT认证。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Logistics_StockLevel",
+        "Logistics_Warehouse"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，NGINX要负责JWT验证，验证通过后转发到Voyage Service的3003端口。这里我想用rect把第一阶段框起来，标注为Logistics_Warehouse的配色。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "Logistics_Warehouse"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加第一阶段。现在画第二阶段——创建预订。Voyage Service从JWT提取userId，开启PostgreSQL事务，插入booking记录，同时把临时订单存到Redis，设置15分钟TTL。",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "Redis",
+        "Logistics_DeliveryRoute",
+        "Logistics_TrackingNumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，Redis的TTL逻辑我要再确认一下。如果15分钟内用户没付款，这个临时订单要自动释放库存，对吧？而且Voyage Service还要发Kafka事件到voyage.booking.created主题。",
+      "elements_involved": [
+        "Redis",
+        "Kafka",
+        "Logistics_TrackingNumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解正确，我已经在Redis旁边加了注释说明timeout机制，Kafka那边也标注了Event-Driven Architecture的三个好处：服务解耦、异步处理、审计追踪。第二阶段我用Logistics_FleetManagement配色。",
+      "elements_involved": [
+        "Redis",
+        "Kafka",
+        "Logistics_FleetManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第三阶段是发起支付。Web Client调/api/v1/payments/intent，NGINX转发到Payment Service。这里有个关键点：Payment Service必须先验证订单存在且属于当前用户，防止越权。",
+      "elements_involved": [
+        "Payment Service",
+        "Logistics_TrackingNumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加第三阶段。我画了alt分支：如果订单不存在返回404，如果存在则调用Stripe API创建PaymentIntent，同时本地记录支付流水，发Kafka事件到payment.intent.created主题。",
+      "elements_involved": [
+        "Stripe API",
+        "PostgreSQL",
+        "Kafka",
+        "Logistics_DeliveryRoute",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Stripe返回的clientSecret要传给前端，这个设计是为了PCI-DSS合规。第四阶段就是前端直接用Stripe.js收集卡号，后端完全不触碰敏感信息。",
+      "elements_involved": [
+        "Stripe API",
+        "Web Client",
+        "Logistics_FleetManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，这是标准的Stripe集成模式。第四阶段我画Web Client初始化Stripe.js，显示卡号输入表单，用户填写后直接提交到Stripe确认支付，分支处理成功和失败两种情况。",
+      "elements_involved": [
+        "Web Client",
+        "Stripe API",
+        "Logistics_DeliveryRoute",
+        "Logistics_StockLevel",
+        "Logistics_Warehouse"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第五阶段是Stripe webhook回调，这是整个架构的可靠性关键。Payment Service要验证签名防伪造，验证通过后更新支付状态为SUCCEEDED，订单状态改为CONFIRMED，删除Redis临时键，发payment.succeeded事件。",
+      "elements_involved": [
+        "Stripe API",
+        "Payment Service",
+        "Redis",
+        "Kafka",
+        "Logistics_TrackingNumber",
+        "Logistics_Warehouse"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加第五阶段webhook处理。我画了签名验证的分支，无效返回400，有效才执行状态更新。这里也用了Logistics_StockLevel配色，和第一阶段呼应。",
+      "elements_involved": [
+        "Payment Service",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "第六阶段是异步处理。Voyage Service消费payment.succeeded事件，生成确认邮件和PDF机票。同时AI Service消费voyage.booking.created事件，更新用户画像和推荐模型。",
+      "elements_involved": [
+        "Voyage Service",
+        "AI Service",
+        "Kafka",
+        "Logistics_StockLevel",
+        "Logistics_FleetManagement",
+        "Logistics_Warehouse"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已添加第六阶段。Voyage Service发邮件给用户，AI Service读用户历史更新ML模型，再把新推荐写回Redis。这里用Logistics_DeliveryRoute配色。",
+      "elements_involved": [
+        "Voyage Service",
+        "AI Service",
+        "Redis",
+        "Logistics_DeliveryRoute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第七阶段是前端轮询确认。Web Client每2秒查一次订单状态，如果变成CONFIRMED就停止轮询跳转详情页，如果还是PENDING就继续。这里要体现15分钟超时的提示。",
+      "elements_involved": [
+        "Web Client",
+        "Voyage Service",
+        "Logistics_Warehouse",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加第七阶段轮询逻辑，用了loop结构。最后我在底部加了性能指标注释：创建订单100-150ms，支付意图500-800ms，整体确认1-2秒，邮件3-5秒。",
+      "elements_involved": [
+        "Web Client",
+        "Voyage Service",
+        "Logistics_Warehouse"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "性能数据没问题，但可靠性部分要补充完整。加上ACID事务、幂等键、webhook重试、事件溯源这几项，用Logistics_DeliveryRoute和Logistics_StockLevel区分。",
+      "elements_involved": [
+        "ACID",
+        "Logistics_DeliveryRoute",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正底部注释，补充了可靠性四项：ACID事务（Logistics_DeliveryRoute）、幂等键（Logistics_StockLevel）、webhook重试（Logistics_StockLevel）、事件溯源（Logistics_DeliveryRoute）。",
+      "elements_involved": [
+        "ACID",
+        "Logistics_DeliveryRoute",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我再看一下第二阶段的ACID注释位置，是不是应该放在PostgreSQL右边更清楚？现在可能和代码混在一起。",
+      "elements_involved": [
+        "PostgreSQL",
+        "ACID",
+        "Logistics_DeliveryRoute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "调整了，把\"🔄 ACID transaction pour cohérence\"移到PostgreSQL右侧独立显示，不和INSERT语句重叠，更清晰。",
+      "elements_involved": [
+        "PostgreSQL",
+        "ACID"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这样好多了。另外第三阶段的alt分支，Booking Non Trouvé和Booking Trouvé的图标和颜色区分要明显一些。",
+      "elements_involved": [
+        "Payment Service",
+        "Logistics_TrackingNumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已优化，失败分支用❌红色系，成功分支用✅绿色系，状态码404和200也对应标注。",
+      "elements_involved": [
+        "Logistics_TrackingNumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第四阶段的PCI-DSS注释很重要，要强调三点：卡号绝不进我们后端、Stripe全权处理、自动tokenization。这个放在Stripe右边。",
+      "elements_involved": [
+        "Stripe API",
+        "Logistics_FleetManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加PCI-DSS安全注释，用🔒图标，列了三项：卡号不送后端、Stripe处理、自动tokenization。",
+      "elements_involved": [
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "第五阶段的webhook签名验证，constructEvent那个方法名要写准确，是stripe.webhooks.constructEvent。",
+      "elements_involved": [
+        "Payment Service",
+        "Logistics_FleetManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正，验证签名的注释改为\"stripe.webhooks.constructEvent(Logistics_FleetManagement)\"，方法名准确。",
+      "elements_involved": [
+        "Payment Service",
+        "Logistics_FleetManagement"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好的。第六阶段AI Service的注释，\"AI learning from user behavior\"旁边加个🤖图标更直观。",
+      "elements_involved": [
+        "AI Service",
+        "Logistics_FleetManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加🤖图标，AI学习用户行为的注释现在更醒目。",
+      "elements_involved": [
+        "AI Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体检查一下各阶段的rect配色：第一阶段Logistics_Warehouse，第二、三、四、五阶段都是Logistics_FleetManagement，第六阶段Logistics_DeliveryRoute，第七阶段回到Logistics_Warehouse。这样对吗？",
+      "elements_involved": [
+        "Logistics_Warehouse",
+        "Logistics_FleetManagement",
+        "Logistics_DeliveryRoute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，配色逻辑是：Warehouse对应选航班和最终确认，FleetManagement对应核心交易流程，DeliveryRoute对应异步交付。第五阶段我检查一下——应该是Logistics_StockLevel，不是FleetManagement。",
+      "elements_involved": [
+        "Logistics_StockLevel",
+        "Logistics_FleetManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "第五阶段确实是Logistics_StockLevel，和第一阶段呼应，表示库存状态的关键转换点。请修正。",
+      "elements_involved": [
+        "Logistics_StockLevel"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正第五阶段配色为Logistics_StockLevel。现在各阶段配色：1-Warehouse，2-FleetManagement，3-FleetManagement，4-FleetManagement，5-StockLevel，6-DeliveryRoute，7-Warehouse。",
+      "elements_involved": [
+        "Logistics_Warehouse",
+        "Logistics_FleetManagement",
+        "Logistics_StockLevel",
+        "Logistics_DeliveryRoute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Kafka的注释\"Event-Driven Architecture\"那三项，Decoupling services、Async processing、Audit trail，首字母大小写要统一，都用小写或者都用首字母大写。",
+      "elements_involved": [
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已统一为首字母大写：- Decoupling services、- Async processing、- Audit trail。",
+      "elements_involved": [
+        "Kafka"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下所有端口号：Core NGINX是80，Voyage Service 3003，AI Service 3004，Payment Service 3005，PostgreSQL 5432，Redis 6379，Kafka 9092。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "AI Service",
+        "Payment Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部核对无误，所有参与者都标注了正确的端口号。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "AI Service",
+        "Payment Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "第七阶段的loop结构，Polling every 2s这个描述要清晰，还有内部alt分支的Status = CONFIRMED和Status = PENDING状态显示。",
+      "elements_involved": [
+        "Web Client",
+        "Logistics_Warehouse",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认，loop标注\"Polling every 2s\"，内部alt分支：CONFIRMED时停止轮询跳转，PENDING时继续并显示15分钟超时提示。",
+      "elements_involved": [
+        "Web Client",
+        "Logistics_Warehouse",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "底部性能指标的格式，Create booking、Payment intent、Confirmation、Email这几项，单位和时间范围都准确。最后加个空行和分隔，让整体更整洁。",
+      "elements_involved": [
+        "Performance metrics"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已优化底部注释格式，性能指标和可靠性指标分块显示，中间空行分隔，阅读更清晰。",
+      "elements_involved": [
+        "Performance metrics",
+        "ACID",
+        "Logistics_DeliveryRoute",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整体检查完毕，这个时序图完整展现了机票预订的7个阶段，从选航班、创订单、发起支付、Stripe交互、webhook回调、异步处理到前端确认，架构清晰，安全合规点都标注到位。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认定稿。最终图包含7个rect阶段、完整的参与者定义、所有关键交互和分支处理，以及性能与可靠性指标注释。",
+      "elements_involved": [
+        "sequence diagram",
+        "7 phases",
+        "performance metrics",
+        "reliability features"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 44,
+    "repair_count": 5,
+    "grounding_acts_count": 44,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 72504.6415,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 44
+  }
+}

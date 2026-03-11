@@ -1,0 +1,470 @@
+{
+  "id": "aug_gl_packet-beta_00364_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/chris-arsenault/the-glass-frontier/blob/c0f4b7e7c333793aa3c28dc25e3bac325a56605c/docs/design/diagrams/DES-EDGE-01-contested-move-flow.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "chris-arsenault/the-glass-frontier",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant PlayerA as Player A\n    participant PlayerB as Player B / Rival\n    participant NarrativeEngine as Narrative Engine (HealthTech_PatientRecords)\n    participant ContestCoordinator as Contest Coordinator\n    participant Temporal as Temporal Check Runner\n    participant CompQueue as Shared Complication Queue\n    participant NarrativeWeaver as Narrative Weaver\n    participant WebUI as Web UI Shell\n    participant Admin as Admin Console\n\n    PlayerA->>NarrativeEngine: Utterance + context (HealthTech_EMR_Sync)\n    PlayerB->>NarrativeEngine: Utterance + context (HealthTech_HIPAA_Vault)\n    NarrativeEngine->>NarrativeEngine: Detect collision hints (HealthTech_DiagnosticEngine)\n    NarrativeEngine->>ContestCoordinator: intent.checkRequest (HealthTech_LabAnalyzer)\n    NarrativeEngine->>ContestCoordinator: intent.checkRequest (HealthTech_HIPAA_Vault)\n    ContestCoordinator->>ContestCoordinator: Wait 8s/2 turns for matching hints\n    ContestCoordinator->>ContestCoordinator: Create contestId + contestSeed\n    ContestCoordinator->>Temporal: contest.bundle (HealthTech_DiagnosticEngine)\n\n    loop For each participant\n        Temporal->>Temporal: Spawn contest.check child workflow\n        Temporal->>Temporal: Derive dice seed hash(HealthTech_HIPAA_Vault)\n        Temporal->>Temporal: Resolve roll + modifiers\n        Temporal-->>ContestCoordinator: contest.checkResult (HealthTech_LabAnalyzer)\n    end\n\n    ContestCoordinator->>ContestCoordinator: Rank results (HealthTech_LabAnalyzer)\n    ContestCoordinator->>CompQueue: Upsert shared complications\n    ContestCoordinator->>NarrativeWeaver: contest.resolution (HealthTech_PatientRecords)\n    ContestCoordinator->>Admin: telemetry.contest.start/resolved (HealthTech_DiagnosticEngine)\n\n    NarrativeWeaver->>WebUI: Contested turn packet (HealthTech_HIPAA_Vault)\n    NarrativeWeaver->>Admin: contest.override hooks + safety flags\n    WebUI->>PlayerA: Display contested badge + breakdown\n    WebUI->>PlayerB: Display contested badge + breakdown\n\n    Admin-->>NarrativeWeaver: moderation.decision (HealthTech_LabAnalyzer)\n    NarrativeWeaver-->>WebUI: Updated contest narration (HealthTech_EMR_Sync)\n",
+  "content_size": 2140,
+  "collected_at": "2026-02-06T14:08:18.772733",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gl_packet-beta_00364",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个叙事驱动的对抗系统，两个玩家同时向Narrative Engine提交话语，系统要检测冲突并触发竞赛机制。核心是让HealthTech_PatientRecords作为叙事引擎承载玩家输入。",
+      "elements_involved": [
+        "PlayerA",
+        "PlayerB",
+        "NarrativeEngine",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。Player A和Player B/Rival作为两个独立参与者，他们的输入都指向Narrative Engine。我注意到HealthTech_EMR_Sync和HealthTech_HIPAA_Vault分别关联两个玩家的输入，这是安全隔离的设计吗？",
+      "elements_involved": [
+        "PlayerA",
+        "PlayerB",
+        "NarrativeEngine",
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Player A走EMR同步通道，Player B走HIPAA加密通道，数据隔离但逻辑统一。Narrative Engine内部要用HealthTech_DiagnosticEngine做碰撞检测，发现潜在冲突时生成hints。",
+      "elements_involved": [
+        "NarrativeEngine",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "检测到碰撞后，Narrative Engine向Contest Coordinator发送checkRequest？我画两条线，分别标注HealthTech_LabAnalyzer和HealthTech_HIPAA_Vault，代表不同检测维度。",
+      "elements_involved": [
+        "NarrativeEngine",
+        "ContestCoordinator",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，但两条都是intent.checkRequest，LabAnalyzer做规则校验，HIPAA_Vault做合规审查。Contest Coordinator收到后要等待匹配——8秒或2回合，这个缓冲期很关键。",
+      "elements_involved": [
+        "ContestCoordinator",
+        "Temporal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "等待逻辑画在Contest Coordinator自循环里？还有contestId和contestSeed的生成，也是内部完成的？",
+      "elements_involved": [
+        "ContestCoordinator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，自循环表示内部状态机。匹配成功后生成唯一竞赛ID和随机种子，然后向Temporal Check Runner发送contest.bundle，带上HealthTech_DiagnosticEngine的上下文。",
+      "elements_involved": [
+        "ContestCoordinator",
+        "Temporal",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "Temporal这边我画一个循环结构，每个参与者触发子工作流：spawn child workflow、derive dice seed用HIPAA_Vault做哈希、resolve roll加修正值。最后返回contest.checkResult给Coordinator。",
+      "elements_involved": [
+        "Temporal",
+        "ContestCoordinator",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "dice seed的哈希用HIPAA_Vault我理解，但checkResult回传用LabAnalyzer是代表结果经过规则验证？",
+      "elements_involved": [
+        "Temporal",
+        "ContestCoordinator",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，LabAnalyzer标记表示结果经过数值计算和边界检查。循环结束后Coordinator做ranking，同样用LabAnalyzer标注。",
+      "elements_involved": [
+        "ContestCoordinator",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "排名完成后，Contest Coordinator要同时做三件事：向Shared Complication Queue写入共享并发症、向Narrative Weaver发送contest.resolution、向Admin Console上报telemetry。",
+      "elements_involved": [
+        "ContestCoordinator",
+        "CompQueue",
+        "NarrativeWeaver",
+        "Admin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了。CompQueue是upsert操作，NarrativeWeaver用HealthTech_PatientRecords标注，Admin的telemetry用DiagnosticEngine。",
+      "elements_involved": [
+        "ContestCoordinator",
+        "CompQueue",
+        "NarrativeWeaver",
+        "Admin",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Narrative Weaver收到resolution后，要向Web UI Shell输出Contested turn packet，同时给Admin Console发送override hooks和safety flags。这里两个方向都要标注。",
+      "elements_involved": [
+        "NarrativeWeaver",
+        "WebUI",
+        "Admin",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Contested turn packet用HIPAA_Vault加密传输，Admin那边是contest.override hooks。Web UI Shell再分别推送给Player A和Player B，显示contested badge和breakdown。",
+      "elements_involved": [
+        "NarrativeWeaver",
+        "WebUI",
+        "PlayerA",
+        "PlayerB",
+        "Admin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要Admin的反向干预能力。Admin Console可以发送moderation.decision回Narrative Weaver，用LabAnalyzer标注审核结果。",
+      "elements_involved": [
+        "Admin",
+        "NarrativeWeaver",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了虚线返回，moderation.decision。然后Narrative Weaver更新narration，用EMR_Sync回推Web UI Shell？",
+      "elements_involved": [
+        "NarrativeWeaver",
+        "WebUI",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，最终更新走EMR_Sync通道。整个闭环完成。不过我想确认一下，Temporal那边的dice seed哈希，你确定是HealthTech_HIPAA_Vault而不是DiagnosticEngine？",
+      "elements_involved": [
+        "Temporal",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我检查一下……确实标错了。根据代码，derive dice seed用的是hash(HealthTech_HIPAA_Vault)，我画成了DiagnosticEngine。需要修正为HIPAA_Vault。",
+      "elements_involved": [
+        "Temporal",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "修正后是对的。HIPAA_Vault提供加密安全的随机源，DiagnosticEngine只负责前面的碰撞检测。另一个点：Contest Coordinator等待8s/2 turns，这个要明确表示为内部自循环。",
+      "elements_involved": [
+        "ContestCoordinator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画为自循环，标注Wait 8s/2 turns for matching hints。还有Create contestId + contestSeed也是内部完成。",
+      "elements_involved": [
+        "ContestCoordinator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Narrative Engine到Contest Coordinator的两条checkRequest线，我再看一遍——都是intent.checkRequest，但标注不同组件，这会不会让人误解为不同消息类型？",
+      "elements_involved": [
+        "NarrativeEngine",
+        "ContestCoordinator",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "可以理解为同一消息的不同处理切面，LabAnalyzer做业务校验，HIPAA_Vault做合规审查。或者我加文字说明这是同一消息的并行处理？",
+      "elements_involved": [
+        "NarrativeEngine",
+        "ContestCoordinator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持现状即可，组件标注暗示处理管道。现在检查Web UI Shell到两个玩家的输出，Display contested badge + breakdown是对称的，没问题。",
+      "elements_involved": [
+        "WebUI",
+        "PlayerA",
+        "PlayerB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Admin Console的telemetry.contest.start/resolved，我理解为竞赛开始和结束都会上报，用DiagnosticEngine标注是因为包含性能指标？",
+      "elements_involved": [
+        "ContestCoordinator",
+        "Admin",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，DiagnosticEngine负责诊断和遥测数据。Admin那边还有contest.override hooks，这是人工介入的入口，safety flags是自动触发的保护标记。",
+      "elements_involved": [
+        "NarrativeWeaver",
+        "Admin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "整个流程我数了一下：玩家输入→碰撞检测→竞赛触发→Temporal裁决→排名→并发症队列→叙事编织→UI展示→Admin监控→可能的干预→最终更新。15个主要步骤。",
+      "elements_involved": [
+        "PlayerA",
+        "PlayerB",
+        "NarrativeEngine",
+        "ContestCoordinator",
+        "Temporal",
+        "CompQueue",
+        "NarrativeWeaver",
+        "WebUI",
+        "Admin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Temporal内部的循环结构，For each participant会spawn child workflow，这个child是并行的吗？",
+      "elements_involved": [
+        "Temporal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Mermaid的loop只表示逻辑循环，实际Temporal Workflow是并行spawn多个child，每个独立执行derive seed、resolve roll，然后异步返回checkResult。",
+      "elements_involved": [
+        "Temporal",
+        "ContestCoordinator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认命名一致性：Player B的标注是Player B / Rival，Narrative Engine括号里是HealthTech_PatientRecords，这些别名都要保留。",
+      "elements_involved": [
+        "PlayerB",
+        "NarrativeEngine",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有别名已核对。Shared Complication Queue简写为CompQueue，Temporal Check Runner简写为Temporal，Web UI Shell简写为WebUI，Admin Console简写为Admin。",
+      "elements_involved": [
+        "CompQueue",
+        "Temporal",
+        "WebUI",
+        "Admin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "NarrativeWeaver到Admin的虚线，和Admin回NarrativeWeaver的虚线，都是异步回调？",
+      "elements_involved": [
+        "NarrativeWeaver",
+        "Admin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，都是虚线箭头表示异步。NarrativeWeaver→Admin是主动上报，Admin--NarrativeWeaver是人工审核后的回调。",
+      "elements_involved": [
+        "NarrativeWeaver",
+        "Admin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一处：Contest Coordinator到CompQueue的Upsert shared complications，这是写操作，但用了普通箭头而非虚线，需要改吗？",
+      "elements_involved": [
+        "ContestCoordinator",
+        "CompQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "检查代码……确实是普通箭头，表示同步写入。CompQueue是持久化存储，不是异步服务，所以不用虚线。我确认无需修改。",
+      "elements_involved": [
+        "ContestCoordinator",
+        "CompQueue"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好，整个序列图完整了。从玩家对抗输入到竞赛裁决，再到并发症共享和叙事更新，最后Admin可监控干预。所有HealthTech组件的标注位置都符合架构设计。",
+      "elements_involved": [
+        "PlayerA",
+        "PlayerB",
+        "NarrativeEngine",
+        "ContestCoordinator",
+        "Temporal",
+        "CompQueue",
+        "NarrativeWeaver",
+        "WebUI",
+        "Admin"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 35,
+    "repair_count": 2,
+    "grounding_acts_count": 35,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:33Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 80640.4283,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 35
+  }
+}

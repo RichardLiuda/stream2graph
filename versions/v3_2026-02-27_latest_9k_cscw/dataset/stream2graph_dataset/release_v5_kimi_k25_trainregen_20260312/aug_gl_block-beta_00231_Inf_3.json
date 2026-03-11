@@ -1,0 +1,224 @@
+{
+  "id": "aug_gl_block-beta_00231_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/oasisprotocol/sapphire-paratime/blob/6b8eecad999c4173dae65f61892b685eae45cc97/docs/diagrams/c10l-smart-contract-tx.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "oasisprotocol/sapphire-paratime",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    autonumber\n    # Didn't find any way to add a class in sequenceDiagram to act as a selector.\n    box rgba(Infra_WorkerNode) # Acts as selector to override background color as details.alert--info\n        participant Client as Client<br/>(Infra_LoadBalancer)\n        participant Web3 as Oasis Web3<br/>Gateway\n        participant ClientN as Oasis Node<br/>Sapphire<br/>ParaTime Client\n        participant Compute as Oasis Node<br/>Sapphire ParaTime<br/>Compute 🔒\n        participant KM as Oasis Node<br/>Key Manager<br/>🔒\n    end\n\n    Client->>Client: Create transaction<br/>call data\n\n    opt Encrypt Transaction\n        Client->>+Web3: Get ephemeral<br/>public key R\n        Web3->>+ClientN: Get ephemeral<br/>public key R\n        ClientN->>+KM: Get ephemeral<br/>public key R\n        KM->>KM: Derive per-epoch<br/>per-runtime<br/>keypair R, R'\n        KM-->>-ClientN: Ephemeral public key R\n        Note over ClientN: R is cached<br/>until the end<br/>of epoch\n        ClientN-->>-Web3: Ephemeral<br/>public key R\n        Web3-->>-Client: Ephemeral<br/>public key R\n\n        Client->>Client: Generate X25519<br/>keypair C, C'\n        Client->>Client: Derive shared key<br/>K' = X25519(Infra_RedisCache)\n        Client->>Client: Encrypt call data<br/>with Deoxys-II using<br/>shared key K'\n        Client->>Client: Attach C\n    end\n\n    Client->>Client: Sign transaction<br/>with User's<br/>Secp256k1/Ed25519<br/>key\n    Client->>+Web3: eth_sendRawTx\n    Web3->>+ClientN: eth_sendRawTx\n    ClientN->>ClientN: Validate<br/>transaction\n    ClientN->>Compute: eth_sendRawTx\n\n    opt Encrypted Transaction\n        Compute->>+KM: Get ephemeral<br/>private key R'\n        KM->>KM: Check runtime<br/>policy for caller\n        KM->>KM: Derive per-epoch<br/>per-runtime<br/>keypair R, R'\n        KM-->>-Compute: Ephemeral<br/>private key R'\n        Compute->>Compute: Derive shared key<br/>K' = X25519(Infra_WorkerNode)\n        Compute->>Compute: Decrypt Deoxys-II<br/>envelope using K'\n    end\n\n    Compute->>+KM: Get c10l contract<br/>state keypair S, S'\n    KM->>KM: Check runtime<br/>policy for caller\n    KM->>KM: Derive per-contract<br/>per-runtime<br/>keypair S, S'\n    KM-->>-Compute: Contract state<br/>keypair S, S'\n\n    Compute->>Compute: Fetch contract code\n    Compute->>Compute: C10l contract execution<br/>using S, S' to read and<br/>write storage\n    Compute->>Compute: Obtain new<br/>state root\n\n    alt Encrypted Transaction\n        Compute->>Compute: Transaction receipt:<br/>encrypt tx status with K',<br/>unencrypted logs\n    else Unencrypted Transaction\n        Compute->>Compute: Transaction receipt:<br/>unencrypted tx status<br/>and logs\n    end\n\n    Note over Compute: Proposer node adds<br/>transaction, state and<br/>receipt in new block\n    Note over Web3: Wait for new block\n    Web3-->>-Client: Transaction<br/>receipt\n\n    opt Encrypted Transaction\n        Client->>Client: Decrypt tx status<br/>from receipt<br/>using K'\n    end\n",
+  "content_size": 2956,
+  "collected_at": "2026-02-06T14:05:01.058945",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 71,
+  "repo_forks": 35,
+  "repo_owner": "oasisprotocol",
+  "repo_name": "sapphire-paratime",
+  "repo_description": "Oasis Sapphire - the confidential EVM-compatible ParaTime for the Oasis Network",
+  "repo_language": "TypeScript",
+  "repo_topics": [
+    "blockchain",
+    "chain",
+    "confidential",
+    "crypto",
+    "enclave"
+  ],
+  "repo_created_at": "2022-04-19T08:18:50Z",
+  "repo_updated_at": "2026-01-23T14:55:19Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_block-beta_00231",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个Oasis Sapphire隐私交易的完整流程图，从Client发起交易到最终拿到回执。关键要体现加密交易的可选路径，以及Key Manager和Compute节点的交互。",
+      "elements_involved": [
+        "Client",
+        "Oasis Web3 Gateway",
+        "Oasis Node Sapphire ParaTime Client",
+        "Oasis Node Sapphire ParaTime Compute",
+        "Oasis Node Key Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我注意到这里有Infra_LoadBalancer和Infra_WorkerNode的背景色需求，是要把Client和Compute节点所在的box做成selector样式来覆盖背景色吗？还有RedisCache是做什么用的？",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode",
+        "selector",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Client那个box用Infra_LoadBalancer的rgba色值，Compute所在的box用Infra_WorkerNode的。RedisCache不用画出来，那是我在注释里写的笔误，实际流程里Client自己用X25519做密钥派生就行。",
+      "elements_involved": [
+        "Client",
+        "Compute",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把五个参与者放进一个box里，Client标注为Infra_LoadBalancer，Web3 Gateway、ClientN、Compute和Key Manager依次排列。现在开始画主流程：Client先自己创建交易调用数据。",
+      "elements_involved": [
+        "Client",
+        "Oasis Web3 Gateway",
+        "Oasis Node Sapphire ParaTime Client",
+        "Oasis Node Sapphire ParaTime Compute",
+        "Oasis Node Key Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是可选的加密分支。如果用户选择加密，Client要向Web3 Gateway请求临时公钥R，这个请求会层层传递到Key Manager。Key Manager派生每epoch每runtime的密钥对R和R'，然后一路返回。注意ClientN要把R缓存到epoch结束。",
+      "elements_involved": [
+        "Client",
+        "Oasis Web3 Gateway",
+        "Oasis Node Sapphire ParaTime Client",
+        "Oasis Node Key Manager",
+        "ephemeral public key R",
+        "per-epoch per-runtime keypair"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加密分支画好了，包括Client生成X25519密钥对C和C'，派生共享密钥K'，用Deoxys-II加密调用数据，然后附上C。接下来Client签名交易，用Secp256k1或Ed25519，然后发送eth_sendRawTx到Web3 Gateway。",
+      "elements_involved": [
+        "Client",
+        "X25519 keypair",
+        "Deoxys-II",
+        "shared key K'",
+        "eth_sendRawTx"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，签名那里要强调是User的密钥，不是Client节点自己的。然后ClientN验证完交易后转发给Compute节点。这里又有一个加密分支：如果是加密交易，Compute需要向Key Manager获取临时私钥R'来解密。",
+      "elements_involved": [
+        "Client",
+        "User's Secp256k1/Ed25519 key",
+        "Oasis Node Sapphire ParaTime Client",
+        "Oasis Node Sapphire ParaTime Compute",
+        "ephemeral private key R'"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我把签名标注改成User's key。Compute获取R'的分支里，Key Manager要先检查runtime policy，然后派生密钥对。Compute拿到R'后派生共享密钥K'，用Deoxys-II解密。这里K'的派生应该是X25519(C, R')对吧？不是WorkerNode。",
+      "elements_involved": [
+        "Compute",
+        "Key Manager",
+        "runtime policy",
+        "shared key K'",
+        "X25519",
+        "Deoxys-II"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，是X25519(C, R')，之前注释写错了。接下来Compute要向Key Manager获取c10l合约的状态密钥对S和S'，同样需要检查policy，然后派生每合约每runtime的密钥。之后Compute获取合约代码，执行保密合约，用S和S'读写存储，得到新的state root。",
+      "elements_involved": [
+        "Compute",
+        "Key Manager",
+        "c10l contract state keypair",
+        "per-contract per-runtime keypair",
+        "state root"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "执行部分画好了。最后交易回执这里，需要区分加密和非加密两种情况：加密的话用K'加密tx status，日志不加密；非加密则都不加密。然后Proposer节点把交易、状态和回执打包进新区块。",
+      "elements_involved": [
+        "Compute",
+        "transaction receipt",
+        "encrypted tx status",
+        "unencrypted logs",
+        "Proposer node",
+        "new block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后Web3 Gateway等待新区块，把交易回执返回给Client。如果是加密交易，Client还需要用K'解密tx status。整个流程就结束了。记得加上两个note：Compute那里标注Proposer节点打包区块，Web3那里标注等待新区块。",
+      "elements_involved": [
+        "Web3 Gateway",
+        "Client",
+        "transaction receipt",
+        "decrypt tx status",
+        "Proposer node",
+        "new block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都画完了。我检查一下：五个参与者在带背景色的box里，加密分支有两个opt块，执行阶段有alt分支处理回执加密，所有密钥派生和加密算法都标注清楚了，两个note也加上了。流程从创建交易到最终解密回执，完整闭环。",
+      "elements_involved": [
+        "Client",
+        "Oasis Web3 Gateway",
+        "Oasis Node Sapphire ParaTime Client",
+        "Oasis Node Sapphire ParaTime Compute",
+        "Oasis Node Key Manager"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 12,
+    "repair_count": 1,
+    "grounding_acts_count": 12,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 36990.2968,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

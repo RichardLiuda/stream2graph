@@ -1,0 +1,659 @@
+{
+  "id": "gl_block-beta_00326",
+  "source": "gitlab",
+  "source_url": "https://github.com/sean-galloway/RTLDesignSherpa/blob/47f8a16641658f570a69c3af3c9724b29ea39187/docs/markdown/assets/RTLCommon/arbiter_round_robin.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sean-galloway/RTLDesignSherpa",
+  "diagram_type": "block-beta",
+  "code": "%%{init: {'theme': 'neutral', 'themeVariables': { 'fontSize': '14px'}}}%%\nflowchart TB\n    subgraph Inputs\n        CLK[clk]\n        RST[rst_n]\n        BLK[block_arb]\n        REQ[\"request[N-1:0]\"]\n        ACK[\"grant_ack[N-1:0]\"]\n    end\n\n    subgraph arbiter_round_robin[\"arbiter_round_robin\"]\n        subgraph MaskGen[\"Mask Generation\"]\n            LAST[r_last_grant_id]\n            MASK[\"Mask Lookup Tables\"]\n        end\n\n        subgraph ReqProc[\"Request Processing\"]\n            MASKED[\"Masked Requests\"]\n            UNMASKED[\"Unmasked Requests\"]\n        end\n\n        subgraph PriEnc[\"arbiter_priority_encoder\"]\n            PRIO[\"Priority Selection\"]\n        end\n\n        subgraph GrantLogic[\"Grant Logic\"]\n            DECIDE[\"Grant Decision\"]\n            ONEHOT[\"One-Hot Encoder\"]\n        end\n\n        subgraph StateReg[\"State Registers\"]\n            STATE[\"r_last_grant_id\\nr_pending_ack\\nr_pending_client\"]\n        end\n    end\n\n    subgraph Outputs\n        GV[grant_valid]\n        GR[\"grant[N-1:0]\"]\n        GID[\"grant_id[W-1:0]\"]\n        LG[\"last_grant[N-1:0]\"]\n    end\n\n    CLK --> StateReg\n    RST --> StateReg\n    BLK --> ReqProc\n    REQ --> ReqProc\n    ACK --> GrantLogic\n\n    LAST --> MaskGen\n    MaskGen --> ReqProc\n    ReqProc --> MASKED\n    ReqProc --> UNMASKED\n    MASKED --> PriEnc\n    UNMASKED --> PriEnc\n    PriEnc --> GrantLogic\n    GrantLogic --> StateReg\n    StateReg --> LAST\n\n    GrantLogic --> GV\n    GrantLogic --> GR\n    GrantLogic --> GID\n    StateReg --> LG\n",
+  "content_size": 1487,
+  "collected_at": "2026-02-06T14:07:20.373740",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个轮询仲裁器（round-robin arbiter）的模块结构图，核心功能是处理N个客户端的请求仲裁，支持阻塞模式和轮询优先级。先确定顶层接口。",
+      "elements_involved": [
+        "arbiter_round_robin",
+        "CLK",
+        "RST",
+        "REQ",
+        "ACK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，顶层接口我理解为：时钟clk、复位rst_n、阻塞信号block_arb、请求向量request[N-1:0]、以及授权确认grant_ack[N-1:0]。输出端需要哪些信号？",
+      "elements_involved": [
+        "CLK",
+        "RST",
+        "BLK",
+        "REQ",
+        "ACK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "输出需要grant_valid表示授权有效，grant[N-1:0]是独热码的授权向量，grant_id[W-1:0]是二进制编码的客户端ID，还有last_grant[N-1:0]用于外部调试。",
+      "elements_involved": [
+        "GV",
+        "GR",
+        "GID",
+        "LG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在左右两侧分别放置Inputs和Outputs子图，把刚确认的接口信号放进去。中间主体是arbiter_round_robin模块。",
+      "elements_involved": [
+        "Inputs",
+        "Outputs",
+        "arbiter_round_robin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "内部结构我考虑分成五个子模块：Mask Generation负责生成轮询掩码，Request Processing处理请求屏蔽，Priority Encoder做优先级编码，Grant Logic决定授权，State Registers保存状态。",
+      "elements_involved": [
+        "MaskGen",
+        "ReqProc",
+        "PriEnc",
+        "GrantLogic",
+        "StateReg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已创建五个内部子图，按数据流向从上到下排列。MaskGen在最上方，依次是ReqProc、PriEnc、GrantLogic，StateReg放在GrantLogic下方形成反馈环路。",
+      "elements_involved": [
+        "MaskGen",
+        "ReqProc",
+        "PriEnc",
+        "GrantLogic",
+        "StateReg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "MaskGen需要保存上一轮授权结果r_last_grant_id，还要包含掩码查找表Mask Lookup Tables，根据上轮结果生成屏蔽高位或低位的掩码。",
+      "elements_involved": [
+        "LAST",
+        "MASK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "MaskGen内部已添加LAST节点表示r_last_grant_id，以及MASK节点表示Mask Lookup Tables。",
+      "elements_involved": [
+        "LAST",
+        "MASK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ReqProc模块要处理两种情况：Masked Requests是经过轮询掩码处理的请求，用于轮询模式；Unmasked Requests是原始请求，用于首次仲裁或阻塞后的重新仲裁。",
+      "elements_involved": [
+        "MASKED",
+        "UNMASKED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ReqProc子图内已放置MASKED和UNMASKED两个节点。我注意到block_arb信号应该控制这个模块的行为，需要连接进来。",
+      "elements_involved": [
+        "BLK",
+        "ReqProc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，BLK连接到ReqProc，当block_arb有效时，模块会暂停处理或清空请求。REQ也连到ReqProc作为原始请求输入。",
+      "elements_involved": [
+        "BLK",
+        "REQ",
+        "ReqProc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加BLK和REQ到ReqProc的连接。接下来MaskGen的输出应该驱动ReqProc的掩码操作，我画这条线。",
+      "elements_involved": [
+        "MaskGen",
+        "ReqProc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "PriEnc是优先级编码器，需要接收MASKED和UNMASKED两组请求，内部做优先级选择。注意它要同时处理两种情况，选择有请求的最高优先级位。",
+      "elements_involved": [
+        "PriEnc",
+        "PRIO",
+        "MASKED",
+        "UNMASKED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "PriEnc子图内添加了PRIO节点表示Priority Selection，并连接MASKED和UNMASKED作为输入。这个模块实际上叫arbiter_priority_encoder。",
+      "elements_involved": [
+        "PriEnc",
+        "PRIO",
+        "MASKED",
+        "UNMASKED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Grant Logic是核心决策模块，包含Grant Decision做最终授权判断，以及One-Hot Encoder把二进制ID编码成独热码grant向量。",
+      "elements_involved": [
+        "GrantLogic",
+        "DECIDE",
+        "ONEHOT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "GrantLogic子图内已放置DECIDE和ONEHOT。PriEnc的输出连接到GrantLogic，提供优先级编码结果。",
+      "elements_involved": [
+        "PriEnc",
+        "GrantLogic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ACK信号需要连到GrantLogic，grant_ack用于确认当前授权已被接收，触发状态更新和下一轮仲裁。",
+      "elements_involved": [
+        "ACK",
+        "GrantLogic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加ACK到GrantLogic的连接。State Registers需要保存哪些状态？",
+      "elements_involved": [
+        "ACK",
+        "GrantLogic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "StateReg保存三个关键寄存器：r_last_grant_id记录上轮授权ID用于轮询，r_pending_ack标记等待确认状态，r_pending_client记录待确认客户端。",
+      "elements_involved": [
+        "StateReg",
+        "STATE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "StateReg子图内添加了STATE节点，标注这三个寄存器。CLK和RST需要连接到StateReg，提供时钟和复位。",
+      "elements_involved": [
+        "CLK",
+        "RST",
+        "StateReg",
+        "STATE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。StateReg的输出要反馈到MaskGen的LAST，形成轮询环路，同时输出last_grant到外部。",
+      "elements_involved": [
+        "StateReg",
+        "LAST",
+        "LG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加StateReg到LAST的连接形成反馈，以及StateReg到LG的输出。GrantLogic需要驱动哪些输出信号？",
+      "elements_involved": [
+        "StateReg",
+        "LAST",
+        "LG",
+        "GrantLogic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "GrantLogic输出grant_valid、grant[N-1:0]、grant_id[W-1:0]，这三个信号。同时GrantLogic还要更新StateReg的状态。",
+      "elements_involved": [
+        "GrantLogic",
+        "GV",
+        "GR",
+        "GID",
+        "StateReg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加GrantLogic到GV、GR、GID的连接，以及GrantLogic到StateReg的状态更新通路。",
+      "elements_involved": [
+        "GrantLogic",
+        "GV",
+        "GR",
+        "GID",
+        "StateReg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我需要检查一下数据流：MaskGen生成掩码给ReqProc，ReqProc产生MASKED和UNMASKED给PriEnc，PriEnc编码后给GrantLogic决策，GrantLogic更新StateReg，StateReg反馈给MaskGen。这个闭环对吗？",
+      "elements_involved": [
+        "MaskGen",
+        "ReqProc",
+        "PriEnc",
+        "GrantLogic",
+        "StateReg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "闭环正确。我注意到ReqProc到MASKED和UNMASKED需要显式画出，以及这两个到PriEnc的连接。让我补充这些内部连线。",
+      "elements_involved": [
+        "ReqProc",
+        "MASKED",
+        "UNMASKED",
+        "PriEnc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：复位信号rst_n是低有效，这在图中用rst_n标注即可。时钟CLK除了StateReg，是否还需要连接到其他地方？",
+      "elements_involved": [
+        "RST",
+        "CLK",
+        "StateReg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "通常CLK只连到StateReg，其他组合逻辑不需要时钟。但GrantLogic如果有锁存行为可能需要，您的设计里GrantLogic是纯组合吗？",
+      "elements_involved": [
+        "CLK",
+        "GrantLogic",
+        "StateReg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "GrantLogic是纯组合逻辑，所有时序逻辑都在StateReg里。这样CLK只连StateReg是正确的。",
+      "elements_involved": [
+        "GrantLogic",
+        "StateReg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认CLK只连接StateReg。现在检查所有连接：REQ和BLK到ReqProc，ACK到GrantLogic，CLK和RST到StateReg。内部连线也都完成了。",
+      "elements_involved": [
+        "REQ",
+        "BLK",
+        "ReqProc",
+        "ACK",
+        "GrantLogic",
+        "CLK",
+        "RST",
+        "StateReg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "PriEnc的命名我确认一下，模块名是arbiter_priority_encoder，内部节点是PRIO。这个编码器要同时处理MASKED和UNMASKED，优先选择MASKED中有请求的，如果没有再选UNMASKED。",
+      "elements_involved": [
+        "PriEnc",
+        "PRIO",
+        "MASKED",
+        "UNMASKED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解，PriEnc内部实现轮询优先逻辑：先检查MASKED（高位屏蔽后的请求），若为空则检查UNMASKED（完整请求）。图中已体现两组输入。",
+      "elements_involved": [
+        "PriEnc",
+        "MASKED",
+        "UNMASKED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "GrantLogic的DECIDE节点需要根据PriEnc输出、ACK状态、以及block_arb信号综合决策。ONEHOT把二进制ID转成独热码。",
+      "elements_involved": [
+        "GrantLogic",
+        "DECIDE",
+        "ONEHOT",
+        "ACK",
+        "BLK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已标注DECIDE和ONEHOT的功能。ACK连到GrantLogic已确认，但BLK只到ReqProc，是否需要也到GrantLogic？",
+      "elements_involved": [
+        "BLK",
+        "ReqProc",
+        "GrantLogic",
+        "DECIDE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "BLK只需要到ReqProc，用于屏蔽请求输入。GrantLogic的决策基于屏蔽后的请求状态，不需要直接感知BLK。当前连接正确，无需修改。",
+      "elements_involved": [
+        "BLK",
+        "ReqProc",
+        "GrantLogic"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，BLK保持只连ReqProc。StateReg到LAST的反馈线我画得粗一点强调这是关键状态环路。",
+      "elements_involved": [
+        "StateReg",
+        "LAST"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "输出信号GV、GR、GID都来自GrantLogic，LG来自StateReg。这些命名需要与RTL代码保持一致。",
+      "elements_involved": [
+        "GV",
+        "GR",
+        "GID",
+        "LG",
+        "GrantLogic",
+        "StateReg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "输出信号已按命名规范标注：GV(grant_valid)、GR(grant[N-1:0])、GID(grant_id[W-1:0])、LG(last_grant[N-1:0])。",
+      "elements_involved": [
+        "GV",
+        "GR",
+        "GID",
+        "LG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "考虑增加一个细节：MaskGen内部的MASK节点应该体现查找表特性，可以标注为Mask Lookup Tables表明这是组合逻辑查表。",
+      "elements_involved": [
+        "MASK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "MASK节点已更新标注为\"Mask Lookup Tables\"。整体结构检查：Inputs-5信号，Outputs-4信号，内部5个子模块，连接关系完整。",
+      "elements_involved": [
+        "MASK",
+        "Inputs",
+        "Outputs",
+        "MaskGen",
+        "ReqProc",
+        "PriEnc",
+        "GrantLogic",
+        "StateReg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "REQ和ACK的位宽标注确认：request[N-1:0]和grant_ack[N-1:0]都是N位向量，grant也是N位独热码，grant_id是W位二进制，W=log2(N)。",
+      "elements_involved": [
+        "REQ",
+        "ACK",
+        "GR",
+        "GID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "位宽标注已确认：REQ/ACK/GR为[N-1:0]，GID为[W-1:0]，LG为[N-1:0]。last_grant也是N位独热码表示上轮授权。",
+      "elements_involved": [
+        "REQ",
+        "ACK",
+        "GR",
+        "GID",
+        "LG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下复位策略：rst_n异步复位，复位后r_last_grant_id清零，r_pending_ack清零，仲裁器处于初始状态。",
+      "elements_involved": [
+        "RST",
+        "StateReg",
+        "r_last_grant_id",
+        "r_pending_ack"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "复位策略已在STATE节点标注体现。整体框图完成，采用TB（Top-Bottom）布局，数据流从上至下，状态反馈形成闭环。",
+      "elements_involved": [
+        "RST",
+        "StateReg",
+        "STATE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我再看一眼PriEnc的命名，模块名是arbiter_priority_encoder，这个要准确，因为实际会实例化一个优先级编码器模块。",
+      "elements_involved": [
+        "PriEnc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "PriEnc子图标题已确认为\"arbiter_priority_encoder\"，与RTL模块名一致。其他子模块标题：Mask Generation、Request Processing、Grant Logic、State Registers。",
+      "elements_involved": [
+        "PriEnc",
+        "MaskGen",
+        "ReqProc",
+        "GrantLogic",
+        "StateReg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体结构满意。这个图清晰展示了轮询仲裁器的数据通路：请求进入→掩码处理→优先级编码→授权决策→状态更新→反馈掩码，形成完整的轮询仲裁闭环。",
+      "elements_involved": [
+        "arbiter_round_robin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终检查完成：所有节点命名规范，连接关系正确，位宽标注清晰，子模块层次合理。arbiter_round_robin结构图已最终定稿。",
+      "elements_involved": [
+        "arbiter_round_robin",
+        "Inputs",
+        "Outputs",
+        "MaskGen",
+        "ReqProc",
+        "PriEnc",
+        "GrantLogic",
+        "StateReg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认定稿。这个结构图可以直接用于设计文档和代码评审，各模块接口和连接关系一目了然。",
+      "elements_involved": [
+        "arbiter_round_robin"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 49,
+    "repair_count": 1,
+    "grounding_acts_count": 49,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 79415.7202,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 49
+  }
+}

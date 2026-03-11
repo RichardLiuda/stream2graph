@@ -1,0 +1,215 @@
+{
+  "id": "gl_requirementDiagram_00595",
+  "source": "gitlab",
+  "source_url": "https://github.com/KevinDyerAU/NytroAI/blob/2e93c5649794515d35364c995a58431fc0899442/docs/validation-flow.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "KevinDyerAU/NytroAI",
+  "diagram_type": "requirementDiagram",
+  "code": "%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#3b82f6','primaryTextColor':'#fff','primaryBorderColor':'#2563eb','lineColor':'#64748b','secondaryColor':'#10b981','tertiaryColor':'#f59e0b'}}}%%\n\nsequenceDiagram\n    participant User\n    participant UI as React UI\n    participant Upload as upload-document\n    participant Storage as Supabase Storage\n    participant Gemini as Google Gemini\n    participant DB as Database\n    participant Trigger as trigger-validation\n    participant Validate as validate-assessment\n    participant Query as query-document\n\n    Note over User,Query: Document Upload & Indexing\n\n    User->>UI: Upload PDF Assessment\n    UI->>Upload: POST /upload-document\n    Upload->>Storage: Store PDF file\n    Storage-->>Upload: File URL\n    Upload->>DB: Create validation_detail record\n    Upload->>Gemini: Index document\n    Gemini-->>Upload: Indexing started\n    Upload->>DB: Create gemini_operations record\n    Upload-->>UI: Upload complete\n    UI-->>User: Show \"Processing...\"\n\n    Note over User,Query: Automatic Validation Trigger\n\n    Gemini->>DB: Update gemini_operations (status: completed)\n    DB->>Trigger: Database trigger fires\n    Trigger->>DB: Check all operations complete\n    DB-->>Trigger: All complete\n    Trigger->>Validate: POST /validate-assessment\n    Trigger->>DB: Log trigger attempt\n    Validate->>DB: Update status to \"ProcessingInBackground\"\n\n    Note over User,Query: Validation Process\n\n    Validate->>DB: Fetch UOC requirements\n    DB-->>Validate: Requirements list\n    \n    loop For each requirement\n        Validate->>Query: Query assessment for requirement\n        Query->>Gemini: Search indexed document\n        Gemini-->>Query: Relevant passages\n        Query-->>Validate: Citations\n        Validate->>Gemini: Validate requirement\n        Gemini-->>Validate: Status + Reasoning\n        Validate->>DB: Store validation_result\n    end\n\n    Validate->>DB: Update validation_detail (status: completed)\n    Validate-->>Trigger: Validation complete\n    DB->>UI: Real-time update (Supabase subscriptions)\n    UI-->>User: Show \"Complete\" with results\n\n    Note over User,Query: View Results & Regenerate Questions\n\n    User->>UI: Click validation to view results\n    UI->>DB: Fetch validation_results\n    DB-->>UI: All results\n    UI-->>User: Display results\n\n    alt Regenerate Smart Question\n        User->>UI: Click \"Regenerate\" with context\n        UI->>Validate: POST /regenerate-smart-questions\n        Validate->>Query: Query assessment\n        Query->>Gemini: Search with context\n        Gemini-->>Query: Passages\n        Validate->>Gemini: Generate question\n        Gemini-->>Validate: New smart question\n        Validate->>DB: Update validation_result\n        DB->>UI: Real-time update\n        UI-->>User: Show new question\n    end\n",
+  "content_size": 2801,
+  "collected_at": "2026-02-06T14:13:06.494447",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的文档上传和评估验证流程。用户通过React UI上传PDF，然后系统要自动触发Gemini进行文档索引，索引完成后数据库触发器要自动启动验证流程。最后还要支持查看结果和重新生成智能问题。",
+      "elements_involved": [
+        "User",
+        "React UI",
+        "upload-document",
+        "Google Gemini",
+        "Database",
+        "trigger-validation",
+        "validate-assessment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我注意到上传流程中，upload-document服务需要同时做几件事：存到Supabase Storage、创建validation_detail记录、还要调用Gemini索引。这些应该是并行还是串行的？另外，Gemini索引是异步的，用户需要等待吗？",
+      "elements_involved": [
+        "upload-document",
+        "Supabase Storage",
+        "Database",
+        "Google Gemini",
+        "validation_detail"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "串行执行，但Gemini索引是后台异步的。所以流程是：先存文件拿到URL，然后创建数据库记录，再启动Gemini索引，最后立即返回给用户\"Processing...\"的状态。Gemini索引完成后，数据库触发器才会自动启动验证。",
+      "elements_involved": [
+        "upload-document",
+        "Supabase Storage",
+        "Database",
+        "Google Gemini",
+        "gemini_operations",
+        "ProcessingInBackground"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把上传和索引部分画出来。用户上传PDF，UI调用upload-document，服务存到Storage获取URL，创建validation_detail和gemini_operations记录，启动Gemini索引，然后返回\"Processing...\"给用户。",
+      "elements_involved": [
+        "User",
+        "React UI",
+        "upload-document",
+        "Supabase Storage",
+        "Database",
+        "Google Gemini",
+        "gemini_operations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关键的自动触发部分。当Gemini索引完成，gemini_operations状态变为completed时，数据库触发器要检查所有相关操作是否都完成了。确认完成后，触发器调用validate-assessment服务，并把validation_detail状态更新为ProcessingInBackground。",
+      "elements_involved": [
+        "Google Gemini",
+        "Database",
+        "trigger-validation",
+        "validate-assessment",
+        "gemini_operations",
+        "validation_detail"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有个问题——trigger-validation和validate-assessment是两个不同的服务吗？看名字trigger-validation像是触发逻辑，validate-assessment是实际验证业务？",
+      "elements_involved": [
+        "trigger-validation",
+        "validate-assessment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，trigger-validation是数据库触发器调用的轻量服务，只负责检查条件和发起调用。真正的验证逻辑在validate-assessment里，它会循环处理每个UOC要求，需要时通过query-document服务查询Gemini索引的文档内容。",
+      "elements_involved": [
+        "trigger-validation",
+        "validate-assessment",
+        "query-document",
+        "Database",
+        "Google Gemini"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "理解了。我画一下验证循环：validate-assessment从数据库获取UOC要求列表，然后对每个要求，调用query-document搜索Gemini索引，拿到相关段落和引用，再让Gemini验证要求是否满足，最后把结果存到validation_result。",
+      "elements_involved": [
+        "validate-assessment",
+        "Database",
+        "query-document",
+        "Google Gemini",
+        "validation_result",
+        "citations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "验证完成后，validate-assessment要更新validation_detail状态为completed，然后通过Supabase subscriptions实时推送到前端，用户就能看到\"Complete\"和结果了。另外还需要一个可选流程：用户可以点击\"重新生成\"来获取新的智能问题。",
+      "elements_involved": [
+        "validate-assessment",
+        "validation_detail",
+        "Supabase subscriptions",
+        "React UI",
+        "User",
+        "regenerate-smart-questions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "重新生成流程的具体路径是？用户点击后，UI直接调validate-assessment吗？",
+      "elements_involved": [
+        "User",
+        "React UI",
+        "validate-assessment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不对，应该是UI调validate-assessment的regenerate-smart-questions端点，然后validate-assessment再调query-document去搜索文档，最后让Gemini生成新问题，更新validation_result，通过实时订阅推送给用户。",
+      "elements_involved": [
+        "React UI",
+        "validate-assessment",
+        "query-document",
+        "Google Gemini",
+        "validation_result",
+        "Supabase subscriptions"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，重新生成是validate-assessment内部的一个分支逻辑，不是独立服务。整个流程完整了：上传索引→触发器自动验证→循环检查要求→实时推送结果→可选重新生成问题。我确认一下颜色区分，用蓝色系给UI和上传，绿色给存储和数据库，橙色给Gemini相关？",
+      "elements_involved": [
+        "React UI",
+        "upload-document",
+        "Supabase Storage",
+        "Database",
+        "Google Gemini",
+        "trigger-validation",
+        "validate-assessment"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 12,
+    "repair_count": 1,
+    "grounding_acts_count": 12,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 56981.6124,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

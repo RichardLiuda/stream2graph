@@ -1,0 +1,192 @@
+{
+  "id": "gh_sequence_00233",
+  "source": "github",
+  "source_url": "https://github.com/atoxfy/kikwiflow/blob/50f543c2bc2f5bbf3a389f97aba094843e707314/docs/bulk-events.mmd",
+  "github_repo": "atoxfy/kikwiflow",
+  "github_file_path": "docs/bulk-events.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant VThread_A as \"Thread Executora da Tarefa<br>(Virtual Thread)\"\n    participant TaskExecutorService as \"TaskExecutorService\"\n    participant EventPublisher as \"EventPublisher\"\n    participant SharedExecutor as \"Executor Partilhado<br>(para Listeners)\"\n\n    VThread_A ->>+ TaskExecutorService: executeSynchronousBlock(tarefaInicial)\n\n    loop \"Ciclo de Execução Síncrona\"\n        Note over TaskExecutorService: Executa a lógica do Nó N...\n        TaskExecutorService ->> TaskExecutorService: Acumula Evento (ex: NodeCoveredEvent)\n    end\n\n    Note right of TaskExecutorService: O ciclo termina ao encontrar um ponto de commit.\n\n    TaskExecutorService ->>+ EventPublisher: publishEvents(List<Event>)\n\n    Note right of EventPublisher: A thread principal NÃO espera.\n\n    par \"Notificação Assíncrona dos Listeners com Lote de Eventos\"\n        EventPublisher ->> SharedExecutor: submit(historyListener.onEvents(List))\n    and\n        EventPublisher ->> SharedExecutor: submit(kafkaListener.onEvents(List))\n    end\n\n    EventPublisher -->>- TaskExecutorService: Retorna Imediatamente\n    TaskExecutorService -->>- VThread_A: Retorna\n\n    VThread_A ->> VThread_A: Continua para o próximo passo (se houver)\n\n    Note over SharedExecutor: Os listeners agora podem otimizar o seu trabalho<br> (ex: um único bulkWrite no MongoDB).\n",
+  "content_size": 1352,
+  "collected_at": "2026-02-06T01:29:28.771686",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 14,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个时序图，展示任务执行服务如何处理同步节点执行和事件发布的流程。核心是一个虚拟线程VThread_A启动任务，然后TaskExecutorService负责执行具体的节点逻辑。",
+      "elements_involved": [
+        "VThread_A",
+        "TaskExecutorService",
+        "虚拟线程"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。那TaskExecutorService内部是怎么处理的呢？是直接同步执行完所有节点吗？",
+      "elements_involved": [
+        "TaskExecutorService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，这里有个循环。TaskExecutorService会在一个同步执行循环里逐个执行节点，比如执行节点N的逻辑，同时把产生的事件（像NodeCoveredEvent这类）先累积起来，而不是立即发出去。",
+      "elements_involved": [
+        "TaskExecutorService",
+        "NodeCoveredEvent",
+        "循环",
+        "事件累积"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，所以循环内部是：执行节点逻辑 + 累积事件。那循环什么时候结束？",
+      "elements_involved": [
+        "循环"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "当遇到commit点的时候循环就结束了。这时候TaskExecutorService要把累积的所有事件一次性发给EventPublisher，调用publishEvents方法，参数是事件列表。",
+      "elements_involved": [
+        "TaskExecutorService",
+        "EventPublisher",
+        "publishEvents",
+        "commit点"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有个关键点：EventPublisher处理事件是同步还是异步的？主线程会等吗？",
+      "elements_involved": [
+        "EventPublisher",
+        "主线程"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "完全异步的。EventPublisher收到事件列表后，会把通知任务提交到一个SharedExecutor，这是一个专门给listeners用的共享线程池。主线程不等待，直接返回。",
+      "elements_involved": [
+        "EventPublisher",
+        "SharedExecutor",
+        "异步",
+        "共享线程池"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "那listeners的处理要画成并行分支吗？比如historyListener和kafkaListener同时处理同一批事件？",
+      "elements_involved": [
+        "historyListener",
+        "kafkaListener",
+        "并行",
+        "事件列表"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，用par块。EventPublisher向SharedExecutor提交两个任务：一个是historyListener.onEvents(List)，另一个是kafkaListener.onEvents(List)。这两个是并行执行的。",
+      "elements_involved": [
+        "EventPublisher",
+        "SharedExecutor",
+        "historyListener",
+        "kafkaListener",
+        "par"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画了一下，EventPublisher立即返回给TaskExecutorService，然后TaskExecutorService再返回给VThread_A，虚拟线程就可以继续下一步了。这个流程对吗？",
+      "elements_involved": [
+        "EventPublisher",
+        "TaskExecutorService",
+        "VThread_A",
+        "立即返回"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，返回的箭头应该用虚线表示异步返回，不是实线。另外，在SharedExecutor那边加一条注释，说明listeners现在可以优化自己的工作，比如批量写入MongoDB，做一个bulkWrite而不是逐条写。",
+      "elements_involved": [
+        "返回箭头",
+        "SharedExecutor",
+        "bulkWrite",
+        "MongoDB"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已修正，返回箭头改为虚线，并添加了关于bulkWrite优化的注释。整个流程现在清晰了：虚拟线程启动→同步执行循环累积事件→commit时批量发布→异步并行通知listeners→主线程立即继续。",
+      "elements_involved": [
+        "VThread_A",
+        "同步循环",
+        "EventPublisher",
+        "SharedExecutor",
+        "listeners"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 12,
+    "repair_count": 1,
+    "grounding_acts_count": 12,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 29540.4239,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

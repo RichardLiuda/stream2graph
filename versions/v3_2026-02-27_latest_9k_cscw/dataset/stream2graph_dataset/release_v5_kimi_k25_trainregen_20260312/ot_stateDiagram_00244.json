@@ -1,0 +1,175 @@
+{
+  "id": "ot_stateDiagram_00244",
+  "source": "other",
+  "source_url": "https://github.com/coherosphere/architecture/blob/598bb65467787da38ac4029e35bdead27e7799ee/assets/diagrams/C3_states/SM-06.01_Hub_Sync_State.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "coherosphere/architecture",
+  "diagram_type": "stateDiagram",
+  "code": "%%{init: {'theme':'base','themeVariables':{ 'primaryColor':'#ff8b00','edgeLabelBackground':'#ffffff','tertiaryColor':'#fef3c7'}}}%%\nstateDiagram-v2\ntitle: SM-06.01 — Hub Sync State (C2-06 Local Hub / Federation)\n\n[*] --> OUT_OF_SYNC : SyncRequested (DDD EVT 60)\nnote right of OUT_OF_SYNC\n  Local hub detects divergence from federation:  \n  • stale CRDT frame  \n  • missing contributions or metrics  \n  • network topology change  \nend note\n\nOUT_OF_SYNC --> FETCH_REMOTE : BeginSync\nnote right of FETCH_REMOTE\n  Retrieve latest CRDT vector clocks and state diffs  \n  from federation peers (P2P)  \nend note\n\nFETCH_REMOTE --> MERGE : FrameDownloaded\nnote right of MERGE\n  Apply CRDT merge function  \n  Resolve conflicts deterministically  \n  Ensure convergence on shared state\nend note\n\nMERGE --> VALIDATE : MergeCompleted\nnote right of VALIDATE\n  Run schema + hash integrity checks  \n  Validate contribution and governance deltas  \n  Verify signatures from remote hubs  \nend note\n\nVALIDATE --> SYNCED : SyncConfirmed (DDD EVT 61)\nnote right of SYNCED\n  Federation state consistent  \n  Metrics & proposals aligned with global ledger  \nend note\n\nSYNCED --> [*]\n\n%% ---- Exceptional paths ----\nFETCH_REMOTE --> FAILED : NetworkTimeout / AuthError\nMERGE --> FAILED : ConflictUnresolved\nVALIDATE --> FAILED : HashMismatch / SignatureInvalid\nFAILED --> RETRY : RetryScheduled\nRETRY --> OUT_OF_SYNC : RetrySync\n\n%% ---- Maintenance / background ----\nSYNCED --> OUT_OF_SYNC : PeriodicSync / ParamChange\nOUT_OF_SYNC --> DEGRADED : HubOffline / LatencyHigh\nDEGRADED --> [*] : EscalatedToOps\n\n%% ===== Styling =====\nclassDef core fill:#ff8b00,stroke:#333,color:#fff,font-weight:bold;\nclass OUT_OF_SYNC,FETCH_REMOTE,MERGE,VALIDATE,SYNCED,FAILED,RETRY,DEGRADED core;",
+  "content_size": 1750,
+  "collected_at": "2026-02-06T10:39:37.231288",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "license_url": null,
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "coherosphere",
+  "repo_name": "architecture",
+  "repo_description": "The cohersphere architecture — structural blueprint of the resonance network. Defines the modular layers connecting app, API, and governance protocols. Outlines data flows for Proof-of-Contribution, c",
+  "repo_language": "Mermaid",
+  "repo_topics": [
+    "architecture",
+    "c4",
+    "distributed-systems",
+    "modular-architecture",
+    "system-design"
+  ],
+  "repo_created_at": "2025-10-29T09:30:02Z",
+  "repo_updated_at": "2026-02-06T04:58:50Z",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为C2-06本地Hub与联邦同步的状态机建模。核心场景是：当本地Hub检测到与联邦状态不一致时，比如CRDT帧过期或者网络拓扑变化，应该触发DDD EVT 60事件进入同步流程。",
+      "elements_involved": [
+        "OUT_OF_SYNC",
+        "SyncRequested",
+        "DDD EVT 60",
+        "CRDT frame",
+        "network topology change"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下，OUT_OF_SYNC是起始状态吗？还有FETCH_REMOTE阶段，我理解是要通过P2P方式从联邦节点拉取最新的向量时钟和状态差异？",
+      "elements_involved": [
+        "[*]",
+        "OUT_OF_SYNC",
+        "FETCH_REMOTE",
+        "P2P",
+        "federation peers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，BeginSync触发后进入FETCH_REMOTE。拉取完成后通过FrameDownloaded进入MERGE阶段，这里要做CRDT合并和冲突解决，确保最终一致性。",
+      "elements_involved": [
+        "FETCH_REMOTE",
+        "MERGE",
+        "BeginSync",
+        "FrameDownloaded",
+        "CRDT merge",
+        "conflict resolution"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "合并完成后我加一个VALIDATE状态，做schema校验、哈希完整性检查，还要验证远程Hub的签名。确认没问题后发DDD EVT 61进入SYNCED。",
+      "elements_involved": [
+        "VALIDATE",
+        "SYNCED",
+        "MergeCompleted",
+        "SyncConfirmed",
+        "DDD EVT 61",
+        "verify signatures",
+        "hash integrity"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "execute",
+      "utterance": "好的，主流程清晰了。但异常路径也要覆盖：FETCH_REMOTE可能遇到NetworkTimeout或AuthError，MERGE可能有ConflictUnresolved，VALIDATE可能哈希或签名失败。这些都要汇聚到FAILED状态。",
+      "elements_involved": [
+        "FAILED",
+        "NetworkTimeout",
+        "AuthError",
+        "ConflictUnresolved",
+        "HashMismatch",
+        "SignatureInvalid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "FAILED之后需要重试机制吗？还是直接结束？",
+      "elements_involved": [
+        "FAILED",
+        "RETRY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "加RETRY状态，RetryScheduled后通过RetrySync回到OUT_OF_SYNC重新走流程。另外补充两个场景：SYNCED状态下PeriodicSync或参数变更会重新触发同步；还有HubOffline或延迟过高时要进入DEGRADED降级状态，最终EscalatedToOps结束。",
+      "elements_involved": [
+        "RETRY",
+        "DEGRADED",
+        "PeriodicSync",
+        "HubOffline",
+        "LatencyHigh",
+        "EscalatedToOps",
+        "[*]"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，我把所有核心状态用橙色高亮标注，包括OUT_OF_SYNC、FETCH_REMOTE、MERGE、VALIDATE、SYNCED，还有异常路径的FAILED、RETRY和DEGRADED。标题定为SM-06.01 Hub Sync State。",
+      "elements_involved": [
+        "OUT_OF_SYNC",
+        "FETCH_REMOTE",
+        "MERGE",
+        "VALIDATE",
+        "SYNCED",
+        "FAILED",
+        "RETRY",
+        "DEGRADED",
+        "core"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:44Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:39Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:39Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 21555.5594,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

@@ -1,0 +1,650 @@
+{
+  "id": "aug_ot_stateDiagram_00206_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/stevendos1/analisis/blob/ebafb85c113efedcd9e64d8dcab8dc98cfb2a02a/docs/meta-ahorro-state-diagram.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "stevendos1/analisis",
+  "diagram_type": "stateDiagram",
+  "code": "%%{FinTech_TransactionQueue}}}%%\nstateDiagram-v2\n    direction LR\n    classDef lifecycle fill:#ffffff,stroke:#5d5fef,stroke-width:2px,color:#222\n\n    state \"En Progreso\\nEstaCompletada = false\\nMontoActual < MontoObjetivo\" as EnProgreso\n    state \"Completada\\nEstaCompletada = true\\nMontoActual ≥ MontoObjetivo\" as Completada\n    state \"Eliminada\\nRegistro físico borrado\" as Eliminada\n\n    class EnProgreso,Completada,Eliminada lifecycle\n\n    [FinTech_FraudDetection] --> EnProgreso : CrearMeta(FinTech_FraudDetection) / inicializarMeta(FinTech_FraudDetection)\n    [FinTech_FraudDetection] --> Completada : CrearMeta(FinTech_LedgerService) [FinTech_AuthVault] / inicializarMeta(FinTech_AuthVault)\n\n    %% Ciclo natural de ahorro\n    EnProgreso --> EnProgreso : RegistrarTransaccion|Contribuir\\n[FinTech_TransactionQueue]\\n/ ActualizarMontos(FinTech_TransactionQueue)\n    EnProgreso --> Completada : RegistrarTransaccion|Contribuir\\n[FinTech_PaymentGateway]\\n/ ActualizarMontos(FinTech_LedgerService)\n\n    Completada --> Completada : RegistrarTransaccion|Contribuir\\n[FinTech_TransactionQueue]\\n/ MantenerCierre(FinTech_FraudDetection)\n    Completada --> EnProgreso : RegistrarTransaccion|Contribuir\\n[FinTech_PaymentGateway]\\n/ AjustarMontos(FinTech_AuthVault)\n\n    %% Actualizaciones manuales vía PUT\n    EnProgreso --> Completada : ActualizarMeta(FinTech_PaymentGateway)\\n[FinTech_TransactionQueue]\\n/ PersistirCambios(FinTech_PaymentGateway)\n    Completada --> EnProgreso : ActualizarMeta(FinTech_AuthVault)\\n[FinTech_AuthVault]\\n/ PersistirCambios(FinTech_PaymentGateway)\n\n    %% Borrado definitivo\n    EnProgreso --> Eliminada : EliminarMeta(FinTech_LedgerService) / BorrarRegistro(FinTech_LedgerService)\n    Completada --> Eliminada : EliminarMeta(FinTech_LedgerService) / BorrarRegistro(FinTech_FraudDetection)\n    Eliminada --> [FinTech_TransactionQueue]\n\n    note right of EnProgreso\n        Estado operacional por defecto.\n        Las contribuciones suman al monto y\n        recalculan el progreso.\n    end note\n\n    note right of Completada\n        Se marca cuando MontoActual\n        alcanza o supera el objetivo.\n        Puede reabrirse con ajustes manuales.\n    end note\n",
+  "content_size": 2062,
+  "collected_at": "2026-02-06T10:39:09.939790",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "ot_stateDiagram_00206",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为FinTech的储蓄目标系统画一个状态图，核心是要跟踪从创建到完成再到可能的删除整个生命周期。",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "EnProgreso",
+        "Completada",
+        "Eliminada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。那初始状态应该是从FraudDetection系统触发创建对吧？我理解为外部系统发起创建请求，然后进入第一个状态。",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "EnProgreso",
+        "CrearMeta"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，FraudDetection负责风控校验后创建目标，初始化时MontoActual小于MontoObjetivo，状态标记为EnProgreso。",
+      "elements_involved": [
+        "EnProgreso",
+        "MontoActual",
+        "MontoObjetivo",
+        "EstaCompletada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先把EnProgreso状态画出来，标注上条件：EstaCompletada为false，且当前金额小于目标金额。",
+      "elements_involved": [
+        "EnProgreso"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要一个Completada状态，当MontoActual大于等于MontoObjetivo时触发，EstaCompletada设为true。",
+      "elements_involved": [
+        "Completada",
+        "MontoActual",
+        "MontoObjetivo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Completada状态。我注意到创建路径有两条：一条直接到EnProgreso，另一条似乎可以直接到Completada？",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是的，特殊情况：如果通过LedgerService创建且经过AuthVault的高权限认证，可以直接创建已完成状态，比如历史数据迁移场景。",
+      "elements_involved": [
+        "FinTech_LedgerService",
+        "FinTech_AuthVault",
+        "Completada",
+        "CrearMeta"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "了解了，AuthVault的认证是关键区分条件。那EnProgreso内部应该有自循环吧？用户持续存款的情况。",
+      "elements_involved": [
+        "EnProgreso",
+        "RegistrarTransaccion",
+        "Contribuir"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，TransactionQueue处理日常交易流水，每次贡献都调用ActualizarMontos更新金额，但状态保持EnProgreso。",
+      "elements_involved": [
+        "EnProgreso",
+        "FinTech_TransactionQueue",
+        "ActualizarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画出自循环边，标注TransactionQueue触发。那从EnProgreso转到Completada的触发条件是什么？",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "PaymentGateway处理大额支付时，如果这笔交易让MontoActual达到或超过目标，就触发状态转移，同时LedgerService负责持久化。",
+      "elements_involved": [
+        "FinTech_PaymentGateway",
+        "FinTech_LedgerService",
+        "ActualizarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加完成转移边。我发现Completada也有自循环，这个逻辑和EnProgreso类似吗？",
+      "elements_involved": [
+        "Completada",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "不太一样，完成后的自循环是允许超额储蓄，但调用的是MantenerCierre，由FraudDetection监控防止异常追加。",
+      "elements_involved": [
+        "Completada",
+        "FinTech_FraudDetection",
+        "MantenerCierre"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，风控监控完成后的追加行为。那Completada能转回EnProgreso吗？这听起来像重新打开目标。",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "AjustarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，管理员可以通过PaymentGateway发起调整，比如发现误操作或退款，AuthVault授权后执行AjustarMontos重新激活。",
+      "elements_involved": [
+        "FinTech_PaymentGateway",
+        "FinTech_AuthVault",
+        "AjustarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加双向箭头。我还需要处理手动更新的场景，比如API直接修改目标金额而不是通过交易？",
+      "elements_involved": [
+        "ActualizarMeta",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，PUT接口的ActualizarMeta操作，从EnProgreso到Completada由PaymentGateway发起，TransactionQueue做并发控制，避免和交易流水冲突。",
+      "elements_involved": [
+        "ActualizarMeta",
+        "FinTech_PaymentGateway",
+        "FinTech_TransactionQueue",
+        "PersistirCambios"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加手动完成转移。那反向呢，Completada手动调整回EnProgreso？",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "ActualizarMeta"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，同样用ActualizarMeta，但发起方是AuthVault，因为需要更高权限，持久化还是走PaymentGateway。",
+      "elements_involved": [
+        "FinTech_AuthVault",
+        "FinTech_PaymentGateway",
+        "PersistirCambios"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。现在需要删除状态吗？物理删除应该是个终态。",
+      "elements_involved": [
+        "Eliminada",
+        "BorrarRegistro"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Eliminada状态，物理记录被清除。从EnProgreso或Completada都可以触发，通过EliminarMeta操作。",
+      "elements_involved": [
+        "Eliminada",
+        "EnProgreso",
+        "Completada",
+        "EliminarMeta"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "删除操作都是LedgerService执行吗？还是分场景？",
+      "elements_involved": [
+        "FinTech_LedgerService",
+        "FinTech_FraudDetection",
+        "BorrarRegistro"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "EnProgreso的删除纯由LedgerService处理，但Completada的删除需要FraudDetection最终审计，防止洗钱后销户。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "FinTech_LedgerService",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已区分两条删除路径。Eliminada之后应该指向TransactionQueue作为终态汇合点？",
+      "elements_involved": [
+        "Eliminada",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，删除后回到队列系统的上下文，表示该目标生命周期结束。",
+      "elements_involved": [
+        "Eliminada",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "结构基本完成了。我想给三个主要状态加个统一的样式类，叫lifecycle，用蓝紫色边框区分。",
+      "elements_involved": [
+        "lifecycle",
+        "EnProgreso",
+        "Completada",
+        "Eliminada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，视觉上统一。另外给EnProgreso和Completada加注释说明吧，业务逻辑比较复杂。",
+      "elements_involved": [
+        "note",
+        "EnProgreso",
+        "Completada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加注释：EnProgreso是默认运营状态，贡献累加金额并重算进度；Completada在达标时标记，支持手动重新打开。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "注释里要强调\"las contribuciones suman al monto\"这个核心机制，还有Completada的\"puede reabrirse\"。",
+      "elements_involved": [
+        "contribuciones suman al monto",
+        "reabrirse"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "调整注释措辞，用西班牙语原文保留业务术语。方向设为LR横向布局会不会更清晰？",
+      "elements_involved": [
+        "direction LR"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "横向好，从左到右展示生命周期演进。我检查一下：FraudDetection的创建路径标注对吗？",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "CrearMeta",
+        "inicializarMeta"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，到EnProgreso的是CrearMeta(FinTech_FraudDetection)/inicializarMeta(FinTech_FraudDetection)，到Completada的是带AuthVault的版本。",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "FinTech_AuthVault",
+        "inicializarMeta"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Completada的自循环标注应该是MantenerCierre，不是ActualizarMontos，你确认一下。",
+      "elements_involved": [
+        "Completada",
+        "MantenerCierre",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确认无误，已标注为MantenerCierre(FinTech_FraudDetection)。那EnProgreso到Completada的交易转移，系统标注是LedgerService？",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，PaymentGateway触发，LedgerService执行ActualizarMontos持久化。反向调整也是PaymentGateway触发，但AuthVault授权。",
+      "elements_involved": [
+        "FinTech_PaymentGateway",
+        "FinTech_LedgerService",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有转移边已核对。手动更新那条，EnProgreso到Completada的PersistirCambios执行方是PaymentGateway对吧？",
+      "elements_involved": [
+        "ActualizarMeta",
+        "PersistirCambios",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但反向Completada到EnProgreso的PersistirCambios也是PaymentGateway执行，虽然AuthVault发起。",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "FinTech_AuthVault",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "有个细节：删除操作从两个状态到Eliminada，但Eliminada回到TransactionQueue的箭头需要标注吗？",
+      "elements_involved": [
+        "Eliminada",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "不需要标注具体操作，这是隐式的上下文回归。但确保Eliminada的注释说明是\"Registro físico borrado\"。",
+      "elements_involved": [
+        "Eliminada",
+        "Registro físico borrado"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新Eliminada的定义。整体检查一遍：三个状态类、九个转移边、两个注释，结构完整。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "转移边数量再确认：创建2条、自循环2条、状态间转移4条、删除2条、终态1条，共11条？",
+      "elements_involved": [
+        "transitions",
+        "FinTech_FraudDetection",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "重新数：FraudDetection→EnProgreso、FraudDetection→Completada、EnProgreso↻、EnProgreso→Completada、Completada↻、Completada→EnProgreso、EnProgreso→Completada(手动)、Completada→EnProgreso(手动)、EnProgreso→Eliminada、Completada→Eliminada、Eliminada→TransactionQueue。11条正确。",
+      "elements_involved": [
+        "transitions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认命名：EnProgreso和Completada用西班牙语，但代码里用驼峰。状态描述里的\\n换行要保留。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada",
+        "naming convention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已统一：状态ID用EnProgreso/Completada/Eliminada，显示标签用\"En Progreso\"等带空格和换行。",
+      "elements_involved": [
+        "state ID",
+        "display label"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。图标题用FinTech_TransactionQueue，表示这是交易队列视角的状态管理。",
+      "elements_involved": [
+        "FinTech_TransactionQueue",
+        "title"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "标题已添加。整体完成，用stateDiagram-v2语法，方向LR，lifecycle样式类定义了白底蓝紫边框。",
+      "elements_involved": [
+        "stateDiagram-v2",
+        "direction LR",
+        "lifecycle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再检查一个细节：Completada的自循环条件，是TransactionQueue触发但FraudDetection执行MantenerCierre，这个和EnProgreso的自循环要区分开。",
+      "elements_involved": [
+        "Completada",
+        "FinTech_TransactionQueue",
+        "FinTech_FraudDetection",
+        "MantenerCierre"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认区分：EnProgreso自循环是TransactionQueue触发并执行ActualizarMontos；Completada自循环是TransactionQueue触发，但FraudDetection执行MantenerCierre做风控。",
+      "elements_involved": [
+        "ActualizarMontos",
+        "MantenerCierre"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有AjustarMontos那条，PaymentGateway触发、AuthVault授权，这个逻辑在图里要清晰体现是反向调整。",
+      "elements_involved": [
+        "AjustarMontos",
+        "FinTech_PaymentGateway",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确保标注完整。所有元素就位，可以最终确认了。",
+      "elements_involved": [
+        "final review"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认无误。这个状态图完整覆盖了储蓄目标从创建、进展、完成、手动调整、到最终删除的全生命周期，各FinTech子系统的职责也清晰了。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada",
+        "FinTech_FraudDetection",
+        "FinTech_LedgerService",
+        "FinTech_AuthVault",
+        "FinTech_PaymentGateway",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 51,
+    "repair_count": 2,
+    "grounding_acts_count": 51,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 91534.2908,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 50
+  }
+}

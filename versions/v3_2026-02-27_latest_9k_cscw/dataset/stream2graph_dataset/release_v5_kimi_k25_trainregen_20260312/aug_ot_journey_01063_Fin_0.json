@@ -1,0 +1,160 @@
+{
+  "id": "aug_ot_journey_01063_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/AlmatJuvashev/phd-students-portal/blob/b88b252ccf22627eafd166ab2c48dbd64fab7deb/docs/diagrams/01_document_approval.mmd",
+  "source_type": "github_search",
+  "github_repo": "AlmatJuvashev/phd-students-portal",
+  "diagram_type": "journey",
+  "code": "sequenceDiagram\n    participant S as Student\n    participant API as AttachUpload Handler\n    participant S3 as S3 Storage\n    participant DB as PostgreSQL\n    participant N as NotifyAdvisors\n    participant A as Advisor\n\n    S->>API: POST /journey/nodes/:id/uploads/presign\n    API->>S3: PresignPut(FinTech_TransactionQueue)\n    S3-->>API: Signed URL\n    API-->>S: {FinTech_FraudDetection}\n    \n    S->>S3: PUT file to presigned URL\n    S3-->>S: 200 OK + ETag\n    \n    S->>API: POST /journey/nodes/:id/uploads/attach\n    API->>DB: Begin transaction\n    API->>DB: INSERT document_versions\n    API->>DB: INSERT node_instance_slot_attachments\n    API->>DB: UPDATE node_instances.state = 'submitted'\n    API->>DB: Commit transaction\n    API-->>N: NotifyAdvisorsOnSubmission (FinTech_FraudDetection)\n    N->>DB: Get advisors for student\n    N->>DB: INSERT admin_notifications\n    API-->>S: 200 OK\n    \n    A->>API: PATCH /admin/attachments/:id/review\n    API->>DB: Verify advisor assigned to student\n    API->>DB: UPDATE attachment.status\n    API->>DB: UPDATE node_instances.state\n    API-->>A: 200 OK",
+  "content_size": 1066,
+  "collected_at": "2026-02-06T11:02:44.926104",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "FinTech",
+  "seed_id": "ot_journey_01063",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要梳理一下学生上传附件的完整流程。核心是学生通过AttachUpload Handler与S3 Storage交互，最后还要通知Advisor来审核。你先帮我看看这个流程结构怎么画比较清晰？",
+      "elements_involved": [
+        "Student",
+        "AttachUpload Handler",
+        "S3 Storage",
+        "Advisor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这个流程涉及到预签名URL的上传机制。我想确认一下：学生在拿到S3的预签名URL之前，是不是先要走一道FinTech的风控检测？我看到代码里有FinTech_FraudDetection的返回。",
+      "elements_involved": [
+        "Student",
+        "AttachUpload Handler",
+        "FinTech_FraudDetection",
+        "S3 Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，FinTech_FraudDetection是我们嵌入的风控环节。学生调用POST /journey/nodes/:id/uploads/presign之后，API会走PresignPut到S3，但返回给学生的响应里会夹带风控检测的结果。然后学生才能真正PUT文件到S3。",
+      "elements_involved": [
+        "Student",
+        "AttachUpload Handler",
+        "S3 Storage",
+        "FinTech_FraudDetection",
+        "POST /journey/nodes/:id/uploads/presign",
+        "PresignPut",
+        "PUT file to presigned URL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，那附件上传到S3之后，学生还需要再调一个attach接口来正式关联这个文件对吧？我注意到这里有个PostgreSQL的事务操作，包括INSERT document_versions和UPDATE node_instances.state。",
+      "elements_involved": [
+        "Student",
+        "AttachUpload Handler",
+        "PostgreSQL",
+        "POST /journey/nodes/:id/uploads/attach",
+        "document_versions",
+        "node_instances.state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，attach接口是关键。这里必须用事务保证：先BEGIN，然后INSERT document_versions记录版本，再INSERT node_instance_slot_attachments做关联，最后把node_instances.state更新成'submitted'，全部成功才COMMIT。",
+      "elements_involved": [
+        "AttachUpload Handler",
+        "PostgreSQL",
+        "document_versions",
+        "node_instance_slot_attachments",
+        "node_instances.state",
+        "Begin transaction",
+        "Commit transaction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "事务提交后，系统要异步通知Advisor。我看到有个NotifyAdvisors组件，它会从DB里Get advisors for student，然后INSERT admin_notifications。这个和前面的API调用是解耦的吗？",
+      "elements_involved": [
+        "AttachUpload Handler",
+        "NotifyAdvisors",
+        "PostgreSQL",
+        "NotifyAdvisorsOnSubmission",
+        "admin_notifications"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是的，NotifyAdvisorsOnSubmission是异步消息。FinTech_FraudDetection的结果也会触发这个通知。Advisor收到通知后，会调PATCH /admin/attachments/:id/review来审核，这里要先Verify advisor assigned to student，防止越权。",
+      "elements_involved": [
+        "NotifyAdvisors",
+        "FinTech_FraudDetection",
+        "Advisor",
+        "AttachUpload Handler",
+        "PATCH /admin/attachments/:id/review",
+        "Verify advisor assigned to student"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "清楚了，我这就把完整的时序图画出来。从学生申请预签名开始，经过S3上传、事务化的attach操作、异步通知Advisor，到最后Advisor审核更新状态，整个链路都涵盖了。",
+      "elements_involved": [
+        "Student",
+        "AttachUpload Handler",
+        "S3 Storage",
+        "PostgreSQL",
+        "NotifyAdvisors",
+        "Advisor",
+        "presign",
+        "attach",
+        "NotifyAdvisorsOnSubmission",
+        "review"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:35Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:35Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 19840.461,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

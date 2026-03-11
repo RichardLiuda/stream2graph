@@ -1,0 +1,921 @@
+{
+  "id": "gl_block-beta_00256",
+  "source": "gitlab",
+  "source_url": "https://github.com/sn-ravance/Ollama_Docker/blob/3f2dd7761e30b51c2206a8b7e7938cf783b2c200/docs/Ollama_ZTA.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sn-ravance/Ollama_Docker",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    actor C as Client (Browser/CLI)\n    actor N as NGINX (Policy Enforcement Point / Reverse Proxy)\n    actor P as oauth2-proxy (OIDC/OAuth2)\n    actor I as Identity Provider (Entra ID / Okta / Auth0)\n    actor F as Prompt/Policy Filter (optional microservice)\n    actor O as Ollama (LLM runtime, internal-only)\n    actor L as SIEM / Local Logs\n\n    C ->> N : HTTPS request to /api/generate\n    N ->> N : Verify TLS handshake + client cert (mTLS), apply WAF/rate-limit/CORS\n    alt mTLS missing/invalid\n        N ->> C : 401/403 (blocked by TLS policy)\n        N ->> L : Log TLS/authn failure + client info (no PII)\n    else mTLS valid\n        N ->> L : Log access (TLS OK, proceeding to OIDC gate)\n    end\n\n    N ->> P : subrequest /oauth2/auth (check session)\n    alt No valid session cookie\n        P ->> N : 401 Unauthorized (needs sign‑in)\n        N ->> C : 302 Redirect → /oauth2/start\n        C ->> P : GET /oauth2/start\n        P ->> C : 302 Redirect → I /authorize (PKCE)\n        C ->> I : User login + MFA (per policy)\n        I ->> C : 302 Redirect → P /oauth2/callback?code=...\n        C ->> P : GET /oauth2/callback (code exchange for tokens)\n        P ->> C : Set secure session cookie, 302 back to original URL\n        C ->> N : Retry original /api/* request (now with session)\n        N ->> P : subrequest /oauth2/auth\n        P ->> N : 200 OK + X-Auth headers (user, groups, email)\n    else Valid session present\n        P ->> N : 200 OK + X-Auth headers (user, groups, email)\n    end\n    N ->> L : Log auth decision + user/group claims (minimized)\n\n    N ->> F : POST /filter (prompt, caller, app metadata)\n    alt Policy violation (e.g., PII, jailbreak, over-size, blocked tenant)\n        F ->> N : 406/422 with reason code\n        N ->> C : 4xx safe error (masked)\n    else Allowed\n        F ->> N : 200 Allowed\n    end\n\n    N ->> O : POST /api/generate (add X-User/X-Groups, strip cookies, set timeouts)\n    O ->> N : Streamed tokens / chunked response\n    loop while streaming tokens\n        N ->> C : Forward token chunks (SSE/HTTP streaming)\n    end\n\n    N ->> L : Access + security events (JSON)\n    P ->> L : Auth events (login/refresh/logout)\n    F ->> L : Policy evaluation results (allow/block, rule id)\n    O ->> L : Inference metrics (durations, model id, token counts)\n\n    N ->> C : 200 OK (final chunk) OR controlled 4xx with safe message\n",
+  "content_size": 2389,
+  "collected_at": "2026-02-06T14:05:29.968003",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的LLM服务访问安全架构，从客户端到Ollama内部运行时的全链路。核心诉求是：外部流量必须经过多层防护，内部服务零暴露。",
+      "elements_involved": [
+        "Client (Browser/CLI)",
+        "NGINX",
+        "Ollama",
+        "LLM runtime, internal-only"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，零暴露意味着Ollama不能有任何公网入口。那第一层防线放在哪里？直接让NGINX做反向代理？",
+      "elements_involved": [
+        "NGINX",
+        "Ollama",
+        "Reverse Proxy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，NGINX作为Policy Enforcement Point，同时承担反向代理角色。但光代理不够，要先做mTLS双向认证，再加WAF、限流、CORS。",
+      "elements_involved": [
+        "NGINX",
+        "mTLS",
+        "WAF",
+        "rate-limit",
+        "CORS",
+        "Policy Enforcement Point"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把NGINX画成独立角色，标注Policy Enforcement Point / Reverse Proxy。从Client到NGINX画一条HTTPS请求线，指向/api/generate。",
+      "elements_involved": [
+        "Client (Browser/CLI)",
+        "NGINX",
+        "HTTPS request to /api/generate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。接下来NGINX内部要先做TLS握手验证，包括客户端证书校验。这里要分叉：证书无效直接拒绝，有效才继续。",
+      "elements_involved": [
+        "NGINX",
+        "TLS handshake",
+        "client cert",
+        "mTLS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了一个自环在NGINX上：Verify TLS handshake + client cert (mTLS), apply WAF/rate-limit/CORS。然后用alt分支处理两种情况。",
+      "elements_involved": [
+        "NGINX",
+        "mTLS",
+        "WAF",
+        "rate-limit",
+        "CORS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第一个分支：mTLS缺失或无效时，NGINX返回401/403，明确标记为blocked by TLS policy。同时要记日志，但注意no PII——这时候还没认证，不能泄露敏感信息。",
+      "elements_involved": [
+        "NGINX",
+        "Client (Browser/CLI)",
+        "401/403",
+        "blocked by TLS policy",
+        "SIEM / Local Logs",
+        "no PII"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第一条alt分支完成：mTLS missing/invalid → NGINX返回401/403给Client，同时发日志到SIEM，标注Log TLS/authn failure + client info (no PII)。",
+      "elements_involved": [
+        "NGINX",
+        "Client (Browser/CLI)",
+        "SIEM / Local Logs",
+        "401/403",
+        "blocked by TLS policy",
+        "no PII"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第二个分支：mTLS有效时，先记一条日志TLS OK，然后进入OIDC认证环节。这里需要oauth2-proxy做专门的OIDC/OAuth2网关。",
+      "elements_involved": [
+        "NGINX",
+        "oauth2-proxy",
+        "OIDC/OAuth2",
+        "SIEM / Local Logs",
+        "TLS OK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了oauth2-proxy角色，标注OIDC/OAuth2。NGINX在mTLS valid后先打日志到SIEM，然后发subrequest /oauth2/auth给oauth2-proxy做session检查。",
+      "elements_involved": [
+        "NGINX",
+        "oauth2-proxy",
+        "SIEM / Local Logs",
+        "subrequest /oauth2/auth",
+        "check session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "session检查这里也要分叉。没有有效session cookie时，oauth2-proxy返回401，NGINX要引导用户走完整登录流程。",
+      "elements_involved": [
+        "oauth2-proxy",
+        "NGINX",
+        "session cookie",
+        "401 Unauthorized",
+        "needs sign‑in"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "登录流程具体怎么交互？oauth2-proxy直接重定向还是NGINX中转？",
+      "elements_involved": [
+        "oauth2-proxy",
+        "NGINX",
+        "Client (Browser/CLI)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "NGINX中转。oauth2-proxy返回401后，NGINX给Client发302重定向到/oauth2/start，Client再请求oauth2-proxy，后者再302到Identity Provider。",
+      "elements_involved": [
+        "NGINX",
+        "oauth2-proxy",
+        "Client (Browser/CLI)",
+        "302 Redirect",
+        "/oauth2/start",
+        "Identity Provider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了No valid session cookie分支：oauth2-proxy→NGINX 401，NGINX→Client 302到/oauth2/start，Client→oauth2-proxy GET /oauth2/start。",
+      "elements_involved": [
+        "oauth2-proxy",
+        "NGINX",
+        "Client (Browser/CLI)",
+        "401 Unauthorized",
+        "needs sign‑in",
+        "302 Redirect",
+        "/oauth2/start"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Identity Provider要支持多厂商，我们实际用Entra ID，但也要兼容Okta、Auth0。标注清楚。用户在那里完成登录+MFA。",
+      "elements_involved": [
+        "Identity Provider",
+        "Entra ID",
+        "Okta",
+        "Auth0",
+        "login",
+        "MFA"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Identity Provider角色，标注Entra ID / Okta / Auth0。oauth2-proxy→Client 302到I /authorize (PKCE)，然后Client→Identity Provider完成User login + MFA (per policy)。",
+      "elements_involved": [
+        "oauth2-proxy",
+        "Client (Browser/CLI)",
+        "Identity Provider",
+        "PKCE",
+        "login",
+        "MFA"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "登录成功后，IdP回302到oauth2-proxy的callback，带authorization code。oauth2-proxy做code exchange for tokens，然后set secure session cookie，最后302回原始URL。",
+      "elements_involved": [
+        "Identity Provider",
+        "oauth2-proxy",
+        "code exchange for tokens",
+        "secure session cookie",
+        "/oauth2/callback"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成登录回流：Identity Provider→Client 302到/oauth2/callback?code=...，Client→oauth2-proxy GET /oauth2/callback，oauth2-proxy→Client set secure session cookie, 302 back to original URL。",
+      "elements_involved": [
+        "Identity Provider",
+        "Client (Browser/CLI)",
+        "oauth2-proxy",
+        "code exchange for tokens",
+        "secure session cookie",
+        "/oauth2/callback"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这时候Client带着session cookie重试原始请求，标注now with session。NGINX再次subrequest到oauth2-proxy，这次返回200和X-Auth headers，包含user、groups、email。",
+      "elements_involved": [
+        "Client (Browser/CLI)",
+        "NGINX",
+        "oauth2-proxy",
+        "now with session",
+        "X-Auth headers",
+        "user",
+        "groups",
+        "email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了重试流程：Client→NGINX Retry original /api/* request (now with session)，NGINX→oauth2-proxy subrequest /oauth2/auth，oauth2-proxy→NGINX 200 OK + X-Auth headers (user, groups, email)。",
+      "elements_involved": [
+        "Client (Browser/CLI)",
+        "NGINX",
+        "oauth2-proxy",
+        "now with session",
+        "X-Auth headers",
+        "user",
+        "groups",
+        "email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "另一个分支：如果一开始就有valid session present，直接走oauth2-proxy→NGINX 200 OK + X-Auth headers，跳过整个登录舞。",
+      "elements_involved": [
+        "oauth2-proxy",
+        "NGINX",
+        "Valid session present",
+        "X-Auth headers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Valid session present分支：oauth2-proxy→NGINX 200 OK + X-Auth headers (user, groups, email)，与登录后的路径合并。",
+      "elements_involved": [
+        "oauth2-proxy",
+        "NGINX",
+        "Valid session present",
+        "X-Auth headers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "认证通过后，NGINX要记一条auth decision日志，包含user/group claims，但要minimized，不要全量PII。",
+      "elements_involved": [
+        "NGINX",
+        "SIEM / Local Logs",
+        "auth decision",
+        "user/group claims",
+        "minimized"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了NGINX→SIEM的日志线：Log auth decision + user/group claims (minimized)。",
+      "elements_involved": [
+        "NGINX",
+        "SIEM / Local Logs",
+        "auth decision",
+        "minimized"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "下一步进入Prompt/Policy Filter，这是个optional microservice，专门做内容安全审查。NGINX把prompt、caller、app metadata POST过去。",
+      "elements_involved": [
+        "NGINX",
+        "Prompt/Policy Filter",
+        "optional microservice",
+        "prompt",
+        "caller",
+        "app metadata"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Prompt/Policy Filter角色，标注optional microservice。NGINX→F POST /filter (prompt, caller, app metadata)。",
+      "elements_involved": [
+        "NGINX",
+        "Prompt/Policy Filter",
+        "POST /filter",
+        "prompt",
+        "caller",
+        "app metadata"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Filter这里也要分叉。检测到违规时返回406/422，带reason code。违规类型包括PII泄露、jailbreak攻击、over-size、blocked tenant等。",
+      "elements_involved": [
+        "Prompt/Policy Filter",
+        "NGINX",
+        "Policy violation",
+        "406/422",
+        "reason code",
+        "PII",
+        "jailbreak",
+        "over size",
+        "blocked tenant"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了Policy violation分支：F→NGINX 406/422 with reason code，然后NGINX→Client 4xx safe error，标注masked，避免泄露内部细节。",
+      "elements_involved": [
+        "Prompt/Policy Filter",
+        "NGINX",
+        "Client (Browser/CLI)",
+        "406/422",
+        "reason code",
+        "4xx safe error",
+        "masked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Allowed分支：Filter返回200 Allowed，NGINX才能继续往后走，正式请求Ollama。",
+      "elements_involved": [
+        "Prompt/Policy Filter",
+        "NGINX",
+        "Allowed",
+        "200 Allowed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Allowed分支：F→NGINX 200 Allowed，与violation分支结束。",
+      "elements_involved": [
+        "Prompt/Policy Filter",
+        "NGINX",
+        "Allowed",
+        "200 Allowed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "NGINX到Ollama的请求要做三件事：add X-User/X-Groups头传递身份、strip cookies清理敏感信息、set timeouts防止挂起。Ollama标注为internal-only。",
+      "elements_involved": [
+        "NGINX",
+        "Ollama",
+        "add X-User/X-Groups",
+        "strip cookies",
+        "set timeouts",
+        "internal-only"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了NGINX→Ollama：POST /api/generate (add X-User/X-Groups, strip cookies, set timeouts)。Ollama角色标注LLM runtime, internal-only。",
+      "elements_involved": [
+        "NGINX",
+        "Ollama",
+        "POST /api/generate",
+        "add X-User/X-Groups",
+        "strip cookies",
+        "set timeouts",
+        "internal-only"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Ollama返回是流式的，Streamed tokens / chunked response。NGINX要一边收一边转发给Client，用SSE或者HTTP streaming。",
+      "elements_involved": [
+        "Ollama",
+        "NGINX",
+        "Client (Browser/CLI)",
+        "Streamed tokens",
+        "chunked response",
+        "SSE",
+        "HTTP streaming"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了Ollama→NGINX：Streamed tokens / chunked response。然后用loop表示while streaming tokens，内部是NGINX→Client Forward token chunks (SSE/HTTP streaming)。",
+      "elements_involved": [
+        "Ollama",
+        "NGINX",
+        "Client (Browser/CLI)",
+        "Streamed tokens",
+        "chunked response",
+        "loop",
+        "SSE",
+        "HTTP streaming"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "流结束后，NGINX给Client返回200 OK (final chunk)，或者如果有异常给controlled 4xx with safe message。同时NGINX要再打一条访问+安全事件日志到SIEM，格式用JSON。",
+      "elements_involved": [
+        "NGINX",
+        "Client (Browser/CLI)",
+        "200 OK",
+        "final chunk",
+        "controlled 4xx",
+        "safe message",
+        "SIEM / Local Logs",
+        "JSON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成最后响应：NGINX→Client 200 OK (final chunk) OR controlled 4xx with safe message。添加NGINX→SIEM：Access + security events (JSON)。",
+      "elements_involved": [
+        "NGINX",
+        "Client (Browser/CLI)",
+        "SIEM / Local Logs",
+        "200 OK",
+        "final chunk",
+        "controlled 4xx",
+        "safe message",
+        "JSON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要补充其他角色的日志。oauth2-proxy要记Auth events，包括login、refresh、logout三种类型。",
+      "elements_involved": [
+        "oauth2-proxy",
+        "SIEM / Local Logs",
+        "Auth events",
+        "login",
+        "refresh",
+        "logout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了oauth2-proxy→SIEM：Auth events (login/refresh/logout)。",
+      "elements_involved": [
+        "oauth2-proxy",
+        "SIEM / Local Logs",
+        "login",
+        "refresh",
+        "logout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Prompt Filter也要记日志，Policy evaluation results，包含allow/block决策和具体的rule id，方便审计和调试。",
+      "elements_involved": [
+        "Prompt/Policy Filter",
+        "SIEM / Local Logs",
+        "Policy evaluation results",
+        "allow",
+        "block",
+        "rule id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Prompt/Policy Filter→SIEM：Policy evaluation results (allow/block, rule id)。",
+      "elements_involved": [
+        "Prompt/Policy Filter",
+        "SIEM / Local Logs",
+        "allow",
+        "block",
+        "rule id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Ollama作为LLM runtime，要输出Inference metrics，包括durations、model id、token counts，用于成本分析和性能监控。",
+      "elements_involved": [
+        "Ollama",
+        "SIEM / Local Logs",
+        "Inference metrics",
+        "durations",
+        "model id",
+        "token counts"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Ollama→SIEM：Inference metrics (durations, model id, token counts)。",
+      "elements_involved": [
+        "Ollama",
+        "SIEM / Local Logs",
+        "durations",
+        "model id",
+        "token counts"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我再看一下，Client的角色标注是不是完整？需要区分Browser和CLI两种场景。",
+      "elements_involved": [
+        "Client (Browser/CLI)",
+        "Browser",
+        "CLI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已标注为Client (Browser/CLI)，覆盖了两种入口方式。需要拆开画吗？",
+      "elements_involved": [
+        "Client (Browser/CLI)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "不用拆开，合并标注更清晰。但确认一下：CLI场景下PKCE登录怎么处理？是不是需要device code flow？",
+      "elements_involved": [
+        "Client (Browser/CLI)",
+        "PKCE",
+        "device code flow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "当前图里CLI走同样的OAuth2流程，实际中CLI可能打开浏览器做授权。需要显式标注device code吗？",
+      "elements_involved": [
+        "Client (Browser/CLI)",
+        "oauth2-proxy",
+        "device code"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "先保持简单，标注Browser/CLI即可，实际实现时oauth2-proxy可以适配。重点是security boundary画清楚。",
+      "elements_involved": [
+        "Client (Browser/CLI)",
+        "oauth2-proxy",
+        "security boundary"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，保持当前标注。我检查一下alt分支的完整性：mTLS一个alt，session检查一个alt，policy filter一个alt，共三个主要决策点。",
+      "elements_involved": [
+        "mTLS",
+        "session",
+        "policy filter",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "session检查的alt里面，登录成功后的重试路径，NGINX到oauth2-proxy的第二次subrequest，X-Auth headers的内容要和Valid session present分支完全一致，我之前可能漏了groups。",
+      "elements_involved": [
+        "NGINX",
+        "oauth2-proxy",
+        "X-Auth headers",
+        "user",
+        "groups",
+        "email"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修复，两个分支的X-Auth headers都统一为：200 OK + X-Auth headers (user, groups, email)。",
+      "elements_involved": [
+        "NGINX",
+        "oauth2-proxy",
+        "X-Auth headers",
+        "user",
+        "groups",
+        "email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Ollama的internal-only标注，是指网络层面还是逻辑层面？需要强调不能从NGINX以外的地方直接访问。",
+      "elements_involved": [
+        "Ollama",
+        "internal-only",
+        "NGINX"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "标注为internal-only，配合mTLS和NGINX的反向代理，实现网络隔离。图中只有NGINX能连接到Ollama。",
+      "elements_involved": [
+        "Ollama",
+        "internal-only",
+        "NGINX"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SIEM / Local Logs的角色，Local Logs是指什么？需要明确是节点本地还是集中式。",
+      "elements_involved": [
+        "SIEM / Local Logs",
+        "Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "标注为SIEM / Local Logs表示双轨：关键安全事件进SIEM，详细调试日志留本地。需要拆开画吗？",
+      "elements_involved": [
+        "SIEM / Local Logs",
+        "SIEM",
+        "Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "不用拆开，合并角色更简洁。但确认一下日志格式：NGINX的是JSON，其他的有格式要求吗？",
+      "elements_involved": [
+        "SIEM / Local Logs",
+        "JSON",
+        "NGINX"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "目前只有NGINX的日志明确标注JSON格式，其他角色按各自系统默认格式。需要统一吗？",
+      "elements_involved": [
+        "SIEM / Local Logs",
+        "JSON",
+        "NGINX",
+        "oauth2-proxy",
+        "Prompt/Policy Filter",
+        "Ollama"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "建议统一JSON，方便SIEM解析。但当前图里先保持NGINX标注，其他可以后续迭代。整体流程再检查一遍：从Client请求到最终响应，闭环完整吗？",
+      "elements_involved": [
+        "Client (Browser/CLI)",
+        "NGINX",
+        "oauth2-proxy",
+        "Identity Provider",
+        "Prompt/Policy Filter",
+        "Ollama",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "完整闭环：Client→NGINX(mTLS)→oauth2-proxy(session)→IdP(登录)→Filter(策略)→Ollama(推理)→Client(响应)，全程有日志审计。三个安全决策点，两个可选失败路径。",
+      "elements_involved": [
+        "Client (Browser/CLI)",
+        "NGINX",
+        "oauth2-proxy",
+        "Identity Provider",
+        "Prompt/Policy Filter",
+        "Ollama",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "loop的标注是while streaming tokens，这个循环有终止条件吗？需要标注异常中断吗？",
+      "elements_involved": [
+        "loop",
+        "while streaming tokens",
+        "Ollama",
+        "NGINX",
+        "Client (Browser/CLI)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "循环自然终止于Ollama的final chunk，或者Client断开连接。异常场景通过NGINX的timeouts控制，已在前面set timeouts标注。需要显式画break吗？",
+      "elements_involved": [
+        "loop",
+        "while streaming tokens",
+        "final chunk",
+        "set timeouts"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "不用显式break，保持简洁。整体图结构确认完成。最后确认：所有角色都正确标注了，特别是Identity Provider的多厂商兼容和Ollama的internal-only。",
+      "elements_involved": [
+        "Identity Provider",
+        "Entra ID",
+        "Okta",
+        "Auth0",
+        "Ollama",
+        "internal-only"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部确认：Identity Provider标注Entra ID / Okta / Auth0，Ollama标注LLM runtime, internal-only。图已完整，可以输出。",
+      "elements_involved": [
+        "Identity Provider",
+        "Entra ID",
+        "Okta",
+        "Auth0",
+        "Ollama",
+        "internal-only",
+        "LLM runtime"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 62,
+    "repair_count": 1,
+    "grounding_acts_count": 62,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 124315.5856,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 62
+  }
+}

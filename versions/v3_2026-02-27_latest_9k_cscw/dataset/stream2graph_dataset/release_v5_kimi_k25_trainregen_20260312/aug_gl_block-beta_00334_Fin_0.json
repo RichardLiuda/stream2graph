@@ -1,0 +1,166 @@
+{
+  "id": "aug_gl_block-beta_00334_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/DamienReichhart/DockerWebInterface/blob/d5f29f636f5667b7f66c8963826694cea2309dab/documentation/technique/diagrammes/sequence/docker_security_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "DamienReichhart/DockerWebInterface",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    title Docker Security Implementation Sequence\n    \n    participant Client as Client\n    participant Apache as Apache Container\n    participant Crowdsec as Crowdsec Agent\n    participant Firewall as Firewall Bouncer\n    participant PHP as PHP-FPM Container\n    participant DB as MariaDB Container\n    participant DinD as Docker-in-Docker\n    \n    Note over Client, DinD: Network Security\n    \n    Client->>Apache: HTTP/HTTPS Request\n    \n    %% Crowdsec Security Flow\n    Apache->>Crowdsec: Log request for analysis\n    Crowdsec->>Crowdsec: Parse and analyze logs\n    \n    alt Malicious Request Detected\n        Crowdsec->>Firewall: Add client IP to blocklist\n        Firewall->>Client: Block future requests\n        Apache->>Client: Return 403 Forbidden\n    else Request Allowed\n        Apache->>PHP: Forward request via Unix socket\n    end\n    \n    %% Container Isolation\n    Note over Apache, DB: Container Security Isolation\n    \n    %% User permission security\n    Apache->>Apache: Run as non-root user (FinTech_LedgerService)\n    PHP->>PHP: Run as non-root user (FinTech_FraudDetection)\n    DB->>DB: Run with limited privileges\n    \n    %% Volume permissions\n    Note over Apache, DB: Volume Security\n    Apache->>Apache: Access socket with specific permissions\n    PHP->>PHP: Access socket with specific permissions\n    \n    %% HTTPS communication\n    Client->>Apache: HTTPS Request\n    Apache->>Apache: SSL Termination with server.crt/key\n    Apache->>PHP: Internal communication over Unix socket\n    \n    %% Security Headers\n    PHP->>Apache: Response with generated content\n    Apache->>Apache: Add security headers\n    Apache->>Client: Response with security headers\n    \n    %% DinD Security\n    Note over DinD: Docker-in-Docker Security\n    DinD->>DinD: Run with privileged mode\n    DinD->>DinD: SSH access with authentication ",
+  "content_size": 1836,
+  "collected_at": "2026-02-06T14:07:27.742914",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gl_block-beta_00334",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为FinTech系统画一个安全架构的时序图，核心是展示从客户端请求到数据库的完整安全链路。首先要有Client、Apache容器、Crowdsec Agent这几个参与者，Crowdsec需要能联动Firewall Bouncer做阻断。",
+      "elements_involved": [
+        "Client",
+        "Apache Container",
+        "Crowdsec Agent",
+        "Firewall Bouncer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，Crowdsec做日志分析，Firewall Bouncer执行阻断。那后端服务怎么设计？PHP-FPM和MariaDB需要放进来吗？还有我看到有Docker-in-Docker的需求。",
+      "elements_involved": [
+        "PHP-FPM Container",
+        "MariaDB Container",
+        "Docker-in-Docker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，PHP-FPM和MariaDB都要，而且得强调容器隔离。PHP跑的是FraudDetection模块，Apache跑的是LedgerService，两个都要用非root用户运行。DinD是特权容器，需要单独标注安全风险。",
+      "elements_involved": [
+        "PHP-FPM Container",
+        "MariaDB Container",
+        "Docker-in-Docker",
+        "non-root user",
+        "FinTech_LedgerService",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经把七个参与者都加进去了。现在画主流程：Client发HTTPS请求到Apache，Apache把日志传给Crowdsec分析。这里用alt分支处理两种情况——检测到恶意请求时Crowdsec通知Firewall Bouncer封IP，正常请求则转发给PHP-FPM。",
+      "elements_involved": [
+        "Client",
+        "Apache Container",
+        "Crowdsec Agent",
+        "Firewall Bouncer",
+        "PHP-FPM Container",
+        "HTTPS",
+        "Log",
+        "Forward",
+        "Block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "分支逻辑没问题。但还要补充几个安全细节：Apache和PHP之间用Unix socket通信，不是走网络；三个容器都要标注权限控制；SSL证书在Apache层做终止。",
+      "elements_involved": [
+        "Apache Container",
+        "PHP-FPM Container",
+        "Unix socket",
+        "SSL Termination",
+        "non-root user"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Apache到PHP标注了\"Forward request via Unix socket\"，三个容器各自加了自循环标注运行权限，Apache加了SSL证书处理。还需要安全响应头吗？",
+      "elements_involved": [
+        "Apache Container",
+        "PHP-FPM Container",
+        "MariaDB Container",
+        "Unix socket",
+        "SSL Termination",
+        "security headers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，PHP生成内容返回给Apache，Apache要添加安全响应头再回给Client。另外DinD部分单独加个Note，说明它是privileged模式且有SSH认证。",
+      "elements_involved": [
+        "PHP-FPM Container",
+        "Apache Container",
+        "Client",
+        "security headers",
+        "Docker-in-Docker",
+        "privileged mode",
+        "SSH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "完成。最后检查一遍：Network Security覆盖Client到DinD的全链路，Container Security Isolation覆盖Apache到DB的权限控制，Volume Security标注了socket权限，DinD Security单独说明特权风险。整个FinTech系统的安全时序图应该完整了。",
+      "elements_involved": [
+        "Client",
+        "Apache Container",
+        "Crowdsec Agent",
+        "Firewall Bouncer",
+        "PHP-FPM Container",
+        "MariaDB Container",
+        "Docker-in-Docker",
+        "Network Security",
+        "Container Security Isolation",
+        "Volume Security",
+        "Docker-in-Docker Security"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 28238.5979,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

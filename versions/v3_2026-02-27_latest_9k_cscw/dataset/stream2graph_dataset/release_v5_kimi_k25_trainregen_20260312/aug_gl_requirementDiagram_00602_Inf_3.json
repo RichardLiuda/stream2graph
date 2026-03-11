@@ -1,0 +1,297 @@
+{
+  "id": "aug_gl_requirementDiagram_00602_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ylmzunal/scalable-llm-over-kubernetes-deployment/blob/1b46a8e09526433e25151879ff4c084c2da2dd58/diagrams/deployment_sequence_diagram.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ylmzunal/scalable-llm-over-kubernetes-deployment",
+  "diagram_type": "requirementDiagram",
+  "code": "sequenceDiagram\n    participant DEV as Developer\n    participant GIT as Git Repository\n    participant DOCKER as Docker Build\n    participant AR as Artifact Registry\n    participant GKE as GKE Cluster\n    participant K8S as Kubernetes API\n    participant POD as Backend Pod\n    participant OL as Ollama Container\n    participant HPA as HPA Controller\n    \n    Note over DEV,HPA: CI/CD Deployment Pipeline\n    \n    DEV->>+GIT: git push (Infra_IngressController)\n    GIT->>-DEV: Push confirmed\n    \n    DEV->>+DOCKER: ./deploy-gke.sh\n    DOCKER->>DOCKER: Validate Prerequisites\n    DOCKER->>DOCKER: Setup GCloud Auth\n    \n    Note over DOCKER,AR: Image Build Process\n    DOCKER->>+DOCKER: Build Ollama Image\n    Note over DOCKER: FROM ollama/ollama:latest<br/>RUN ollama pull tinyllama\n    DOCKER->>-DOCKER: Ollama Image Ready\n    \n    DOCKER->>+DOCKER: Build Backend Image\n    Note over DOCKER: FROM python:3.11<br/>COPY app/ requirements.txt\n    DOCKER->>-DOCKER: Backend Image Ready\n    \n    DOCKER->>+DOCKER: Build Frontend Image\n    Note over DOCKER: FROM node:18 (Infra_RedisCache)<br/>FROM nginx:alpine (Infra_IngressController)\n    DOCKER->>-DOCKER: Frontend Image Ready\n    \n    DOCKER->>+AR: Push Images\n    AR->>AR: Store Images with Tags\n    AR->>-DOCKER: Push Complete\n    \n    Note over DOCKER,HPA: Kubernetes Deployment\n    DOCKER->>+K8S: kubectl apply -f k8s/rbac.yaml\n    K8S->>-DOCKER: RBAC Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/configmap-cloud.yaml\n    K8S->>-DOCKER: ConfigMap Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/backend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Backend Pods\n    \n    K8S->>+POD: Create Backend Pod\n    POD->>+AR: Pull Backend Image\n    AR->>-POD: Image Downloaded\n    POD->>+AR: Pull Ollama Image\n    AR->>-POD: Image Downloaded\n    \n    Note over POD,OL: Pod Startup Sequence\n    POD->>+OL: Start Ollama Container\n    OL->>OL: Initialize Ollama Server\n    OL->>OL: Load TinyLlama Model (Infra_IngressController)\n    OL->>-POD: Ollama Ready (Infra_RedisCache)\n    \n    POD->>+POD: Start FastAPI Container\n    POD->>POD: Initialize FastAPI App\n    POD->>+OL: Test Connection (Infra_EtcdCluster)\n    OL->>-POD: Connection Successful\n    POD->>-POD: FastAPI Ready\n    \n    POD->>+K8S: Report Pod Ready\n    K8S->>-POD: Readiness Confirmed\n    K8S->>-DOCKER: Backend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/frontend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Frontend Pods\n    K8S->>-DOCKER: Frontend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/hpa-cloud.yaml\n    K8S->>+HPA: Create HPA Resources\n    HPA->>HPA: Monitor Backend Metrics\n    HPA->>-K8S: HPA Active\n    K8S->>-DOCKER: HPA Applied\n    \n    DOCKER->>+K8S: kubectl get services\n    K8S->>-DOCKER: External IP Available\n    DOCKER->>-DEV: Deployment Complete<br/>App URL: http://EXTERNAL-IP\n    \n    Note over DEV,HPA: Health Verification\n    DEV->>+GKE: curl http://EXTERNAL-IP/health\n    GKE->>+POD: Route Health Check\n    POD->>+OL: Verify Ollama Status\n    OL->>-POD: Status OK\n    POD->>-GKE: Health Check Passed\n    GKE->>-DEV: 200 OK\n    \n    Note over DEV,HPA: Auto-scaling Verification\n    HPA->>+POD: Monitor CPU/Memory\n    POD->>-HPA: Metrics: CPU 30%, Memory 40%\n    HPA->>HPA: Within Thresholds (Infra_IngressController)\n    \n    Note over DEV,HPA: Rolling Update Process\n    DEV->>+DOCKER: Deploy New Version\n    DOCKER->>+AR: Push Updated Images\n    AR->>-DOCKER: Images Updated\n    \n    DOCKER->>+K8S: kubectl apply (Infra_IngressController)\n    K8S->>K8S: Rolling Update Strategy\n    K8S->>+POD: Create New Pod\n    POD->>POD: Start New Version\n    POD->>-K8S: New Pod Ready\n    K8S->>K8S: Terminate Old Pod\n    K8S->>-DOCKER: Rolling Update Complete\n    DOCKER->>-DEV: Update Successful",
+  "content_size": 3703,
+  "collected_at": "2026-02-06T14:13:15.259540",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_requirementDiagram_00602",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的CI/CD部署流程图，覆盖从开发者提交代码到GKE集群最终运行的全过程。重点是展示Ollama容器和Backend Pod的启动时序关系。",
+      "elements_involved": [
+        "Developer",
+        "GKE Cluster",
+        "Ollama Container",
+        "Backend Pod"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我注意到流程里涉及Git仓库、Docker构建、镜像仓库这些环节，还有HPA控制器。您希望把Infra_EtcdCluster和Infra_RedisCache这些基础设施组件也标注出来吗？",
+      "elements_involved": [
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "HPA Controller",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这些基础设施组件要在Note里体现。特别是Redis缓存和Ingress控制器，Frontend镜像构建时会用到。EtcdCluster主要是给Backend Pod测试连接时用。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "Infra_IngressController",
+        "Infra_EtcdCluster",
+        "Frontend",
+        "Backend Pod"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我来梳理参与者：Developer、Git Repository、Docker Build、Artifact Registry、GKE Cluster、Kubernetes API、Backend Pod、Ollama Container、HPA Controller。流程起点是Developer执行git push触发Infra_IngressController的部署，对吗？",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster",
+        "Kubernetes API",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。然后Developer运行deploy-gke.sh脚本，Docker Build节点要先做GCloud认证，接着并行构建三个镜像：Ollama、Backend、Frontend。Ollama镜像要基于ollama/ollama:latest，并且内置tinyllama模型。",
+      "elements_involved": [
+        "Developer",
+        "Docker Build",
+        "Ollama Image",
+        "Backend Image",
+        "Frontend Image",
+        "tinyllama"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Docker Build的自循环验证步骤，以及三个镜像的构建流程。Frontend镜像我标注了双阶段构建：node:18阶段关联Infra_RedisCache，nginx:alpine阶段关联Infra_IngressController。镜像推送到Artifact Registry后，开始Kubernetes部署阶段。",
+      "elements_involved": [
+        "Docker Build",
+        "Artifact Registry",
+        "Frontend",
+        "Infra_RedisCache",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Kubernetes部署要按顺序：先应用RBAC，再ConfigMap，然后是Backend Deployment。这里有个关键时序——Backend Pod创建后，要先从Artifact Registry拉取Backend镜像和Ollama镜像，然后启动Ollama Container，等它加载完TinyLlama模型并返回Ready状态后，才能启动FastAPI容器。",
+      "elements_involved": [
+        "Kubernetes API",
+        "Backend Pod",
+        "Artifact Registry",
+        "Ollama Container",
+        "FastAPI",
+        "TinyLlama"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "理解，这个启动依赖关系很重要。FastAPI启动后还要测试与Ollama的连接，这里您提到用Infra_EtcdCluster来验证连接，是测试Etcd的连通性还是借指服务发现机制？",
+      "elements_involved": [
+        "FastAPI",
+        "Ollama Container",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这里Infra_EtcdCluster代表集群内部的服务连通性测试，不一定是直接连Etcd。主要是确认Backend能正常访问Ollama服务。连接成功后Pod报告Ready，Kubernetes确认就绪，Backend部署完成。",
+      "elements_involved": [
+        "Backend Pod",
+        "Ollama",
+        "Infra_EtcdCluster",
+        "Kubernetes API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完善Pod启动序列：Ollama Container初始化→加载TinyLlama→返回Ready（关联Infra_RedisCache状态）→FastAPI启动→连接测试（Infra_EtcdCluster）→报告Pod Ready。接下来部署Frontend和HPA？",
+      "elements_involved": [
+        "Ollama Container",
+        "TinyLlama",
+        "Infra_RedisCache",
+        "FastAPI",
+        "Infra_EtcdCluster",
+        "Frontend",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Frontend Deployment完成后，应用HPA配置。HPA Controller要持续监控Backend Pod的CPU和内存指标。最后Developer通过kubectl get services获取外部IP，验证健康检查端点。",
+      "elements_involved": [
+        "Frontend Deployment",
+        "HPA Controller",
+        "Backend Pod",
+        "Developer",
+        "GKE Cluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加健康验证流程：Developer curl外部IP/health → GKE路由到Backend Pod → Pod检查Ollama状态 → 返回200 OK。还有HPA监控指标：CPU 30%、内存40%，在阈值范围内（标注Infra_IngressController）。",
+      "elements_involved": [
+        "Developer",
+        "GKE Cluster",
+        "Backend Pod",
+        "Ollama",
+        "HPA Controller",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要展示滚动更新流程。Developer推送新版本，Docker Build更新镜像到Artifact Registry，然后kubectl apply触发Kubernetes的Rolling Update策略：创建新Pod、启动新版本、就绪后终止旧Pod。",
+      "elements_involved": [
+        "Developer",
+        "Docker Build",
+        "Artifact Registry",
+        "Kubernetes API",
+        "Pod",
+        "Rolling Update"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "滚动更新部分已添加，标注了Infra_IngressController作为部署目标。整个流程现在覆盖了：代码提交→镜像构建→K8s部署→健康验证→自动扩缩容→滚动更新。您看还有什么需要调整的吗？",
+      "elements_involved": [
+        "Rolling Update",
+        "Infra_IngressController",
+        "Git Repository",
+        "Docker Build",
+        "Kubernetes API",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Ollama Container加载TinyLlama后的Ready状态，我前面说关联Infra_RedisCache，但仔细想想应该是Infra_RedisCache代表缓存就绪，而Ollama自身的Ready是独立状态。不过图上已经这么画了，要不保持统一？",
+      "elements_involved": [
+        "Ollama Container",
+        "TinyLlama",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我调整一下：Ollama Ready状态不强制关联Infra_RedisCache，保持为独立就绪信号。但Frontend的多阶段构建中，node:18阶段保留Infra_RedisCache标注，nginx阶段保留Infra_IngressController标注，这样逻辑更清晰。",
+      "elements_involved": [
+        "Ollama Container",
+        "Infra_RedisCache",
+        "Infra_IngressController",
+        "Frontend"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这样处理好多了。另外确认一下HPA监控阈值那里，Infra_IngressController的标注是指HPA配置属于Ingress层面的策略，对吗？",
+      "elements_involved": [
+        "HPA Controller",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，表示HPA的扩缩容策略与Ingress控制层面的配置相关。所有Note标注都已就位：CI/CD Deployment Pipeline、Image Build Process、Kubernetes Deployment、Pod Startup Sequence、Health Verification、Auto-scaling Verification、Rolling Update Process。图完成了。",
+      "elements_involved": [
+        "HPA Controller",
+        "Infra_IngressController",
+        "CI/CD Deployment Pipeline",
+        "Pod Startup Sequence",
+        "Rolling Update Process"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 18,
+    "repair_count": 1,
+    "grounding_acts_count": 18,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 42824.4016,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 17
+  }
+}

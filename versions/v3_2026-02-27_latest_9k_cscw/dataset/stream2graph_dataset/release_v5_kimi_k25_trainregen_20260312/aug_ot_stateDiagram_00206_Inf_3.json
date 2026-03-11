@@ -1,0 +1,669 @@
+{
+  "id": "aug_ot_stateDiagram_00206_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/stevendos1/analisis/blob/ebafb85c113efedcd9e64d8dcab8dc98cfb2a02a/docs/meta-ahorro-state-diagram.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "stevendos1/analisis",
+  "diagram_type": "stateDiagram",
+  "code": "%%{Infra_RedisCache}}}%%\nstateDiagram-v2\n    direction LR\n    classDef lifecycle fill:#ffffff,stroke:#5d5fef,stroke-width:2px,color:#222\n\n    state \"En Progreso\\nEstaCompletada = false\\nMontoActual < MontoObjetivo\" as EnProgreso\n    state \"Completada\\nEstaCompletada = true\\nMontoActual ≥ MontoObjetivo\" as Completada\n    state \"Eliminada\\nRegistro físico borrado\" as Eliminada\n\n    class EnProgreso,Completada,Eliminada lifecycle\n\n    [Infra_EtcdCluster] --> EnProgreso : CrearMeta(Infra_IngressController) / inicializarMeta(Infra_RedisCache)\n    [Infra_WorkerNode] --> Completada : CrearMeta(Infra_RedisCache) [Infra_EtcdCluster] / inicializarMeta(Infra_WorkerNode)\n\n    %% Ciclo natural de ahorro\n    EnProgreso --> EnProgreso : RegistrarTransaccion|Contribuir\\n[Infra_IngressController]\\n/ ActualizarMontos(Infra_IngressController)\n    EnProgreso --> Completada : RegistrarTransaccion|Contribuir\\n[Infra_RedisCache]\\n/ ActualizarMontos(Infra_IngressController)\n\n    Completada --> Completada : RegistrarTransaccion|Contribuir\\n[Infra_RedisCache]\\n/ MantenerCierre(Infra_LoadBalancer)\n    Completada --> EnProgreso : RegistrarTransaccion|Contribuir\\n[Infra_LoadBalancer]\\n/ AjustarMontos(Infra_RedisCache)\n\n    %% Actualizaciones manuales vía PUT\n    EnProgreso --> Completada : ActualizarMeta(Infra_EtcdCluster)\\n[Infra_LoadBalancer]\\n/ PersistirCambios(Infra_EtcdCluster)\n    Completada --> EnProgreso : ActualizarMeta(Infra_IngressController)\\n[Infra_RedisCache]\\n/ PersistirCambios(Infra_WorkerNode)\n\n    %% Borrado definitivo\n    EnProgreso --> Eliminada : EliminarMeta(Infra_RedisCache) / BorrarRegistro(Infra_EtcdCluster)\n    Completada --> Eliminada : EliminarMeta(Infra_IngressController) / BorrarRegistro(Infra_RedisCache)\n    Eliminada --> [Infra_IngressController]\n\n    note right of EnProgreso\n        Estado operacional por defecto.\n        Las contribuciones suman al monto y\n        recalculan el progreso.\n    end note\n\n    note right of Completada\n        Se marca cuando MontoActual\n        alcanza o supera el objetivo.\n        Puede reabrirse con ajustes manuales.\n    end note\n",
+  "content_size": 2062,
+  "collected_at": "2026-02-06T10:39:09.939790",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00206",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个储蓄目标管理系统的状态机，核心是要跟踪从创建到完成或删除的完整生命周期。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada",
+        "lifecycle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这个系统涉及基础设施组件吗？我看到有Redis、Etcd这些关键词。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，状态转换会触发不同基础设施组件的操作。比如创建目标时要通过IngressController初始化，数据存在Redis里。",
+      "elements_involved": [
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "CrearMeta"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "那我先定义三个主要状态：EnProgreso进行中、Completada已完成、Eliminada已删除。用lifecycle样式类统一外观。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada",
+        "lifecycle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，EnProgreso要标注清楚条件：EstaCompletada为false，且MontoActual小于MontoObjetivo。",
+      "elements_involved": [
+        "EnProgreso",
+        "EstaCompletada",
+        "MontoActual",
+        "MontoObjetivo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加EnProgreso状态的详细描述。Completada状态我设置为EstaCompletada为true，MontoActual大于等于目标值。",
+      "elements_involved": [
+        "Completada",
+        "EstaCompletada",
+        "MontoActual"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Eliminada要注明是物理记录已删除，不是软删除。另外需要说明创建时的入口。",
+      "elements_involved": [
+        "Eliminada",
+        "Infra_EtcdCluster",
+        "CrearMeta"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Eliminada已标注\"Registro físico borrado\"。从EtcdCluster进入EnProgreso的转换我也画好了，触发条件是CrearMeta，操作是inicializarMeta。",
+      "elements_involved": [
+        "Eliminada",
+        "Infra_EtcdCluster",
+        "EnProgreso",
+        "CrearMeta",
+        "inicializarMeta"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "CrearMeta的参数应该是Infra_IngressController，初始化操作针对RedisCache。另外WorkerNode也能直接创建完成状态的目标。",
+      "elements_involved": [
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "Infra_WorkerNode",
+        "Completada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整，EtcdCluster到EnProgreso标注了CrearMeta(Infra_IngressController)/inicializarMeta(Infra_RedisCache)。WorkerNode到Completada的转换我也加上了。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "EnProgreso",
+        "Infra_WorkerNode",
+        "Completada",
+        "Infra_IngressController",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在处理核心的储蓄循环。进行中状态可以自循环，每次交易贡献都会更新金额。",
+      "elements_involved": [
+        "EnProgreso",
+        "RegistrarTransaccion",
+        "Contribuir",
+        "ActualizarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "自循环的触发条件是什么？需要基础设施组件参与吗？",
+      "elements_involved": [
+        "EnProgreso",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，自循环需要IngressController参与，操作是ActualizarMontos，同样由IngressController执行。",
+      "elements_involved": [
+        "Infra_IngressController",
+        "ActualizarMontos",
+        "RegistrarTransaccion",
+        "Contribuir"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EnProgreso的自循环已添加。那从进行中到完成的转换呢？",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "当贡献使MontoActual达到目标时，从EnProgreso转到Completada。这次需要RedisCache参与触发，但更新操作还是IngressController做。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Infra_RedisCache",
+        "Infra_IngressController",
+        "ActualizarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加EnProgreso到Completada的转换。完成状态本身也可以继续接收贡献吧？",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Infra_RedisCache",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Completada可以自循环，允许超额储蓄。这次用LoadBalancer来维持关闭状态。",
+      "elements_involved": [
+        "Completada",
+        "Infra_LoadBalancer",
+        "MantenerCierre",
+        "RegistrarTransaccion"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Completada的自循环已标注MantenerCierre(Infra_LoadBalancer)。还有其他转换吗？",
+      "elements_involved": [
+        "Completada",
+        "Infra_LoadBalancer",
+        "MantenerCierre"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要支持重新打开目标。如果已完成的储蓄需要调整，可以回到进行中状态。",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "AjustarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这是手动操作还是自动的？涉及哪些组件？",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "也是通过交易贡献触发，但需要LoadBalancer参与，执行AjustarMontos操作，由RedisCache完成。",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache",
+        "AjustarMontos",
+        "RegistrarTransaccion",
+        "Contribuir"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Completada到EnProgreso的反向转换已添加。接下来是手动更新部分？",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，通过PUT请求手动更新目标。ActualizarMeta操作可以从进行中强制标记为完成。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "ActualizarMeta",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这个转换需要LoadBalancer参与吗？持久化操作由谁执行？",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要LoadBalancer参与触发，持久化操作PersistirCambios由EtcdCluster执行。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "ActualizarMeta",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer",
+        "PersistirCambios"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "手动完成转换已添加。那反向呢？从完成回到进行中？",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "ActualizarMeta",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，ActualizarMeta也可以反向操作。这次由IngressController触发，RedisCache参与，WorkerNode执行持久化。",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "ActualizarMeta",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "Infra_WorkerNode",
+        "PersistirCambios"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Completada到EnProgreso的手动更新转换已添加。现在处理删除流程？",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "两种状态都可以删除到Eliminada。EnProgreso的删除由EliminarMeta触发，RedisCache参与，EtcdCluster执行物理删除。",
+      "elements_involved": [
+        "EnProgreso",
+        "Eliminada",
+        "EliminarMeta",
+        "Infra_RedisCache",
+        "Infra_EtcdCluster",
+        "BorrarRegistro"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EnProgreso到Eliminada的转换已添加。Completada的删除路径呢？",
+      "elements_involved": [
+        "EnProgreso",
+        "Eliminada",
+        "Infra_RedisCache",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Completada删除类似，但触发组件是IngressController，物理删除由RedisCache执行。",
+      "elements_involved": [
+        "Completada",
+        "Eliminada",
+        "EliminarMeta",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "BorrarRegistro"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Completada到Eliminada已添加。Eliminada之后有出口吗？",
+      "elements_involved": [
+        "Completada",
+        "Eliminada",
+        "Infra_IngressController",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Eliminada是终态，但可以画一条线指向IngressController表示清理完成后的回调或通知。",
+      "elements_involved": [
+        "Eliminada",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Eliminada到IngressController的连接已添加。需要为状态添加注释说明吗？",
+      "elements_involved": [
+        "Eliminada",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要。EnProgreso是默认运营状态，要说明贡献会累加金额并重新计算进度。",
+      "elements_involved": [
+        "EnProgreso",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EnProgreso的右侧注释已添加。Completada也需要注释？",
+      "elements_involved": [
+        "EnProgreso",
+        "note",
+        "Las contribuciones suman al monto"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，说明当MontoActual达到或超过目标时标记完成，且可以通过手动调整重新打开。",
+      "elements_involved": [
+        "Completada",
+        "note",
+        "MontoActual",
+        "reabrirse"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Completada的注释已添加。整体布局需要调整吗？",
+      "elements_involved": [
+        "Completada",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "方向设为从左到右吧，这样状态流转更清晰。另外检查下样式类有没有应用到所有状态。",
+      "elements_involved": [
+        "direction LR",
+        "lifecycle",
+        "EnProgreso",
+        "Completada",
+        "Eliminada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "方向已设为LR，lifecycle类已应用到三个状态。我注意到WorkerNode创建完成状态的那条转换，EtcdCluster是条件还是触发？",
+      "elements_involved": [
+        "direction LR",
+        "Infra_WorkerNode",
+        "Completada",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "是条件，方括号表示守卫条件。应该是CrearMeta(Infra_RedisCache) [Infra_EtcdCluster]，表示需要EtcdCluster满足条件。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Completada",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "CrearMeta"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，EtcdCluster改为守卫条件。还有其他需要调整的吗？",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Completada",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查下所有ActualizarMeta和EliminarMeta的拼写，还有BorrarRegistro。另外确认下注释里的\"Las contribuciones suman al monto y\"后面有没有断句问题。",
+      "elements_involved": [
+        "ActualizarMeta",
+        "EliminarMeta",
+        "BorrarRegistro",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现BorrarRegistro我写成了BorrarRegistr，少了一个o。另外EliminarMeta在Completada路径我写成了IngressContr，应该是IngressController。",
+      "elements_involved": [
+        "BorrarRegistro",
+        "EliminarMeta",
+        "Infra_IngressController"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "还有EnProgreso的缩写检查下，应该是EnProgreso不是EnPr。",
+      "elements_involved": [
+        "EnProgreso"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正为EnProgreso。WorkerNode的缩写也检查下，应该是WorkerNode不是Workern。",
+      "elements_involved": [
+        "Infra_WorkerNode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认下图的标题，用Infra_RedisCache作为主题标识，因为这是核心数据存储。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "title"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "标题已添加为%%{Infra_RedisCache}%%。所有状态、转换、注释、样式都已完整。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "stateDiagram-v2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个状态机完整覆盖了储蓄目标的创建、贡献积累、完成判定、手动调整、物理删除的全生命周期，各基础设施组件的职责也划分清楚了。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada",
+        "Infra_RedisCache",
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 49,
+    "repair_count": 3,
+    "grounding_acts_count": 49,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 92845.7863,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 49
+  }
+}

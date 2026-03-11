@@ -1,0 +1,200 @@
+{
+  "id": "ot_stateDiagram_00357",
+  "source": "other",
+  "source_url": "https://github.com/CPU-JIA/Flotilla/blob/002b7757d8792695a487c8d016779cb04a1d06bb/UML/diagrams/Mermaid/31-%E7%94%A8%E6%88%B7%E4%BC%9A%E8%AF%9D%E7%AE%A1%E7%90%86%E7%8A%B6%E6%80%81%E5%9B%BE.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "CPU-JIA/Flotilla",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [*] --> Anonymous : 访问网站\n\n    state Anonymous {\n        [*] --> Browsing\n        Browsing --> LoginPage : 点击登录\n        Browsing --> RegisterPage : 点击注册\n    }\n\n    Anonymous --> Authenticating : 提交凭据\n\n    state Authenticating {\n        [*] --> ValidatingCredentials\n        ValidatingCredentials --> CheckingMFA : 凭据正确\n        ValidatingCredentials --> AuthFailed : 凭据错误\n\n        CheckingMFA --> MFARequired : 启用了2FA\n        CheckingMFA --> AuthSuccess : 未启用2FA\n\n        MFARequired --> ValidatingTOTP\n        ValidatingTOTP --> AuthSuccess : TOTP正确\n        ValidatingTOTP --> AuthFailed : TOTP错误\n    }\n\n    AuthFailed --> Anonymous : 返回登录\n\n    AuthSuccess --> Authenticated : 创建Session\n\n    state Authenticated {\n        [*] --> Active\n\n        Active --> Active : API请求<br/>刷新lastActivity\n        Active --> TokenRefresh : Access Token过期\n        Active --> Idle : 15分钟无活动\n\n        TokenRefresh --> Active : 刷新成功\n        TokenRefresh --> SessionExpired : Refresh Token过期\n\n        Idle --> Active : 恢复活动\n        Idle --> SessionExpired : 30分钟无活动\n\n        Active --> DeviceLogout : 从其他设备登出\n        Active --> PasswordChanged : 密码被修改\n        Active --> ManualLogout : 主动登出\n    }\n\n    SessionExpired --> Anonymous : 重定向登录\n    DeviceLogout --> Anonymous : Token版本失效\n    PasswordChanged --> Anonymous : Token版本递增\n    ManualLogout --> Anonymous : 清除Session\n\n    state SessionStorage {\n        Redis : Redis存储\n        --\n        SessionID : 会话ID\n        UserID : 用户ID\n        TokenVersion : Token版本\n        DeviceInfo : 设备信息\n        IPAddress : IP地址\n        ExpiresAt : 过期时间\n    }\n\n    Authenticated --> SessionStorage : 存储会话\n",
+  "content_size": 1638,
+  "collected_at": "2026-02-06T10:41:09.310422",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的用户认证状态机，从匿名访问开始，一直到各种登出场景。核心是区分Anonymous、Authenticating和Authenticated三个大状态。",
+      "elements_involved": [
+        "Anonymous",
+        "Authenticating",
+        "Authenticated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，Authenticating里面要包含MFA流程吗？比如TOTP验证这种多因素认证的情况。",
+      "elements_involved": [
+        "Authenticating",
+        "MFARequired",
+        "ValidatingTOTP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Authenticating里要有ValidatingCredentials，然后分支到CheckingMFA。如果启用了2FA就到MFARequired，再进入ValidatingTOTP验证。",
+      "elements_involved": [
+        "ValidatingCredentials",
+        "CheckingMFA",
+        "MFARequired",
+        "ValidatingTOTP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Authenticating子状态我画好了，包括AuthFailed和AuthSuccess两个出口。接下来Authenticated内部的状态流转怎么设计？",
+      "elements_involved": [
+        "Authenticating",
+        "AuthFailed",
+        "AuthSuccess"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Authenticated里面分Active和Idle两种状态，还要有TokenRefresh处理access token过期。Active可以自循环处理API请求刷新lastActivity。",
+      "elements_involved": [
+        "Authenticated",
+        "Active",
+        "Idle",
+        "TokenRefresh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Idle的触发条件是15分钟无活动对吧？然后Idle如果30分钟还没活动就SessionExpired？",
+      "elements_involved": [
+        "Idle",
+        "Active",
+        "SessionExpired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，而且TokenRefresh失败的话也会进SessionExpired。另外Active还要能响应DeviceLogout、PasswordChanged和ManualLogout三种登出事件。",
+      "elements_involved": [
+        "TokenRefresh",
+        "SessionExpired",
+        "DeviceLogout",
+        "PasswordChanged",
+        "ManualLogout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加，所有登出路径都指向Anonymous。我注意到SessionStorage需要单独画出来，用Redis存储会话数据，包含SessionID、UserID这些字段。",
+      "elements_involved": [
+        "SessionStorage",
+        "Redis",
+        "SessionID",
+        "UserID",
+        "TokenVersion",
+        "DeviceInfo",
+        "IPAddress",
+        "ExpiresAt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "TokenVersion这个字段很重要，PasswordChanged和DeviceLogout都会触发版本变化。Anonymous状态里还要包含Browsing、LoginPage和RegisterPage。",
+      "elements_involved": [
+        "TokenVersion",
+        "PasswordChanged",
+        "DeviceLogout",
+        "Anonymous",
+        "Browsing",
+        "LoginPage",
+        "RegisterPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "稍等，我刚才把CheckingMFA到AuthSuccess的连线标错了，应该是\"未启用2FA\"而不是直接成功。已经修正。",
+      "elements_involved": [
+        "CheckingMFA",
+        "AuthSuccess"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这样逻辑就完整了。最后确认一下所有终态：SessionExpired、DeviceLogout、PasswordChanged、ManualLogout都要能回到Anonymous重新登录。",
+      "elements_involved": [
+        "SessionExpired",
+        "DeviceLogout",
+        "PasswordChanged",
+        "ManualLogout",
+        "Anonymous"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部检查完毕，状态机完整覆盖了从访问网站、登录验证、MFA检查、会话活跃管理到各种登出的全生命周期。",
+      "elements_involved": [
+        "[*]",
+        "Anonymous",
+        "Authenticating",
+        "Authenticated",
+        "SessionStorage"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 12,
+    "repair_count": 1,
+    "grounding_acts_count": 12,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:44Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:39Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:39Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 29285.1648,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

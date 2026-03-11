@@ -1,0 +1,553 @@
+{
+  "id": "aug_gh_sequence_00510_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/DREAMSCAPE-AI/dreamscape-docs/blob/24aa5a14265601b36ddbbb02c958eea524e6eb11/architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "github_repo": "DREAMSCAPE-AI/dreamscape-docs",
+  "github_file_path": "architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    autonumber\n    actor User as 👤 Utilisateur\n    participant WC as Web Client\n    participant CN as Core NGINX<br/>:80\n    participant Voyage as Voyage Service<br/>:3003\n    participant Payment as Payment Service<br/>:3005\n    participant AI as AI Service<br/>:3004\n    participant PG as PostgreSQL<br/>:5432\n    participant Redis as Redis<br/>:6379\n    participant Kafka as Kafka<br/>:9092\n    participant Stripe as 💳 Stripe API\n\n    rect rgb(IoT_Industrial_ActuatorController)\n        Note over User,Voyage: Phase 1: Sélection Vol\n        User->>WC: Sélectionne vol<br/>(IoT_Industrial_MQTT_Broker)\n        WC->>WC: Add to cart<br/>(IoT_Industrial_EdgeNode)\n        User->>WC: Click \"Réserver\"\n        \n        WC->>CN: POST /api/v1/bookings<br/>{IoT_Industrial_PLC_Logic}<br/>Authorization: Bearer JWT\n        CN->>CN: Validate JWT (IoT_Industrial_TelemetryStream)\n        CN->>Voyage: Forward to Voyage<br/>localhost:3003/bookings\n    end\n\n    rect rgb(IoT_Industrial_MQTT_Broker)\n        Note over Voyage,Kafka: Phase 2: Création Réservation\n        Voyage->>Voyage: Extract userId from JWT\n        Voyage->>PG: BEGIN transaction\n        Note right of PG: 🔄 ACID transaction<br/>pour cohérence\n        \n        Voyage->>PG: INSERT booking<br/>{IoT_Industrial_TelemetryStream}\n        PG-->>Voyage: Booking created (IoT_Industrial_PLC_Logic)\n        \n        Voyage->>Redis: Store booking temp<br/>key: \"booking:temp:bookingId\"<br/>TTL: 15min\n        Note right of Redis: ⏱️ Timeout si paiement<br/>échoue après 15min\n        \n        Voyage->>Kafka: Publish event<br/>Topic: \"voyage.booking.created\"<br/>{IoT_Industrial_TelemetryStream}\n        Note left of Kafka: Event-Driven Architecture<br/>- Decoupling services<br/>- Async processing<br/>- Audit trail\n        \n        Voyage-->>CN: 201 Created<br/>{IoT_Industrial_ActuatorController}\n        CN-->>WC: 201 Created\n    end\n\n    rect rgb(IoT_Industrial_TelemetryStream)\n        Note over WC,Stripe: Phase 3: Demande Paiement\n        WC->>CN: POST /api/v1/payments/intent<br/>{IoT_Industrial_PLC_Logic}<br/>Authorization: Bearer JWT\n        CN->>Payment: Forward to Payment<br/>localhost:3005/payments/intent\n        \n        Payment->>Payment: Extract userId from JWT\n        Payment->>PG: Verify booking exists<br/>SELECT * FROM bookings<br/>WHERE id = bookingId AND userId = userId\n        \n        alt Booking Non Trouvé ❌\n            PG-->>Payment: null\n            Payment-->>CN: 404 Not Found<br/>{IoT_Industrial_PLC_Logic}\n            CN-->>WC: 404 Error\n            WC->>User: ❌ Erreur réservation\n        else Booking Trouvé ✅\n            PG-->>Payment: Booking found\n            Payment->>Stripe: Create PaymentIntent<br/>POST /v1/payment_intents<br/>{IoT_Industrial_PLC_Logic),<br/>currency: \"eur\",<br/>metadata: {IoT_Industrial_ActuatorController}}\n            \n            Stripe-->>Payment: PaymentIntent created<br/>{IoT_Industrial_EdgeNode}\n            \n            Payment->>PG: INSERT payment<br/>{IoT_Industrial_MQTT_Broker}\n            Payment->>Kafka: Publish event<br/>Topic: \"payment.intent.created\"<br/>{IoT_Industrial_PLC_Logic}\n            \n            Payment-->>CN: 200 OK<br/>{IoT_Industrial_EdgeNode}\n            CN-->>WC: 200 OK\n        end\n    end\n\n    rect rgb(IoT_Industrial_ActuatorController)\n        Note over WC,Stripe: Phase 4: Paiement Stripe (IoT_Industrial_TelemetryStream)\n        WC->>WC: Initialize Stripe.js<br/>with clientSecret\n        WC->>User: Affiche formulaire carte<br/>(IoT_Industrial_TelemetryStream)\n        \n        User->>WC: Saisit infos carte<br/>(IoT_Industrial_ActuatorController)\n        WC->>Stripe: POST /v1/payment_intents/:id/confirm<br/>(IoT_Industrial_MQTT_Broker)<br/>{IoT_Industrial_TelemetryStream}\n        \n        Note right of Stripe: 🔒 Sécurité PCI-DSS<br/>- Carte jamais envoyée à notre backend<br/>- Stripe gère tout<br/>- Tokenization automatique\n        \n        alt Paiement Réussi ✅\n            Stripe-->>WC: PaymentIntent succeeded\n            WC->>WC: Display success message\n            WC->>User: ✅ Paiement accepté\n        else Paiement Échoué ❌\n            Stripe-->>WC: PaymentIntent failed<br/>(IoT_Industrial_TelemetryStream)\n            WC->>User: ❌ \"Paiement refusé\"<br/>(IoT_Industrial_MQTT_Broker)\n        end\n    end\n\n    rect rgb(IoT_Industrial_PLC_Logic)\n        Note over Stripe,Kafka: Phase 5: Webhook Stripe (IoT_Industrial_ActuatorController)\n        Stripe->>Payment: POST /webhooks/stripe<br/>Stripe-Signature header<br/>{IoT_Industrial_PLC_Logic}}\n        \n        Payment->>Payment: Verify signature<br/>stripe.webhooks.constructEvent(IoT_Industrial_MQTT_Broker)\n        \n        alt Signature Invalide ❌\n            Payment-->>Stripe: 400 Bad Request\n            Note right of Payment: Protection contre<br/>webhooks forgés\n        else Signature Valide ✅\n            Payment->>PG: UPDATE payment<br/>SET status = \"SUCCEEDED\"<br/>WHERE stripePaymentIntentId = id\n            \n            Payment->>PG: UPDATE booking<br/>SET status = \"CONFIRMED\"<br/>WHERE id = bookingId\n            \n            Payment->>Redis: Delete temp booking<br/>DEL \"booking:temp:bookingId\"\n            \n            Payment->>Kafka: Publish event<br/>Topic: \"payment.succeeded\"<br/>{IoT_Industrial_EdgeNode}\n            \n            Payment-->>Stripe: 200 OK\n        end\n    end\n\n    rect rgb(IoT_Industrial_MQTT_Broker)\n        Note over Kafka,User: Phase 6: Traitement Async (IoT_Industrial_PLC_Logic)\n        Kafka->>Voyage: Consume event<br/>\"payment.succeeded\"\n        Voyage->>PG: SELECT booking details\n        Voyage->>Voyage: Generate confirmation email<br/>(IoT_Industrial_EdgeNode)\n        Voyage->>User: 📧 Email confirmation<br/>+ PDF billet\n        \n        Kafka->>AI: Consume event<br/>\"voyage.booking.created\"\n        AI->>PG: Get user profile<br/>+ booking history\n        AI->>AI: Update ML model<br/>(IoT_Industrial_EdgeNode)\n        Note right of AI: 🤖 AI learning<br/>from user behavior\n        AI->>Redis: Update recommendations<br/>key: \"reco:userId\"\n    end\n\n    rect rgb(IoT_Industrial_PLC_Logic)\n        Note over WC,User: Phase 7: Confirmation Frontend\n        loop Polling every 2s\n            WC->>CN: GET /api/v1/bookings/:bookingId\n            CN->>Voyage: Forward request\n            Voyage->>PG: SELECT booking<br/>WHERE id = bookingId\n            \n            alt Status = CONFIRMED ✅\n                PG-->>Voyage: Booking confirmed\n                Voyage-->>CN: 200 OK<br/>{IoT_Industrial_ActuatorController}\n                CN-->>WC: 200 OK\n                WC->>WC: Stop polling\n                WC->>WC: Redirect /bookings/:id\n                WC->>User: ✅ Affiche confirmation<br/>+ détails voyage\n            else Status = PENDING ⏳\n                PG-->>Voyage: Booking still pending\n                Voyage-->>CN: 200 OK<br/>{IoT_Industrial_ActuatorController}\n                CN-->>WC: 200 OK (IoT_Industrial_ActuatorController)\n                Note right of WC: ⏱️ Après 15min<br/>réservation annulée<br/>automatiquement\n            end\n        end\n    end\n\n    Note over User,Kafka: 📊 Performance Réservation<br/>Create booking: ~100-150ms<br/>Payment intent: ~500-800ms (IoT_Industrial_TelemetryStream)<br/>Confirmation: ~1-2s (IoT_Industrial_ActuatorController)<br/>Email: ~3-5s (IoT_Industrial_MQTT_Broker)<br/><br/>🔒 Fiabilité<br/>- Transaction ACID (IoT_Industrial_TelemetryStream)<br/>- Idempotency keys (IoT_Industrial_TelemetryStream)<br/>- Webhook retry (IoT_Industrial_PLC_Logic)<br/>- Event sourcing (IoT_Industrial_PLC_Logic)",
+  "content_size": 7218,
+  "collected_at": "2026-02-06T01:33:16.963511",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gh_sequence_00510",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的航班预订系统时序图，涵盖从用户选航班到最终确认的完整流程。这个系统涉及Web客户端、核心NGINX网关、多个微服务，还有IoT工业边缘节点相关的组件。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "IoT Industrial EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。您提到的IoT工业边缘节点具体指什么？在这个航班预订场景中，它承担什么角色？",
+      "elements_involved": [
+        "IoT Industrial EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "IoT工业边缘节点在这里是一个抽象概念，代表靠近用户端的轻量级处理层。比如在选航班阶段，我们把\"加入购物车\"这个动作标记为在边缘节点处理，减少核心服务压力。类似的还有IoT工业MQTT Broker负责消息路由，IoT工业PLC逻辑处理核心业务规则。",
+      "elements_involved": [
+        "IoT Industrial EdgeNode",
+        "IoT Industrial MQTT Broker",
+        "IoT Industrial PLC Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我理解了。那我们分七个阶段来画：选航班、创建预订、请求支付、Stripe支付、Webhook回调、异步处理、前端确认。第一阶段用户通过Web Client选航班，点击预订后，请求经过Core NGINX转发到Voyage Service，对吗？",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但NGINX这里要标注端口80，Voyage Service是3003端口。还有JWT验证要在NGINX层完成，我称之为IoT工业遥测流验证。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "IoT Industrial TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加第一阶段。现在第二阶段创建预订，Voyage Service需要操作PostgreSQL和Redis，还要发Kafka事件。PostgreSQL这里要强调ACID事务。",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，Redis存储临时预订数据，TTL设15分钟，超时自动取消。Kafka事件用IoT工业遥测流标记，体现事件驱动架构。Voyage Service返回201 Created时用IoT工业执行器控制器标记。",
+      "elements_involved": [
+        "Redis",
+        "Kafka",
+        "IoT Industrial TelemetryStream",
+        "IoT Industrial ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Kafka事件的具体topic名称是什么？还有，Redis的key命名规范？",
+      "elements_involved": [
+        "Kafka",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Kafka topic是\"voyage.booking.created\"，Redis key是\"booking:temp:bookingId\"。这些命名要体现在图上。",
+      "elements_involved": [
+        "Kafka",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第二阶段完成。第三阶段请求支付，Web Client发起POST到/api/v1/payments/intent，经过NGINX转发到Payment Service（3005端口）。这里需要验证预订是否存在。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Payment Service",
+        "PostgreSQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，这里要画一个alt分支：如果预订不存在，返回404；如果存在，调用Stripe API创建PaymentIntent。Stripe交互用IoT工业PLC逻辑标记，返回结果用IoT工业边缘节点标记。",
+      "elements_involved": [
+        "Stripe API",
+        "Payment Service",
+        "IoT Industrial PLC Logic",
+        "IoT Industrial EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "PaymentIntent创建成功后，Payment Service需要记录支付信息到PostgreSQL，同时发Kafka事件对吗？",
+      "elements_involved": [
+        "Payment Service",
+        "PostgreSQL",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Kafka topic是\"payment.intent.created\"，同样用IoT工业PLC逻辑标记。Payment Service返回200 OK用IoT工业边缘节点标记。",
+      "elements_involved": [
+        "Kafka",
+        "IoT Industrial PLC Logic",
+        "IoT Industrial EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第三阶段完成。第四阶段是Stripe支付流程，Web Client用Stripe.js初始化，显示卡号输入表单，用户填写后直接和Stripe交互。这里要强调PCI-DSS安全。",
+      "elements_involved": [
+        "Web Client",
+        "Stripe API",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，显示表单用IoT工业遥测流标记，用户输入卡号用IoT工业执行器控制器标记，和Stripe的确认请求用IoT工业MQTT Broker和IoT工业遥测流双重标记。然后画支付成功和失败的alt分支。",
+      "elements_involved": [
+        "IoT Industrial TelemetryStream",
+        "IoT Industrial ActuatorController",
+        "IoT Industrial MQTT Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第四阶段完成。第五阶段是Stripe Webhook回调，Stripe POST到Payment Service的/webhooks/stripe端点，需要验证签名防止伪造。",
+      "elements_involved": [
+        "Stripe API",
+        "Payment Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "签名验证用IoT工业MQTT Broker标记。验证通过后，更新payment和booking状态，删除Redis临时数据，发Kafka\"payment.succeeded\"事件。这些操作都用IoT工业边缘节点标记。",
+      "elements_involved": [
+        "IoT Industrial MQTT Broker",
+        "IoT Industrial EdgeNode",
+        "PostgreSQL",
+        "Redis",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "booking状态更新为CONFIRMED对吧？还有，如果签名验证失败要返回400？",
+      "elements_involved": [
+        "booking",
+        "Payment Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，booking状态变成CONFIRMED。签名验证失败返回400，并标注这是为了防止伪造webhook。整个第五阶段用IoT工业PLC逻辑作为背景色。",
+      "elements_involved": [
+        "booking",
+        "IoT Industrial PLC Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第五阶段完成。第六阶段是异步处理，Voyage Service消费\"payment.succeeded\"事件，生成确认邮件和PDF机票；AI Service消费\"voyage.booking.created\"事件，更新推荐模型。",
+      "elements_involved": [
+        "Kafka",
+        "Voyage Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Voyage Service的邮件生成用IoT工业边缘节点标记，AI Service的模型更新也用IoT工业边缘节点。AI Service还要更新Redis里的用户推荐缓存。这个阶段背景用IoT工业MQTT Broker。",
+      "elements_involved": [
+        "IoT Industrial EdgeNode",
+        "IoT Industrial MQTT Broker",
+        "AI Service",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "AI Service是从PostgreSQL获取用户画像和预订历史吗？",
+      "elements_involved": [
+        "AI Service",
+        "PostgreSQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，AI Service查询用户画像和预订历史，然后更新ML模型。这个学习过程标注为\"AI learning from user behavior\"。",
+      "elements_involved": [
+        "AI Service",
+        "PostgreSQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第六阶段完成。第七阶段是前端确认，Web Client轮询预订状态，每2秒请求一次，直到状态变为CONFIRMED。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "PostgreSQL",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "轮询用loop画，包含两个alt分支：CONFIRMED时停止轮询并跳转；PENDING时继续，并标注15分钟后自动取消。所有响应都用IoT工业执行器控制器标记。这个阶段背景用IoT工业PLC逻辑。",
+      "elements_involved": [
+        "loop",
+        "IoT Industrial ActuatorController",
+        "IoT Industrial PLC Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第七阶段完成。最后我在底部加一个性能说明的Note，包含各阶段耗时和可靠性设计。",
+      "elements_involved": [
+        "User",
+        "Kafka",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "性能数据具体怎么写？可靠性设计要包含哪些？",
+      "elements_involved": [
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "创建预订100-150ms，支付意图500-800ms用IoT工业遥测流标记，确认1-2秒用IoT工业执行器控制器标记，邮件3-5秒用IoT工业MQTT Broker标记。可靠性包括ACID事务、幂等键、webhook重试、事件溯源，分别用IoT工业遥测流和IoT工业PLC逻辑标记。",
+      "elements_involved": [
+        "IoT Industrial TelemetryStream",
+        "IoT Industrial ActuatorController",
+        "IoT Industrial MQTT Broker",
+        "IoT Industrial PLC Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，但确认一下：创建预订的100-150ms也需要标记吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "抱歉，我漏了。创建预订100-150ms应该用IoT工业遥测流标记，和支付意图保持一致。我修正一下。",
+      "elements_involved": [
+        "IoT Industrial TelemetryStream"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：第一阶段选航班时，\"加入购物车\"和\"点击预订\"之间的顺序要清晰。另外，IoT工业MQTT Broker在第一阶段作为背景色，第二阶段也要用。",
+      "elements_involved": [
+        "IoT Industrial MQTT Broker",
+        "Phase 1",
+        "Phase 2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整。第一阶段背景是IoT工业执行器控制器，第二阶段是IoT工业MQTT Broker。选航班的动作标注为IoT工业MQTT Broker，加入购物车是IoT工业边缘节点。",
+      "elements_involved": [
+        "IoT Industrial ActuatorController",
+        "IoT Industrial MQTT Broker",
+        "IoT Industrial EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "第三阶段请求支付的背景色应该是IoT工业遥测流，对吗？",
+      "elements_involved": [
+        "Phase 3",
+        "IoT Industrial TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，第三阶段背景是IoT工业遥测流，第四阶段是IoT工业遥测流，第五阶段是IoT工业执行器控制器，第六阶段是IoT工业MQTT Broker，第七阶段是IoT工业PLC逻辑。这样交替使用IoT相关标记。",
+      "elements_involved": [
+        "IoT Industrial TelemetryStream",
+        "IoT Industrial ActuatorController",
+        "IoT Industrial MQTT Broker",
+        "IoT Industrial PLC Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "等等，第四阶段Stripe支付的背景色我再看一下代码...应该是IoT工业遥测流，不是执行器控制器。你刚才说的可能有误。",
+      "elements_involved": [
+        "Phase 4",
+        "IoT Industrial TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "您说得对，我混淆了。第四阶段背景是IoT工业遥测流，第五阶段才是IoT工业执行器控制器。我立即修正。",
+      "elements_involved": [
+        "Phase 4",
+        "Phase 5",
+        "IoT Industrial TelemetryStream",
+        "IoT Industrial ActuatorController"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "确认一下所有端口号：Core NGINX 80，Voyage Service 3003，Payment Service 3005，AI Service 3004，PostgreSQL 5432，Redis 6379，Kafka 9092。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部正确，已在各参与者标注。User用👤 Utilisateur，Stripe用💳 Stripe API，都有对应的emoji图标。",
+      "elements_involved": [
+        "User",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查：所有rect的rgb背景色都要用对应的IoT标记，比如rgb(IoT_Industrial_ActuatorController)这种格式。还有法语注释要保留，比如\"Phase 1: Sélection Vol\"。",
+      "elements_involved": [
+        "rect",
+        "IoT Industrial ActuatorController",
+        "IoT Industrial MQTT Broker",
+        "IoT Industrial TelemetryStream",
+        "IoT Industrial PLC Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已全部检查完毕。七个阶段完整，所有IoT标记正确使用，法语标题和注释保留，emoji图标正确，端口号准确，alt分支和loop结构清晰。时序图可以定稿了。",
+      "elements_involved": [
+        "sequenceDiagram",
+        "autonumber",
+        "actor",
+        "participant",
+        "rect",
+        "Note",
+        "loop",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个时序图完整展示了从航班选择到支付确认的端到端流程，IoT工业组件的抽象使用也体现了架构的分层思想。可以输出最终版本了。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "Stripe API"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 41,
+    "repair_count": 2,
+    "grounding_acts_count": 40,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 70164.4607,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 45
+  }
+}

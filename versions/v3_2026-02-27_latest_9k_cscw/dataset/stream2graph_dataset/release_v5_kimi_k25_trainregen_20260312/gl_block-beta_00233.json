@@ -1,0 +1,199 @@
+{
+  "id": "gl_block-beta_00233",
+  "source": "gitlab",
+  "source_url": "https://github.com/consensus-shipyard/ipc/blob/a2c2faeb4ac75564d2b4e3236066f1458eeb85b8/ipld/resolver/docs/diagrams/ipld_resolver.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "consensus-shipyard/ipc",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Host as Host\n    participant Client as Client\n    participant Service as Service\n    participant SubnetProvidersCache as SubnetProvidersCache\n    participant BitswapStore as BitswapStore\n    participant Content as Content (Bitswap)\n    participant Membership as Membership (Gossipsub)\n    participant Discovery as Discovery (Kademlia)\n    participant Identify as Identify\n    participant Remote as Remote\n\n    %% Initialization\n    Host->>+Service: new\n    Service->>Identify: create\n    Service->>Discovery: create\n    Service->>Membership: create\n    Service->>Content: create\n    Service->>-Host: (Service, Client)\n\n    Host->>+Service: run\n\n    %% Bootstrapping\n    Note over Host, Remote: Bootstrapping\n\n    Membership->>Remote: subscribe to membership topic\n    Service->>+Discovery: bootstrap from seed peers\n    Discovery->>Remote: find neighbours\n    Remote->>Discovery: peer addresses\n\n    Discovery->>Discovery: add address\n    Discovery->>+Service: peer routable\n    Service->>-Membership: peer routable\n\n    Host->>+Client: set provided subnets\n    Client->>+Service: set provided subnets\n    Service->>+Membership: set provided subnets\n    Membership->>-Remote: publish subnets to membership topic\n\n    Discovery->>-Service: bootstrap finished\n\n    Remote->>Identify: listening address\n    Identify->>+Service: listening address\n    Service->>+Discovery: add address\n    Discovery->>-Service: peer routable\n    Service->>-Membership: peer routable\n\n    %% Gossiping\n    Note over Host, Remote: Gossiping\n\n    loop Continuous Gossiping\n        alt publish interval tick\n            Membership->>Remote: publish SignedProviderRecord\n            Membership->>SubnetProvidersCache: prune expired records\n        else\n            Remote->>+Membership: SignedProviderRecord\n            alt if peer routable\n                Membership->>-SubnetProvidersCache: add provider\n            end\n        end\n    end\n\n    %% Resolution\n    Note over Host, Remote: Resolution\n\n    Host->>+Client: resolve CID from subnet\n    Client->>+Service: resolve CID from subnet\n    Service->>Membership: get providers of subnet\n    Service->>Service: prioritize peers, connected first\n\n    loop Resolution Attempts\n        Service->>+Content: resolve CID from first N peers\n        Content->>BitswapStore: get missing blocks of root CID\n\n        loop while has missing CID\n            loop for each peer\n                Content->>Remote: want-have CID\n                Remote->>Content: have-block true/false\n                Note left of Content: Gather peers who can be asked.\n            end\n\n            loop until have block or no more peers to try\n                Content->>Remote: want-block CID\n                alt block is received\n                    Remote->>Content: block\n                    Content->>BitswapStore: insert block\n                    Content->>BitswapStore: get missing blocks of retrieved CID\n                end\n            end\n        end\n\n        Content->>-Service: resolution result\n        alt if failed to resolve but has fallback peers\n            Service->>Service: pick next N peers\n        else\n            Service->>-Client: resolution result\n        end\n    end\n    Client->>-Host: resolution result\n\n    alt if succeeded\n        Host->>BitswapStore: retrieve content by CID\n    end",
+  "content_size": 3342,
+  "collected_at": "2026-02-06T14:05:02.751036",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 52,
+  "repo_forks": 47,
+  "repo_owner": "consensus-shipyard",
+  "repo_name": "ipc",
+  "repo_description": "🌳 Spawn multi-level trees of customized, scalable, EVM-compatible networks with IPC. L2++ powered by FVM, Wasm, libp2p, IPFS/IPLD, and CometBFT.",
+  "repo_language": "Rust",
+  "repo_topics": [
+    "blockchain",
+    "consensus",
+    "evm",
+    "wasm"
+  ],
+  "repo_created_at": "2023-12-06T14:10:39Z",
+  "repo_updated_at": "2026-01-28T14:08:56Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的IPFS子网解析流程图。核心是Host启动后，Service要负责初始化Identify、Discovery、Membership和Content这几个模块，然后和Remote节点交互。先聚焦初始化阶段吧。",
+      "elements_involved": [
+        "Host",
+        "Service",
+        "Identify",
+        "Discovery",
+        "Membership",
+        "Content",
+        "Remote"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。Service创建这些模块的顺序有讲究吗？还有，Service创建完成后是要返回给Host一个Client吗？",
+      "elements_involved": [
+        "Service",
+        "Host",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，Service先创建Identify、Discovery、Membership、Content，然后返回Service和Client给Host。之后Host调用Service.run()启动。接下来是Bootstrap阶段——Membership要向Remote订阅membership topic，Discovery要从种子节点开始引导。",
+      "elements_involved": [
+        "Service",
+        "Identify",
+        "Discovery",
+        "Membership",
+        "Content",
+        "Host",
+        "Client",
+        "Remote"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，初始化到Bootstrap的链路我画好了。注意到Discovery找到邻居后，会把peer地址加进去，然后通知Service peer routable，Service再同步给Membership。还有Host设置provided subnets给Client，Client传给Service，Service再传给Membership去发布。",
+      "elements_involved": [
+        "Discovery",
+        "Service",
+        "Membership",
+        "Host",
+        "Client",
+        "Remote"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Bootstrap还有后半段——Remote的Identify要把listening address给Service，Service加到Discovery里。然后Gossiping阶段是个持续循环：Membership定期发布SignedProviderRecord，同时清理过期记录；收到Remote的记录后，如果peer routable就加到SubnetProvidersCache。",
+      "elements_involved": [
+        "Remote",
+        "Identify",
+        "Service",
+        "Discovery",
+        "Membership",
+        "SubnetProvidersCache",
+        "SignedProviderRecord"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Gossiping的alt分支我理解是这样：一个是定时发布，一个是接收处理。接收那边还要判断peer是否routable才能写入SubnetProvidersCache，对吗？",
+      "elements_involved": [
+        "Membership",
+        "SubnetProvidersCache",
+        "Remote",
+        "SignedProviderRecord"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。现在进入最关键的Resolution阶段——Host让Client解析CID，Client找Service，Service先从Membership拿subnet的providers，优先连已连接的节点。然后Content模块用BitswapStore来跟踪missing CID。",
+      "elements_involved": [
+        "Host",
+        "Client",
+        "Service",
+        "Membership",
+        "Content",
+        "BitswapStore",
+        "CID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Resolution的嵌套循环我梳理一下：外层是尝试不同peer，内层先gather——Content向Remote发want-have询问谁有块，然后loop until拿到块或试完所有peer，发want-block请求。收到block后插入BitswapStore，再检查还有没有missing CID。失败的话Service换下一批fallback peers。",
+      "elements_involved": [
+        "Content",
+        "Remote",
+        "BitswapStore",
+        "CID",
+        "want-have",
+        "want-block",
+        "Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，gather那个loop的Note位置不对，应该是标注Content的行为，不是Remote。还有最后成功的话，Host要从BitswapStore里retrieve content，这个alt分支别忘了。",
+      "elements_involved": [
+        "Content",
+        "Remote",
+        "Host",
+        "BitswapStore",
+        "CID"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已修正。Note放在Content左侧标注\"Gather peers who can be asked\"，最后的alt分支也加上了——resolution成功后Host从BitswapStore retrieve content。整个流程从初始化、Bootstrap、Gossiping到Resolution都完整了。",
+      "elements_involved": [
+        "Host",
+        "BitswapStore",
+        "Content",
+        "Note"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 29350.152,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 9
+  }
+}

@@ -1,0 +1,903 @@
+{
+  "id": "aug_gl_packet-beta_00439_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/ARG_OSCI_SEQ_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    actor User\n    participant Main\n    participant Initializer\n    participant SetupScreen\n    participant SetupService\n    participant NetworkInfoService\n    participant ModeSelectionScreen\n    participant GraphScreen\n    participant UserSettings\n    participant DataAcqProvider\n    participant DataAcqService\n    participant SocketIsolate\n    participant ProcessingIsolate\n    participant OscilloChartProvider\n    participant FFTChartProvider\n    participant OscilloChart\n    participant FFTChart\n    participant ChartPainter\n\n    %% Application Initialization\n    User->>Main: Launch application\n    Main->>Initializer: init(Infra_LoadBalancer)\n    Note over Initializer: Configure system dependencies\n    Initializer->>Initializer: ensureInitialized(Infra_EtcdCluster)\n    Initializer->>Initializer: Register configurations (Infra_EtcdCluster)\n    Initializer->>Initializer: Register services (Infra_RedisCache)\n    Initializer->>Initializer: Register providers (Infra_RedisCache)\n    Initializer-->>Main: Initialization complete\n    Main->>SetupScreen: Navigate to setup screen\n    \n    %% Device Connection Flow\n    SetupScreen->>User: Display connection options\n    User->>SetupScreen: Select connection mode\n    \n    alt External AP Selected\n        SetupScreen->>SetupService: connectToLocalAP(Infra_IngressController)\n        SetupService->>NetworkInfoService: Connect to ESP32 access point\n        NetworkInfoService->>NetworkInfoService: connectWithRetries(Infra_RedisCache)\n        NetworkInfoService-->>SetupService: Connection established\n        SetupService->>SetupService: scanForWiFiNetworks(Infra_LoadBalancer)\n        SetupService->>SetupService: Fetch public key from device\n        SetupService-->>SetupScreen: Return available networks\n        SetupScreen->>User: Show WiFi network selection\n        User->>SetupScreen: Select network & enter password\n        SetupScreen->>SetupService: connectToWiFi(Infra_WorkerNode)\n        SetupService->>SetupService: encriptWithPublicKey(Infra_RedisCache)\n        SetupService->>SetupService: Send credentials to device\n        SetupService->>SetupService: waitForNetworkChange(Infra_RedisCache)\n        SetupService->>SetupService: handleNetworkChangeAndConnect(Infra_WorkerNode)\n        SetupService->>SetupService: Test connection with encrypted challenge\n        SetupService->>SetupService: fetchDeviceConfig(Infra_WorkerNode)\n        SetupService-->>SetupScreen: Connection successful\n    else Internal AP Selected\n        SetupScreen->>SetupService: selectMode(Infra_LoadBalancer)\n        SetupService->>SetupService: initializeGlobalHttpConfig(Infra_LoadBalancer)\n        SetupService->>SetupService: initializeGlobalSocketConnection(Infra_RedisCache)\n        SetupService->>SetupService: fetchDeviceConfig(Infra_IngressController)\n        SetupService-->>SetupScreen: Configuration successful\n    end\n    \n    SetupScreen->>ModeSelectionScreen: Navigate to mode selection\n    \n    %% Mode Selection\n    ModeSelectionScreen->>User: Display oscilloscope modes\n    User->>ModeSelectionScreen: Select mode (Infra_LoadBalancer)\n    ModeSelectionScreen->>GraphScreen: navigateToMode(Infra_LoadBalancer)\n    \n    %% Graph Screen Initialization\n    GraphScreen->>DataAcqProvider: stopAcquisition(Infra_LoadBalancer) (Infra_IngressController)\n    GraphScreen->>GraphScreen: Initialize controller\n    GraphScreen->>UserSettings: Set mode (Infra_LoadBalancer)\n    \n    %% Start Data Acquisition\n    GraphScreen->>DataAcqProvider: startAcquisition(Infra_IngressController)\n    DataAcqProvider->>DataAcqService: fetchData(Infra_RedisCache)\n    DataAcqService->>DataAcqService: initialize(Infra_EtcdCluster)\n    \n    %% Create Isolates\n    DataAcqService->>ProcessingIsolate: Create processing isolate\n    ProcessingIsolate-->>DataAcqService: Return SendPort\n    DataAcqService->>SocketIsolate: Create socket isolate\n    SocketIsolate->>SocketIsolate: Connect to device\n    \n    %% Data Processing Workflow\n    loop Data Acquisition\n        SocketIsolate->>SocketIsolate: Receive binary data packet\n        SocketIsolate->>ProcessingIsolate: Send raw data\n        ProcessingIsolate->>ProcessingIsolate: Parse binary data\n        ProcessingIsolate->>ProcessingIsolate: Apply trigger logic\n        ProcessingIsolate->>ProcessingIsolate: Process signal based on config\n        ProcessingIsolate->>DataAcqService: Send processed data points\n        DataAcqService->>DataAcqProvider: Update data streams\n        \n        alt Oscilloscope Mode\n            DataAcqProvider->>OscilloChartProvider: Update time domain data\n            OscilloChartProvider->>OscilloChart: Refresh chart display\n            OscilloChart->>ChartPainter: Draw waveform\n        else FFT Mode\n            DataAcqProvider->>FFTChartProvider: Update frequency domain data\n            FFTChartProvider->>FFTChart: Refresh chart display\n            FFTChart->>ChartPainter: Draw spectrum\n        end\n    end\n    \n    %% User Settings Interaction\n    User->>UserSettings: Change settings (Infra_EtcdCluster)\n    UserSettings->>DataAcqProvider: Update configuration\n    DataAcqProvider->>DataAcqService: updateConfig(Infra_RedisCache)\n    DataAcqService->>ProcessingIsolate: Send UpdateConfigMessage\n    ProcessingIsolate->>ProcessingIsolate: Apply new configuration\n    \n    %% Chart Interaction\n    User->>OscilloChart: Zoom/Pan gesture\n    OscilloChart->>OscilloChartProvider: handleZoom(Infra_LoadBalancer)/setHorizontalOffset(Infra_WorkerNode)\n    OscilloChartProvider->>OscilloChart: Update display parameters\n    \n    %% Mode Switching\n    User->>GraphScreen: Request mode change\n    GraphScreen->>UserSettings: setMode(Infra_IngressController)\n    UserSettings->>DataAcqProvider: Pause current acquisition\n    UserSettings->>GraphScreen: Update chart display\n    GraphScreen->>DataAcqProvider: Resume acquisition with new mode\n    \n    %% Error Handling Flow\n    alt Connection Error\n        SocketIsolate->>DataAcqService: Report connection error\n        DataAcqService->>DataAcqService: _handleConnectionError(Infra_WorkerNode)\n        DataAcqService->>DataAcqService: Attempt reconnection\n        \n        alt Reconnection Failed\n            DataAcqService->>DataAcqProvider: handleCriticalError(Infra_LoadBalancer)\n            DataAcqProvider->>SetupScreen: Navigate back to setup\n        end\n    end",
+  "content_size": 5996,
+  "collected_at": "2026-02-06T14:09:45.143092",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_packet-beta_00439",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的示波器应用启动流程，从用户打开应用到最终数据显示。核心是要体现基础设施层的依赖关系，特别是etcd集群、Redis缓存、负载均衡这些组件怎么在初始化阶段注入。",
+      "elements_involved": [
+        "Main",
+        "Initializer",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，Initializer作为启动中枢，需要协调多个基础设施组件。我想确认一下：etcd集群主要负责配置注册，Redis缓存用于服务注册，负载均衡器是在哪个阶段介入的？是Initializer直接持有，还是通过某个服务间接使用？",
+      "elements_involved": [
+        "Initializer",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "负载均衡器在Initializer初始化时就传入，作为系统级依赖。Initializer内部会先确保etcd集群就绪，然后注册配置到etcd，接着把服务和provider注册到Redis缓存。完成这些后，Initializer通知Main可以进入设置界面了。",
+      "elements_involved": [
+        "Main",
+        "Initializer",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把应用初始化流程画出来了：User启动应用后，Main调用Initializer.init并传入负载均衡器，Initializer内部依次执行ensureInitialized、注册配置到etcd集群、注册服务和provider到Redis缓存，最后返回完成状态给Main，Main再导航到SetupScreen。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这个初始化流程准确。现在进入设备连接环节，这是关键的用户交互部分。用户到达SetupScreen后，需要选择连接模式——外置AP模式或者内置AP模式，两种流程差异很大。",
+      "elements_involved": [
+        "SetupScreen",
+        "User",
+        "SetupService",
+        "NetworkInfoService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我设计了一个alt分支来处理这两种模式。外置AP模式下，SetupScreen调用SetupService.connectToLocalAP，这里需要传入IngressController来处理设备接入。SetupService再让NetworkInfoService去连接ESP32的热点，NetworkInfoService内部用Redis缓存来做重试机制。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "ESP32"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "重试机制用Redis缓存来实现，是说把重试状态存在Redis里吗？还是Redis作为协调器？另外，扫描WiFi网络和获取设备公钥这两个步骤，负载均衡器在这里起什么作用？",
+      "elements_involved": [
+        "NetworkInfoService",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "SetupService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "connectWithRetries使用Redis缓存来管理重试状态和超时控制。扫描WiFi网络时，SetupService调用scanForWiFiNetworks并使用负载均衡器来分发扫描请求到不同的网络接口。获取公钥是直接从设备读取。扫描完成后返回可用网络列表给SetupScreen展示给用户。",
+      "elements_involved": [
+        "SetupService",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache",
+        "SetupScreen",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户选择网络并输入密码后，SetupScreen把信息传给SetupService进行WiFi连接。这里WorkerNode负责实际的设备通信，Redis缓存用于公钥加密过程。连接建立后要等待网络切换，再用WorkerNode重新连接，最后做加密挑战测试和获取设备配置。",
+      "elements_involved": [
+        "User",
+        "SetupScreen",
+        "SetupService",
+        "Infra_WorkerNode",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "外置AP流程已补充完整：connectToWiFi使用WorkerNode，encriptWithPublicKey使用Redis缓存，发送凭证到设备，waitForNetworkChange用Redis协调，handleNetworkChangeAndConnect用WorkerNode重新连接，测试加密挑战，fetchDeviceConfig用WorkerNode获取配置，最后返回成功状态。",
+      "elements_involved": [
+        "SetupService",
+        "Infra_WorkerNode",
+        "Infra_RedisCache",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "内置AP模式的流程要简单很多。用户选择内置AP后，SetupService直接用负载均衡器选择模式，初始化全局HTTP配置也用负载均衡器，但Socket连接初始化需要Redis缓存来管理连接状态，最后用IngressController获取设备配置。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "内置AP分支已添加：selectMode和initializeGlobalHttpConfig都使用Infra_LoadBalancer，initializeGlobalSocketConnection使用Infra_RedisCache，fetchDeviceConfig使用Infra_IngressController。两种模式完成后都导航到ModeSelectionScreen。",
+      "elements_involved": [
+        "SetupService",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache",
+        "Infra_IngressController",
+        "SetupScreen",
+        "ModeSelectionScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "模式选择界面展示示波器的各种工作模式，用户选择后通过负载均衡器路由到对应的图表界面。这里需要体现负载均衡在UI导航中的作用。",
+      "elements_involved": [
+        "ModeSelectionScreen",
+        "User",
+        "Infra_LoadBalancer",
+        "GraphScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：ModeSelectionScreen向User显示示波器模式，User选择模式时通过Infra_LoadBalancer，然后ModeSelectionScreen调用navigateToMode同样使用负载均衡器，最终到达GraphScreen。",
+      "elements_involved": [
+        "ModeSelectionScreen",
+        "User",
+        "Infra_LoadBalancer",
+        "GraphScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "GraphScreen的初始化很关键。首先要停止之前可能运行的数据采集，这里负载均衡器和IngressController都要参与——负载均衡器决定停止哪个实例的数据流，IngressController处理具体的停止指令。然后初始化控制器，并通过UserSettings设置当前模式。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "Infra_LoadBalancer",
+        "Infra_IngressController",
+        "UserSettings"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "GraphScreen初始化流程已绘制：调用DataAcqProvider.stopAcquisition，同时使用Infra_LoadBalancer和Infra_IngressController，然后GraphScreen内部初始化控制器，再调用UserSettings.setMode使用负载均衡器。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "Infra_LoadBalancer",
+        "Infra_IngressController",
+        "UserSettings"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据采集是核心循环。GraphScreen启动采集，DataAcqProvider委托给DataAcqService，DataAcqService用Redis缓存获取数据，同时需要etcd集群来初始化自身状态。然后创建两个Isolate：ProcessingIsolate处理数据，SocketIsolate负责设备通信。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "DataAcqService",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "Infra_EtcdCluster",
+        "ProcessingIsolate",
+        "SocketIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "数据采集启动流程完成：GraphScreen调用DataAcqProvider.startAcquisition使用IngressController，DataAcqProvider调用DataAcqService.fetchData使用Redis缓存，DataAcqService.initialize使用etcd集群，然后创建ProcessingIsolate并获取SendPort，再创建SocketIsolate。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "DataAcqService",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "Infra_EtcdCluster",
+        "ProcessingIsolate",
+        "SocketIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SocketIsolate创建后需要立即连接设备，这个连接过程是自包含的还是需要外部协调？另外，数据采集循环的具体数据流是怎样的？",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "Device"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "SocketIsolate内部自己管理设备连接，不需要外部传入基础设施。数据采集循环是一个loop：SocketIsolate接收二进制数据包，发送原始数据给ProcessingIsolate，ProcessingIsolate解析数据、应用触发逻辑、根据配置处理信号，然后把处理后的数据点发回DataAcqService，DataAcqService更新数据流给DataAcqProvider。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据到达DataAcqProvider后要分流到不同的图表。示波器模式下走OscilloChartProvider到OscilloChart，最后由ChartPainter绘制波形；FFT模式下走FFTChartProvider到FFTChart，ChartPainter绘制频谱。这里用alt分支区分。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "OscilloChart",
+        "FFTChartProvider",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "数据处理和显示循环已完成：loop Data Acquisition包含SocketIsolate接收数据、发送给ProcessingIsolate、ProcessingIsolate解析处理、返回DataAcqService、更新DataAcqProvider。内层alt分支：Oscilloscope Mode走OscilloChartProvider→OscilloChart→ChartPainter；FFT Mode走FFTChartProvider→FFTChart→ChartPainter。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "OscilloChart",
+        "FFTChartProvider",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户设置变更的流程也需要体现。用户在UserSettings修改设置，使用etcd集群持久化配置，然后通知DataAcqProvider更新，DataAcqProvider通过Redis缓存让DataAcqService更新配置，DataAcqService发送UpdateConfigMessage给ProcessingIsolate，ProcessingIsolate内部应用新配置。",
+      "elements_involved": [
+        "User",
+        "UserSettings",
+        "Infra_EtcdCluster",
+        "DataAcqProvider",
+        "Infra_RedisCache",
+        "DataAcqService",
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "用户设置更新流程已添加：User修改UserSettings使用etcd集群，UserSettings通知DataAcqProvider，DataAcqProvider调用updateConfig使用Redis缓存，DataAcqService发送UpdateConfigMessage给ProcessingIsolate，ProcessingIsolate内部应用新配置。",
+      "elements_involved": [
+        "User",
+        "UserSettings",
+        "Infra_EtcdCluster",
+        "DataAcqProvider",
+        "Infra_RedisCache",
+        "DataAcqService",
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "图表交互方面，用户在OscilloChart上做缩放和平移手势，需要调用OscilloChartProvider的handleZoom和setHorizontalOffset，分别使用负载均衡器和WorkerNode，然后OscilloChartProvider更新显示参数给OscilloChart。",
+      "elements_involved": [
+        "User",
+        "OscilloChart",
+        "OscilloChartProvider",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "图表交互已补充：User在OscilloChart上Zoom/Pan，OscilloChart调用OscilloChartProvider.handleZoom使用Infra_LoadBalancer，调用setHorizontalOffset使用Infra_WorkerNode，然后OscilloChartProvider更新OscilloChart的显示参数。",
+      "elements_involved": [
+        "User",
+        "OscilloChart",
+        "OscilloChartProvider",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "模式切换流程：用户请求切换模式，GraphScreen调用UserSettings.setMode使用IngressController，UserSettings暂停当前采集并通知DataAcqProvider，然后更新图表显示，GraphScreen恢复新模式的采集。",
+      "elements_involved": [
+        "User",
+        "GraphScreen",
+        "UserSettings",
+        "Infra_IngressController",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "模式切换流程已添加：User请求GraphScreen切换模式，GraphScreen调用UserSettings.setMode使用IngressController，UserSettings暂停DataAcqProvider的采集，UserSettings更新GraphScreen显示，GraphScreen恢复DataAcqProvider的新模式采集。",
+      "elements_involved": [
+        "User",
+        "GraphScreen",
+        "UserSettings",
+        "Infra_IngressController",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "错误处理很重要。当SocketIsolate报告连接错误时，DataAcqService用WorkerNode处理错误，尝试重连。如果重连失败，用负载均衡器标记关键错误，DataAcqProvider通知SetupScreen返回设置界面。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer",
+        "DataAcqProvider",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "错误处理流程已绘制：alt Connection Error分支，SocketIsolate报告错误给DataAcqService，DataAcqService._handleConnectionError使用WorkerNode，尝试重连，内层alt Reconnection Failed，DataAcqService调用handleCriticalError使用负载均衡器，DataAcqProvider导航回SetupScreen。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer",
+        "DataAcqProvider",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整体流程看起来完整了。但我注意到一个细节：在数据采集循环中，ProcessingIsolate解析数据后应用触发逻辑，这个触发逻辑的配置来源需要明确吗？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "UserSettings",
+        "DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "触发逻辑的配置应该是ProcessingIsolate内部维护的，通过之前提到的UpdateConfigMessage来更新。不过我需要确认：ProcessingIsolate初始化时从哪里获取初始配置？是从DataAcqService创建时传入，还是自己去etcd集群读取？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "DataAcqService",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "初始配置在DataAcqService创建ProcessingIsolate时通过SendPort传递，不需要ProcessingIsolate直接访问etcd。这样设计是为了隔离性，ProcessingIsolate只专注于数据处理，不直接依赖基础设施。",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SendPort"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，这样ProcessingIsolate的依赖更清晰。我检查一下整体结构：从应用启动、设备连接、模式选择、数据采集循环、用户交互、错误处理，各个环节的基础设施使用都标注清楚了。",
+      "elements_involved": [
+        "Initializer",
+        "SetupService",
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再确认一下SocketIsolate的职责边界。它既要连接设备又要接收数据，如果连接断开，它是自己重试还是上报给DataAcqService？从错误处理流程看，似乎是上报机制。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "Connection Error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "SocketIsolate只负责检测连接状态，一旦断开立即上报给DataAcqService，自己不处理重试。这样重试策略可以统一在DataAcqService中管理，避免多个Isolate各自为政。DataAcqService可以根据错误类型决定是重连还是上报关键错误。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这个设计合理。另外，FFTChart和OscilloChart都使用ChartPainter，这是同一个实例还是不同实例？从代码看应该是各自创建自己的ChartPainter。",
+      "elements_involved": [
+        "OscilloChart",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "是的，OscilloChart和FFTChart各自调用ChartPainter，是两个独立的绘制实例。这样设计允许两种图表有不同的绘制优化，虽然底层都是ChartPainter，但配置和状态是隔离的。",
+      "elements_involved": [
+        "OscilloChart",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个场景：如果用户在数据采集过程中突然断开设备，SocketIsolate上报错误，DataAcqService尝试重连，此时UI应该有什么反馈？目前流程里似乎没有体现这个中间状态。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "DataAcqProvider",
+        "GraphScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确实，重试过程中的UI状态需要明确。DataAcqService尝试重连时，是否应该通知DataAcqProvider显示连接中状态？还是保持静默直到成功或失败？",
+      "elements_involved": [
+        "DataAcqService",
+        "DataAcqProvider",
+        "GraphScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "应该通知DataAcqProvider，让它更新图表显示状态，比如显示\"连接中\"或冻结最后一帧数据。但为了不增加复杂度，我们可以假设这个通知是DataAcqService到DataAcqProvider的隐式调用，不单独画出。重点保留成功和失败两个明确状态。",
+      "elements_involved": [
+        "DataAcqService",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解了，保持当前的错误处理结构，重试过程中的状态更新作为内部实现细节。我整体审视一下基础设施的使用分布：etcd集群主要用于初始化和配置持久化，Redis缓存用于服务注册、连接管理和数据获取，负载均衡器用于导航、任务分发和错误处理，WorkerNode用于设备通信，IngressController用于接入控制。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "分布总结准确。我想再强化一下Initializer的注释说明，强调它配置的是系统级依赖。另外，SetupService的fetchDeviceConfig在两个分支都出现，但用的基础设施不同——外置AP用WorkerNode，内置AP用IngressController，这个区别要清晰。",
+      "elements_involved": [
+        "Initializer",
+        "SetupService",
+        "Infra_WorkerNode",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整：Initializer的Note明确标注\"Configure system dependencies\"。外置AP分支的fetchDeviceConfig标注使用Infra_WorkerNode，内置AP分支的fetchDeviceConfig标注使用Infra_IngressController，区分清楚。",
+      "elements_involved": [
+        "Initializer",
+        "SetupService",
+        "Infra_WorkerNode",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "DataAcqProvider的stopAcquisition同时使用了负载均衡器和IngressController，这两个基础设施在这里的分工是什么？是负载均衡器选择实例，IngressController执行停止指令吗？",
+      "elements_involved": [
+        "DataAcqProvider",
+        "Infra_LoadBalancer",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "是的，负载均衡器决定停止哪个数据采集实例（可能有多个设备连接），IngressController负责向该实例发送停止指令。这种分层让停止操作既能路由到正确目标，又能控制访问权限。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "Infra_LoadBalancer",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "设计合理。再看一下ProcessingIsolate的数据处理步骤：解析二进制数据、应用触发逻辑、基于配置处理信号。这三个步骤都是内部计算，不需要外部基础设施，这样Isolate的独立性很好。",
+      "elements_involved": [
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，ProcessingIsolate的三步处理都是自包含的。这种设计让数据处理可以在独立线程中进行，不阻塞主线程，也不依赖外部服务，只有输入输出通过SendPort通信。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "SendPort"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查一下循环的退出条件。Data Acquisition loop应该是持续运行直到用户主动停止或发生不可恢复错误。目前图里没有显式画出退出，但这是隐含的。",
+      "elements_involved": [
+        "loop Data Acquisition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，loop的退出是隐含的，由外部事件触发：用户关闭应用、切换模式、或错误处理流程导航回设置界面。这些都会间接终止循环。如果需要显式画出，可以在GraphScreen或DataAcqProvider添加stop调用，但当前设计已经足够表达核心流程。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "loop Data Acquisition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：UserSettings.setMode在初始化时和模式切换时都使用了负载均衡器，但初始化时是从GraphScreen调用，切换时也是GraphScreen调用。这个一致性很好，说明setMode的路由策略是统一的。",
+      "elements_involved": [
+        "UserSettings",
+        "Infra_LoadBalancer",
+        "GraphScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，UserSettings.setMode两次出现都使用Infra_LoadBalancer，调用方都是GraphScreen（初始化时GraphScreen刚创建，切换时是用户操作）。这种一致性让路由逻辑更简单。",
+      "elements_involved": [
+        "UserSettings",
+        "Infra_LoadBalancer",
+        "GraphScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "OscilloChartProvider的handleZoom和setHorizontalOffset分别用负载均衡器和WorkerNode，这个分工有点特别。为什么不是都用同一个基础设施？",
+      "elements_involved": [
+        "OscilloChartProvider",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "handleZoom是UI层面的操作，需要负载均衡器来分发到可能的多个图表实例；setHorizontalOffset涉及具体的数据偏移计算，需要WorkerNode来访问底层数据缓冲区。这种区分让UI响应和数据操作分离，符合分层架构。",
+      "elements_involved": [
+        "OscilloChartProvider",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "解释合理。现在整体流程应该完整了。从用户启动应用到看到波形数据，再到交互和错误处理，各个环节的基础设施依赖都清晰标注。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "GraphScreen",
+        "OscilloChart",
+        "FFTChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "我最后核对一遍基础设施的使用次数：etcd集群出现3次（Initializer.ensureInitialized、Initializer注册配置、DataAcqService.initialize），Redis缓存出现8次，负载均衡器出现9次，WorkerNode出现5次，IngressController出现6次。分布比较均衡，符合各自职责。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Redis缓存使用频率最高，符合它作为服务注册中心和连接管理器的定位。etcd集群使用较少但关键，主要用于配置相关的持久化。这个分布是合理的。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我注意到SetupService.waitForNetworkChange和handleNetworkChangeAndConnect分别用了Redis缓存和WorkerNode，这个转换点是网络状态从协调层到执行层的切换，设计很精细。",
+      "elements_involved": [
+        "SetupService",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，waitForNetworkChange需要协调多个组件的状态，所以用Redis缓存；handleNetworkChangeAndConnect需要实际建立设备连接，所以用WorkerNode。这种分层让状态管理和物理操作分离。",
+      "elements_involved": [
+        "SetupService",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "整体序列图已经完成，涵盖了应用初始化的基础设施配置、双模式的设备连接流程、模式选择与图表初始化、带Isolate的数据采集循环、用户交互与设置更新、以及完整的错误处理机制。所有基础设施组件的使用都与实际场景匹配。",
+      "elements_involved": [
+        "sequenceDiagram"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "很好。最后确认一下Participant的顺序是否合理：从User开始，经过Main、Initializer、SetupScreen、SetupService、NetworkInfoService、ModeSelectionScreen、GraphScreen、UserSettings、DataAcqProvider、DataAcqService、两个Isolate、两个ChartProvider、两个Chart，最后是ChartPainter。这个顺序基本符合调用链的时间顺序。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Participant顺序已按调用链排列，从左到右大致对应时间顺序，便于阅读。两个Isolate放在DataAcqService之后、ChartProvider之前，符合数据流的中间处理位置。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "OscilloChartProvider",
+        "FFTChartProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "图表完成，可以定稿了。这个序列图完整展示了示波器应用的协作流程，基础设施的依赖关系清晰，各种边界情况都有处理。",
+      "elements_involved": [
+        "sequenceDiagram"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "序列图已最终确认，包含完整的应用生命周期、设备连接双模式、数据采集与处理循环、用户交互、以及错误恢复机制。所有基础设施组件（etcd集群、Redis缓存、负载均衡器、WorkerNode、IngressController）的使用场景均已标注。",
+      "elements_involved": [
+        "sequenceDiagram",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 0,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 121533.895,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 65
+  }
+}

@@ -1,0 +1,387 @@
+{
+  "id": "gh_architecture_01822",
+  "source": "github",
+  "source_url": "https://github.com/andreashappe/cochise/blob/06449a1ad0e13446b310893734c157f0faef266e/overview.mmd",
+  "github_repo": "andreashappe/cochise",
+  "github_file_path": "overview.mmd",
+  "diagram_type": "architecture",
+  "code": "---\nconfig:\n  theme: redux\n---\nflowchart TD\n subgraph planner[\"planner\"]\n        replan[\"Update Plan (o3-mini)\"]\n        next{\"Select Next Task (o3-mini)\"}\n        ptt[\"Pentest Task Tree\"]\n  end\n subgraph executor[\"executor\"]\n        execute[\"Perform Task (gpt-4o)\"]\n        execute_decide{\"Tool or Finished?\"}\n        tool_call@{shape: procs, lable: \"tool-call: SSH\"}\n        shell_history[\"Episodic Shell History\"]\n        message_history[\"Episodic Message History\"]\n  end\n\n    invalid_commands[\"Invalid Commands (cmd, descr, fix)\"]\n    findings@{ shape: lin-cyl, label: \"Target Environment Knowlege\"}\n\n    update_knowledge[\"Update Knowledge (o3-mini)\"]\n  \n  \n    start((\"Start\")) -- \"plan=None,task=None,summary='',knowledge='',leads=[]\" --> replan\n    replan <-. plan .-> ptt\n    ptt -. plan .-> next\n    replan --> next\n    next -- task, context --> execute\n    next --> finish(((\"done\")))\n    next -. task, context .-> summarizer[\"Summarizer (o3-mini)\"] & replan\n    execute --> execute_decide\n    execute_decide -- cmd --> tool_call\n    tool_call -- shell output --> execute_decide\n    execute_decide -- result --> summarizer\n    summarizer -. summary, leads .-> replan\n    summarizer -. invalid commands .-> invalid_commands\n    invalid_commands -. invalid commands and fixes .-> execute\n    findings -. knowledge .-> execute\n    findings -. knowledge .-> replan\n    findings -. knowledge .-> next\n    execute_decide <-. cmd, cmd output .-> message_history\n    execute_decide -. cmd, cmd output .-> shell_history\n    shell_history -. cmd, cmd_output .-> summarizer\n    ptt@{ shape: lin-cyl}\n    shell_history@{ shape: lin-cyl}\n    message_history@{ shape: lin-cyl}\n    invalid_commands@{ shape: lin-cyl}\n    summarizer -- new findings --> update_knowledge\n    update_knowledge <-. knowledge .-> findings\n    update_knowledge --> replan\n",
+  "content_size": 1844,
+  "collected_at": "2026-02-06T02:03:46.801438",
+  "compilation_status": "success",
+  "compilation_error": "",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 37,
+  "repo_forks": 3,
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个自动化渗透测试的智能体架构。核心思路是分成两个子系统：planner负责高层规划，executor负责具体执行。",
+      "elements_involved": [
+        "planner",
+        "executor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，planner和executor作为两个子图。那planner内部需要哪些模块？我注意到您提到了任务树的概念。",
+      "elements_involved": [
+        "planner",
+        "Pentest Task Tree"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，planner里要有Pentest Task Tree（PTT）作为核心数据结构，还有Update Plan用o3-mini来做重规划，以及Select Next Task也是o3-mini决策。",
+      "elements_involved": [
+        "Pentest Task Tree",
+        "Update Plan (o3-mini)",
+        "Select Next Task (o3-mini)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在planner子图里添加了这三个节点，PTT用圆柱体表示，因为它是存储结构。",
+      "elements_involved": [
+        "ptt@{ shape: lin-cyl}"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "executor这边需要Perform Task用gpt-4o执行，还要一个决策点判断是用工具还是任务已完成。另外需要SSH工具调用，以及两种历史记录：Episodic Shell History和Episodic Message History。",
+      "elements_involved": [
+        "Perform Task (gpt-4o)",
+        "Tool or Finished?",
+        "tool-call: SSH",
+        "Episodic Shell History",
+        "Episodic Message History"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下：executor里Perform Task → 决策节点 → 要么走SSH工具调用，要么返回结果。两种历史记录都用圆柱体存储，对吧？",
+      "elements_involved": [
+        "shell_history@{ shape: lin-cyl}",
+        "message_history@{ shape: lin-cyl}"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的。还有，需要一个全局的Target Environment Knowledge，也是圆柱体，作为知识库被多个模块读取。另外要记录Invalid Commands用于学习修复。",
+      "elements_involved": [
+        "findings@{ shape: lin-cyl}",
+        "invalid_commands"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加findings和invalid_commands，都设为圆柱体。现在画一下启动流程：Start节点指向Update Plan，带初始状态参数。",
+      "elements_involved": [
+        "start((\"Start\"))",
+        "replan"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Start到replan的边上要标注初始状态：plan=None, task=None, summary='', knowledge='', leads=[]。然后replan和PTT之间是plan的双向虚线关系。",
+      "elements_involved": [
+        "start -- replan",
+        "replan <-. plan .- ptt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加带参数的启动边和replan-PTT的虚线关系。PTT到Select Next Task也是plan的虚线传递。",
+      "elements_involved": [
+        "ptt -. plan .- next"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，然后replan直接连到next，表示更新完计划就选下一个任务。next节点有两个出口：如果还有任务，把task和context发给executor；如果完成了，就到done。",
+      "elements_involved": [
+        "replan -- next",
+        "next -- execute",
+        "next -- finish(((\"done\")))"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "done节点用双圆表示终止状态，对吧？另外我注意到next还要给Summarizer发task和context？",
+      "elements_involved": [
+        "finish(((\"done\")))",
+        "summarizer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，next到summarizer是虚线，传递task和context，让Summarizer提前准备。Summarizer也是o3-mini。",
+      "elements_involved": [
+        "next -. task, context .- summarizer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Summarizer节点，并建立与next的虚线。executor这边，Perform Task到决策节点，决策节点如果选工具就走SSH，SSH输出返回决策节点。",
+      "elements_involved": [
+        "execute -- execute_decide",
+        "execute_decide -- tool_call",
+        "tool_call -- execute_decide"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "决策节点如果任务完成，就把result发给Summarizer。Summarizer生成summary和leaks，虚线传回给replan用于下一轮规划。",
+      "elements_involved": [
+        "execute_decide -- summarizer",
+        "summarizer -. summary, leads .- replan"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加result流向和summary/leads的反馈虚线。Summarizer还要输出invalid commands到专门存储。",
+      "elements_involved": [
+        "summarizer -. invalid commands .- invalid_commands"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，invalid_commands存储后，要把修复建议虚线反馈给executor，形成学习闭环。",
+      "elements_involved": [
+        "invalid_commands -. invalid commands and fixes .- execute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Target Environment Knowledge的流向需要确认：它要给executor、replan、next都提供knowledge？",
+      "elements_involved": [
+        "findings -. knowledge .- execute",
+        "findings -. knowledge .- replan",
+        "findings -. knowledge .- next"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确，knowledge是全局共享的。另外，executor的决策节点和两种历史记录之间也有双向虚线：message_history存储cmd和cmd output，shell_history也是。",
+      "elements_involved": [
+        "execute_decide <-. cmd, cmd output .- message_history",
+        "execute_decide -. cmd, cmd output .- shell_history"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加历史记录的双向虚线。shell_history还要把cmd和cmd_output传给Summarizer？",
+      "elements_involved": [
+        "shell_history -. cmd, cmd_output .- summarizer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这样Summarizer能基于完整历史做总结。最后还需要一个Update Knowledge模块，用o3-mini把新发现更新到findings。",
+      "elements_involved": [
+        "update_knowledge",
+        "summarizer -- update_knowledge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "Summarizer输出new findings给Update Knowledge，然后Update Knowledge把knowledge虚线写回findings，最后触发replan？",
+      "elements_involved": [
+        "summarizer -- new findings -- update_knowledge",
+        "update_knowledge <-. knowledge .- findings",
+        "update_knowledge -- replan"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "流程正确。但检查一下：Update Knowledge到replan应该是实线还是虚线？我觉得是实线，表示明确的触发信号。",
+      "elements_involved": [
+        "update_knowledge -- replan"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我确认一下之前的虚线用法。replan到PTT、PTT到next、next到summarizer、各种knowledge传递都是虚线表示数据依赖，而控制流用实线。Update Knowledge触发replan是控制流，保持实线。",
+      "elements_involved": [
+        "update_knowledge -- replan"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有个小细节：invalid_commands的形状也应该是圆柱体，和PTT、历史记录保持一致。另外tool_call的形状是procs（过程形）。",
+      "elements_involved": [
+        "invalid_commands@{ shape: lin-cyl}",
+        "tool_call@{shape: procs}"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正invalid_commands为圆柱体，tool_call设为过程形。现在整体检查一下：Start→replan→next→execute→execute_decide→tool_call/summarizer，循环直到finish。",
+      "elements_involved": [
+        "start",
+        "replan",
+        "next",
+        "execute",
+        "execute_decide",
+        "tool_call",
+        "summarizer",
+        "finish"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "循环路径确认：summarizer可以触发update_knowledge或直接反馈给replan，两种路径都能回到规划阶段。",
+      "elements_involved": [
+        "summarizer -. summary, leads .- replan",
+        "summarizer -- update_knowledge -- replan"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，summarizer有两条出路：直接反馈summary/leads给replan快速迭代，或者走update_knowledge更新知识库后再replan。这样设计很灵活。",
+      "elements_involved": [
+        "summarizer",
+        "replan",
+        "update_knowledge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下所有o3-mini的分配：replan、next、summarizer、update_knowledge都用o3-mini；executor用gpt-4o。这体现了推理和执行的模型分工。",
+      "elements_involved": [
+        "Update Plan (o3-mini)",
+        "Select Next Task (o3-mini)",
+        "Summarizer (o3-mini)",
+        "Update Knowledge (o3-mini)",
+        "Perform Task (gpt-4o)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部确认完毕。架构图已完成：planner子图（replan、next、PTT）、executor子图（execute、execute_decide、tool_call、两种history）、全局存储（findings、invalid_commands）、以及Summarizer和Update Knowledge模块，所有关系和模型标注清晰。",
+      "elements_involved": [
+        "planner",
+        "executor",
+        "findings",
+        "invalid_commands",
+        "summarizer",
+        "update_knowledge"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 30,
+    "repair_count": 1,
+    "grounding_acts_count": 30,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:39Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:37Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:37Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 58623.0032,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 30
+  }
+}

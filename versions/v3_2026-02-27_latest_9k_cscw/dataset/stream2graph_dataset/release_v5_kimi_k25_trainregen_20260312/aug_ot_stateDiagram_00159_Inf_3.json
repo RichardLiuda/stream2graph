@@ -1,0 +1,147 @@
+{
+  "id": "aug_ot_stateDiagram_00159_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/hispafox/260922-MicroserviciosNET-001/blob/ba7ec3b191746e569c359fdee8add32a5bedc43d/Test1/src/Demo.Api/Diagramas/Diagrama%20de%20estados%20de%20la%20Saga.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "hispafox/260922-MicroserviciosNET-001",
+  "diagram_type": "stateDiagram",
+  "code": "﻿stateDiagram-v2\ndirection LR\n\n[Infra_EtcdCluster] --> OrderSubmitted\nOrderSubmitted --> PaymentProcessing : ProcessPaymentCommand\nPaymentProcessing --> StockReserving : PaymentProcessedEvent\nPaymentProcessing --> OrderFailed : PaymentFailedEvent / CancelOrder\nPaymentProcessing --> OrderFailed : PaymentTimeoutEvent / CancelPayment + CancelOrder\n\nStockReserving --> ShipmentCreating : StockReservedEvent\nStockReserving --> OrderFailed : StockReservationFailedEvent / RefundPayment + CancelOrder\nStockReserving --> OrderFailed : StockTimeoutEvent / CancelOrder\n\nShipmentCreating --> OrderCompleted : ShipmentCreatedEvent / OrderCompletedEvent\nShipmentCreating --> OrderFailed : ShipmentFailedEvent / ReleaseStock + RefundPayment + CancelOrder\n\nOrderCompleted --> [Infra_EtcdCluster]\nOrderFailed --> [Infra_LoadBalancer]\n\nnote right of PaymentProcessing\n  Timeout: 5 min\n  Reintentos: exponencial (Infra_WorkerNode)\nend note\n\nnote right of StockReserving\n  Timeout: 2 min\n  Compensación si falla:\n  - RefundPayment\n  - CancelOrder\nend note\n",
+  "content_size": 980,
+  "collected_at": "2026-02-06T10:38:34.705447",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00159",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个订单状态流转图，核心是从提交订单到最终完成或失败的全流程。起点是OrderSubmitted，然后进入支付环节PaymentProcessing。这里有个关键点——支付可能成功、失败或超时，超时得自动取消。",
+      "elements_involved": [
+        "OrderSubmitted",
+        "PaymentProcessing",
+        "OrderFailed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，支付超时5分钟对吧？那支付成功后是直接进入发货吗？还是需要先处理库存？",
+      "elements_involved": [
+        "PaymentProcessing",
+        "StockReserving"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，支付成功触发PaymentProcessedEvent，然后进入StockReserving库存预留阶段。这个环节也有风险——库存可能不足，或者2分钟超时，两种情况都要走补偿流程：退款加取消订单。",
+      "elements_involved": [
+        "PaymentProcessedEvent",
+        "StockReserving",
+        "OrderFailed",
+        "StockReservationFailedEvent",
+        "StockTimeoutEvent",
+        "RefundPayment",
+        "CancelOrder"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把StockReserving的补偿逻辑加上注释说明。接下来库存预留成功后呢？",
+      "elements_involved": [
+        "StockReserving",
+        "StockReservedEvent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "库存预留成功触发StockReservedEvent，进入ShipmentCreating发货创建阶段。这里是最后一道坎——发货成功就订单完成，发货失败要释放库存、退款、取消订单，三重补偿。",
+      "elements_involved": [
+        "StockReservedEvent",
+        "ShipmentCreating",
+        "OrderCompleted",
+        "ShipmentFailedEvent",
+        "ReleaseStock",
+        "RefundPayment",
+        "CancelOrder"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下终态：OrderCompleted完成后回到Etcd集群？失败订单OrderFailed走向负载均衡器？这是为了表示数据持久化和流量重定向吗？",
+      "elements_involved": [
+        "OrderCompleted",
+        "Infra_EtcdCluster",
+        "OrderFailed",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，完成订单归档到Etcd集群，失败订单打回负载均衡器重新调度。另外PaymentProcessing和StockReserving的超时策略要标注清楚，支付重试用指数退避，部署在WorkerNode上。",
+      "elements_involved": [
+        "PaymentProcessing",
+        "StockReserving",
+        "Infra_WorkerNode",
+        "Timeout",
+        "Reintentos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加两处注释：PaymentProcessing标注5分钟超时和指数退避重试，StockReserving标注2分钟超时及补偿动作。方向设为从左到右，整体结构已经完整了。",
+      "elements_involved": [
+        "PaymentProcessing",
+        "StockReserving",
+        "direction LR"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 22060.8516,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

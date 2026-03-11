@@ -245,6 +245,7 @@ class AnthropicMessagesGenerator(JSONHttpGenerator):
     def __init__(self, config: dict[str, Any]) -> None:
         endpoint = str(config.get("endpoint", "https://api.anthropic.com/v1/messages"))
         super().__init__({**config, "endpoint": endpoint})
+        self.provider_name = str(config.get("provider_name", config.get("provider", self.provider)))
         self.api_key_env = str(config.get("api_key_env", "ANTHROPIC_API_KEY"))
         self.temperature = float(config.get("temperature", 0.2))
         self.max_tokens = int(config.get("max_tokens", 4096))
@@ -254,7 +255,7 @@ class AnthropicMessagesGenerator(JSONHttpGenerator):
         api_key = os.environ.get(self.api_key_env)
         if not api_key:
             return DialogueGenerationResult(
-                provider=self.provider,
+                provider=self.provider_name,
                 model_name=self.model_name,
                 raw_output_text="",
                 latency_ms=0.0,
@@ -279,9 +280,10 @@ class AnthropicMessagesGenerator(JSONHttpGenerator):
                 for block in response.get("content", [])
                 if isinstance(block, dict)
             ).strip()
+            response_model = response.get("model") if isinstance(response.get("model"), str) else self.model_name
             return DialogueGenerationResult(
-                provider=self.provider,
-                model_name=self.model_name,
+                provider=self.provider_name,
+                model_name=response_model,
                 raw_output_text=raw_text,
                 latency_ms=round(latency_ms, 4),
                 finish_reason=response.get("stop_reason"),
@@ -289,7 +291,7 @@ class AnthropicMessagesGenerator(JSONHttpGenerator):
             )
         except Exception as exc:
             return DialogueGenerationResult(
-                provider=self.provider,
+                provider=self.provider_name,
                 model_name=self.model_name,
                 raw_output_text="",
                 latency_ms=0.0,

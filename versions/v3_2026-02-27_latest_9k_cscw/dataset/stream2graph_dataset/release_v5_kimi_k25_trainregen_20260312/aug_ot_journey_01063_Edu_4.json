@@ -1,0 +1,166 @@
+{
+  "id": "aug_ot_journey_01063_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/AlmatJuvashev/phd-students-portal/blob/b88b252ccf22627eafd166ab2c48dbd64fab7deb/docs/diagrams/01_document_approval.mmd",
+  "source_type": "github_search",
+  "github_repo": "AlmatJuvashev/phd-students-portal",
+  "diagram_type": "journey",
+  "code": "sequenceDiagram\n    participant S as Student\n    participant API as AttachUpload Handler\n    participant S3 as S3 Storage\n    participant DB as PostgreSQL\n    participant N as NotifyAdvisors\n    participant A as Advisor\n\n    S->>API: POST /journey/nodes/:id/uploads/presign\n    API->>S3: PresignPut(Education_StudentDB)\n    S3-->>API: Signed URL\n    API-->>S: {Education_ClassroomService}\n    \n    S->>S3: PUT file to presigned URL\n    S3-->>S: 200 OK + ETag\n    \n    S->>API: POST /journey/nodes/:id/uploads/attach\n    API->>DB: Begin transaction\n    API->>DB: INSERT document_versions\n    API->>DB: INSERT node_instance_slot_attachments\n    API->>DB: UPDATE node_instances.state = 'submitted'\n    API->>DB: Commit transaction\n    API-->>N: NotifyAdvisorsOnSubmission (Education_StudentDB)\n    N->>DB: Get advisors for student\n    N->>DB: INSERT admin_notifications\n    API-->>S: 200 OK\n    \n    A->>API: PATCH /admin/attachments/:id/review\n    API->>DB: Verify advisor assigned to student\n    API->>DB: UPDATE attachment.status\n    API->>DB: UPDATE node_instances.state\n    API-->>A: 200 OK",
+  "content_size": 1066,
+  "collected_at": "2026-02-06T11:02:44.926104",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Education",
+  "seed_id": "ot_journey_01063",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个学生作业提交的工作流。核心场景是：学生上传附件，系统要存到S3，同时记录到PostgreSQL，最后通知导师。关键点是要保证数据一致性——文件存了、数据库记了、状态变了，这三件事得原子性完成。",
+      "elements_involved": [
+        "Student",
+        "S3 Storage",
+        "PostgreSQL",
+        "NotifyAdvisors",
+        "Advisor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，原子性很重要。我理解的流程是：学生先拿预签名URL上传S3，然后再调一个attach接口把文件和节点关联起来？这个attach接口里做事务包裹？",
+      "elements_involved": [
+        "AttachUpload Handler",
+        "PresignPut",
+        "attach",
+        "Begin transaction",
+        "Commit transaction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，就是这个思路。attach接口里要INSERT两条记录：document_versions存文件元信息，node_instance_slot_attachments做关联，还要UPDATE node_instances.state变成'submitted'。这三步必须在同一个事务里。",
+      "elements_involved": [
+        "INSERT document_versions",
+        "INSERT node_instance_slot_attachments",
+        "UPDATE node_instances.state",
+        "submitted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "事务提交后，我加一个异步通知吧？AttachUpload Handler发个NotifyAdvisorsOnSubmission事件，NotifyAdvisors服务去查这个学生的导师是谁，然后INSERT到admin_notifications。这样导师就能在后台看到待审提醒。",
+      "elements_involved": [
+        "NotifyAdvisorsOnSubmission",
+        "Education_StudentDB",
+        "Get advisors for student",
+        "INSERT admin_notifications"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，但注意NotifyAdvisors要用Education_StudentDB的数据源查导师关系。另外导师审阅的入口也要画出来——导师调PATCH /admin/attachments/:id/review，系统得先Verify advisor assigned to student，防止越权。",
+      "elements_involved": [
+        "Advisor",
+        "PATCH /admin/attachments/:id/review",
+        "Verify advisor assigned to student",
+        "UPDATE attachment.status"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我补充导师审阅的分支：验证通过后，UPDATE attachment.status和node_instances.state，然后返回200 OK。整个流程从学生上传、事务提交、通知导师、到导师审阅，闭环了。",
+      "elements_involved": [
+        "UPDATE node_instances.state",
+        "200 OK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，学生第一次请求presign的时候，URL里要带上Education_StudentDB的上下文吗？还是只是普通的存储桶路径？",
+      "elements_involved": [
+        "POST /journey/nodes/:id/uploads/presign",
+        "PresignPut",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我修正一下：PresignPut的时候需要指定Education_StudentDB作为存储上下文，这样S3返回的Signed URL才带有正确的路径前缀。然后API回给学生的响应我用Education_ClassroomService封装，保持接口一致性。",
+      "elements_involved": [
+        "PresignPut",
+        "Education_StudentDB",
+        "Signed URL",
+        "Education_ClassroomService"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题了。最后确认下S3返回200 OK的时候要带ETag，学生attach的时候需要把这个ETag传回来做校验吗？",
+      "elements_involved": [
+        "200 OK",
+        "ETag",
+        "PUT file to presigned URL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "当前流程里ETag只是S3返回给学生确认上传成功，attach接口里没有强制校验。如果需要我可以加，但目前按你描述的原子事务设计，文件已经落地S3了，attach时主要防重复提交就行。图已经画完，你看看整体结构？",
+      "elements_involved": [
+        "ETag",
+        "POST /journey/nodes/:id/uploads/attach",
+        "200 OK"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:35Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:35Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 20913.7843,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

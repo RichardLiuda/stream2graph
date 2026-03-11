@@ -1,0 +1,208 @@
+{
+  "id": "aug_gl_block-beta_00233_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/consensus-shipyard/ipc/blob/a2c2faeb4ac75564d2b4e3236066f1458eeb85b8/ipld/resolver/docs/diagrams/ipld_resolver.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "consensus-shipyard/ipc",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Host as Host\n    participant Client as Client\n    participant Service as Service\n    participant SubnetProvidersCache as SubnetProvidersCache\n    participant BitswapStore as BitswapStore\n    participant Content as Content (FinTech_PaymentGateway)\n    participant Membership as Membership (FinTech_TransactionQueue)\n    participant Discovery as Discovery (FinTech_FraudDetection)\n    participant Identify as Identify\n    participant Remote as Remote\n\n    %% Initialization\n    Host->>+Service: new\n    Service->>Identify: create\n    Service->>Discovery: create\n    Service->>Membership: create\n    Service->>Content: create\n    Service->>-Host: (FinTech_LedgerService)\n\n    Host->>+Service: run\n\n    %% Bootstrapping\n    Note over Host, Remote: Bootstrapping\n\n    Membership->>Remote: subscribe to membership topic\n    Service->>+Discovery: bootstrap from seed peers\n    Discovery->>Remote: find neighbours\n    Remote->>Discovery: peer addresses\n\n    Discovery->>Discovery: add address\n    Discovery->>+Service: peer routable\n    Service->>-Membership: peer routable\n\n    Host->>+Client: set provided subnets\n    Client->>+Service: set provided subnets\n    Service->>+Membership: set provided subnets\n    Membership->>-Remote: publish subnets to membership topic\n\n    Discovery->>-Service: bootstrap finished\n\n    Remote->>Identify: listening address\n    Identify->>+Service: listening address\n    Service->>+Discovery: add address\n    Discovery->>-Service: peer routable\n    Service->>-Membership: peer routable\n\n    %% Gossiping\n    Note over Host, Remote: Gossiping\n\n    loop Continuous Gossiping\n        alt publish interval tick\n            Membership->>Remote: publish SignedProviderRecord\n            Membership->>SubnetProvidersCache: prune expired records\n        else\n            Remote->>+Membership: SignedProviderRecord\n            alt if peer routable\n                Membership->>-SubnetProvidersCache: add provider\n            end\n        end\n    end\n\n    %% Resolution\n    Note over Host, Remote: Resolution\n\n    Host->>+Client: resolve CID from subnet\n    Client->>+Service: resolve CID from subnet\n    Service->>Membership: get providers of subnet\n    Service->>Service: prioritize peers, connected first\n\n    loop Resolution Attempts\n        Service->>+Content: resolve CID from first N peers\n        Content->>BitswapStore: get missing blocks of root CID\n\n        loop while has missing CID\n            loop for each peer\n                Content->>Remote: want-have CID\n                Remote->>Content: have-block true/false\n                Note left of Content: Gather peers who can be asked.\n            end\n\n            loop until have block or no more peers to try\n                Content->>Remote: want-block CID\n                alt block is received\n                    Remote->>Content: block\n                    Content->>BitswapStore: insert block\n                    Content->>BitswapStore: get missing blocks of retrieved CID\n                end\n            end\n        end\n\n        Content->>-Service: resolution result\n        alt if failed to resolve but has fallback peers\n            Service->>Service: pick next N peers\n        else\n            Service->>-Client: resolution result\n        end\n    end\n    Client->>-Host: resolution result\n\n    alt if succeeded\n        Host->>BitswapStore: retrieve content by CID\n    end",
+  "content_size": 3342,
+  "collected_at": "2026-02-06T14:05:02.751036",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 52,
+  "repo_forks": 47,
+  "repo_owner": "consensus-shipyard",
+  "repo_name": "ipc",
+  "repo_description": "🌳 Spawn multi-level trees of customized, scalable, EVM-compatible networks with IPC. L2++ powered by FVM, Wasm, libp2p, IPFS/IPLD, and CometBFT.",
+  "repo_language": "Rust",
+  "repo_topics": [
+    "blockchain",
+    "consensus",
+    "evm",
+    "wasm"
+  ],
+  "repo_created_at": "2023-12-06T14:10:39Z",
+  "repo_updated_at": "2026-01-28T14:08:56Z",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gl_block-beta_00233",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个FinTech场景下的分布式内容解析时序图。核心流程是：Host启动Service，然后完成Bootstrapping、Gossiping和Resolution三个阶段。Service要创建Identify、Discovery、Membership、Content四个子服务，其中Content对应PaymentGateway，Membership对应TransactionQueue，Discovery对应FraudDetection。",
+      "elements_involved": [
+        "Host",
+        "Service",
+        "Identify",
+        "Discovery",
+        "Membership",
+        "Content",
+        "FinTech_PaymentGateway",
+        "FinTech_TransactionQueue",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下：Service创建完四个子服务后，返回给Host的是LedgerService对吧？然后Host调用run启动。Bootstrapping阶段Service先从Discovery开始bootstrap，找邻居节点，同时Membership要订阅membership topic？",
+      "elements_involved": [
+        "Service",
+        "Host",
+        "FinTech_LedgerService",
+        "Discovery",
+        "Membership",
+        "Remote"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。Bootstrapping完成后，Discovery和Service之间要有两次peer routable的回调，因为Identify拿到listening address后还要再add一次address。然后Host设置provided subnets，经过Client、Service传到Membership，最后publish到Remote。",
+      "elements_involved": [
+        "Discovery",
+        "Service",
+        "Identify",
+        "Host",
+        "Client",
+        "Membership",
+        "Remote",
+        "provided subnets"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Bootstrapping部分画好了。Gossiping阶段我画了一个loop，里面用alt区分publish interval tick和接收SignedProviderRecord两种情况。tick时Membership向Remote publish记录，同时prune SubnetProvidersCache里的过期记录。",
+      "elements_involved": [
+        "Gossiping",
+        "Membership",
+        "Remote",
+        "SignedProviderRecord",
+        "SubnetProvidersCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Gossiping没问题。Resolution阶段比较复杂：Host通过Client向Service发起resolve CID from subnet，Service先从Membership拿providers，优先选已连接的peers。然后进入Resolution Attempts循环，Service让Content去resolve，Content要用BitswapStore检查missing CID。",
+      "elements_involved": [
+        "Host",
+        "Client",
+        "Service",
+        "Membership",
+        "Content",
+        "BitswapStore",
+        "missing CID",
+        "Resolution Attempts"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Content解析的具体逻辑我有点疑问：是先want-have批量询问所有peers，收集有block的节点，然后再want-block逐个尝试直到拿到block？拿到后insert到BitswapStore，然后继续检查是否还有missing CID？",
+      "elements_involved": [
+        "Content",
+        "Remote",
+        "want-have",
+        "want-block",
+        "BitswapStore",
+        "missing CID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。want-have是快速探测，want-block是实际获取。这里要有嵌套loop：外层while有missing CID，内层先for each peer做want-have，然后再loop until拿到block或没peer可试。每次拿到block后还要get missing blocks of retrieved CID，因为可能有子块。",
+      "elements_involved": [
+        "Content",
+        "Remote",
+        "want-have",
+        "want-block",
+        "BitswapStore",
+        "missing CID",
+        "retrieved CID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Resolution Attempts画好了。每个attempt结束后Content返回resolution result给Service，如果失败但有fallback peers就pick next N peers继续，否则返回给Client。最后Client回传给Host，成功的话Host直接从BitswapStore retrieve content。",
+      "elements_involved": [
+        "Content",
+        "Service",
+        "fallback peers",
+        "Client",
+        "Host",
+        "BitswapStore"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，发现个小问题：BitswapStore的命名我之前写的是bitswapstore，但标准应该是BitswapStore，首字母大写。还有FinTech_FraudDetection在代码里好像被截断了，需要确认完整显示。另外Init部分Service返回给Host的LedgerService要标注清楚。",
+      "elements_involved": [
+        "BitswapStore",
+        "FinTech_FraudDetection",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已修复：BitswapStore统一首字母大写，FinTech_FraudDetection完整显示，Service返回(FinTech_LedgerService)的标注也加上了。整个时序图现在包含Initialization、Bootstrapping、Gossiping、Resolution四个阶段，所有FinTech模块和核心交互都完整了。",
+      "elements_involved": [
+        "BitswapStore",
+        "FinTech_FraudDetection",
+        "FinTech_LedgerService",
+        "Initialization",
+        "Bootstrapping",
+        "Gossiping",
+        "Resolution"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 29986.2664,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 9
+  }
+}

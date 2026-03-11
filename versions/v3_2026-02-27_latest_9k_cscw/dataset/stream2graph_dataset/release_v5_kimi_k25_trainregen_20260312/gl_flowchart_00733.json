@@ -1,0 +1,918 @@
+{
+  "id": "gl_flowchart_00733",
+  "source": "gitlab",
+  "source_url": "https://github.com/ryoha000/remoterg/blob/0ff1b96350fd13df89a538576394f7513a430154/desktop/services/hostd/screen_share_flow.mmd",
+  "source_note": "collected_from_github_final",
+  "github_repo": "ryoha000/remoterg",
+  "diagram_type": "flowchart",
+  "code": "flowchart TB\n    subgraph VideoCaptureLoop[VideoCaptureService ループ]\n        direction TB\n        CL1[windows-capture<br/>コールバック待機] --> CL2[on_frame_arrived<br/>フレーム到着]\n        CL2 --> CL3[FrameBuffer取得<br/>RGBAデータ読み取り]\n        CL3 --> CL4{リサイズ必要?}\n        CL4 -->|Yes| CL5[resize_image_impl<br/>リサイズ処理]\n        CL4 -->|No| CL6[RGBAデータそのまま]\n        CL5 --> CL7[Frame作成<br/>width height data timestamp]\n        CL6 --> CL7\n        CL7 --> CL8[std_frame_tx.send<br/>std::sync::mpsc]\n        CL8 --> CL9[ブリッジタスク<br/>tokio::spawn]\n        CL9 --> CL10[tokio_frame_tx.send<br/>tokio::sync::mpsc]\n        CL10 --> CL1\n    end\n    \n    subgraph WebRtcLoop[WebRtcService ループ]\n        direction TB\n        WL1[tokio::select!<br/>並行待機] --> WL2[frame_rx.recv<br/>Frame受信]\n        WL1 --> WL3[encode_result_rx.recv<br/>EncodeResult受信]\n        WL1 --> WL4[keyframe_rx.recv<br/>キーフレーム要求<br/>PLI/FIR受信]\n        \n        WL2 --> WL5{connection_ready?<br/>ICE/DTLS接続完了}\n        WL5 -->|No| WL6[フレーム破棄<br/>continue]\n        WL5 -->|Yes| WL7{video_track_state<br/>存在?}\n        WL7 -->|No| WL8[フレーム破棄<br/>continue]\n        WL7 -->|Yes| WL9[frame_duration計算<br/>timestamp差分]\n        WL9 --> WL10[EncodeJob作成<br/>width height rgba<br/>duration enqueue_at<br/>request_keyframe]\n        WL10 --> WL11[job_slot.set<br/>最新フレームのみ保持<br/>EncodeJobSlot]\n        WL11 --> WL1\n        \n        WL3 --> WL13[Sample作成<br/>data: Bytes<br/>duration]\n        WL13 --> WL14[track.write_sample<br/>RTP送信]\n        WL14 --> WL15[frame_count++]\n        WL15 --> WL1\n        \n        WL4 --> WL16[keyframe_requested<br/>フラグ設定]\n        WL16 --> WL1\n    end\n    \n    subgraph EncoderLoopH264MMF[H.264 MMF エンコーダワーカーループ]\n        direction TB\n        EL1[loop イベント待機] --> EL2[encoder.event_generator<br/>GetEvent]\n        EL2 --> EL3{イベント種別}\n        \n        EL3 -->|METransformNeedInput| EL4[pending_job確認<br/>または job_slot.take<br/>ブロッキング取得]\n        EL4 --> EL5{解像度変更?}\n        EL5 -->|Yes| EL6[エンコーダ再初期化<br/>preprocessor再作成<br/>start_streaming]\n        EL6 --> EL7[pending_jobに保存]\n        EL7 --> EL1\n        EL5 -->|No| EL8[preprocessor.process<br/>RGBA → NV12<br/>D3D11テクスチャ]\n        EL8 --> EL9[input_meta_queue<br/>メタ情報保存]\n        EL9 --> EL10[MFCreateDXGISurfaceBuffer<br/>DXGIバッファ作成]\n        EL10 --> EL11[MFCreateSample<br/>入力サンプル作成]\n        EL11 --> EL12{request_keyframe?}\n        EL12 -->|Yes| EL13[MFSampleExtension_VideoEncodePictureType<br/>設定]\n        EL12 -->|No| EL14[ProcessInput<br/>エンコーダに入力]\n        EL13 --> EL14\n        EL14 --> EL1\n        \n        EL3 -->|METransformHaveOutput| EL15[ProcessOutput<br/>エンコード済みデータ取得]\n        EL15 --> EL16[バッファLock<br/>データコピー]\n        EL16 --> EL17[annexb_from_mf_data<br/>AVC → Annex-B変換]\n        EL17 --> EL18[SPS/PPS検出<br/>is_keyframe判定<br/>MFSampleExtension_CleanPoint]\n        EL18 --> EL19{codec_config<br/>SPS/PPS注入必要?}\n        EL19 -->|Yes| EL20[SPS/PPS注入<br/>最初のキーフレーム]\n        EL19 -->|No| EL21[input_meta_queue<br/>メタ情報取得]\n        EL20 --> EL21\n        EL21 --> EL22[EncodeResult作成]\n        EL22 --> EL23[res_tx.send<br/>tokio::sync::mpsc]\n        EL23 --> EL1\n    end\n    \n    subgraph EncoderLoopH264OH[H.264 OpenH264 エンコーダワーカーループ]\n        direction TB\n        OH1[loop job_slot.take<br/>EncodeJob受信<br/>ブロッキング取得] --> OH2{解像度変更?}\n        OH2 -->|Yes| OH3[エンコーダ再初期化<br/>create_encoder]\n        OH3 --> OH1\n        OH2 -->|No| OH4[RGBA → YUV変換<br/>rgba_to_yuv I420]\n        OH4 --> OH5{request_keyframe?}\n        OH5 -->|Yes| OH6[encoder.force_intra_frame]\n        OH5 -->|No| OH7[encoder.encode<br/>OpenH264エンコード]\n        OH6 --> OH7\n        OH7 --> OH8[ビットストリーム生成]\n        OH8 --> OH9[annexb_from_bitstream<br/>Annex-B変換]\n        OH9 --> OH10[SPS/PPS検出<br/>is_keyframe判定]\n        OH10 --> OH11[EncodeResult作成]\n        OH11 --> OH12[res_tx.send<br/>tokio::sync::mpsc]\n        OH12 --> OH1\n    end\n    \n    CL10 -.->|Frame| WL2\n    WL11 -.->|EncodeJob<br/>job_slot.set| EL4\n    WL11 -.->|EncodeJob<br/>job_slot.set| OH1\n    EL23 -.->|EncodeResult| WL3\n    OH12 -.->|EncodeResult| WL3\n    WL14 -.->|RTP| RTP[WebRTC RTP送信<br/>PeerConnection]\n    RTP -.->|ネットワーク| Client[クライアント<br/>受信・デコード・表示]\n    \n    style CaptureLoop fill:#ffe1e1\n    style WebRtcLoop fill:#e1e1ff\n    style EncoderLoopH264MMF fill:#ffffe1\n    style EncoderLoopH264OH fill:#e1ffe1\n    style Client fill:#e1f5ff\n    style WL6 fill:#ffcccc\n    style WL8 fill:#ffcccc\n\n",
+  "content_size": 4352,
+  "collected_at": "2026-02-06T14:19:35.943573",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的视频采集到WebRTC推流的架构图。核心是用Rust实现，支持两种H.264编码后端：Media Foundation和OpenH264。",
+      "elements_involved": [
+        "VideoCaptureLoop",
+        "WebRtcLoop",
+        "EncoderLoopH264MMF",
+        "EncoderLoopH264OH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先确认一下整体结构：三个主要循环——采集循环、WebRTC主循环、以及两个并行的编码器工作循环？",
+      "elements_involved": [
+        "captureloop",
+        "captureservice",
+        "client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但编码器是两个独立的子图，MMF和OpenH264是互斥部署的，不是同时运行。采集循环用windows-capture库。",
+      "elements_involved": [
+        "CL1",
+        "windows-capture",
+        "EncoderLoopH264MMF",
+        "EncoderLoopH264OH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出VideoCaptureService循环。起点是CL1，windows-capture的回调等待状态，然后触发on_frame_arrived。",
+      "elements_involved": [
+        "CL1",
+        "CL2",
+        "on_frame_arrived"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CL2之后要获取FrameBuffer，读取RGBA数据。这里有个分支判断：是否需要resize。",
+      "elements_involved": [
+        "CL3",
+        "CL4",
+        "resize_image_impl"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了CL3到CL4的判断节点。Yes分支走CL5的resize_image_impl，No分支直接走CL6保留原RGBA数据，两者汇合到CL7。",
+      "elements_involved": [
+        "CL4",
+        "CL5",
+        "CL6",
+        "CL7"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CL7创建Frame结构，包含width、height、data、timestamp。然后通过std::sync::mpsc发送到桥接任务。",
+      "elements_involved": [
+        "CL7",
+        "CL8",
+        "std_frame_tx",
+        "std::sync::mpsc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有个设计点：CL8是std的mpsc，CL9用tokio::spawn做桥接，CL10转成tokio::sync::mpsc。为什么要两层通道？",
+      "elements_involved": [
+        "CL8",
+        "CL9",
+        "CL10",
+        "tokio::spawn"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "因为windows-capture回调在非异步线程，需要桥接到tokio运行时。CL10发完就回到CL1继续等待下一帧。",
+      "elements_involved": [
+        "CL10",
+        "CL1",
+        "ブリッジタスク"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "采集循环画完了，用#ffe1e1填充。现在画WebRtcLoop，起点WL1用tokio::select!做并行等待。",
+      "elements_involved": [
+        "WebRtcLoop",
+        "WL1",
+        "tokio::select!"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "WL1有三个分支：frame_rx.recv收帧、encode_result_rx.recv收编码结果、keyframe_rx.recv收PLI/FIR关键帧请求。",
+      "elements_involved": [
+        "WL1",
+        "WL2",
+        "WL3",
+        "WL4",
+        "frame_rx",
+        "encode_result_rx",
+        "keyframe_rx"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "三个分支都画好了。WL2之后要判断connection_ready，ICE和DTLS连接完了才能继续。",
+      "elements_involved": [
+        "WL2",
+        "WL5",
+        "connection_ready",
+        "ICE",
+        "DTLS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "WL5如果No就直接WL6丢弃帧继续循环。Yes的话还要检查video_track_state是否存在，没有也WL8丢弃。",
+      "elements_involved": [
+        "WL5",
+        "WL6",
+        "WL7",
+        "WL8",
+        "video_track_state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "WL6和WL8都标成#ffcccc红色，表示丢弃路径。WL7确认有track后，WL9计算frame_duration用timestamp差分。",
+      "elements_involved": [
+        "WL6",
+        "WL8",
+        "WL9",
+        "frame_duration"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后WL10创建EncodeJob，包含所有元数据，特别要注意request_keyframe标记。WL11通过job_slot.set只保留最新帧。",
+      "elements_involved": [
+        "WL10",
+        "WL11",
+        "EncodeJob",
+        "job_slot",
+        "EncodeJobSlot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "job_slot的设计是覆盖式的？这样编码器如果来不及处理就会丢帧，保证低延迟？",
+      "elements_involved": [
+        "WL11",
+        "job_slot",
+        "EncodeJobSlot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，实时视频不能堆积。WL11之后回到WL1。另外WL3分支收到EncodeResult后WL13创建Sample。",
+      "elements_involved": [
+        "WL11",
+        "WL1",
+        "WL3",
+        "WL13",
+        "Sample"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "WL14用track.write_sample做RTP发送，WL15计数器递增，然后回WL1。WL4分支收到关键帧请求后WL16设置标志再回WL1。",
+      "elements_involved": [
+        "WL14",
+        "WL15",
+        "WL16",
+        "keyframe_requested",
+        "RTP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画MMF编码器循环。EL1等待事件，EL2从event_generator获取事件。这是Media Foundation的异步模式。",
+      "elements_involved": [
+        "EncoderLoopH264MMF",
+        "EL1",
+        "EL2",
+        "encoder.event_generator",
+        "GetEvent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "MMF循环用#ffffe1黄色。EL3判断事件类型，METransformNeedInput时需要输入数据。",
+      "elements_involved": [
+        "EL3",
+        "METransformNeedInput",
+        "METransformHaveOutput"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EL4检查pending_job或从job_slot.take阻塞获取。然后EL5判断分辨率是否变化，变了就要EL6重新初始化编码器。",
+      "elements_involved": [
+        "EL4",
+        "EL5",
+        "EL6",
+        "preprocessor",
+        "start_streaming"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "EL6的重新初始化包括preprocessor再创建和start_streaming？然后EL7保存到pending_job？",
+      "elements_involved": [
+        "EL6",
+        "EL7",
+        "pending_job"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，分辨率变化时先初始化，但数据先放pending_job等下次NeedInput事件。EL5为No时EL8做RGBA到NV12转换。",
+      "elements_involved": [
+        "EL5",
+        "EL8",
+        "RGBA",
+        "NV12",
+        "D3D11テクスチャ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EL8用preprocessor.process，D3D11纹理加速。EL9保存元数据到input_meta_queue，EL10创建DXGI表面缓冲区。",
+      "elements_involved": [
+        "EL8",
+        "EL9",
+        "EL10",
+        "input_meta_queue",
+        "MFCreateDXGISurfaceBuffer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EL11创建MF输入样本，EL12检查request_keyframe，需要的话EL13设置MFSampleExtension_VideoEncodePictureType。",
+      "elements_involved": [
+        "EL11",
+        "EL12",
+        "EL13",
+        "MFCreateSample",
+        "MFSampleExtension_VideoEncodePictureType"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EL13和No分支都到EL14的ProcessInput，然后回EL1等待。EL3的另一分支METransformHaveOutput走EL15。",
+      "elements_involved": [
+        "EL13",
+        "EL14",
+        "EL15",
+        "ProcessInput",
+        "ProcessOutput"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EL15获取编码后数据，EL16锁定缓冲区拷贝，EL17做AVC到Annex-B格式转换。",
+      "elements_involved": [
+        "EL15",
+        "EL16",
+        "EL17",
+        "annexb_from_mf_data",
+        "AVC",
+        "Annex-B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EL18检测SPS/PPS并判断is_keyframe，用MFSampleExtension_CleanPoint。EL19检查是否需要注入codec_config的SPS/PPS。",
+      "elements_involved": [
+        "EL18",
+        "EL19",
+        "SPS",
+        "PPS",
+        "is_keyframe",
+        "MFSampleExtension_CleanPoint"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EL19为Yes时EL20注入SPS/PPS，只在第一个关键帧做。然后EL21从input_meta_queue取元数据，EL22创建EncodeResult。",
+      "elements_involved": [
+        "EL19",
+        "EL20",
+        "EL21",
+        "EL22",
+        "codec_config"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EL23通过tokio::sync::mpsc发送结果，然后回EL1。MMF循环完成。现在画OpenH264循环，用#e1ffe1绿色。",
+      "elements_involved": [
+        "EL23",
+        "OH1",
+        "EncoderLoopH264OH",
+        "tokio::sync::mpsc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OpenH264是同步模式。OH1循环里job_slot.take阻塞获取EncodeJob。OH2同样判断分辨率变化。",
+      "elements_involved": [
+        "OH1",
+        "OH2",
+        "EncodeJob",
+        "job_slot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "OH2为Yes时OH3重新初始化create_encoder，然后回OH1。为No时OH4做RGBA到YUV转换，用rgba_to_yuv输出I420。",
+      "elements_involved": [
+        "OH2",
+        "OH3",
+        "OH4",
+        "create_encoder",
+        "rgba_to_yuv",
+        "I420"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OH5检查request_keyframe，需要的话OH6调用force_intra_frame。然后OH7执行OpenH264编码。",
+      "elements_involved": [
+        "OH5",
+        "OH6",
+        "OH7",
+        "request_keyframe",
+        "force_intra_frame",
+        "encode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "OH6和No分支都到OH7。OH8生成比特流，OH9做Annex-B转换，OH10检测SPS/PPS判断关键帧。",
+      "elements_involved": [
+        "OH7",
+        "OH8",
+        "OH9",
+        "OH10",
+        "annexb_from_bitstream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OH11创建EncodeResult，OH12通过mpsc发送，然后回OH1。两个编码器循环都完成了。",
+      "elements_involved": [
+        "OH11",
+        "OH12",
+        "EncodeResult",
+        "res_tx"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "现在需要画跨子图的虚线连接。CL10的Frame应该连到WL2？",
+      "elements_involved": [
+        "CL10",
+        "WL2",
+        "Frame"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，CL10到WL2是Frame传递。WL11的EncodeJob要同时连到EL4和OH1，因为两个编码器都从这里取任务。",
+      "elements_involved": [
+        "WL11",
+        "EL4",
+        "OH1",
+        "EncodeJob",
+        "job_slot.set"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了WL11到EL4和OH1的两条虚线，都标注EncodeJob和job_slot.set。编码结果EL23和OH12都连到WL3。",
+      "elements_involved": [
+        "WL11",
+        "EL4",
+        "OH1",
+        "EL23",
+        "OH12",
+        "WL3",
+        "EncodeResult"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "WL14的RTP发送要连到RTP节点，再连到Client。Client用#e1f5ff浅蓝色。",
+      "elements_involved": [
+        "WL14",
+        "RTP",
+        "Client",
+        "PeerConnection",
+        "クライアント"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RTP节点和Client都加上了，标注网络传输和接收解码显示。整体结构应该完整了，我检查一下循环闭合。",
+      "elements_involved": [
+        "RTP",
+        "Client",
+        "ネットワーク",
+        "受信・デコード・表示"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "CL10回到CL1没问题。但WL11之后直接回WL1，那EncodeJob是怎么被编码器取走的？",
+      "elements_involved": [
+        "WL11",
+        "WL1",
+        "EL4",
+        "OH1",
+        "job_slot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "job_slot是共享的AtomicCell或Mutex，WL11只是set进去，EL4和OH1的take是阻塞等待的，所以WL11可以立即返回。",
+      "elements_involved": [
+        "WL11",
+        "job_slot",
+        "set",
+        "take",
+        "ブロッキング取得"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "有个细节：EL4的描述应该是\"pending_job確認またはjob_slot.take\"，两种情况都要体现。",
+      "elements_involved": [
+        "EL4",
+        "pending_job",
+        "job_slot",
+        "take"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正EL4的描述，加上\"または job_slot.take ブロッキング取得\"。另外EL7的描述也需要调整，应该是保存到pending_job。",
+      "elements_involved": [
+        "EL4",
+        "EL7",
+        "pending_job"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "OH1的描述也要明确是\"ブロッキング取得\"，和EL4保持一致。还有WL4的标注，PLI/FIR是RTCP的关键帧请求类型。",
+      "elements_involved": [
+        "OH1",
+        "WL4",
+        "PLI",
+        "FIR",
+        "ブロッキング取得"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已更新OH1加上\"ブロッキング取得\"。WL4标注了\"キーフレーム要求 PLI/FIR受信\"。再检查下各循环的方向标记。",
+      "elements_involved": [
+        "OH1",
+        "WL4",
+        "direction TB"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CL3的标注应该是\"RGBAデータ読み取り\"，不是单纯的获取。EL8的NV12转换要强调D3D11テクスチャ加速。",
+      "elements_involved": [
+        "CL3",
+        "EL8",
+        "RGBAデータ読み取り",
+        "D3D11テクスチャ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正CL3和EL8的描述。EL10的MFCreateDXGISurfaceBuffer后面加上DXGIバッファ作成更清楚。",
+      "elements_involved": [
+        "CL3",
+        "EL8",
+        "EL10",
+        "MFCreateDXGISurfaceBuffer"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "WL9的frame_duration计算，标注\"timestamp差分\"可以。但WL10的enqueue_at是什么用途？",
+      "elements_involved": [
+        "WL9",
+        "WL10",
+        "enqueue_at",
+        "timestamp差分"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "enqueue_at是帧进入编码队列的时间戳，用于统计编码延迟。WL10的标注已经包含这个字段。",
+      "elements_involved": [
+        "WL10",
+        "enqueue_at",
+        "EncodeJob"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查下样式：CaptureLoop是#ffe1e1，WebRtcLoop是#e1e1ff，MMF是#ffffe1，OpenH264是#e1ffe1，Client是#e1f5ff。",
+      "elements_involved": [
+        "CaptureLoop",
+        "WebRtcLoop",
+        "EncoderLoopH264MMF",
+        "EncoderLoopH264OH",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有子图样式已应用。WL6和WL8的丢弃路径用#ffcccc红色突出显示。整体64个节点左右，结构清晰。",
+      "elements_involved": [
+        "WL6",
+        "WL8",
+        "#ffcccc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "方向都是TB（Top-Bottom）对吧？采集和WebRTC循环流程比较长，MMF编码器分支最多。",
+      "elements_involved": [
+        "direction TB",
+        "VideoCaptureLoop",
+        "WebRtcLoop",
+        "EncoderLoopH264MMF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认都是TB方向。MMF编码器有23个节点，是最复杂的，体现了Media Foundation的异步事件驱动模型。",
+      "elements_involved": [
+        "EncoderLoopH264MMF",
+        "METransformNeedInput",
+        "METransformHaveOutput"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OpenH264循环更简洁，12个节点，适合没有Media Foundation的平台。两个编码器输出格式统一为Annex-B。",
+      "elements_involved": [
+        "EncoderLoopH264OH",
+        "annexb_from_bitstream",
+        "annexb_from_mf_data",
+        "Annex-B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "虚线连接都检查完毕：CL10-WL2(Frame)、WL11-EL4(EncodeJob)、WL11-OH1(EncodeJob)、EL23-WL3(EncodeResult)、OH12-WL3(EncodeResult)、WL14-RTP、RTP-Client。",
+      "elements_involved": [
+        "CL10",
+        "WL2",
+        "WL11",
+        "EL4",
+        "OH1",
+        "EL23",
+        "OH12",
+        "WL3",
+        "WL14",
+        "RTP",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "子图标题用日文：VideoCaptureService ループ、WebRtcService ループ、H.264 MMF エンコーダワーカーループ、H.264 OpenH264 エンコーダワーカーループ。",
+      "elements_involved": [
+        "VideoCaptureLoop",
+        "WebRtcLoop",
+        "EncoderLoopH264MMF",
+        "EncoderLoopH264OH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "标题已确认。CL1的windows-capture后面加了コールバック待機，CL2加了フレーム到着，都是日文注释。",
+      "elements_involved": [
+        "CL1",
+        "CL2",
+        "コールバック待機",
+        "フレーム到着"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再确认一个细节：EL19的codec_config检查，SPS/PPS注入只在第一个关键帧做，之后就不需要了。",
+      "elements_involved": [
+        "EL19",
+        "EL20",
+        "codec_config",
+        "SPS",
+        "PPS",
+        "最初のキーフレーム"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认EL19和EL20的逻辑。整个流程图完整呈现了从Windows屏幕采集到WebRTC推送的完整链路，支持双编码器后端。",
+      "elements_involved": [
+        "d11",
+        "h264",
+        "i420",
+        "x b",
+        "cl1",
+        "cl10",
+        "cl2",
+        "cl3",
+        "cl4",
+        "cl5",
+        "cl6",
+        "cl7",
+        "cl8",
+        "cl9",
+        "captureloop",
+        "captureservice"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "节点命名都用了前缀：CL采集、WL WebRTC、EL MMF编码、OH OpenH编码。这样一眼能区分归属。",
+      "elements_involved": [
+        "CL",
+        "WL",
+        "EL",
+        "OH",
+        "命名規則"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "命名规范一致，从CL1-CL10、WL1-WL16、EL1-EL23、OH1-OH12，编号连续无遗漏。",
+      "elements_involved": [
+        "CL1",
+        "CL10",
+        "WL1",
+        "WL16",
+        "EL1",
+        "EL23",
+        "OH1",
+        "OH12"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认：所有判断节点用{}，处理节点用[]，开始节点也用[]，虚线用-.-，标签用|...|。应该符合Mermaid规范。",
+      "elements_involved": [
+        "{}",
+        "[]",
+        "-.-",
+        "|"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部检查完毕，语法正确，布局合理，颜色区分清晰。可以生成最终图表了。",
+      "elements_involved": [
+        "flowchart TB",
+        "subgraph",
+        "style"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 4,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed",
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 123997.1585,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

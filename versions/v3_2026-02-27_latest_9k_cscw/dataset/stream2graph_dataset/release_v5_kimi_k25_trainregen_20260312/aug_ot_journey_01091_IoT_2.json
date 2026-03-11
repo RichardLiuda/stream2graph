@@ -1,0 +1,1040 @@
+{
+  "id": "aug_ot_journey_01091_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sethmcknight/quantic-msse-easy-park-plus/blob/039c5204b7b2c68b7ff94688985eb9bc26fba23c/project-submission/proposed-ddd-microservices-architecture/diagrams/_system-high-level/mermaid/proposed-system-sequence-overview.mmd",
+  "source_type": "github_search",
+  "github_repo": "sethmcknight/quantic-msse-easy-park-plus",
+  "diagram_type": "journey",
+  "code": "---\ntitle Easy Park Plus - System Sequence Overview (IoT_Industrial_EdgeNode)\n---\nsequenceDiagram\n    actor Customer\n    participant FL as FrontendLayer\n    participant GW as APIGateway\n    participant CCSvc as CustomerContextSvc\n    participant RSSvc as ReservationsSvc\n    participant PSvc as PricingSvc\n    participant BSvc as BillingSvc\n    participant POSvc as ParkingOperationsSvc\n    participant VCSvc as VehicleContextSvc\n    participant ECSvc as ElectricVehicleChargingSvc\n    participant EISvc as ExternalIntegrationsSvc\n    participant PolMSvc as PolicyManagementSvc\n    participant IAETSvc as InternalAudit&EventTraceSvc\n    participant MB as MessageBroker\n\n    %% User Authentication and Dashboard Load\n    rect rgb(IoT_Industrial_ActuatorController)\n    Note over Customer, IAETSvc: User Authentication & Session Management\n    Customer->>FL: Start session / Login\n    FL->>GW: Authenticate User\n    GW->>CCSvc: Validate Credentials\n    CCSvc-->>GW: User Authenticated\n    GW-->>FL: Session Established\n    GW-->>IAETSvc: Log(IoT_Industrial_ActuatorController)\n    \n    FL->>GW: Load Dashboard\n    GW->>RSSvc: Get Reservations\n    GW->>POSvc: Get Lot Status\n    RSSvc-->>GW: Reservations Data\n    POSvc-->>GW: Lot Status Data\n    GW-->>FL: Dashboard Data\n    end\n\n    %% Make Reservation (IoT_Industrial_MQTT_Broker)\n    rect rgb(IoT_Industrial_MQTT_Broker)\n    Note over Customer, MB: Reservation Creation & Payment Processing\n    Customer->>FL: Make Reservation\n    FL->>GW: Request Reservation(IoT_Industrial_PLC_Logic)\n    GW->>RSSvc: CreateReservation(IoT_Industrial_ActuatorController)\n    RSSvc->>PolMSvc: GetReservationPolicies(IoT_Industrial_TelemetryStream)\n    PolMSvc-->>RSSvc: ReservationPolicies\n    RSSvc->>RSSvc: CreateSlotHold(IoT_Industrial_PLC_Logic)\n    RSSvc-->>IAETSvc: Publish(IoT_Industrial_EdgeNode)\n    RSSvc->>PSvc: GetFeeQuote(IoT_Industrial_TelemetryStream)\n    PSvc-->>RSSvc: FeeQuote\n    RSSvc->>BSvc: PreAuthPayment(IoT_Industrial_TelemetryStream)\n    BSvc-->>RSSvc: PreAuth OK\n    RSSvc->>RSSvc: ConvertHoldToReservation(IoT_Industrial_MQTT_Broker)\n    RSSvc-->>GW: ReservationConfirmed\n    GW-->>FL: Show Confirmation\n    RSSvc->>MB: publish ReservationConfirmedEvent\n    IAETSvc->>MB: consume ReservationConfirmedEvent\n    end\n\n    %% Vehicle Entry (IoT_Industrial_PLC_Logic)\n    rect rgb(IoT_Industrial_EdgeNode)\n    Note over EISvc, IAETSvc: Vehicle Entry & Visit Initiation\n    EISvc->>GW: VehicleDetectedAtEntry(IoT_Industrial_TelemetryStream)\n    GW->>POSvc: RegisterVehicleEntry(IoT_Industrial_EdgeNode)\n    POSvc->>VCSvc: GetVehicleDetails(IoT_Industrial_MQTT_Broker)\n    VCSvc-->>POSvc: VehicleDetails\n    POSvc->>PolMSvc: GetEntryPolicies(IoT_Industrial_PLC_Logic)\n    PolMSvc-->>POSvc: EntryPolicies (IoT_Industrial_MQTT_Broker)\n    POSvc->>RSSvc: CheckReservation(IoT_Industrial_MQTT_Broker)\n    RSSvc-->>POSvc: ReservationMatch / NoMatch\n    POSvc->>POSvc: VisitLifecycleStateMachine.StartVisit(IoT_Industrial_EdgeNode)\n    POSvc->>BSvc: InitiateBillingForVisit(IoT_Industrial_EdgeNode)\n    POSvc-->>GW: EntryProcessed, OpenGate\n    GW->>EISvc: Command: OpenEntryGate\n    POSvc->>MB: publish VehicleEnteredEvent\n    IAETSvc->>MB: consume VehicleEnteredEvent\n    end\n\n    %% Start EV Charging (IoT_Industrial_PLC_Logic)\n    rect rgb(IoT_Industrial_MQTT_Broker)\n    Note over Customer, IAETSvc: EV Charging Session Management\n    Customer->>FL: Start EV Charging\n    FL->>GW: RequestStartCharging(IoT_Industrial_ActuatorController)\n    GW->>ECSvc: StartChargingSession(IoT_Industrial_EdgeNode)\n    ECSvc->>PolMSvc: GetChargingPolicies(IoT_Industrial_EdgeNode)\n    PolMSvc-->>ECSvc: ChargingPolicies (IoT_Industrial_EdgeNode)\n    ECSvc->>EISvc: Command: StartChargerHardware\n    EISvc-->>ECSvc: Event: ChargerSessionActive (IoT_Industrial_MQTT_Broker)\n    ECSvc->>BSvc: NotifyChargingStarted(IoT_Industrial_TelemetryStream)\n    ECSvc-->>GW: ChargingSessionStarted\n    GW-->>FL: Show Charging Status\n    ECSvc->>MB: publish EVChargingStartedEvent\n    IAETSvc->>MB: consume EVChargingStartedEvent\n    end\n\n    %% Vehicle Exit (IoT_Industrial_MQTT_Broker)\n    rect rgb(IoT_Industrial_TelemetryStream)\n    Note over EISvc, MB: Vehicle Exit & Billing Finalization\n    EISvc->>GW: VehicleDetectedAtExit(IoT_Industrial_ActuatorController)\n    GW->>POSvc: RegisterVehicleExit(IoT_Industrial_TelemetryStream)\n    POSvc->>PSvc: CalculateParkingFee(IoT_Industrial_ActuatorController)\n    PSvc-->>POSvc: ParkingFee\n    alt EV Charging was active\n        POSvc->>ECSvc: NotifyVehicleExiting(IoT_Industrial_EdgeNode)\n        ECSvc->>EISvc: Command: StopChargerHardware\n        EISvc-->>ECSvc: Event: ChargerSessionEnded (IoT_Industrial_ActuatorController)\n        ECSvc->>PSvc: CalculateChargingFee(IoT_Industrial_ActuatorController)\n        PSvc-->>ECSvc: ChargingFee\n        ECSvc->>BSvc: AddChargingFeeToBill(IoT_Industrial_ActuatorController)\n    end\n    POSvc->>BSvc: AddParkingFeeToBill(IoT_Industrial_MQTT_Broker)\n    BSvc-->>GW: BillReady(IoT_Industrial_PLC_Logic)\n    GW-->>FL: Show Payment Due\n    POSvc->>MB: publish VehicleExitedEvent\n    GW->>EISvc: Command: OpenExitGate\n    end\n\n    %% Pay Bill\n    rect rgb(IoT_Industrial_MQTT_Broker)\n    Note over Customer, MB: Payment Processing & Completion\n    Customer->>FL: Pay Bill\n    FL->>GW: ProcessPayment(IoT_Industrial_EdgeNode)\n    GW->>BSvc: SettlePayment(IoT_Industrial_ActuatorController)\n    BSvc->>EISvc: Command: ProcessPaymentGateway\n    EISvc-->>BSvc: Event: PaymentProcessed (IoT_Industrial_PLC_Logic)\n    BSvc-->>GW: PaymentConfirmed\n    GW-->>FL: Show Receipt\n    BSvc->>MB: publish PaymentCompletedEvent\n    end\n\n    Note over Customer, MB: This sequence shows a typical user journey: Reservation, Entry, EV Charging, Exit, and Payment, highlighting key service interactions.\n",
+  "content_size": 5095,
+  "collected_at": "2026-02-06T11:03:57.774208",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_journey_01091",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们这次要梳理Easy Park Plus的完整用户旅程，从登录到最终支付。核心是要体现IoT工业边缘节点的技术架构，特别是MQTT Broker和PLC Logic的交互。我建议用sequence diagram来呈现。",
+      "elements_involved": [
+        "Customer",
+        "FrontendLayer",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，sequence diagram很适合展示时序交互。我注意到您提到了几个工业IoT组件，这些是要作为技术底色贯穿整个流程，还是在特定环节突出？比如MQTT Broker是消息总线，PLC Logic做控制指令。",
+      "elements_involved": [
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic",
+        "MessageBroker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好问题。我想用rect带颜色区块的方式，把五个核心阶段框出来，每个阶段标注对应的工业组件。比如用户认证阶段用ActuatorController色块，预订阶段用MQTT Broker色块，这样技术架构和业务场景就对应上了。",
+      "elements_involved": [
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_MQTT_Broker",
+        "rect",
+        "Note over"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "清楚了，我先搭建参与者框架。从左到右：Customer作为actor，然后是FrontendLayer、APIGateway，接着是CustomerContextSvc、ReservationsSvc、PricingSvc、BillingSvc这些业务服务，再到ParkingOperationsSvc、VehicleContextSvc、ElectricVehicleChargingSvc，最后是ExternalIntegrationsSvc、PolicyManagementSvc、InternalAudit&EventTraceSvc，以及底部的MessageBroker。",
+      "elements_involved": [
+        "Customer",
+        "FrontendLayer",
+        "APIGateway",
+        "CustomerContextSvc",
+        "ReservationsSvc",
+        "PricingSvc",
+        "BillingSvc",
+        "ParkingOperationsSvc",
+        "VehicleContextSvc",
+        "ElectricVehicleChargingSvc",
+        "ExternalIntegrationsSvc",
+        "PolicyManagementSvc",
+        "InternalAudit&EventTraceSvc",
+        "MessageBroker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "参与者列表完整。注意BillingSvc我习惯简称BSvc，ReservationsSvc简称RSSvc，这样图上不会太长。还有InternalAudit&EventTraceSvc可以写成IAETSvc。",
+      "elements_involved": [
+        "BSvc",
+        "RSSvc",
+        "IAETSvc",
+        "BillingSvc",
+        "ReservationsSvc",
+        "InternalAudit&EventTraceSvc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整别名。现在开始第一个rect区块：用户认证与会话管理。Customer发起登录，FrontendLayer转到APIGateway做认证，APIGateway调用CustomerContextSvc验证凭据，返回后建立会话，同时IAETSvc记录日志。",
+      "elements_involved": [
+        "Customer",
+        "FrontendLayer",
+        "APIGateway",
+        "CustomerContextSvc",
+        "IAETSvc",
+        "User Authentication & Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这里有个细节：认证成功后，FrontendLayer要加载仪表盘，需要同时获取预订数据和停车场状态。这两调用是并行的，从APIGateway分别打到ReservationsSvc和ParkingOperationsSvc。",
+      "elements_involved": [
+        "FrontendLayer",
+        "APIGateway",
+        "ReservationsSvc",
+        "ParkingOperationsSvc",
+        "Dashboard Data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，并行查询。我写成：FL→GW请求Get Reservations，同时GW→POSvc请求Get Lot Status，两个返回都到GW后合并为Dashboard Data返回FL。第一个rect区块完成，标注为IoT_Industrial_ActuatorController色块。",
+      "elements_involved": [
+        "FL",
+        "GW",
+        "RSSvc",
+        "POSvc",
+        "Lot Status Data",
+        "Reservations Data",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第二个阶段是预订创建与支付处理，用MQTT Broker色块。这里要体现IoT_Industrial_PLC_Logic做槽位预留的控制逻辑。用户在前端发起预订，经过网关到ReservationsSvc。",
+      "elements_involved": [
+        "Customer",
+        "FL",
+        "GW",
+        "ReservationsSvc",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic",
+        "Make Reservation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ReservationsSvc内部流程比较复杂，我需要确认：是先查PolicyManagementSvc获取预订策略，然后做CreateSlotHold，再算费用，最后预授权支付？",
+      "elements_involved": [
+        "ReservationsSvc",
+        "PolicyManagementSvc",
+        "PolMSvc",
+        "CreateSlotHold",
+        "PreAuthPayment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，顺序是：GetReservationPolicies → CreateSlotHold → GetFeeQuote → PreAuthPayment。CreateSlotHold是内部状态变更，用PLC Logic标注。预授权成功后，ConvertHoldToReservation把预留转成正式预订，这里用MQTT Broker标注。",
+      "elements_involved": [
+        "GetReservationPolicies",
+        "CreateSlotHold",
+        "GetFeeQuote",
+        "PreAuthPayment",
+        "ConvertHoldToReservation",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已绘制。另外我注意到ReservationsSvc在CreateSlotHold后要向IAETSvc发布事件，同时最后要向MessageBroker发布ReservationConfirmedEvent，由IAETSvc消费。",
+      "elements_involved": [
+        "RSSvc",
+        "IAETSvc",
+        "MessageBroker",
+        "ReservationConfirmedEvent",
+        "Publish",
+        "Consume"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，审计追踪要完整。第三个阶段是车辆入场，用EdgeNode色块。这里ExternalIntegrationsSvc检测到车辆到达入口，触发整个流程。",
+      "elements_involved": [
+        "ExternalIntegrationsSvc",
+        "EISvc",
+        "VehicleDetectedAtEntry",
+        "IoT_Industrial_EdgeNode",
+        "Vehicle Entry & Visit Initiation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "入场流程我梳理一下：EISvc→GW→POSvc注册入场，POSvc→VCSvc获取车辆详情，然后POSvc→PolMSvc获取入场策略，再→RSSvc检查是否有预订匹配，最后启动VisitLifecycleStateMachine并通知BillingSvc开始计费。对吗？",
+      "elements_involved": [
+        "EISvc",
+        "GW",
+        "POSvc",
+        "VCSvc",
+        "PolMSvc",
+        "RSSvc",
+        "VisitLifecycleStateMachine",
+        "InitiateBillingForVisit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "准确。注意几个技术标注：VehicleDetectedAtEntry用TelemetryStream，RegisterVehicleEntry用EdgeNode，GetEntryPolicies和CheckReservation用MQTT Broker。最后POSvc要发VehicleEnteredEvent到MessageBroker，并命令EISvc打开入口闸机。",
+      "elements_involved": [
+        "VehicleDetectedAtEntry",
+        "IoT_Industrial_TelemetryStream",
+        "RegisterVehicleEntry",
+        "IoT_Industrial_EdgeNode",
+        "GetEntryPolicies",
+        "CheckReservation",
+        "IoT_Industrial_MQTT_Broker",
+        "VehicleEnteredEvent",
+        "OpenEntryGate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "入场阶段完成。现在开始EV充电会话管理，第四个rect，回到MQTT Broker色块。用户在前端启动充电，请求经过GW到ElectricVehicleChargingSvc。",
+      "elements_involved": [
+        "Customer",
+        "FL",
+        "GW",
+        "ECSvc",
+        "ElectricVehicleChargingSvc",
+        "Start EV Charging",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ECSvc要先从PolMSvc获取充电策略，然后命令EISvc启动充电硬件。EISvc返回ChargerSessionActive事件后，ECSvc通知BillingSvc计费开始，同时向前端返回状态。",
+      "elements_involved": [
+        "ECSvc",
+        "PolMSvc",
+        "EISvc",
+        "ChargingPolicies",
+        "StartChargerHardware",
+        "ChargerSessionActive",
+        "NotifyChargingStarted",
+        "BSvc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "技术标注我注意到：StartChargingSession用EdgeNode，GetChargingPolicies用EdgeNode，ChargerSessionActive事件用MQTT Broker，NotifyChargingStarted用TelemetryStream。最后还要发EVChargingStartedEvent到MessageBroker。",
+      "elements_involved": [
+        "StartChargingSession",
+        "IoT_Industrial_EdgeNode",
+        "GetChargingPolicies",
+        "ChargerSessionActive",
+        "IoT_Industrial_MQTT_Broker",
+        "NotifyChargingStarted",
+        "IoT_Industrial_TelemetryStream",
+        "EVChargingStartedEvent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。第五个阶段是车辆离场和账单结算，用TelemetryStream色块。这是最复杂的，因为有条件分支——如果用户有充电，要先结算充电费用。",
+      "elements_involved": [
+        "Vehicle Exit & Billing Finalization",
+        "IoT_Industrial_TelemetryStream",
+        "EV Charging was active",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我确认一下离场的主流程：EISvc检测到出口车辆→GW→POSvc注册离场→PSvc计算停车费。然后alt分支：如果充电中，POSvc通知ECSvc，ECSvc命令EISvc停硬件，EISvc返回ChargerSessionEnded，ECSvc算充电费并加到账单。最后统一走POSvc加停车费，BSvc返回BillReady。",
+      "elements_involved": [
+        "VehicleDetectedAtExit",
+        "RegisterVehicleExit",
+        "CalculateParkingFee",
+        "CalculateChargingFee",
+        "AddChargingFeeToBill",
+        "AddParkingFeeToBill",
+        "BillReady"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "流程对，但技术标注要精确：VehicleDetectedAtExit用ActuatorController，RegisterVehicleExit用TelemetryStream，CalculateParkingFee用ActuatorController。alt分支里，NotifyVehicleExiting用EdgeNode，StopChargerHardware和ChargerSessionEnded用ActuatorController，CalculateChargingFee和AddChargingFeeToBill都用ActuatorController。最后的AddParkingFeeToBill用MQTT Broker，BillReady用PLC Logic。",
+      "elements_involved": [
+        "VehicleDetectedAtExit",
+        "IoT_Industrial_ActuatorController",
+        "RegisterVehicleExit",
+        "IoT_Industrial_TelemetryStream",
+        "CalculateParkingFee",
+        "NotifyVehicleExiting",
+        "IoT_Industrial_EdgeNode",
+        "StopChargerHardware",
+        "ChargerSessionEnded",
+        "CalculateChargingFee",
+        "AddChargingFeeToBill",
+        "AddParkingFeeToBill",
+        "IoT_Industrial_MQTT_Broker",
+        "BillReady",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已绘制离场流程。最后阶段是支付处理，回到MQTT Broker色块。用户支付→FL→GW→BSvc结算，BSvc命令EISvc处理支付网关，返回确认后BSvc发PaymentCompletedEvent。",
+      "elements_involved": [
+        "Pay Bill",
+        "ProcessPayment",
+        "SettlePayment",
+        "ProcessPaymentGateway",
+        "PaymentProcessed",
+        "PaymentConfirmed",
+        "PaymentCompletedEvent",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "技术标注：ProcessPayment用EdgeNode，SettlePayment和ProcessPaymentGateway用ActuatorController，PaymentProcessed用PLC Logic。",
+      "elements_involved": [
+        "ProcessPayment",
+        "IoT_Industrial_EdgeNode",
+        "SettlePayment",
+        "ProcessPaymentGateway",
+        "IoT_Industrial_ActuatorController",
+        "PaymentProcessed",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部六个rect区块完成。我在底部加一个总结Note，说明这是典型用户旅程：预订、入场、充电、离场、支付，突出关键服务交互。",
+      "elements_involved": [
+        "Note over",
+        "Customer",
+        "MessageBroker",
+        "Reservation",
+        "Entry",
+        "EV Charging",
+        "Exit",
+        "Payment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等一下，我检查时发现一个问题：在入场阶段，POSvc启动VisitLifecycleStateMachine.StartVisit的标注应该是EdgeNode，不是MQTT Broker。另外InitiateBillingForVisit也是EdgeNode。我刚才可能说混了。",
+      "elements_involved": [
+        "POSvc",
+        "VisitLifecycleStateMachine.StartVisit",
+        "InitiateBillingForVisit",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，把VisitLifecycleStateMachine.StartVisit和InitiateBillingForVisit都改为EdgeNode标注。还有别的调整吗？",
+      "elements_involved": [
+        "VisitLifecycleStateMachine.StartVisit",
+        "InitiateBillingForVisit",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "预订阶段有个细节：RSSvc向IAETSvc发布事件，我标注的是Publish(IoT_Industrial_EdgeNode)，但这里其实应该是TelemetryStream，因为只是审计日志上报，不是边缘控制。",
+      "elements_involved": [
+        "RSSvc",
+        "IAETSvc",
+        "Publish",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，把RSSvc→IAETSvc的Publish标注从EdgeNode改为TelemetryStream。这样更合理，审计日志属于遥测数据流。",
+      "elements_involved": [
+        "RSSvc",
+        "IAETSvc",
+        "Publish",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "再看充电阶段，ECSvc→BSvc的NotifyChargingStarted，我确认是TelemetryStream，这个是对的。但ECSvc→GW返回ChargingSessionStarted没有技术标注，需要加吗？",
+      "elements_involved": [
+        "ECSvc",
+        "BSvc",
+        "NotifyChargingStarted",
+        "IoT_Industrial_TelemetryStream",
+        "ChargingSessionStarted",
+        "GW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "ChargingSessionStarted是业务响应，不是IoT控制或遥测，我建议不加工业组件标注，保持简洁。同理，很多→FL的响应都可以不加。",
+      "elements_involved": [
+        "ChargingSessionStarted",
+        "FL",
+        "GW",
+        "business response"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意，只有涉及工业控制、遥测采集、边缘计算、MQTT消息的关键交互才加标注。那离场阶段的OpenExitGate命令，我标注对了吗？",
+      "elements_involved": [
+        "OpenExitGate",
+        "EISvc",
+        "GW",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "OpenExitGate目前是裸命令，没有技术标注。考虑到这是闸机控制指令，建议加ActuatorController？",
+      "elements_involved": [
+        "OpenExitGate",
+        "EISvc",
+        "GW",
+        "ActuatorController",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "execute",
+      "utterance": "对，加ActuatorController。和OpenEntryGate保持一致，那个我也没标，一起加上。",
+      "elements_involved": [
+        "OpenExitGate",
+        "OpenEntryGate",
+        "IoT_Industrial_ActuatorController",
+        "GW",
+        "EISvc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。现在检查所有rect色块：1)认证-ActuatorController绿色，2)预订-MQTT Broker蓝色，3)入场-EdgeNode青色，4)充电-MQTT Broker蓝色，5)离场-TelemetryStream橙色，6)支付-MQTT Broker蓝色。色彩分布合理吗？",
+      "elements_involved": [
+        "rect",
+        "rgb",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "色彩可以，但我有个疑问：入场和离场分别是EdgeNode和TelemetryStream，但这两个阶段都涉及车辆检测和闸机控制，技术层次上是否统一？入场用EdgeNode是因为包含状态机启动，离场用TelemetryStream是因为侧重数据计算？",
+      "elements_involved": [
+        "Vehicle Entry",
+        "Vehicle Exit",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream",
+        "state machine",
+        "data calculation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "您的设计意图我理解：入场是边缘实时决策（预订匹配、策略检查、状态机启动），所以用EdgeNode；离场是费用计算和账单汇总，数据流特征明显，用TelemetryStream。如果想强调对称性，离场也可以部分用EdgeNode？",
+      "elements_involved": [
+        "Vehicle Entry",
+        "Vehicle Exit",
+        "EdgeNode",
+        "TelemetryStream",
+        "real-time decision",
+        "billing aggregation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持现有设计，不对称是有意为之，体现不同阶段的技术特征。最后检查：alt分支的标注是否都正确？特别是AddChargingFeeToBill和AddParkingFeeToBill。",
+      "elements_involved": [
+        "alt",
+        "AddChargingFeeToBill",
+        "AddParkingFeeToBill",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认：AddChargingFeeToBill在alt内部，用ActuatorController；AddParkingFeeToBill在alt之后，用MQTT Broker。两者分开是因为充电费是条件附加，停车费是必收，消息总线用于最终账单合并。",
+      "elements_involved": [
+        "AddChargingFeeToBill",
+        "IoT_Industrial_ActuatorController",
+        "AddParkingFeeToBill",
+        "IoT_Industrial_MQTT_Broker",
+        "alt",
+        "end"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "BillReady的标注是PLC Logic，这个我想再确认。账单就绪通知网关，确实是可编程逻辑控制器的典型场景——根据计费规则触发状态变更。",
+      "elements_involved": [
+        "BillReady",
+        "IoT_Industrial_PLC_Logic",
+        "BSvc",
+        "GW",
+        "billing rule",
+        "state transition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "保留PLC Logic标注。整体结构已完整，我统计一下交互数量：认证阶段7条消息，预订阶段14条，入场阶段13条，充电阶段11条，离场阶段15条（含alt分支），支付阶段7条，总计约67条消息线。",
+      "elements_involved": [
+        "message count",
+        "authentication",
+        "reservation",
+        "entry",
+        "charging",
+        "exit",
+        "payment",
+        "sequence diagram complexity"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "消息密度合理。最后优化：在Note over里，IoT_Industrial_ActuatorController这些标注太长，图上会溢出，需要截断显示吗？",
+      "elements_involved": [
+        "Note over",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream",
+        "display overflow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Mermaid的rect rgb语法支持自定义颜色名，但实际显示时Note over的文字不会自动换行。建议Note内容保持简洁，比如\"User Authentication & Session Management\"，技术组件名通过rect的rgb标签体现，不重复写在Note里。",
+      "elements_involved": [
+        "rect rgb",
+        "Note over",
+        "line break",
+        "display rendering",
+        "Mermaid syntax"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意，Note保持业务描述，技术组件通过色块标签隐性表达。那标题定为\"Easy Park Plus - System Sequence Overview (IoT_Industrial_EdgeNode)\"，强调边缘节点视角。",
+      "elements_involved": [
+        "title",
+        "Easy Park Plus",
+        "System Sequence Overview",
+        "IoT_Industrial_EdgeNode",
+        "perspective"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "标题已设置。我最后遍历一遍所有别名一致性：FL=FrontendLayer，GW=APIGateway，CCSvc=CustomerContextSvc，RSSvc=ReservationsSvc，PSvc=PricingSvc，BSvc=BillingSvc，POSvc=ParkingOperationsSvc，VCSvc=VehicleContextSvc，ECSvc=ElectricVehicleChargingSvc，EISvc=ExternalIntegrationsSvc，PolMSvc=PolicyManagementSvc，IAETSvc=InternalAudit&EventTraceSvc，MB=MessageBroker。全部一致。",
+      "elements_involved": [
+        "FL",
+        "GW",
+        "CCSvc",
+        "RSSvc",
+        "PSvc",
+        "BSvc",
+        "POSvc",
+        "VCSvc",
+        "ECSvc",
+        "EISvc",
+        "PolMSvc",
+        "IAETSvc",
+        "MB",
+        "alias consistency"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "有个别名细节：BSvc在代码里有时写成BillingSvc有时BSvc，需要统一。我建议全部用BSvc，除了最初声明participant时。",
+      "elements_involved": [
+        "BSvc",
+        "BillingSvc",
+        "alias",
+        "consistency",
+        "participant declaration"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "检查发现：participant声明用了BillingSvc as BSvc，但流程中有一条BSvc--GW: BillReady，这是正确的。但还有ECSvc-BSvc: NotifyChargingStarted等，都是BSvc。没有混用BillingSvc的情况，可能是我看错了？",
+      "elements_involved": [
+        "BSvc",
+        "BillingSvc",
+        "participant",
+        "as",
+        "NotifyChargingStarted",
+        "BillReady"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "我重新检查，确实都是BSvc。那没问题了。再看PaymentProcessing：EISvc--BSvc的事件标注是PaymentProcessed (IoT_Industrial_PLC_Logic)，这个括号位置对吗？",
+      "elements_involved": [
+        "EISvc",
+        "BSvc",
+        "PaymentProcessed",
+        "IoT_Industrial_PLC_Logic",
+        "event annotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "括号位置正确，放在事件名后表示该交互的技术属性。类似的有ChargerSessionActive (IoT_Industrial_MQTT_Broker)、ChargerSessionEnded (IoT_Industrial_ActuatorController)等，格式统一。",
+      "elements_involved": [
+        "PaymentProcessed",
+        "ChargerSessionActive",
+        "ChargerSessionEnded",
+        "annotation format",
+        "parentheses placement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体完成度很高。最后确认一下颜色映射的语义一致性：ActuatorController用于物理设备控制（登录、闸机、硬件启停），MQTT Broker用于消息协调（预订、充电、支付的事件流），EdgeNode用于边缘实时计算（入场状态机），TelemetryStream用于数据采集与计费计算（离场费用）。这个映射逻辑自洽吗？",
+      "elements_involved": [
+        "color mapping",
+        "ActuatorController",
+        "MQTT Broker",
+        "EdgeNode",
+        "TelemetryStream",
+        "semantic consistency",
+        "physical control",
+        "message coordination",
+        "edge computing",
+        "data acquisition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "映射逻辑清晰。补充一点：TelemetryStream在离场阶段不仅用于费用计算，还涵盖了从出口检测到账单生成的完整数据流，包括条件分支中的充电费用追加。这种设计突出了离场阶段的数据密集型特征。",
+      "elements_involved": [
+        "TelemetryStream",
+        "Vehicle Exit",
+        "data-intensive",
+        "fee calculation",
+        "conditional branch",
+        "charging fee append"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "execute",
+      "utterance": "那我们可以定稿了。这个sequence diagram完整呈现了Easy Park Plus的IoT工业架构，从用户视角贯穿到边缘计算和消息总线，技术标注既体现了工业组件特性，又不干扰业务流程的阅读。",
+      "elements_involved": [
+        "Easy Park Plus",
+        "IoT industrial architecture",
+        "user perspective",
+        "edge computing",
+        "message bus",
+        "technical annotation",
+        "business process readability"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "定稿前最后检查：所有\"--\"返回线方向正确，没有箭头反向；所有\"par\"或\"loop\"都没有使用，保持线性时序清晰；alt分支有明确的else隐含（通过end闭合）。结构符合工业系统序列图的规范。",
+      "elements_involved": [
+        "--",
+        "return arrow",
+        "par",
+        "loop",
+        "alt",
+        "else",
+        "end",
+        "industrial system sequence diagram",
+        "convention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "alt分支我设计的是\"EV Charging was active\"，没有写else，因为else就是直接跳到停车费计算。Mermaid的alt默认支持这种写法，end之前的内容都是alt条件满足时的流程，之后是共同流程。",
+      "elements_involved": [
+        "alt",
+        "EV Charging was active",
+        "else",
+        "implicit else",
+        "common flow",
+        "Mermaid alt syntax"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，Mermaid的alt语法允许省略else，end之前的所有交互都属于条件成立分支，end之后恢复主流程。这种写法在您的场景中更简洁，因为\"无充电\"的情况确实没有额外交互，直接走共同流程即可。",
+      "elements_involved": [
+        "Mermaid",
+        "alt",
+        "else",
+        "omission",
+        "conditional branch",
+        "main flow",
+        "simplification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个可选优化：在认证阶段，IAETSvc的日志记录是否要明确写出Log(IoT_Industrial_ActuatorController)的内容？目前是简写。",
+      "elements_involved": [
+        "IAETSvc",
+        "Log",
+        "IoT_Industrial_ActuatorController",
+        "authentication phase",
+        "log content",
+        "explicit detail"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "建议保持简写Log(...)即可。详细日志内容（如用户ID、时间戳、IP地址）属于实现细节，序列图关注服务交互而非字段级数据。如果特别重要，可以用Note说明，但当前设计已足够。",
+      "elements_involved": [
+        "Log",
+        "IAETSvc",
+        "implementation detail",
+        "field-level data",
+        "Note",
+        "service interaction focus"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意，保持抽象层级一致。那最终版本我确认了，可以输出。这个图可以直接用于技术评审和开发对齐。",
+      "elements_involved": [
+        "abstraction level",
+        "technical review",
+        "development alignment",
+        "final version",
+        "approval"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终Mermaid代码已生成，包含完整的六个rect区块、所有参与者声明、67条消息交互、技术组件标注，以及底部的总结Note。标题和别名设置正确，颜色映射符合IoT工业语义。",
+      "elements_involved": [
+        "final Mermaid code",
+        "six rect blocks",
+        "participant declarations",
+        "67 message interactions",
+        "technical component annotations",
+        "summary Note",
+        "title",
+        "alias",
+        "color mapping",
+        "IoT industrial semantics"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我最后数一下rect区块的实际数量：认证、预订、入场、充电、离场、支付，确实是六个。但标题里写的是IoT_Industrial_EdgeNode，而六个区块用了四种不同的技术组件色块，这个需要解释吗？",
+      "elements_involved": [
+        "rect count",
+        "six blocks",
+        "IoT_Industrial_EdgeNode",
+        "four technical components",
+        "color variety",
+        "title explanation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "标题的EdgeNode可以理解为系统视角——整个Easy Park Plus部署在边缘计算架构之上，而具体流程中不同环节调用了不同的工业组件（ActuatorController、MQTT Broker、PLC Logic、TelemetryStream），这些组件共同构成了EdgeNode的能力集。无需额外解释，技术读者能理解这种层次关系。",
+      "elements_involved": [
+        "EdgeNode",
+        "system perspective",
+        "deployment architecture",
+        "industrial component capability set",
+        "hierarchical relationship",
+        "technical audience"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "解释合理。那正式发布这个版本。后续如果业务有变更，比如新增预约取消流程，可以在现有框架上扩展新的rect区块，保持技术标注风格一致即可。",
+      "elements_involved": [
+        "official release",
+        "version",
+        "business change",
+        "reservation cancellation",
+        "extension",
+        "new rect block",
+        "consistent technical annotation style"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已归档为最终版本。扩展建议记录：预约取消可设计为独立rect，使用MQTT Broker或EdgeNode色块，涉及ReservationsSvc状态变更、POSvc槽位释放、BSvc预授权撤销等交互，技术标注遵循现有模式。",
+      "elements_involved": [
+        "archived",
+        "final version",
+        "extension suggestion",
+        "reservation cancellation",
+        "independent rect",
+        "ReservationsSvc",
+        "POSvc",
+        "BSvc",
+        "pre-authorization reversal",
+        "existing pattern"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，本次协作完成。这个sequence diagram准确表达了Easy Park Plus的IoT工业边缘架构下的用户完整旅程，技术标注与业务场景结合紧密，可直接指导开发实现。",
+      "elements_involved": [
+        "collaboration complete",
+        "sequence diagram",
+        "Easy Park Plus",
+        "IoT industrial edge architecture",
+        "user journey",
+        "technical annotation",
+        "business scenario",
+        "development guidance"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认交付。所有62个turn的协作记录已整理，最终Mermaid代码符合要求，可直接用于技术文档和团队沟通。",
+      "elements_involved": [
+        "delivery confirmation",
+        "62 turns",
+        "collaboration record",
+        "final Mermaid code",
+        "technical documentation",
+        "team communication"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 3,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:35Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:35Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 109147.0501,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 94
+  }
+}

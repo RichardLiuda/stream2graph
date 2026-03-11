@@ -1,0 +1,151 @@
+{
+  "id": "ot_journey_01063",
+  "source": "other",
+  "source_url": "https://github.com/AlmatJuvashev/phd-students-portal/blob/b88b252ccf22627eafd166ab2c48dbd64fab7deb/docs/diagrams/01_document_approval.mmd",
+  "source_type": "github_search",
+  "github_repo": "AlmatJuvashev/phd-students-portal",
+  "diagram_type": "journey",
+  "code": "sequenceDiagram\n    participant S as Student\n    participant API as AttachUpload Handler\n    participant S3 as S3 Storage\n    participant DB as PostgreSQL\n    participant N as NotifyAdvisors\n    participant A as Advisor\n\n    S->>API: POST /journey/nodes/:id/uploads/presign\n    API->>S3: PresignPut(objectKey)\n    S3-->>API: Signed URL\n    API-->>S: {presign_url, object_key}\n    \n    S->>S3: PUT file to presigned URL\n    S3-->>S: 200 OK + ETag\n    \n    S->>API: POST /journey/nodes/:id/uploads/attach\n    API->>DB: Begin transaction\n    API->>DB: INSERT document_versions\n    API->>DB: INSERT node_instance_slot_attachments\n    API->>DB: UPDATE node_instances.state = 'submitted'\n    API->>DB: Commit transaction\n    API-->>N: NotifyAdvisorsOnSubmission (async)\n    N->>DB: Get advisors for student\n    N->>DB: INSERT admin_notifications\n    API-->>S: 200 OK\n    \n    A->>API: PATCH /admin/attachments/:id/review\n    API->>DB: Verify advisor assigned to student\n    API->>DB: UPDATE attachment.status\n    API->>DB: UPDATE node_instances.state\n    API-->>A: 200 OK",
+  "content_size": 1066,
+  "collected_at": "2026-02-06T11:02:44.926104",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要梳理一下学生上传附件的完整流程。核心是学生先拿到预签名URL，把文件传到S3，然后再通知我们的系统完成关联。最后导师可以审核这些附件。",
+      "elements_involved": [
+        "Student",
+        "S3 Storage",
+        "AttachUpload Handler",
+        "Advisor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。那第一步是学生向AttachUpload Handler请求预签名地址？然后Handler去S3生成PresignPut链接？",
+      "elements_involved": [
+        "Student",
+        "AttachUpload Handler",
+        "S3 Storage",
+        "PresignPut"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，路径是POST /journey/nodes/:id/uploads/presign。S3返回Signed URL后，Handler要把presign_url和object_key一起给学生。",
+      "elements_involved": [
+        "POST /journey/nodes/:id/uploads/presign",
+        "Signed URL",
+        "object_key"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，学生拿到地址后直接PUT文件到S3，S3返回200 OK和ETag。接下来学生要通知系统关联这个上传吧？",
+      "elements_involved": [
+        "Student",
+        "S3 Storage",
+        "PUT",
+        "ETag"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，学生调POST /journey/nodes/:id/uploads/attach。这里有个关键点——Handler要用事务写PostgreSQL：先插入document_versions，再插入node_instance_slot_attachments，最后把node_instances.state更新为submitted。",
+      "elements_involved": [
+        "AttachUpload Handler",
+        "PostgreSQL",
+        "document_versions",
+        "node_instance_slot_attachments",
+        "node_instances.state",
+        "submitted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "事务提交之后，异步通知NotifyAdvisors服务？我看到有个NotifyAdvisorsOnSubmission。",
+      "elements_involved": [
+        "NotifyAdvisors",
+        "NotifyAdvisorsOnSubmission"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，异步的。NotifyAdvisors要去DB查这个学生的advisors列表，然后往admin_notifications表里插入通知记录。",
+      "elements_involved": [
+        "NotifyAdvisors",
+        "advisors",
+        "admin_notifications"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "流程清楚了。最后导师审核的部分：Advisor调PATCH /admin/attachments/:id/review，Handler先Verify advisor assigned to student，然后更新attachment.status和node_instances.state？",
+      "elements_involved": [
+        "Advisor",
+        "PATCH /admin/attachments/:id/review",
+        "Verify advisor assigned to student",
+        "attachment.status",
+        "node_instances.state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。验证通过后更新状态，返回200 OK给导师。整个闭环就完成了。",
+      "elements_involved": [
+        "Advisor",
+        "200 OK"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 0,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:43Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:39Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:39Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 19011.8864,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

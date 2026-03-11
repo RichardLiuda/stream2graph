@@ -1,0 +1,463 @@
+{
+  "id": "gl_packet-beta_00354",
+  "source": "gitlab",
+  "source_url": "https://github.com/asmund20/in4230-mip/blob/791c34e926d22caef6c6cf7103c7265f86db82cc/design/mip_daemon.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "asmund20/in4230-mip",
+  "diagram_type": "packet-beta",
+  "code": "---\ntitle: MIP daemon\n---\nflowchart TB\n    Start((Start))\n    Init[Setup sockets, structures and accept connections]\n    Unsent[Send messages waiting for arp response]\n    Poll[Poll indefinitely]\n    ReadyFd{Which fd?}\n    RecvLower[Recieve from lower]\n    SendUpper[Send packet from upper]\n    RoutingUpper{Which routing type?}\n    RResponse[Send first packet waiting for rout]\n    ToBroadCast{Broadcast?}\n    Broadcast[Broadcast packet]\n    Forward{To me?}\n    IsArp{Arp?}\n    RecvArp[Store in cache, respond if request]\n    SendUp[Send up to the proper type]\n    Stored{Known interface+mac?}\n    SendArp[Send arp, store message]\n\n    Start --> Init --> Unsent --> Poll --> ReadyFd\n    ReadyFd-- Lower -->RecvLower --> IsArp\n        IsArp-- Yes -->RecvArp --> Unsent\n        IsArp-- No --> ToBroadCast\n    ReadyFd-- PING -->SendUpper\n    ReadyFd-- ROUTING -->RoutingUpper\n        RoutingUpper-- RESPONSE -->RResponse --> Unsent\n        RoutingUpper-- UPDATE -->SendUpper\n        RoutingUpper-- HELLO -->SendUpper\n    SendUpper --> ToBroadCast\n        ToBroadCast-- YES -->Broadcast -->Unsent\n        ToBroadCast-- NO -->Forward\n    Forward-- YES --> SendUp --> Unsent\n    Forward-- NO -->Stored\n        Stored-- YES -->Send --> Unsent\n        Stored-- NO -->SendArp --> Unsent\n",
+  "content_size": 1279,
+  "collected_at": "2026-02-06T14:08:08.285853",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为MIP守护进程画一个流程图，核心是处理网络包的路由和ARP解析。先从启动开始吧，有个Start节点，然后是初始化。",
+      "elements_involved": [
+        "Start",
+        "Init"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，Start用圆形表示入口，Init是矩形处理初始化。初始化具体做什么？",
+      "elements_involved": [
+        "Start",
+        "Init"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Init要设置socket、数据结构，还要接受连接。之后有个Unsent节点，专门处理那些等待ARP响应的消息。",
+      "elements_involved": [
+        "Init",
+        "Unsent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Start→Init→Unsent的连线已经画好。接下来是主循环？",
+      "elements_involved": [
+        "Start",
+        "Init",
+        "Unsent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，进入Poll节点，无限轮询。然后需要ReadyFd来判断是哪个文件描述符有数据。",
+      "elements_involved": [
+        "Poll",
+        "ReadyFd"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "ReadyFd用菱形表示分支，有三个出口：Lower、PING、ROUTING。这样对吗？",
+      "elements_involved": [
+        "ReadyFd"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。Lower分支对应下层网络接口收到数据，走RecvLower。",
+      "elements_involved": [
+        "ReadyFd",
+        "RecvLower"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Unsent→Poll→ReadyFd→RecvLower的链路已完成。RecvLower之后呢？",
+      "elements_involved": [
+        "RecvLower"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "收到数据后要用IsArp判断是不是ARP包。如果是，走RecvArp处理，存入缓存并响应请求，然后回到Unsent。",
+      "elements_involved": [
+        "RecvLower",
+        "IsArp",
+        "RecvArp",
+        "Unsent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "IsArp→Yes→RecvArp→Unsent画好了。那IsArp为No的情况呢？",
+      "elements_involved": [
+        "IsArp",
+        "RecvArp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "不是ARP包就进入ToBroadCast判断，决定是不是广播包。",
+      "elements_involved": [
+        "IsArp",
+        "ToBroadCast"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ToBroadCast这个判断节点，在IsArp的No分支之后，也在SendUpper之后？我看到SendUpper也要连过来。",
+      "elements_involved": [
+        "ToBroadCast",
+        "SendUpper"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，SendUpper是上层发来的包要发送，也要判断是不是广播。ToBroadCast有两个出口：YES走Broadcast节点，然后回Unsent；NO走Forward。",
+      "elements_involved": [
+        "ToBroadCast",
+        "Broadcast",
+        "Forward",
+        "Unsent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Broadcast→Unsent已连接。Forward是判断包是不是发给我的？",
+      "elements_involved": [
+        "Broadcast",
+        "Forward"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Forward判断To me？如果是YES，走SendUp把包送到上层对应类型，然后回Unsent。",
+      "elements_involved": [
+        "Forward",
+        "SendUp",
+        "Unsent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Forward→YES→SendUp→Unsent完成。NO分支呢？",
+      "elements_involved": [
+        "Forward",
+        "SendUp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "NO分支进Stored判断，检查是否已知接口和MAC地址。YES直接Send发送，然后回Unsent。",
+      "elements_involved": [
+        "Forward",
+        "Stored",
+        "Send",
+        "Unsent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Stored→YES→Send→Unsent已添加。Stored为NO时要发ARP请求？",
+      "elements_involved": [
+        "Stored",
+        "Send"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，走SendArp发送ARP请求，同时把消息存起来等待响应，然后回到Unsent。",
+      "elements_involved": [
+        "Stored",
+        "SendArp",
+        "Unsent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SendArp→Unsent连接完成。现在回到ReadyFd的另外两个分支：PING和ROUTING。",
+      "elements_involved": [
+        "SendArp",
+        "ReadyFd"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "PING分支直接走SendUpper，就是上层来的包要发送。ROUTING分支需要RoutingUpper判断路由类型。",
+      "elements_involved": [
+        "ReadyFd",
+        "PING",
+        "SendUpper",
+        "ROUTING",
+        "RoutingUpper"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "RoutingUpper有三个出口？我看到RESPONSE、UPDATE、HELLO。",
+      "elements_involved": [
+        "RoutingUpper"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。RESPONSE走RResponse，发送第一个等待路由的包，然后回Unsent。UPDATE和HELLO都走SendUpper。",
+      "elements_involved": [
+        "RoutingUpper",
+        "RResponse",
+        "SendUpper",
+        "Unsent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RoutingUpper→RESPONSE→RResponse→Unsent，以及UPDATE/HELLO→SendUpper都画好了。SendUpper还要连到ToBroadCast对吧？",
+      "elements_involved": [
+        "RResponse",
+        "SendUpper",
+        "ToBroadCast"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，SendUpper统一走到ToBroadCast做广播判断。现在检查一下，IsArp的No分支也要连到ToBroadCast，这个有了吗？",
+      "elements_involved": [
+        "IsArp",
+        "ToBroadCast",
+        "SendUpper"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现遗漏了，IsArp→No还没有连到ToBroadCast。现在补上这条线。",
+      "elements_involved": [
+        "IsArp",
+        "ToBroadCast"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好。再确认一下SendUpper的入口：从ReadyFd的PING分支，以及RoutingUpper的UPDATE和HELLO分支，共三个入口。",
+      "elements_involved": [
+        "SendUpper",
+        "ReadyFd",
+        "RoutingUpper"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认：ReadyFd--PING→SendUpper，RoutingUpper--UPDATE→SendUpper，RoutingUpper--HELLO→SendUpper。三个入口都正确。",
+      "elements_involved": [
+        "SendUpper"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有ToBroadCast的YES分支，走Broadcast之后回Unsent，这个Broadcast节点要标注清楚是广播包。",
+      "elements_involved": [
+        "ToBroadCast",
+        "Broadcast",
+        "Unsent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Broadcast节点内容已更新为\"Broadcast packet\"。整体流程看起来完整了，从Start出发最终都能回到Unsent或Poll循环。",
+      "elements_involved": [
+        "Broadcast"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再检查一下Forward的判断，To me？这个逻辑要清晰，YES是本地处理，NO是转发。",
+      "elements_involved": [
+        "Forward"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Forward节点标注为\"To me?\"，YES→SendUp，NO→Stored。逻辑正确。",
+      "elements_involved": [
+        "Forward",
+        "SendUp",
+        "Stored"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认RecvArp的功能描述：\"Store in cache, respond if request\"，要存入缓存，如果是请求还要响应。",
+      "elements_involved": [
+        "RecvArp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RecvArp内容已更新。所有节点和连线都检查完毕，流程图完整呈现了MIP守护进程的工作流程。",
+      "elements_involved": [
+        "RecvArp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。标题设为\"MIP daemon\"，这个流程涵盖了初始化、轮询、下层收包、上层发包、路由处理、ARP解析和广播转发等全部功能。",
+      "elements_involved": [
+        "Start",
+        "Init",
+        "Poll",
+        "RecvLower",
+        "SendUpper",
+        "RoutingUpper",
+        "RecvArp",
+        "Broadcast"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认标题已添加。整个流程图37个节点和连线全部完成，符合MIP协议守护进程的设计。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以定稿了。这个图能清楚展示包处理的完整路径，特别是Unsent队列的循环处理和ARP的异步解析机制。",
+      "elements_involved": [
+        "Unsent",
+        "SendArp",
+        "RecvArp"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 37,
+    "repair_count": 1,
+    "grounding_acts_count": 36,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 86179.9223,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 37
+  }
+}

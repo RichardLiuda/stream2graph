@@ -1,0 +1,512 @@
+{
+  "id": "aug_gl_packet-beta_00360_Clo_6",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/llai-harmonicinc/cDS-Session-Management/blob/034fa5d6ac3372256af047d7e02f454dd09526d5/cDS%20Session%20Routing.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "llai-harmonicinc/cDS-Session-Management",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\nparticipant P as Player\nparticipant Boot as Bootstrap\nparticipant LD as DNS resolver\nparticipant AD as Authoritative DNS server\n\nparticipant SM as cDS::Session Management\nparticipant sNA as cDS::Node-A\nparticipant sNB as cDS::Node-B\nparticipant TC as cDS::TC\nparticipant NA as cDS::Node-C\nparticipant CS as cDS::Content Steering Servers\nparticipant TE as cDS::Telemetry\n\nautonumber\n    P->>Boot: get session bootstrap\n    Boot->>P: Bootstrap details e.g. endpoint, ad serving parameters, etc\n\n    %% resolve Session Management server domain name\n    P->>LD: query cDS::Session Management domain name\n    LD->>AD: query cDS::Session Management domain name\n    AD->>LD:  cDS::Session Management Server IP for that DNS resolver\n    LD->>P: cDS::Session Mangement Server IP\n\n    %% request master manifest from Session Management server\n    Note over P, SM: request master manifest from cDS::Session Management\n    P->>SM: GET /master manifest\n    Note over P, SM: #35;EXTM3U<br/> #35;EXT-X-VERSION:3<br>#35;EXT-X-CONTENT-STEERING:SERVER-URI=\"https://cs.harmonic.com/\"<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::Node-A\"<br>https://nodeA.harmonic.com/01.m3u8<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::Node-B\"<br>http://nodeB.harmonic.com/01.m3u8<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::TC\"<br>https://tc.harmonic.com/01.m3u8.....\n    SM->>P: 200 OK\\n(CloudNative_HelmChart) \n    \n    %% request steering manifest from Content Steering server\n    Note over P, CS: request steering manifest from cDS: Content Steering\n    P->>LD: query cDS::Content Steering domain name\n    LD->>AD: query cDS::Content Steering domain name\n    AD->>LD:  cDS::Content Steering Server IP for that DNS resolver\n    LD->>P: cDS::Content Steering Server IP\n\n    P->>CS: GET /steering manifest\n    Note over CS, P: {CloudNative_ServiceMesh]<br>}\n    CS->>P: 200 OK\\n(CloudNative_K8sCluster)\n    \n    Note over P, sNA: request variant manifest from cDS::Node A\n    P->>LD: query cDS::Node A domain name\n    LD->>AD: query cDS::Node A domain name\n    AD->>LD:  cDS::Node A IP for that DNS resolver\n    LD->>P: cDS::Node A IP\n    P->>sNA: TCP SYN\n    Note over P, sNA: cDS::Node A is down<br>TCP retransmission timer timeout<br>Player fail over to cDS::Node B\n    Note over TE: cDS::Telemetry detect cDS::Node A is down\n    par \n        TE->>CS: update routing decision (CloudNative_Serverless)\n    and \n        TE->>SM: update routing decision (CloudNative_HelmChart)\n    end\n\n    Note over P, sNB: Player fail over to cDS::Node B\n    P->>LD: query cDS::Node B domain name\n    LD->>AD: query cDS::Node B domain name\n    AD->>LD:  cDS::Node B IP for that DNS resolver\n    LD->>P: cDS::Node B IP\n    Note over P, sNB: GET /variant manifest \n    P->>sNB: TCP SYN\n    sNB->>P: ACK, SYN\n    P->>sNB: SYN\n    Note over P, sNB: #35;EXTM3U<br>#35;EXT-X-TARGETDURATION:4<br>#35;EXT-X-MEDIA-SEQUENCE:432137172<br>#35;EXT-X-VERSION:3<br>#35;EXT-X-PROGRAM-DATE-TIME:2024-10-10T08:24:48.831Z<br>#35;EXTINF:3,<br>20240927T075714-01-432137172.ts<br>#35;EXT-X-PROGRAM-DATE-TIME:2024-10-10T08:24:52.031Z<br>EXTINF:5,<br>20240927T075714-01-432137173.ts<br>#35;.........\n    sNB->>P: 200 OK\\n(CloudNative_ServiceMesh)\n\n    %% establish TCP connection, 3 way handshake\n    Note over P, sNB: request video segments\n    P->>sNB: GET /20240927T075714-01-432137172.ts\n\n    %% cDS:: Node start to push video segment\n    Note over sNB, P: server start pushing video segments\n    sNB->>P: TCP segment (CloudNative_ServiceMesh)\n    sNB->>P: TCP segment (CloudNative_K8sCluster)\n    P->>sNB: ACK (CloudNative_K8sCluster)\n\n    %% packet start missing and player request retransmission\n    sNB->>P: TCP segment(CloudNative_DockerImage)\n    sNB->>P: TCP segment(CloudNative_Serverless)\n    Note over sNB, P: packet loss, retransmission timer timeout, send duplicate ACK to request retransmission\n    P->>sNB: ACK (CloudNative_K8sCluster)\n    sNB->>P: reset connection\n    \n    sNB->>TE: report packet loss\n    par\n        TE->>CS: update routing decision (CloudNative_K8sCluster)\n    and \n        TE->>SM: update routing decision (CloudNative_Serverless)\n    end\n\n    %% player fail over to cDS::TC\n    Note over P, TC: Player fail over to cDS::TC\n    P->>LD: query cDS::TC domain name\n    LD->>AD: query cDS::TC  domain name\n    AD->>LD:  cDS::TC IP for that DNS resolver\n    LD->>P: cDS::TC IP\n\n    P->> TC: GET /variant manifest\n    TC->>P: 302 Found\\nLocation: cDS::Node C\n   \n    P->>LD: query cDS::Node C domain name\n    LD->>AD: query cDS::Node C domain name\n    AD->>LD:  cDS::Node C IP for that DNS resolver\n    LD->>P: cDS::Node C IP\n\n    P->>NA: GET /variant manifest\n    NA->>P: 200 OK\\n(CloudNative_ServiceMesh)\n\n    loop\n        P->>NA: GET video/audio segments\n        NA->>P: 200 OK\\n(CloudNative_HelmChart)\n    end\n    \n    Note over P, CS: steering manifest expire, request an updated steering manifest\n    P->>CS: GET /steering manifest\n    Note over CS, P: cDS::Node A and cDS::Node B are removed from the list<br>{CloudNative_HelmChart]<br>}\n    CS->>P: 200 OK\\n(CloudNative_ServiceMesh)\n",
+  "content_size": 5274,
+  "collected_at": "2026-02-06T14:08:15.440859",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "CloudNative",
+  "seed_id": "gl_packet-beta_00360",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的cDS内容分发流程图，从Player开始，经过Bootstrap获取会话信息，然后DNS解析到Session Management。这个流程要体现云原生架构的特点。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，Player先向Bootstrap获取会话引导信息。那Bootstrap返回的内容具体包含哪些？比如endpoint地址和广告服务参数？",
+      "elements_involved": [
+        "Bootstrap",
+        "Player"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Bootstrap返回endpoint和ad serving parameters。然后Player需要解析cDS::Session Management的域名，这里要经过DNS resolver和Authoritative DNS server。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把DNS解析链路画出来：Player查询LD，LD查询AD，AD返回Session Management的IP，LD再回传给Player。接下来Player向Session Management请求master manifest？",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，GET /master manifest。这里有个关键点：返回的manifest要包含EXT-X-CONTENT-STEERING标签，SERVER-URI指向Content Steering Servers，还有多个PATHWAY-ID，包括Node-A、Node-B和TC。",
+      "elements_involved": [
+        "Player",
+        "Session Management",
+        "Content Steering Servers",
+        "Node-A",
+        "Node-B",
+        "TC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我注意到这里标注了CloudNative_HelmChart，是说Session Management的响应用这个技术栈？另外BANDWIDTH、RESOLUTION这些stream info参数需要详细列出吗？",
+      "elements_involved": [
+        "Session Management",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Session Management用CloudNative_HelmChart。stream info需要体现，BANDWIDTH设2297761，RESOLUTION 960x540，FRAME-RATE 30.000，三个pathway都要列。然后Player要去Content Steering请求steering manifest。",
+      "elements_involved": [
+        "Player",
+        "Content Steering Servers",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Player再次走DNS解析链路查询Content Steering域名，然后GET /steering manifest。这里返回标注了CloudNative_ServiceMesh和CloudNative_K8sCluster？",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "Content Steering Servers",
+        "CloudNative_ServiceMesh",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，steering manifest响应用CloudNative_ServiceMesh标注，200 OK用CloudNative_K8sCluster。接下来Player尝试连接Node-A获取variant manifest，但这里要设计一个故障场景。",
+      "elements_involved": [
+        "Player",
+        "Node-A",
+        "CloudNative_ServiceMesh",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "故障场景？是说Node-A不可用？我看到有TCP SYN和重传超时的描述。",
+      "elements_involved": [
+        "Player",
+        "Node-A"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正是。Player发TCP SYN，但Node-A down了，TCP重传超时，Player failover到Node-B。同时Telemetry要检测到这个故障。",
+      "elements_involved": [
+        "Player",
+        "Node-A",
+        "Node-B",
+        "Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画一下：Note标注Node-A故障和failover，然后Telemetry检测Node-A down。这里有个par并行块，Telemetry同时更新CS和SM的路由决策？",
+      "elements_involved": [
+        "Telemetry",
+        "Content Steering Servers",
+        "Session Management",
+        "Node-A"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，par并行执行：TE-CS用CloudNative_Serverless，TE-SM用CloudNative_HelmChart。然后Player重新DNS解析Node-B，建立连接。",
+      "elements_involved": [
+        "Telemetry",
+        "Content Steering Servers",
+        "Session Management",
+        "CloudNative_Serverless",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加failover到Node-B的流程，包括DNS解析和TCP三次握手。GET /variant manifest返回200 OK，标注CloudNative_ServiceMesh。这里variant manifest内容要详细吗？",
+      "elements_involved": [
+        "Player",
+        "Node-B",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "CloudNative_ServiceMesh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，要有EXTM3U、TARGETDURATION 4、MEDIA-SEQUENCE、PROGRAM-DATE-TIME和EXTINF，体现真实的HLS manifest结构。然后Player请求video segments。",
+      "elements_involved": [
+        "Player",
+        "Node-B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我加了具体的segment文件名如20240927T075714-01-432137172.ts。接下来server push segments，标注CloudNative_ServiceMesh和CloudNative_K8sCluster？",
+      "elements_involved": [
+        "Player",
+        "Node-B",
+        "CloudNative_ServiceMesh",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，但这里还要设计第二个故障：packet loss。TCP segments用CloudNative_DockerImage和CloudNative_Serverless标注，然后重传超时，Player发duplicate ACK。",
+      "elements_involved": [
+        "Player",
+        "Node-B",
+        "CloudNative_DockerImage",
+        "CloudNative_Serverless",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "packet loss之后Node-B reset连接，并向Telemetry报告？然后又是并行的路由决策更新？",
+      "elements_involved": [
+        "Node-B",
+        "Telemetry",
+        "Player"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。TE-CS这次用CloudNative_K8sCluster，TE-SM用CloudNative_Serverless。然后Player failover到TC，这是第三个节点路径。",
+      "elements_involved": [
+        "Telemetry",
+        "Content Steering Servers",
+        "Session Management",
+        "CloudNative_K8sCluster",
+        "CloudNative_Serverless",
+        "TC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Player查询TC域名，GET /variant manifest，但TC返回302 Found，Location指向Node-C。这是重定向机制？",
+      "elements_involved": [
+        "Player",
+        "TC",
+        "Node-C",
+        "DNS resolver",
+        "Authoritative DNS server"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，TC做重定向到Node-C。Player再解析Node-C域名，获取variant manifest，200 OK标注CloudNative_ServiceMesh。然后进入loop循环获取segments。",
+      "elements_involved": [
+        "Player",
+        "TC",
+        "Node-C",
+        "CloudNative_ServiceMesh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "loop已添加，Player循环GET video/audio segments，NA返回200 OK标注CloudNative_HelmChart。最后steering manifest expire，需要更新？",
+      "elements_involved": [
+        "Player",
+        "Node-C",
+        "CloudNative_HelmChart",
+        "Content Steering Servers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，Player重新GET /steering manifest，这次响应里Node-A和Node-B被移除，只保留有效节点。标注CloudNative_HelmChart和CloudNative_ServiceMesh。",
+      "elements_involved": [
+        "Player",
+        "Content Steering Servers",
+        "Node-A",
+        "Node-B",
+        "CloudNative_HelmChart",
+        "CloudNative_ServiceMesh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "整体流程差不多了。我检查一下：DNS解析出现了多次，每次结构类似但目标不同，这样重复画会不会太冗余？",
+      "elements_involved": [
+        "DNS resolver",
+        "Authoritative DNS server"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这是必要的，体现每次服务发现都要走DNS。但可以简化描述，不用每次都写完整注释。另外确认一下所有云原生标注：HelmChart、K8sCluster、ServiceMesh、DockerImage、Serverless都覆盖了？",
+      "elements_involved": [
+        "CloudNative_HelmChart",
+        "CloudNative_K8sCluster",
+        "CloudNative_ServiceMesh",
+        "CloudNative_DockerImage",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都覆盖了。HelmChart用于SM响应和TE-SM更新；K8sCluster用于CS 200 OK和TE-CS第二次更新；ServiceMesh用于steering manifest和Node-B/C响应；DockerImage和Serverless用于packet loss场景。",
+      "elements_involved": [
+        "CloudNative_HelmChart",
+        "CloudNative_K8sCluster",
+        "CloudNative_ServiceMesh",
+        "CloudNative_DockerImage",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，Node-C的loop循环里，segment响应标注的是CloudNative_HelmChart，但之前Node-B的segment是server push模式。这两种传输模式要区分清楚。",
+      "elements_involved": [
+        "Node-C",
+        "Node-B",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我修正一下。Node-B的server push用CloudNative_ServiceMesh和CloudNative_K8sCluster，Node-C的pull模式用CloudNative_HelmChart，这样确实区分了service mesh推送和helm chart管理的响应。",
+      "elements_involved": [
+        "Node-B",
+        "Node-C",
+        "CloudNative_ServiceMesh",
+        "CloudNative_K8sCluster",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有，TC的重定向302 Found要确认状态码正确。以及所有Note的内容要准确反映故障场景和协议细节。",
+      "elements_involved": [
+        "TC",
+        "Node-C"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已核对，TC返回302 Found Location: cDS::Node C。所有Note都标注了故障场景：Node-A down、packet loss、retransmission timeout等。autonumber需要开启吗？",
+      "elements_involved": [
+        "TC",
+        "Node-C",
+        "Node-A"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "开启autonumber，方便讲解时引用步骤。最后确认一下参与者列表：Player、Bootstrap、LD、AD、SM、sNA、sNB、TC、NA、CS、TE，共11个。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "Session Management",
+        "Node-A",
+        "Node-B",
+        "TC",
+        "Node-C",
+        "Content Steering Servers",
+        "Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "参与者已定义，别名也设置好了：P、Boot、LD、AD、SM、sNA、sNB、TC、NA、CS、TE。整个流程从bootstrap开始，经过两次failover，最终稳定到Node-C，体现cDS的高可用设计。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "Session Management",
+        "Node-A",
+        "Node-B",
+        "TC",
+        "Node-C",
+        "Content Steering Servers",
+        "Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个图完整展示了cDS的云原生内容分发流程，包括服务发现、负载均衡、故障转移、遥测反馈和动态路由更新。可以定稿了。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "Session Management",
+        "Node-A",
+        "Node-B",
+        "TC",
+        "Node-C",
+        "Content Steering Servers",
+        "Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "定稿完成。序列图已包含完整的DNS解析链、master/steering/variant manifest获取、TCP连接管理、双故障failover场景、Telemetry并行更新、以及最终的steering manifest刷新。所有云原生技术栈标注准确。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "Session Management",
+        "Node-A",
+        "Node-B",
+        "TC",
+        "Node-C",
+        "Content Steering Servers",
+        "Telemetry"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 34,
+    "repair_count": 1,
+    "grounding_acts_count": 34,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:33Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 74912.5974,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 34
+  }
+}

@@ -1,0 +1,304 @@
+{
+  "id": "aug_gl_requirementDiagram_00602_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ylmzunal/scalable-llm-over-kubernetes-deployment/blob/1b46a8e09526433e25151879ff4c084c2da2dd58/diagrams/deployment_sequence_diagram.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ylmzunal/scalable-llm-over-kubernetes-deployment",
+  "diagram_type": "requirementDiagram",
+  "code": "sequenceDiagram\n    participant DEV as Developer\n    participant GIT as Git Repository\n    participant DOCKER as Docker Build\n    participant AR as Artifact Registry\n    participant GKE as GKE Cluster\n    participant K8S as Kubernetes API\n    participant POD as Backend Pod\n    participant OL as Ollama Container\n    participant HPA as HPA Controller\n    \n    Note over DEV,HPA: CI/CD Deployment Pipeline\n    \n    DEV->>+GIT: git push (Education_ClassroomService)\n    GIT->>-DEV: Push confirmed\n    \n    DEV->>+DOCKER: ./deploy-gke.sh\n    DOCKER->>DOCKER: Validate Prerequisites\n    DOCKER->>DOCKER: Setup GCloud Auth\n    \n    Note over DOCKER,AR: Image Build Process\n    DOCKER->>+DOCKER: Build Ollama Image\n    Note over DOCKER: FROM ollama/ollama:latest<br/>RUN ollama pull tinyllama\n    DOCKER->>-DOCKER: Ollama Image Ready\n    \n    DOCKER->>+DOCKER: Build Backend Image\n    Note over DOCKER: FROM python:3.11<br/>COPY app/ requirements.txt\n    DOCKER->>-DOCKER: Backend Image Ready\n    \n    DOCKER->>+DOCKER: Build Frontend Image\n    Note over DOCKER: FROM node:18 (Education_StudentDB)<br/>FROM nginx:alpine (Education_ClassroomService)\n    DOCKER->>-DOCKER: Frontend Image Ready\n    \n    DOCKER->>+AR: Push Images\n    AR->>AR: Store Images with Tags\n    AR->>-DOCKER: Push Complete\n    \n    Note over DOCKER,HPA: Kubernetes Deployment\n    DOCKER->>+K8S: kubectl apply -f k8s/rbac.yaml\n    K8S->>-DOCKER: RBAC Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/configmap-cloud.yaml\n    K8S->>-DOCKER: ConfigMap Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/backend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Backend Pods\n    \n    K8S->>+POD: Create Backend Pod\n    POD->>+AR: Pull Backend Image\n    AR->>-POD: Image Downloaded\n    POD->>+AR: Pull Ollama Image\n    AR->>-POD: Image Downloaded\n    \n    Note over POD,OL: Pod Startup Sequence\n    POD->>+OL: Start Ollama Container\n    OL->>OL: Initialize Ollama Server\n    OL->>OL: Load TinyLlama Model (Education_GradeSync)\n    OL->>-POD: Ollama Ready (Education_StudentDB)\n    \n    POD->>+POD: Start FastAPI Container\n    POD->>POD: Initialize FastAPI App\n    POD->>+OL: Test Connection (Education_LMS_Portal)\n    OL->>-POD: Connection Successful\n    POD->>-POD: FastAPI Ready\n    \n    POD->>+K8S: Report Pod Ready\n    K8S->>-POD: Readiness Confirmed\n    K8S->>-DOCKER: Backend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/frontend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Frontend Pods\n    K8S->>-DOCKER: Frontend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/hpa-cloud.yaml\n    K8S->>+HPA: Create HPA Resources\n    HPA->>HPA: Monitor Backend Metrics\n    HPA->>-K8S: HPA Active\n    K8S->>-DOCKER: HPA Applied\n    \n    DOCKER->>+K8S: kubectl get services\n    K8S->>-DOCKER: External IP Available\n    DOCKER->>-DEV: Deployment Complete<br/>App URL: http://EXTERNAL-IP\n    \n    Note over DEV,HPA: Health Verification\n    DEV->>+GKE: curl http://EXTERNAL-IP/health\n    GKE->>+POD: Route Health Check\n    POD->>+OL: Verify Ollama Status\n    OL->>-POD: Status OK\n    POD->>-GKE: Health Check Passed\n    GKE->>-DEV: 200 OK\n    \n    Note over DEV,HPA: Auto-scaling Verification\n    HPA->>+POD: Monitor CPU/Memory\n    POD->>-HPA: Metrics: CPU 30%, Memory 40%\n    HPA->>HPA: Within Thresholds (Education_LMS_Portal)\n    \n    Note over DEV,HPA: Rolling Update Process\n    DEV->>+DOCKER: Deploy New Version\n    DOCKER->>+AR: Push Updated Images\n    AR->>-DOCKER: Images Updated\n    \n    DOCKER->>+K8S: kubectl apply (Education_LMS_Portal)\n    K8S->>K8S: Rolling Update Strategy\n    K8S->>+POD: Create New Pod\n    POD->>POD: Start New Version\n    POD->>-K8S: New Pod Ready\n    K8S->>K8S: Terminate Old Pod\n    K8S->>-DOCKER: Rolling Update Complete\n    DOCKER->>-DEV: Update Successful",
+  "content_size": 3703,
+  "collected_at": "2026-02-06T14:13:15.259540",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Education",
+  "seed_id": "gl_requirementDiagram_00602",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为教育平台设计一个完整的CI/CD部署流程图，覆盖从代码提交到生产环境的全链路。核心要体现Education_ClassroomService、Education_StudentDB、Education_GradeSync这几个教育模块的部署关系。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Education_ClassroomService",
+        "Education_StudentDB",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个Kubernetes云原生部署场景。我梳理一下：开发者推送代码到Git仓库，触发Docker构建，镜像推送到Artifact Registry，最后在GKE集群部署。需要把Ollama容器和Backend Pod的启动时序细节画出来吗？",
+      "elements_involved": [
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster",
+        "Ollama Container",
+        "Backend Pod"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Ollama的启动细节很重要。TinyLlama模型加载必须在FastAPI启动之前完成，而且要通过Education_LMS_Portal的连接测试才算就绪。另外HPA控制器的自动扩缩容逻辑也要体现。",
+      "elements_involved": [
+        "Ollama Container",
+        "TinyLlama Model",
+        "FastAPI",
+        "Education_LMS_Portal",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我设计这样的时序：Developer先push代码到Git Repository，收到确认后执行deploy-gke.sh脚本。Docker Build阶段先做GCloud认证，然后并行构建三个镜像——Ollama镜像、Backend镜像、Frontend镜像。Frontend镜像要区分node:18和nginx:alpine两个阶段，分别对应Education_StudentDB和Education_ClassroomService。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Ollama Image",
+        "Backend Image",
+        "Frontend Image",
+        "Education_StudentDB",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Frontend的构建描述准确，但Ollama镜像的Dockerfile要注明FROM ollama/ollama:latest和RUN ollama pull tinyllama这两行关键指令。Backend镜像是python:3.11基础，复制app目录和requirements.txt。这些构建注释要放在Note里。",
+      "elements_involved": [
+        "Ollama Image",
+        "Backend Image",
+        "Dockerfile",
+        "tinyllama",
+        "python:3.11"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，镜像构建完成后统一推送到Artifact Registry，存储带标签的镜像版本。然后进入Kubernetes部署阶段，依次应用rbac.yaml、configmap-cloud.yaml、backend-deployment-cloud.yaml。这里Backend Pod创建时要从Artifact Registry拉取两个镜像——Backend镜像和Ollama镜像。",
+      "elements_involved": [
+        "Artifact Registry",
+        "Kubernetes API",
+        "Backend Pod",
+        "RBAC",
+        "ConfigMap",
+        "backend-deployment-cloud.yaml"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Pod启动顺序是关键：先启动Ollama Container，初始化服务器并加载TinyLlama模型，这里标记为Education_GradeSync阶段。Ollama就绪后报告Education_StudentDB状态，然后启动FastAPI Container。FastAPI初始化完成后要主动测试与Ollama的连接，通过Education_LMS_Portal验证后才算真正就绪。",
+      "elements_involved": [
+        "Pod Startup Sequence",
+        "Ollama Container",
+        "TinyLlama Model",
+        "FastAPI Container",
+        "Education_GradeSync",
+        "Education_StudentDB",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Pod内部时序：POD启动OL，OL初始化完成后加载模型，回复POD就绪状态。然后POD启动FastAPI，初始化应用后主动测试OL连接，成功后才向K8S报告Readiness。接下来部署frontend-deployment-cloud.yaml，最后应用hpa-cloud.yaml创建HPA Controller。",
+      "elements_involved": [
+        "Backend Pod",
+        "Ollama Container",
+        "FastAPI",
+        "Kubernetes API",
+        "HPA Controller",
+        "frontend-deployment-cloud.yaml",
+        "hpa-cloud.yaml"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "HPA的逻辑要再细化：HPA创建后持续监控Backend Pod的CPU和内存指标，当前示例显示CPU 30%、内存40%，处于阈值范围内，标记为Education_LMS_Portal的正常状态。另外需要补充健康检查流程，Developer通过GKE的External IP访问/health端点。",
+      "elements_involved": [
+        "HPA Controller",
+        "Backend Pod",
+        "CPU Metrics",
+        "Memory Metrics",
+        "Education_LMS_Portal",
+        "Developer",
+        "GKE Cluster",
+        "Health Check"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "健康检查流程已补充：Developer curl访问External IP，请求路由到Backend Pod，Pod内部再验证Ollama状态，层层返回200 OK。HPA监控部分也加上了，显示当前资源使用率在安全阈值内。最后还需要Rolling Update流程吗？",
+      "elements_involved": [
+        "Developer",
+        "GKE Cluster",
+        "Backend Pod",
+        "Ollama Container",
+        "Health Check",
+        "HPA Controller",
+        "Rolling Update"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，Rolling Update是生产必备能力。流程是：Developer触发新版本部署，Docker Build推送更新镜像到Artifact Registry，然后通过kubectl apply（标记Education_LMS_Portal操作）触发K8S的滚动更新策略——先创建新Pod，就绪后终止旧Pod，保证零停机。",
+      "elements_involved": [
+        "Rolling Update",
+        "Developer",
+        "Docker Build",
+        "Artifact Registry",
+        "Kubernetes API",
+        "Education_LMS_Portal",
+        "New Pod",
+        "Old Pod"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成Rolling Update时序：DEV→DOCKER→AR更新镜像，AR确认后DOCKER→K8S执行apply，K8S内部执行滚动策略，创建新Pod、启动新版本、确认就绪、终止旧Pod，最后向DEV报告更新成功。整个CI/CD pipeline的闭环就完成了。",
+      "elements_involved": [
+        "Developer",
+        "Docker Build",
+        "Artifact Registry",
+        "Kubernetes API",
+        "Rolling Update",
+        "New Pod",
+        "Old Pod"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下各教育模块的标注是否完整：Education_ClassroomService在Git push和Frontend镜像阶段，Education_StudentDB在Ollama就绪和Frontend构建阶段，Education_GradeSync在TinyLlama加载阶段，Education_LMS_Portal在连接测试、HPA正常状态和kubectl apply阶段。有没有遗漏？",
+      "elements_involved": [
+        "Education_ClassroomService",
+        "Education_StudentDB",
+        "Education_GradeSync",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现一处需要调整：Frontend镜像的Note里，node:18阶段对应Education_StudentDB，但nginx:alpine阶段我目前只标注了Education_ClassroomService。实际上构建过程是先用node:18构建，再用nginx:alpine托管，两个FROM指令都在同一个Frontend Image构建里，标注Education_ClassroomService作为整体服务名更合适，Education_StudentDB可以保留在node阶段。另外Ollama就绪时的Education_StudentDB标注是否需要改为更合适的模块名？",
+      "elements_involved": [
+        "Frontend Image",
+        "node:18",
+        "nginx:alpine",
+        "Education_StudentDB",
+        "Education_ClassroomService",
+        "Ollama Container"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "你的调整合理。Ollama就绪时的Education_StudentDB保留，因为学生数据库服务依赖AI能力就绪。整体结构确认：顶部Note标注CI/CD Deployment Pipeline，中间分Image Build Process、Kubernetes Deployment、Pod Startup Sequence、Health Verification、Auto-scaling Verification、Rolling Update Process六个阶段。参与者顺序是DEV、GIT、DOCKER、AR、GKE、K8S、POD、OL、HPA。",
+      "elements_involved": [
+        "CI/CD Deployment Pipeline",
+        "Image Build Process",
+        "Kubernetes Deployment",
+        "Pod Startup Sequence",
+        "Health Verification",
+        "Auto-scaling Verification",
+        "Rolling Update Process",
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster",
+        "Kubernetes API",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终图已确认：完整的sequenceDiagram包含9个参与者，从Developer的git push开始，经过Docker多镜像构建、Artifact Registry存储、K8S资源应用、Pod精细启动时序、HPA监控、健康检查，到Rolling Update结束。所有教育模块标签已按业务场景正确分布，时序逻辑符合真实K8s部署行为。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster",
+        "Kubernetes API",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller",
+        "Education_ClassroomService",
+        "Education_StudentDB",
+        "Education_GradeSync",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 16,
+    "repair_count": 1,
+    "grounding_acts_count": 16,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 52537.6909,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 16
+  }
+}

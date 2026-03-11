@@ -1,0 +1,389 @@
+{
+  "id": "aug_ot_stateDiagram_00000_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/mrmidi/ASFireWire/blob/1b2dc823fe5b65d27bd90632fb2e11ba8d0c6914/documentation/stateDiagram-v2.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "mrmidi/ASFireWire",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    direction LR\n\n    %% Compact, readable bus-reset state machine: R0 left, R1 center, T0 right\n\n    powerReset: powerReset\n    resetDetected: resetDetected\n    ibrCond: ibr && !(IoT_Industrial_MQTT_Broker)\n    maxArbStateTimeout: maxArbStateTimeout(IoT_Industrial_PLC_Logic)\n\n    R0: R0 — Reset Start\\nresetStartActions(IoT_Industrial_EdgeNode)\n    R1: R1 — Reset Wait\\nresetWaitActions(IoT_Industrial_EdgeNode)\n    T0: T0 — Tree ID Start\n\n    %% Triggers to R0 (IoT_Industrial_EdgeNode)\n    powerReset --> R0: arbPowerReset(IoT_Industrial_EdgeNode)\n    resetDetected --> R0: initiatedReset = FALSE\n    ibrCond --> R0: initiatedReset = TRUE / resetDuration = RESET_TIME\n    maxArbStateTimeout --> R0: initiatedReset = TRUE / resetDuration = RESET_TIME; PH_EVENT_INDICATION\n\n    %% Core transitions\n    R0 --> R1: arbTimer >= resetDuration / resetStartActions(IoT_Industrial_PLC_Logic)\n    R1 --> T0: resetComplete(IoT_Industrial_EdgeNode) / arbTimer = 0\n\n    %% Back-transition and timeout\n    R1 --> R0: arbTimer >= resetDuration + RESET_WAIT / resetDuration = RESET_TIME\n\n    note left of R0\n      External triggers to R0:\\n• powerReset (IoT_Industrial_MQTT_Broker))\\n• resetDetected (IoT_Industrial_ActuatorController)\\n• ibr && !(IoT_Industrial_PLC_Logic) (IoT_Industrial_MQTT_Broker)\\n• maxArbStateTimeout(IoT_Industrial_MQTT_Broker) (IoT_Industrial_TelemetryStream)\\n• from TX: Transmit → -TX:R0\n    end note\n\n    note right of R1\n      Timeout/Recovery:\\n• R1→R0 sets resetDuration = RESET_TIME\\n• R1→T0 on resetComplete(IoT_Industrial_MQTT_Broker) sets arbTimer = 0\n    end note",
+  "content_size": 1407,
+  "collected_at": "2026-02-06T10:36:36.652880",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00000",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业IoT边缘节点的总线复位状态机画个图。核心场景是：当EdgeNode遇到复位条件时，从R0启动，经过R1等待，最终到达T0完成树ID分配。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "R0",
+        "R1",
+        "T0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，方向从左到右，R0在左、R1居中、T0在右。R0的全称是Reset Start，R1是Reset Wait，T0是Tree ID Start对吗？",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "T0",
+        "direction LR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，而且R0和R1都要绑定resetStartActions和resetWaitActions，这两个动作都是针对EdgeNode的。另外R0的进入条件有好几个外部触发源。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "resetStartActions",
+        "resetWaitActions",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出三个主状态，R0标注为\"R0 — Reset Start\"并附上resetStartActions(EdgeNode)。R1标注\"R1 — Reset Wait\"附带resetWaitActions。T0保持简洁。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "T0",
+        "resetStartActions",
+        "resetWaitActions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "外部触发到R0的有四个条件：powerReset、resetDetected、ibr条件不满足MQTT Broker的情况，还有maxArbStateTimeout。其中maxArbStateTimeout是跟PLC Logic相关的。",
+      "elements_involved": [
+        "powerReset",
+        "resetDetected",
+        "ibrCond",
+        "maxArbStateTimeout",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我注意到ibrCond的定义是\"ibr && !(MQTT Broker)\"，这个命名要不要简化？还有maxArbStateTimeout后面括号里写的是PLC Logic，但之前你说跟TelemetryStream也有关系？",
+      "elements_involved": [
+        "ibrCond",
+        "maxArbStateTimeout",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "maxArbStateTimeout确实主要关联PLC Logic，但在某些场景下TelemetryStream会参与事件上报。ibrCond保持那个表达式就行，代表ibr为真且MQTT Broker不存在时的回退条件。",
+      "elements_involved": [
+        "maxArbStateTimeout",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream",
+        "ibrCond"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加四个外部触发节点指向R0：powerReset和resetDetected作为独立入口，ibrCond作为复合条件，maxArbStateTimeout标注PLC Logic。resetDetected的触发条件是initiatedReset=FALSE，其他三个是TRUE并带resetDuration赋值。",
+      "elements_involved": [
+        "powerReset",
+        "resetDetected",
+        "ibrCond",
+        "maxArbStateTimeout",
+        "R0",
+        "initiatedReset",
+        "resetDuration"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "核心流转是R0到R1，条件是arbTimer等于resetDuration，动作是resetStartActions针对PLC Logic。然后R1到T0是resetComplete触发，arbTimer清零。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "T0",
+        "arbTimer",
+        "resetDuration",
+        "resetStartActions",
+        "resetComplete",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "核心流转画好了。R0→R1标注\"arbTimer = resetDuration / resetStartActions(PLC Logic)\"，R1→T0标注\"resetComplete(EdgeNode) / arbTimer = 0\"。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "T0",
+        "arbTimer",
+        "resetStartActions",
+        "resetComplete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有个关键的回退机制：R1如果超时没完成复位，要回到R0重试。条件是arbTimer达到resetDuration加RESET_WAIT，动作是把resetDuration重新设为RESET_TIME。",
+      "elements_involved": [
+        "R1",
+        "R0",
+        "arbTimer",
+        "resetDuration",
+        "RESET_WAIT",
+        "RESET_TIME"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加R1→R0的回退边，标注\"arbTimer = resetDuration + RESET_WAIT / resetDuration = RESET_TIME\"。",
+      "elements_involved": [
+        "R1",
+        "R0",
+        "arbTimer",
+        "resetDuration",
+        "RESET_WAIT",
+        "RESET_TIME"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，resetComplete的括号里我刚才说的是EdgeNode，但规范里应该是MQTT Broker。让我确认一下——对，resetComplete的触发源是MQTT Broker，不是EdgeNode。",
+      "elements_involved": [
+        "resetComplete",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，修正R1→T0的标注为\"resetComplete(MQTT Broker) / arbTimer = 0\"。",
+      "elements_involved": [
+        "R1",
+        "T0",
+        "resetComplete",
+        "IoT_Industrial_MQTT_Broker",
+        "arbTimer"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "左侧需要加个注释说明所有外部触发到R0的源。包括powerReset来自MQTT Broker、resetDetected来自ActuatorController、ibrCond的逻辑，还有maxArbStateTimeout来自TelemetryStream的情况。",
+      "elements_involved": [
+        "note left of R0",
+        "powerReset",
+        "resetDetected",
+        "ibrCond",
+        "maxArbStateTimeout",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "左侧注释已添加，列出四个外部触发源及其对应的组件归属。另外我注意到maxArbStateTimeout在注释里提到了TelemetryStream，但状态节点上标注的是PLC Logic，这样区分对吗？",
+      "elements_involved": [
+        "note left of R0",
+        "maxArbStateTimeout",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "不对，我需要修正。maxArbStateTimeout的状态节点应该标注MQTT Broker，不是PLC Logic。PLC Logic只用于R0→R1的resetStartActions。",
+      "elements_involved": [
+        "maxArbStateTimeout",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正maxArbStateTimeout的标注为\"maxArbStateTimeout(MQTT Broker)\"。同时左侧注释也同步更新。",
+      "elements_involved": [
+        "maxArbStateTimeout",
+        "IoT_Industrial_MQTT_Broker",
+        "note left of R0"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "右侧R1旁边也加个注释，说明超时恢复机制：R1→R0时设置resetDuration，R1→T0时清零arbTimer。还有从TX回退到R0的情况也提一下。",
+      "elements_involved": [
+        "note right of R1",
+        "R1",
+        "R0",
+        "T0",
+        "resetDuration",
+        "arbTimer",
+        "TX"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "右侧注释已添加，标注\"Timeout/Recovery\"并列出两个关键动作。左侧注释末尾也补充了\"from TX: Transmit → -TX:R0\"。",
+      "elements_involved": [
+        "note right of R1",
+        "note left of R0",
+        "R1",
+        "R0",
+        "T0",
+        "TX"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再看一下ibrCond的表达式，应该是\"ibr && !(PLC Logic)\"还是\"ibr && !(MQTT Broker)\"？我之前说的和实际可能不一致。",
+      "elements_involved": [
+        "ibrCond",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "当前图上是\"ibr && !(MQTT Broker)\"。需要改成PLC Logic吗？",
+      "elements_involved": [
+        "ibrCond",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "改成PLC Logic。ibrCond表示ibr为真且PLC Logic不存在时的回退条件，不是MQTT Broker。",
+      "elements_involved": [
+        "ibrCond",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正ibrCond为\"ibr && !(PLC Logic)\"。左侧注释中的对应描述也已更新。现在整个状态机应该完整了：四个外部触发到R0，核心流转R0→R1→T0，R1超时回退，两侧注释说明关键细节。",
+      "elements_involved": [
+        "ibrCond",
+        "IoT_Industrial_PLC_Logic",
+        "note left of R0",
+        "R0",
+        "R1",
+        "T0"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认无误。这个状态机覆盖了EdgeNode的总线复位完整生命周期，包括正常流程和异常回退。可以定稿了。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "R0",
+        "R1",
+        "T0"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 25,
+    "repair_count": 6,
+    "grounding_acts_count": 25,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:35Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:35Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 58611.2235,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 24
+  }
+}

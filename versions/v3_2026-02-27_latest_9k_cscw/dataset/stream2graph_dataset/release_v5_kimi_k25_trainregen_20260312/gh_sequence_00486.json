@@ -1,0 +1,209 @@
+{
+  "id": "gh_sequence_00486",
+  "source": "github",
+  "source_url": "https://github.com/noyqdave/accounting-ledger-service/blob/046cced0c1a13ed177e216d1e028e3baea512856/docs/diagrams/use-case-creation.mmd",
+  "github_repo": "noyqdave/accounting-ledger-service",
+  "github_file_path": "docs/diagrams/use-case-creation.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Client\n    participant Filter as FeatureFlagFilter\n    participant FFS as FeatureFlagService\n    participant Controller as TransactionController\n    participant MA as MetricsAspect\n    participant Service as CreateTransactionService\n    participant Adapter as TransactionRepositoryAdapter\n    participant DB as H2 Database\n    participant Domain as Transaction Domain\n    \n    Client->>Filter: POST /transactions<br/>{amount: 100.00, description: \"Office supplies\", type: \"EXPENSE\"}\n    \n    Note over Filter: Feature Flag Check\n    Filter->>FFS: Check \"create-transaction\" flag\n    FFS-->>Filter: ✓ Feature enabled\n    Filter->>Controller: Forward request\n    \n    Note over Controller: Metrics Tracking\n    Controller->>MA: Track \"transactions.created\"\n    MA-->>Controller: ✓ Metric recorded\n    \n    Note over Controller: DTO to Domain Mapping\n    Controller->>Domain: new Transaction(amount, description, type)\n    Domain->>Domain: Validate amount > 0\n    Domain->>Domain: Validate description not empty\n    Domain->>Domain: Generate UUID\n    Domain->>Domain: Set current timestamp\n    Domain-->>Controller: ✓ Transaction created\n    \n    Note over Controller: Business Logic\n    Controller->>Service: create(transaction)\n    Service->>Adapter: save(transaction)\n    \n    Note over Adapter: Domain to Entity Mapping\n    Adapter->>Adapter: mapToEntity(transaction)\n    Adapter->>DB: save(TransactionEntity)\n    DB-->>Adapter: ✓ Entity saved\n    \n    Note over Adapter: Entity to Domain Mapping\n    Adapter->>Adapter: mapToDomain(savedEntity)\n    Adapter-->>Service: Transaction domain object\n    Service-->>Controller: Transaction\n    Controller-->>Filter: Transaction\n    Filter-->>Client: HTTP 200<br/>{id: \"uuid\", amount: 100.00, description: \"Office supplies\", type: \"EXPENSE\", date: \"2024-01-15T10:30:00\"}\n",
+  "content_size": 1847,
+  "collected_at": "2026-02-06T01:32:58.334759",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "noyqdave",
+  "repo_name": "accounting-ledger-service",
+  "repo_description": "A Java microservice for managing expense and revenue ledger using Hexagonal Architecture",
+  "repo_language": "Java",
+  "repo_topics": [],
+  "repo_created_at": "2025-03-22T14:40:58Z",
+  "repo_updated_at": "2025-12-23T14:28:24Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个创建交易的完整流程图。客户端发起POST请求到/transactions，携带amount、description和type这三个字段。",
+      "elements_involved": [
+        "Client",
+        "amount",
+        "description",
+        "type",
+        "transaction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这个请求是先经过Controller直接处理，还是需要先经过什么前置校验？比如特性开关之类的？",
+      "elements_involved": [
+        "Client",
+        "TransactionController",
+        "FeatureFlagFilter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好问题。实际生产环境我们有个FeatureFlagFilter挡在最前面，它会调用FeatureFlagService检查\"create-transaction\"这个开关是否开启。只有开启了才会把请求转发给TransactionController。",
+      "elements_involved": [
+        "FeatureFlagFilter",
+        "FeatureFlagService",
+        "TransactionController",
+        "create-transaction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，Filter在Client和Controller之间。那Controller处理的时候，我看到代码里有MetricsAspect做埋点，这个要体现出来吗？",
+      "elements_involved": [
+        "TransactionController",
+        "MetricsAspect"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "要的，Controller会调用MetricsAspect记录\"transactions.created\"这个指标。然后关键的一步是DTO到领域对象的转换——Controller把amount、description、type传给Transaction Domain来创建真正的领域对象。",
+      "elements_involved": [
+        "TransactionController",
+        "MetricsAspect",
+        "Transaction Domain",
+        "DTO to Domain Mapping"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Transaction Domain创建对象的时候有什么内部逻辑吗？还是单纯new一个对象？",
+      "elements_involved": [
+        "Transaction Domain"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "领域层要做不少事情：验证amount必须大于0，description不能为空，然后生成UUID，设置当前时间戳。这些都在Domain内部完成，验证通过后才把Transaction对象返回给Controller。",
+      "elements_involved": [
+        "Transaction Domain",
+        "amount",
+        "description",
+        "UUID",
+        "timestamp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，Domain内部有四个自调用步骤。接下来Controller调用Service层？",
+      "elements_involved": [
+        "TransactionController",
+        "CreateTransactionService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Controller调用CreateTransactionService的create方法。Service再交给TransactionRepositoryAdapter去持久化。这里有个细节——Adapter需要做领域对象到Entity的映射。",
+      "elements_involved": [
+        "CreateTransactionService",
+        "TransactionRepositoryAdapter",
+        "Domain to Entity Mapping"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在Adapter这里画一个自调用表示mapToEntity，然后Adapter把TransactionEntity保存到H2 Database。数据库返回savedEntity后，Adapter还要再做一次mapToDomain转回领域对象对吧？",
+      "elements_involved": [
+        "TransactionRepositoryAdapter",
+        "H2 Database",
+        "TransactionEntity",
+        "savedEntity",
+        "mapToDomain"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Adapter返回Transaction domain object给Service，Service再返回给Controller。最后Controller经过Filter把结果返回给Client，响应体里要包含id、amount、description、type和date。",
+      "elements_involved": [
+        "TransactionRepositoryAdapter",
+        "CreateTransactionService",
+        "TransactionController",
+        "FeatureFlagFilter",
+        "Client",
+        "HTTP 200"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "等等，我检查一下——Filter返回Client的时候，路径应该是Filter--Client，不是Controller直接返回。还有响应里的date字段格式我标注为ISO时间戳\"2024-01-15T10:30:00\"，这样对吗？",
+      "elements_involved": [
+        "FeatureFlagFilter",
+        "Client",
+        "date"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，修正得很好。Filter作为入口和出口的统一关卡，返回HTTP 200和完整的交易数据。整个流程就完整了。",
+      "elements_involved": [
+        "FeatureFlagFilter",
+        "Client",
+        "HTTP 200"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 13,
+    "repair_count": 1,
+    "grounding_acts_count": 13,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 28658.5841,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

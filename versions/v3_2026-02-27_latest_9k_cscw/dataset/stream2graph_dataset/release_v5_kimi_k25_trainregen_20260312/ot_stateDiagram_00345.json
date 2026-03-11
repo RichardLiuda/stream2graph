@@ -1,0 +1,463 @@
+{
+  "id": "ot_stateDiagram_00345",
+  "source": "other",
+  "source_url": "https://github.com/song-rit/mermaid-example/blob/b7ac8de1e9803bd08d9c7c0e5bf71b2e329a6f44/mmd/state-diagram-ex-1.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "song-rit/mermaid-example",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [*] --> CartCreated : Customer adds items\n    \n    state \"Shopping Cart\" as cart {\n        CartCreated --> ItemsAdded : add_item()\n        ItemsAdded --> ItemsAdded : add_item() / update_quantity()\n        ItemsAdded --> ItemsRemoved : remove_item()\n        ItemsRemoved --> ItemsAdded : add_item()\n        ItemsRemoved --> CartAbandoned : timeout(30min)\n        ItemsAdded --> CartAbandoned : timeout(30min)\n        \n        state ItemsAdded {\n            [*] --> ValidatingInventory\n            ValidatingInventory --> InStock : items_available\n            ValidatingInventory --> OutOfStock : items_unavailable\n            OutOfStock --> InStock : restock_notification\n            InStock --> PriceCalculated : calculate_total()\n        }\n    }\n    \n    cart --> CheckoutInitiated : checkout_clicked\n    CartAbandoned --> [*] : cleanup_cart()\n    \n    state \"Checkout Process\" as checkout {\n        CheckoutInitiated --> CustomerInfo : enter_details()\n        CustomerInfo --> PaymentInfo : validate_customer()\n        CustomerInfo --> CustomerInfo : validation_failed\n        \n        PaymentInfo --> PaymentValidation : submit_payment()\n        PaymentValidation --> PaymentApproved : payment_success\n        PaymentValidation --> PaymentDeclined : payment_failed\n        PaymentDeclined --> PaymentInfo : retry_payment\n        PaymentDeclined --> PaymentAbandoned : max_retries_reached\n        \n        PaymentApproved --> OrderConfirmed : create_order()\n    }\n    \n    checkout --> CartAbandoned : cancel_checkout\n    PaymentAbandoned --> CartAbandoned\n    \n    state \"Order Processing\" as processing {\n        OrderConfirmed --> InventoryReserved : reserve_items()\n        InventoryReserved --> InventoryConfirmed : inventory_check_passed\n        InventoryReserved --> InventoryFailed : inventory_insufficient\n        InventoryFailed --> OrderCancelled : refund_payment()\n        \n        InventoryConfirmed --> OrderQueued : add_to_fulfillment_queue()\n        OrderQueued --> OrderProcessing : worker_picks_order()\n        OrderProcessing --> ItemsPicked : pick_items()\n        ItemsPicked --> QualityCheck : quality_control()\n        \n        state QualityCheck {\n            [*] --> Inspecting\n            Inspecting --> QCPassed : items_ok\n            Inspecting --> QCFailed : items_defective\n            QCFailed --> ItemsReplaced : replace_items()\n            ItemsReplaced --> Inspecting\n            QCPassed --> [*]\n        }\n        \n        QualityCheck --> OrderPacked : items_approved\n        OrderPacked --> ShippingLabelCreated : generate_label()\n        ShippingLabelCreated --> ReadyForShipment : move_to_shipping_dock()\n    }\n    \n    state \"Shipping & Delivery\" as shipping {\n        ReadyForShipment --> InTransit : carrier_pickup()\n        \n        state InTransit {\n            [*] --> PickedUp\n            PickedUp --> InTransitToHub : scan_at_origin\n            InTransitToHub --> AtSortingFacility : arrive_at_hub\n            AtSortingFacility --> OutForDelivery : sorted_for_delivery\n            OutForDelivery --> AtDeliveryLocation : arrive_at_destination\n            \n            state \"Delivery Attempts\" as delivery_attempts {\n                AtDeliveryLocation --> DeliveryAttempt1 : first_attempt\n                DeliveryAttempt1 --> Delivered : successful_delivery\n                DeliveryAttempt1 --> DeliveryAttempt2 : delivery_failed\n                DeliveryAttempt2 --> Delivered : successful_delivery  \n                DeliveryAttempt2 --> DeliveryAttempt3 : delivery_failed\n                DeliveryAttempt3 --> Delivered : successful_delivery\n                DeliveryAttempt3 --> ReturnToSender : final_attempt_failed\n            }\n        }\n        \n        InTransit --> DeliveryException : package_damaged / lost\n        DeliveryException --> InvestigationStarted : file_claim()\n        InvestigationStarted --> RefundIssued : investigation_complete\n        InvestigationStarted --> ReplacementSent : send_replacement\n    }\n    \n    state \"Post-Delivery\" as post_delivery {\n        Delivered --> DeliveryConfirmed : customer_confirms\n        Delivered --> DeliveryDisputed : customer_disputes(48h)\n        \n        DeliveryConfirmed --> OrderCompleted : satisfaction_survey()\n        DeliveryDisputed --> InvestigationStarted : investigate_dispute()\n        \n        OrderCompleted --> ReturnRequested : return_window_open(30days)\n        ReturnRequested --> ReturnApproved : validate_return_request()\n        ReturnApproved --> ReturnInProgress : customer_ships_back()\n        ReturnInProgress --> ReturnReceived : package_received()\n        ReturnReceived --> RefundProcessed : inspect_returned_items()\n        ReturnReceived --> ReturnRejected : items_not_returnable()\n        \n        OrderCompleted --> ReviewSubmitted : customer_leaves_review()\n    }\n    \n    state \"Terminal States\" as terminal {\n        OrderCancelled --> [*] : order_cleanup()\n        RefundIssued --> [*] : case_closed()\n        RefundProcessed --> [*] : transaction_complete()\n        ReturnToSender --> [*] : return_to_inventory()\n        ReturnRejected --> [*] : return_shipped_back()\n        ReviewSubmitted --> [*] : order_archived()\n        ReplacementSent --> processing : create_replacement_order()\n    }\n    \n    %% Concurrent states for customer service\n    state CustomerService {\n        [*] --> Available\n        Available --> InquiryReceived : customer_contact()\n        InquiryReceived --> ResolvingIssue : agent_assigned()\n        ResolvingIssue --> IssueResolved : resolution_provided()\n        IssueResolved --> Available : case_closed()\n        ResolvingIssue --> EscalatedToManager : escalation_required()\n        EscalatedToManager --> ResolvingIssue : manager_provides_solution()\n    }\n    \n    %% Global transitions that can happen from multiple states\n    processing --> OrderCancelled : customer_cancels() [before_shipping]\n    shipping --> OrderCancelled : customer_cancels() [with_fee]\n    \n    %% Error handling\n    state ErrorHandling {\n        [*] --> SystemError\n        SystemError --> ErrorLogged : log_error()\n        ErrorLogged --> NotificationSent : alert_support()\n        NotificationSent --> [*] : error_resolved()\n    }\n    \n    %% Notes for complex transitions\n    note right of CartAbandoned\n        Cleanup occurs after 30min timeout\n        or explicit abandonment\n    end note\n    \n    note right of PaymentDeclined\n        Max 3 retry attempts allowed\n        Different decline reasons handled\n    end note\n    \n    note right of InTransit\n        Real-time tracking updates\n        Multiple carrier integrations\n    end note",
+  "content_size": 6620,
+  "collected_at": "2026-02-06T10:40:59.598055",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的电商订单生命周期状态图，从用户加购开始，一直到售后结束。核心是要覆盖购物车、结账、订单处理、配送和售后五个主要阶段。",
+      "elements_involved": [
+        "cart",
+        "checkout",
+        "processing",
+        "shipping",
+        "post_delivery"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，这是一个端到端的订单流转图。我先从购物车模块开始构建，用户添加商品后进入CartCreated状态，对吗？",
+      "elements_involved": [
+        "CartCreated",
+        "ItemsAdded"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，但购物车内部需要更细致。用户加购后先到ItemsAdded，这里要支持继续添加、修改数量，也能移除商品。关键是要有CartAbandoned的退出机制——如果30分钟无操作就自动清理。",
+      "elements_involved": [
+        "ItemsAdded",
+        "ItemsRemoved",
+        "CartAbandoned",
+        "timeout(30min)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在购物车内部画了ItemsAdded和ItemsRemoved的循环转换，并标注了30分钟超时到CartAbandoned。另外我发现ItemsAdded内部还有库存校验逻辑，需要展开吗？",
+      "elements_involved": [
+        "ValidatingInventory",
+        "InStock",
+        "OutOfStock",
+        "PriceCalculated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要展开，这是关键业务点。ItemsAdded内部要先校验库存，缺货时等补货通知，有货才能计算价格。然后用户点击结账，进入CheckoutInitiated。",
+      "elements_involved": [
+        "checkout_clicked",
+        "CheckoutInitiated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "结账流程我拆成了CustomerInfo和PaymentInfo两步，中间有验证失败的重试循环。支付环节需要处理成功、失败和放弃三种情况，PaymentDeclined最多允许重试3次。",
+      "elements_involved": [
+        "CustomerInfo",
+        "PaymentInfo",
+        "PaymentValidation",
+        "PaymentDeclined",
+        "max_retries_reached"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "3次重试后如果还失败，要走到PaymentAbandoned，最终合并到CartAbandoned做清理。另外支付成功后创建订单，进入OrderConfirmed。",
+      "elements_involved": [
+        "PaymentAbandoned",
+        "CartAbandoned",
+        "OrderConfirmed",
+        "create_order()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "连接关系已确认。现在进入订单处理阶段，我画了从OrderConfirmed到InventoryReserved，然后分库存确认成功和失败两条线，失败要退款取消订单。",
+      "elements_involved": [
+        "processing",
+        "InventoryReserved",
+        "InventoryConfirmed",
+        "InventoryFailed",
+        "OrderCancelled",
+        "refund_payment()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "处理阶段还有几个关键状态：订单入队列、工人拣货、质检、打包、生成物流标签，最后到ReadyForShipment。质检环节我要单独展开，因为涉及不合格品的替换流程。",
+      "elements_involved": [
+        "OrderQueued",
+        "OrderProcessing",
+        "ItemsPicked",
+        "QualityCheck",
+        "OrderPacked",
+        "ShippingLabelCreated",
+        "ReadyForShipment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "QualityCheck我拆成了Inspecting、QCPassed和QCFailed，不合格会触发ItemsReplaced，替换后重新检验。通过后进入打包环节。",
+      "elements_involved": [
+        "Inspecting",
+        "QCPassed",
+        "QCFailed",
+        "ItemsReplaced"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。接下来是配送模块，从ReadyForShipment开始，承运商取件后进入InTransit。这里我要强调InTransit内部要有完整的物流追踪节点。",
+      "elements_involved": [
+        "shipping",
+        "InTransit",
+        "PickedUp",
+        "InTransitToHub",
+        "AtSortingFacility",
+        "OutForDelivery"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "InTransit内部我画了从PickedUp到InTransitToHub，再到AtSortingFacility分拣，然后OutForDelivery，最后到AtDeliveryLocation。配送尝试我单独做了子状态DeliveryAttempt1/2/3。",
+      "elements_involved": [
+        "AtDeliveryLocation",
+        "delivery_attempts",
+        "DeliveryAttempt1",
+        "DeliveryAttempt2",
+        "DeliveryAttempt3",
+        "Delivered",
+        "ReturnToSender"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "三次配送尝试都失败要退回发件人。另外配送途中可能有异常，比如包裹损坏或丢失，需要触发调查流程，调查完成后可以退款或补发。",
+      "elements_involved": [
+        "DeliveryException",
+        "InvestigationStarted",
+        "RefundIssued",
+        "ReplacementSent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "异常处理已添加。注意到ReplacementSent会创建新订单，需要连回processing状态形成循环。现在进入售后阶段，用户确认收货后怎么流转？",
+      "elements_involved": [
+        "post_delivery",
+        "DeliveryConfirmed",
+        "OrderCompleted",
+        "create_replacement_order()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户有48小时可以发起争议，确认收货后订单完成，但30天内开放退货窗口。退货要经历申请、审核、寄回、验收、退款几个步骤，验收不通过会拒退。",
+      "elements_involved": [
+        "DeliveryDisputed",
+        "customer_disputes(48h)",
+        "ReturnRequested",
+        "return_window_open(30days)",
+        "ReturnApproved",
+        "ReturnInProgress",
+        "ReturnReceived",
+        "RefundProcessed",
+        "ReturnRejected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "售后流程已完善。我还加了ReviewSubmitted，用户完成评价后订单归档。现在需要处理终态，把各种结束情况汇总到terminal状态。",
+      "elements_involved": [
+        "ReviewSubmitted",
+        "terminal",
+        "order_archived()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "终态要包括：订单取消、退款完成、退货完成、退回发件人、退货被拒、评价完成。这些都要指向终止节点。",
+      "elements_involved": [
+        "OrderCancelled",
+        "RefundIssued",
+        "RefundProcessed",
+        "ReturnToSender",
+        "ReturnRejected",
+        "case_closed()",
+        "transaction_complete()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我注意到处理中和配送阶段用户都可能取消订单，但规则不同——发货前免费取消，发货后取消要扣费。这个全局转换需要特殊标注。",
+      "elements_involved": [
+        "customer_cancels()",
+        "before_shipping",
+        "with_fee"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这两个全局转换很重要。另外还需要一个并行的客服状态机，处理用户咨询和投诉，可以独立运行。",
+      "elements_involved": [
+        "CustomerService",
+        "Available",
+        "InquiryReceived",
+        "ResolvingIssue",
+        "IssueResolved",
+        "EscalatedToManager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "客服流程已添加，从Available开始，接收咨询、分配客服、解决问题或升级经理，解决后回到可用状态。还需要错误处理模块吗？",
+      "elements_involved": [
+        "agent_assigned()",
+        "resolution_provided()",
+        "escalation_required()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，系统错误要统一处理：记录日志、通知支持团队、最终解决。这个ErrorHandling模块也是独立的。",
+      "elements_involved": [
+        "ErrorHandling",
+        "SystemError",
+        "ErrorLogged",
+        "NotificationSent",
+        "error_resolved()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "错误处理已添加。现在检查整体结构，发现CartAbandoned的清理逻辑需要注释说明——30分钟超时或主动放弃都会触发。",
+      "elements_involved": [
+        "cleanup_cart()",
+        "note right of CartAbandoned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "加上注释。另外PaymentDeclined的重试逻辑和InTransit的实时追踪也需要注释说明业务规则。",
+      "elements_involved": [
+        "note right of PaymentDeclined",
+        "note right of InTransit",
+        "real-time tracking updates"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "三条注释都已添加。我整体检查一遍：购物车有嵌套状态和超时机制，结账有支付重试，处理有质检子状态，配送有三次尝试，售后有退货窗口，还有并行客服和错误处理。结构完整吗？",
+      "elements_involved": [
+        "stateDiagram-v2",
+        "concurrent",
+        "composite states"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "基本完整，但我发现ItemsAdded到CartAbandoned的超时转换漏标了，和ItemsRemoved一样都应该是30分钟。还有，OutOfStock到InStock的转换应该是restock_notification触发。",
+      "elements_involved": [
+        "ItemsAdded",
+        "CartAbandoned",
+        "timeout(30min)",
+        "restock_notification"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修复，给ItemsAdded补上了30分钟超时到CartAbandoned，并修正了补货通知的触发条件。再确认一下：DeliveryAttempt3失败后是ReturnToSender，不是直接终态？",
+      "elements_involved": [
+        "DeliveryAttempt3",
+        "ReturnToSender",
+        "final_attempt_failed"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，ReturnToSender是退回仓库，然后进入终态。还有一个细节：QCPassed之后应该直接退出QualityCheck子状态，回到父状态继续流转到OrderPacked。",
+      "elements_involved": [
+        "QCPassed",
+        "[*]",
+        "OrderPacked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已调整，QCPassed现在指向QualityCheck的终止节点，表示子状态完成。再检查CustomerService的起始状态，[*]到Available是否正确？",
+      "elements_involved": [
+        "CustomerService",
+        "[*]",
+        "Available"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。最后确认一下所有终态的指向：OrderCancelled、RefundIssued、RefundProcessed、ReturnToSender、ReturnRejected、ReviewSubmitted都指向[*]，ReplacementSent指向processing。",
+      "elements_involved": [
+        "terminal states",
+        "[*]",
+        "processing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部确认无误。状态图已完成，包含5个主业务模块、2个并行模块、多层嵌套状态、全局转换和3条业务注释。",
+      "elements_involved": [
+        "stateDiagram-v2",
+        "complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个状态图覆盖了订单全生命周期的核心业务流程，异常处理和用户取消的边界条件也都考虑到了。可以定稿。",
+      "elements_involved": [
+        "order lifecycle",
+        "exception handling",
+        "cancellation rules"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，最终版本已保存。所有状态转换、触发条件、嵌套结构和并行流程均已按业务需求实现。",
+      "elements_involved": [
+        "final version"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "辛苦了，这个图可以直接用于开发团队的实现参考。",
+      "elements_involved": [],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 33,
+    "repair_count": 3,
+    "grounding_acts_count": 32,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:44Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:39Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:39Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 74410.2588,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 33
+  }
+}

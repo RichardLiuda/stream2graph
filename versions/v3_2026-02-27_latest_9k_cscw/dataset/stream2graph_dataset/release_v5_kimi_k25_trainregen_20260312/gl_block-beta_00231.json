@@ -1,0 +1,170 @@
+{
+  "id": "gl_block-beta_00231",
+  "source": "gitlab",
+  "source_url": "https://github.com/oasisprotocol/sapphire-paratime/blob/6b8eecad999c4173dae65f61892b685eae45cc97/docs/diagrams/c10l-smart-contract-tx.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "oasisprotocol/sapphire-paratime",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    autonumber\n    # Didn't find any way to add a class in sequenceDiagram to act as a selector.\n    box rgba(999,999,999,0) # Acts as selector to override background color as details.alert--info\n        participant Client as Client<br/>(e.g. Node.js,<br/>MetaMask)\n        participant Web3 as Oasis Web3<br/>Gateway\n        participant ClientN as Oasis Node<br/>Sapphire<br/>ParaTime Client\n        participant Compute as Oasis Node<br/>Sapphire ParaTime<br/>Compute 🔒\n        participant KM as Oasis Node<br/>Key Manager<br/>🔒\n    end\n\n    Client->>Client: Create transaction<br/>call data\n\n    opt Encrypt Transaction\n        Client->>+Web3: Get ephemeral<br/>public key R\n        Web3->>+ClientN: Get ephemeral<br/>public key R\n        ClientN->>+KM: Get ephemeral<br/>public key R\n        KM->>KM: Derive per-epoch<br/>per-runtime<br/>keypair R, R'\n        KM-->>-ClientN: Ephemeral public key R\n        Note over ClientN: R is cached<br/>until the end<br/>of epoch\n        ClientN-->>-Web3: Ephemeral<br/>public key R\n        Web3-->>-Client: Ephemeral<br/>public key R\n\n        Client->>Client: Generate X25519<br/>keypair C, C'\n        Client->>Client: Derive shared key<br/>K' = X25519(C', R)\n        Client->>Client: Encrypt call data<br/>with Deoxys-II using<br/>shared key K'\n        Client->>Client: Attach C\n    end\n\n    Client->>Client: Sign transaction<br/>with User's<br/>Secp256k1/Ed25519<br/>key\n    Client->>+Web3: eth_sendRawTx\n    Web3->>+ClientN: eth_sendRawTx\n    ClientN->>ClientN: Validate<br/>transaction\n    ClientN->>Compute: eth_sendRawTx\n\n    opt Encrypted Transaction\n        Compute->>+KM: Get ephemeral<br/>private key R'\n        KM->>KM: Check runtime<br/>policy for caller\n        KM->>KM: Derive per-epoch<br/>per-runtime<br/>keypair R, R'\n        KM-->>-Compute: Ephemeral<br/>private key R'\n        Compute->>Compute: Derive shared key<br/>K' = X25519(C, R')\n        Compute->>Compute: Decrypt Deoxys-II<br/>envelope using K'\n    end\n\n    Compute->>+KM: Get c10l contract<br/>state keypair S, S'\n    KM->>KM: Check runtime<br/>policy for caller\n    KM->>KM: Derive per-contract<br/>per-runtime<br/>keypair S, S'\n    KM-->>-Compute: Contract state<br/>keypair S, S'\n\n    Compute->>Compute: Fetch contract code\n    Compute->>Compute: C10l contract execution<br/>using S, S' to read and<br/>write storage\n    Compute->>Compute: Obtain new<br/>state root\n\n    alt Encrypted Transaction\n        Compute->>Compute: Transaction receipt:<br/>encrypt tx status with K',<br/>unencrypted logs\n    else Unencrypted Transaction\n        Compute->>Compute: Transaction receipt:<br/>unencrypted tx status<br/>and logs\n    end\n\n    Note over Compute: Proposer node adds<br/>transaction, state and<br/>receipt in new block\n    Note over Web3: Wait for new block\n    Web3-->>-Client: Transaction<br/>receipt\n\n    opt Encrypted Transaction\n        Client->>Client: Decrypt tx status<br/>from receipt<br/>using K'\n    end\n",
+  "content_size": 2956,
+  "collected_at": "2026-02-06T14:05:01.058945",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 71,
+  "repo_forks": 35,
+  "repo_owner": "oasisprotocol",
+  "repo_name": "sapphire-paratime",
+  "repo_description": "Oasis Sapphire - the confidential EVM-compatible ParaTime for the Oasis Network",
+  "repo_language": "TypeScript",
+  "repo_topics": [
+    "blockchain",
+    "chain",
+    "confidential",
+    "crypto",
+    "enclave"
+  ],
+  "repo_created_at": "2022-04-19T08:18:50Z",
+  "repo_updated_at": "2026-01-23T14:55:19Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个Sapphire ParaTime的机密交易完整流程图。核心是要展示从客户端发起交易到最终拿到回执的全过程，特别是加密传输和密钥派生这部分。参与方有Client、Web3 Gateway、Client Node、Compute Node和Key Manager。",
+      "elements_involved": [
+        "Client",
+        "Oasis Web3 Gateway",
+        "Oasis Node Sapphire ParaTime Client",
+        "Oasis Node Sapphire ParaTime Compute",
+        "Oasis Node Key Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，五个参与者。我注意到您提到Client可能是Node.js或MetaMask这样的环境，Compute Node和Key Manager都有锁的图标表示安全环境。加密流程里有个ephemeral public key R的获取链条，是从Client到Web3再到ClientN最后到KM，对吗？",
+      "elements_involved": [
+        "Client",
+        "ephemeral public key R",
+        "Oasis Web3 Gateway",
+        "Oasis Node Sapphire ParaTime Client",
+        "Oasis Node Key Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，R是KM派生出来的per-epoch per-runtime密钥对中的公钥。这里有个细节——ClientN会把R缓存到epoch结束，避免重复请求。然后Client本地生成X25519密钥对C和C'，用C'和R派生共享密钥K'来加密calldata。",
+      "elements_involved": [
+        "ephemeral public key R",
+        "per-epoch per-runtime keypair R, R'",
+        "X25519 keypair C, C'",
+        "shared key K'",
+        "Deoxys-II",
+        "calldata"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把加密可选分支画出来：Client获取R之后，在本地做X25519密钥生成、共享密钥派生、Deoxys-II加密，然后附上C。接下来是签名和发送raw transaction的流程，eth_sendRawTx一路传到Compute Node。",
+      "elements_involved": [
+        "Client",
+        "eth_sendRawTx",
+        "Oasis Web3 Gateway",
+        "Oasis Node Sapphire ParaTime Client",
+        "Oasis Node Sapphire ParaTime Compute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Compute Node收到加密交易后，需要向KM获取R'来解密。KM会先检查runtime policy，然后派生同样的per-epoch per-runtime密钥对，把私钥R'返回。Compute用C和R'派生K'，解密Deoxys-II信封。",
+      "elements_involved": [
+        "Oasis Node Sapphire ParaTime Compute",
+        "ephemeral private key R'",
+        "Oasis Node Key Manager",
+        "runtime policy",
+        "per-epoch per-runtime keypair R, R'",
+        "shared key K'",
+        "Deoxys-II envelope"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "解密完成后，Compute还要获取c10l contract的state keypair S和S'，这个也是向KM请求的吧？KM同样要检查policy，然后派生per-contract per-runtime的密钥对。",
+      "elements_involved": [
+        "Oasis Node Sapphire ParaTime Compute",
+        "c10l contract state keypair S, S'",
+        "Oasis Node Key Manager",
+        "per-contract per-runtime keypair S, S'"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。拿到S和S'之后，Compute执行机密合约，用这对密钥读写加密存储，得到新的state root。最后回执部分要分两种情况：如果是加密交易，用K'加密tx status，日志不加密；如果是明文交易，全部不加密。",
+      "elements_involved": [
+        "c10l contract execution",
+        "S, S'",
+        "state root",
+        "transaction receipt",
+        "encrypted tx status",
+        "unencrypted logs",
+        "K'"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了。最后Proposer node把交易、状态和回执打包进新块，Web3 Gateway等待新块确认后把回执返回给Client。如果之前是加密交易，Client还需要用K'解密tx status。整个流程闭环了。",
+      "elements_involved": [
+        "Proposer node",
+        "new block",
+        "Oasis Web3 Gateway",
+        "Client",
+        "transaction receipt",
+        "K'",
+        "decrypt tx status"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 38588.1751,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

@@ -1,0 +1,600 @@
+{
+  "id": "gh_architecture_01446",
+  "source": "github",
+  "source_url": "https://github.com/JuliaMirandaC/susep-ses-db/blob/3a1280571f424ef689826a93ea9ec1aca8d4b276/fluxograma.mmd",
+  "github_repo": "JuliaMirandaC/susep-ses-db",
+  "github_file_path": "fluxograma.mmd",
+  "diagram_type": "architecture",
+  "code": "flowchart TD\n    subgraph Host[\"Máquina Host\"]\n        StartSH[\"iniciar.sh\"]\n        DockerCompose[\"docker-compose.yml\"]\n        DadosCSV_Host[\"./dados_csv/\"]\n        DocsHost[\"./docs/\"]\n    end\n\n    subgraph PostgresContainer[\"Container: ses_postgres (postgres:15-alpine)\"]\n        InitDB[\"/docker-entrypoint-initdb.d/\"]\n        Script01[\"01-criar-tabelas.sql\"]\n        Script02[\"02-criar-views-dashboard.sql\"]\n        DB[(\"ses_database\")]\n    end\n\n    subgraph IngestionContainer[\"Container: ses_csv_ingestion (python:3.11-slim)\"]\n        Command[\"Cadeia de Comandos\"]\n        BaixarScript[\"scripts/baixar_dados_susep.py\"]\n        IngerirScript[\"scripts/ingerir_dados.py\"]\n        DadosCSV_Container[\"/dados_csv/\"]\n    end\n\n    subgraph DashboardContainer[\"Container: ses_dashboard (python:3.11-slim)\"]\n        ShinyApp[\"dashboard/app.py\"]\n        Forecasting[\"forecasting.py (Chronos-2)\"]\n        Backtesting[\"Backtesting (6 folds)\"]\n        PlotlyCharts[\"Plotly Charts\"]\n        Port8050[\"Porta 8050\"]\n    end\n\n    subgraph PgAdminContainer[\"Container: ses_pgadmin\"]\n        PgAdminApp[\"pgAdmin 4\"]\n    end\n\n    subgraph GitHubPages[\"GitHub Pages\"]\n        StaticHTML[\"docs/index.html\"]\n        ExportScript[\"exportar_dashboard_estatico.py\"]\n    end\n\n    subgraph Cleanup[\"Limpeza Automática\"]\n        CleanCSV[\"Limpa CSV/ZIP (~3GB)\"]\n        DockerPrune[\"docker system prune\"]\n    end\n\n    %% Fluxo Principal\n    StartSH -->|\"docker-compose up -d\"| DockerCompose\n    StartSH -->|\"--restart (pula ingestão)\"| PostgresContainer\n    DockerCompose -->|\"Inicia\"| PostgresContainer\n    DockerCompose -->|\"Inicia (depende do postgres)\"| IngestionContainer\n    DockerCompose -->|\"Inicia\"| PgAdminContainer\n    DockerCompose -->|\"--profile dashboard\"| DashboardContainer\n\n    %% Inicialização Postgres\n    PostgresContainer --\"Monta ./scripts-inicializacao\"--> InitDB\n    InitDB -->|\"Executa na inicialização\"| Script01\n    Script01 -->|\"Cria Tabelas\"| DB\n    InitDB -->|\"Executa após tabelas\"| Script02\n    Script02 -->|\"Cria Views BI\"| DB\n\n    %% Processo de Ingestão\n    IngestionContainer --\"Monta ./scripts & ./dados_csv\"--> Command\n    Command -->|\"1. python\"| BaixarScript\n    BaixarScript -->|\"Baixa & Extrai\"| DadosCSV_Container\n    Command -->|\"2. python\"| IngerirScript\n    IngerirScript -->|\"Lê\"| DadosCSV_Container\n    IngerirScript -->|\"COPY bulk insert\"| DB\n\n    %% Limpeza após ingestão\n    IngerirScript -->|\"Após sucesso\"| Cleanup\n    CleanCSV --> DockerPrune\n\n    %% Dashboard Interativo\n    DashboardContainer -->|\"Consulta Views\"| DB\n    ShinyApp --> Forecasting\n    Forecasting -->|\"amazon/chronos-2\"| PlotlyCharts\n    Forecasting -->|\"Walk-forward\"| Backtesting\n    Backtesting -->|\"MAPE/RMSE/MAE\"| PlotlyCharts\n    PlotlyCharts --> Port8050\n\n    %% Dashboard Estático\n    ExportScript -->|\"Gera HTML\"| StaticHTML\n    StaticHTML -.->|\"Publicado em\"| GitHubPages\n    DocsHost -.->|\"GitHub Actions\"| GitHubPages\n\n    %% Mapeamento de Volume\n    DadosCSV_Host -.->|\"Montagem de Volume\"| DadosCSV_Container\n\n    %% Estilo\n    classDef script fill:#e1f5fe,stroke:#01579b,stroke-width:2px;\n    classDef db fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;\n    classDef container fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,stroke-dasharray: 5 5;\n    classDef host fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;\n    classDef dashboard fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;\n    classDef github fill:#fce4ec,stroke:#c2185b,stroke-width:2px;\n    classDef cleanup fill:#fff8e1,stroke:#ff8f00,stroke-width:2px;\n\n    class StartSH,BaixarScript,IngerirScript,Script01,Script02,ExportScript script;\n    class DB db;\n    class PostgresContainer,IngestionContainer,PgAdminContainer container;\n    class DashboardContainer,ShinyApp,Forecasting,PlotlyCharts,Port8050 dashboard;\n    class Host host;\n    class GitHubPages,StaticHTML github;\n    class Cleanup,CleanCSV,DockerPrune cleanup;\n",
+  "content_size": 3892,
+  "collected_at": "2026-02-06T01:46:19.675087",
+  "license": "mit",
+  "license_name": "MIT License",
+  "compilation_status": "success",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"Máquina Host\" 和 \"iniciar.sh\" 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Máquina Host\" 和 \"iniciar.sh\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Host",
+        "StartSH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"docker-compose.yml\" 和 \"./dados_csv/\" 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"docker-compose.yml\" 和 \"./dados_csv/\"'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "DockerCompose",
+        "DadosCSV_Host"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"./docs/\" 和 \"Container: ses_postgres (postgres:15-alpine 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"./docs/\" 和 \"Container: ses_postgres (postgres:15-alpine'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "DocsHost",
+        "PostgresContainer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"/docker-entrypoint-initdb.d/\" 和 \"01-criar-tabelas.sql\" 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"/docker-entrypoint-initdb.d/\" 和 \"01-criar-tabelas.sql\"'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "InitDB",
+        "Script01"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"02-criar-views-dashboard.sql\" 和 (\"ses_database\" 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"02-criar-views-dashboard.sql\" 和 (\"ses_database\"'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Script02",
+        "DB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 \"Container: ses_csv_ingestion (python:3.11-slim 和 \"Cadeia de Comandos\"。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"Container: ses_csv_ingestion (python:3.11-slim 和 \"Cadeia de Comandos\"'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "IngestionContainer",
+        "Command"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 \"scripts/baixar_dados_susep.py\" 和 \"scripts/ingerir_dados.py\"。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"scripts/baixar_dados_susep.py\" 和 \"scripts/ingerir_dados.py\"'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "BaixarScript",
+        "IngerirScript"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"/dados_csv/\" 和 \"Container: ses_dashboard (python:3.11-slim 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"/dados_csv/\" 和 \"Container: ses_dashboard (python:3.11-slim'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "DadosCSV_Container",
+        "DashboardContainer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 \"dashboard/app.py\" 和 \"forecasting.py (Chronos-2 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "抱歉，稍微改一下，把刚才那个改成 \"dashboard/app.py\"处理。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 35,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"dashboard/app.py\"处理'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "ShinyApp",
+        "Forecasting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 \"Backtesting (6 folds 和 \"Plotly Charts\"。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Backtesting (6 folds 和 \"Plotly Charts\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Backtesting",
+        "PlotlyCharts"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"Porta 8050\" 和 \"Container: ses_pgadmin\" 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 '\"Porta 8050\" 和 \"Container: ses_pgadmin\"'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Port8050",
+        "PgAdminContainer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 \"pgAdmin 4\" 和 \"GitHub Pages\" 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 '\"pgAdmin 4\" 和 \"GitHub Pages\"'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "PgAdminApp",
+        "GitHubPages"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 \"docs/index.html\" 和 \"exportar_dashboard_estatico.py\" 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"docs/index.html\" 和 \"exportar_dashboard_estatico.py\"'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "StaticHTML",
+        "ExportScript"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"Limpeza Automática\" 和 \"Limpa CSV/ZIP (~3GB 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 '\"Limpeza Automática\" 和 \"Limpa CSV/ZIP (~3GB'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Cleanup",
+        "CleanCSV"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 \"docker system prune\" 和 pula ingestão 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '\"docker system prune\" 和 pula ingestão'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "DockerPrune",
+        "restart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 depende do postgres 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'depende do postgres'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 65,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Inicia"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 65,
+    "repair_count": 1,
+    "grounding_acts_count": 32,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:39Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:37Z",
+  "dialogue_regen": {
+    "enabled": false,
+    "frozen_from_source": true
+  }
+}

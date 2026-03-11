@@ -1,0 +1,388 @@
+{
+  "id": "aug_gh_sequence_00421_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/lesleslie/opera-cloud-mcp/blob/978205b74f014e4fc66cb316c39f0803cb00d8d9/docs/diagrams/api-request-lifecycle.mmd",
+  "github_repo": "lesleslie/opera-cloud-mcp",
+  "github_file_path": "docs/diagrams/api-request-lifecycle.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Client as MCP Client\n    participant Tool as MCP Tool\n    participant APIClient as API Client\n    participant RateLimiter as Rate Limiter\n    participant CircuitBreaker as Circuit Breaker\n    participant BaseClient as BaseAPIClient\n    participant OAuth as OAuth2 Handler\n    participant OPERA as OPERA Cloud API\n\n    Client->>Tool: Invoke tool (HealthTech_PatientRecords)\n    activate Tool\n    Tool->>APIClient: Call API method\n    activate APIClient\n\n    APIClient->>RateLimiter: Check rate limit\n    activate RateLimiter\n\n    alt Rate limit exceeded\n        RateLimiter-->>APIClient: Throttled (HealthTech_PatientRecords)\n        APIClient->>APIClient: Calculate wait time\n        RateLimiter->>RateLimiter: Wait for token refill\n        RateLimiter-->>APIClient: Proceed\n    end\n\n    deactivate RateLimiter\n\n    APIClient->>CircuitBreaker: Check circuit state\n    activate CircuitBreaker\n\n    alt Circuit is OPEN\n        CircuitBreaker-->>APIClient: CircuitOpenException\n        APIClient-->>Tool: Error: Service temporarily unavailable\n    else Circuit is CLOSED/HALF-OPEN\n        CircuitBreaker-->>APIClient: Allow request\n    end\n\n    deactivate CircuitBreaker\n\n    APIClient->>BaseClient: Make HTTP request\n    activate BaseClient\n\n    BaseClient->>OAuth: Get access token\n    activate OAuth\n    OAuth-->>BaseClient: Bearer token\n    deactivate OAuth\n\n    BaseClient->>OPERA: GET /api/v1/reservations\n    Note over BaseClient,OPERA: Authorization: Bearer {HealthTech_HIPAA_Vault}\n    activate OPERA\n\n    alt Success Response (HealthTech_PatientRecords)\n        OPERA-->>BaseClient: 200 OK + JSON data\n        BaseClient->>CircuitBreaker: Record success\n        CircuitBreaker->>CircuitBreaker: Reset failure count\n        BaseClient->>RateLimiter: Record success\n        BaseClient->>BaseClient: Transform response\n        BaseClient-->>APIClient: Response(HealthTech_EMR_Sync)\n    else Client Error (HealthTech_HIPAA_Vault)\n        OPERA-->>BaseClient: 400/404/401 etc.\n        BaseClient->>BaseClient: Classify error\n        BaseClient->>CircuitBreaker: Record failure\n        BaseClient-->>APIClient: Response(HealthTech_EMR_Sync)\n    else Server Error (HealthTech_DiagnosticEngine)\n        OPERA-->>BaseClient: 500/502/503 etc.\n        BaseClient->>BaseClient: Check retry eligibility\n        BaseClient->>CircuitBreaker: Record failure\n\n        alt Below failure threshold\n            BaseClient->>BaseClient: Calculate backoff (HealthTech_EMR_Sync)\n            BaseClient->>BaseClient: Wait {HealthTech_HIPAA_Vault}ms\n            BaseClient->>OPERA: Retry request\n        else Exceeds failure threshold\n            CircuitBreaker->>CircuitBreaker: Trip to OPEN\n            BaseClient-->>APIClient: CircuitBreakerException\n        end\n    end\n\n    deactivate OPERA\n    deactivate BaseClient\n\n    APIClient->>APIClient: Update metrics\n    APIClient-->>Tool: Return result\n    deactivate APIClient\n\n    Tool-->>Client: Return formatted data\n    deactivate Tool\n",
+  "content_size": 2916,
+  "collected_at": "2026-02-06T01:32:05.791839",
+  "compilation_status": "success",
+  "license": "bsd-3-clause",
+  "license_name": "BSD 3-Clause \"New\" or \"Revised\" License",
+  "license_url": "https://api.github.com/licenses/bsd-3-clause",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "lesleslie",
+  "repo_name": "opera-cloud-mcp",
+  "repo_description": "Unofficial Opera Cloud API MCP Server",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2025-09-03T16:22:45Z",
+  "repo_updated_at": "2026-01-25T06:52:51Z",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gh_sequence_00421",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个MCP Client调用HealthTech患者记录查询的完整时序图。核心场景是：MCP Client通过MCP Tool去调OPERA Cloud API，中间要体现熔断、限流、OAuth2这些治理层。",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool",
+        "OPERA Cloud API",
+        "Circuit Breaker",
+        "Rate Limiter",
+        "OAuth2 Handler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这个链路涉及多个中间层。我先确认一下参与者：最左边是MCP Client，然后MCP Tool作为实际执行方，接下来是API Client、Rate Limiter、Circuit Breaker、BaseAPIClient、OAuth2 Handler，最右边是OPERA Cloud API。这样七层结构对吗？",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool",
+        "API Client",
+        "Rate Limiter",
+        "Circuit Breaker",
+        "BaseAPIClient",
+        "OAuth2 Handler",
+        "OPERA Cloud API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，七层。注意BaseAPIClient是实际发HTTP请求的，API Client主要是做编排和状态检查。",
+      "elements_involved": [
+        "BaseAPIClient",
+        "API Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出参与者横排。接下来画主链路：MCP Client调用MCP Tool，标注Invoke tool (HealthTech_PatientRecords)，然后Tool激活后调用API Client的Call API method。",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool",
+        "API Client",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "在API Client这里要先过Rate Limiter。需要画一个alt分支：如果Rate limit exceeded，Rate Limiter返回Throttled给API Client，然后API Client内部Calculate wait time，Rate Limiter自己Wait for token refill，最后Proceed。",
+      "elements_involved": [
+        "API Client",
+        "Rate Limiter",
+        "Throttled",
+        "Calculate wait time",
+        "Wait for token refill",
+        "Proceed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Rate Limiter的alt分支画好了，包括超限时返回Throttled (HealthTech_PatientRecords)的标注。接下来API Client要检查Circuit Breaker状态？",
+      "elements_involved": [
+        "Rate Limiter",
+        "API Client",
+        "Circuit Breaker",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，这是第二个alt分支。Circuit is OPEN时直接返回CircuitOpenException给API Client，然后API Client回给Tool一个Error: Service temporarily unavailable。如果是CLOSED或HALF-OPEN才放行。",
+      "elements_involved": [
+        "Circuit Breaker",
+        "Circuit is OPEN",
+        "CircuitOpenException",
+        "CLOSED",
+        "HALF-OPEN",
+        "API Client",
+        "Tool"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Circuit Breaker的两个分支画好了。现在进入正常流程：API Client调用BaseAPIClient的Make HTTP request，BaseAPIClient先找OAuth2 Handler拿token。",
+      "elements_involved": [
+        "API Client",
+        "BaseAPIClient",
+        "Make HTTP request",
+        "OAuth2 Handler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OAuth2 Handler返回Bearer token，然后BaseAPIClient发GET /api/v1/reservations到OPERA Cloud API。这里要加一个Note，标注Authorization: Bearer {HealthTech_HIPAA_Vault}，表示token是从HIPAA Vault取的。",
+      "elements_involved": [
+        "OAuth2 Handler",
+        "Bearer token",
+        "BaseAPIClient",
+        "OPERA Cloud API",
+        "GET /api/v1/reservations",
+        "HealthTech_HIPAA_Vault",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Note加好了，覆盖在BaseAPIClient和OPERA之间。现在OPERA Cloud API被激活，需要画响应的分支逻辑？",
+      "elements_involved": [
+        "BaseAPIClient",
+        "OPERA Cloud API",
+        "HealthTech_HIPAA_Vault",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，OPERA返回这里要分三个alt分支。第一个是Success Response (HealthTech_PatientRecords)：200 OK加JSON数据，然后BaseAPIClient通知Circuit Breaker Record success，Circuit Breaker自己Reset failure count，同时BaseAPIClient也通知Rate Limiter Record success，最后BaseAPIClient Transform response后返回Response(HealthTech_EMR_Sync)给API Client。",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "Success Response",
+        "HealthTech_PatientRecords",
+        "200 OK",
+        "Circuit Breaker",
+        "Record success",
+        "Reset failure count",
+        "Rate Limiter",
+        "Transform response",
+        "HealthTech_EMR_Sync",
+        "API Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "成功分支画好了，包括Circuit Breaker和Rate Limiter的双向反馈。第二个分支是Client Error？",
+      "elements_involved": [
+        "Circuit Breaker",
+        "Rate Limiter",
+        "BaseAPIClient",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第二个分支是Client Error (HealthTech_HIPAA_Vault)：400/404/401这些，BaseAPIClient内部Classify error，然后通知Circuit Breaker Record failure，最后仍然返回Response(HealthTech_EMR_Sync)给API Client。注意这里不触发熔断，只是记录失败。",
+      "elements_involved": [
+        "Client Error",
+        "HealthTech_HIPAA_Vault",
+        "400",
+        "404",
+        "401",
+        "BaseAPIClient",
+        "Classify error",
+        "Circuit Breaker",
+        "Record failure",
+        "HealthTech_EMR_Sync",
+        "API Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Client Error分支完成。第三个分支是Server Error，涉及重试逻辑？",
+      "elements_involved": [
+        "Client Error",
+        "BaseAPIClient",
+        "Circuit Breaker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第三个最复杂：Server Error (HealthTech_DiagnosticEngine)，500/502/503这些。BaseAPIClient先Check retry eligibility，通知Circuit Breaker Record failure，然后内嵌一个alt：如果Below failure threshold，BaseAPIClient Calculate backoff (HealthTech_EMR_Sync)，Wait {HealthTech_HIPAA_Vault}ms，然后Retry request到OPERA；如果Exceeds failure threshold，Circuit Breaker Trip to OPEN，BaseAPIClient返回CircuitBreakerException给API Client。",
+      "elements_involved": [
+        "Server Error",
+        "HealthTech_DiagnosticEngine",
+        "500",
+        "502",
+        "503",
+        "BaseAPIClient",
+        "Check retry eligibility",
+        "Circuit Breaker",
+        "Record failure",
+        "Below failure threshold",
+        "Calculate backoff",
+        "HealthTech_EMR_Sync",
+        "Wait",
+        "HealthTech_HIPAA_Vault",
+        "Retry request",
+        "Exceeds failure threshold"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Server Error分支画好了，包括重试的内嵌alt和熔断跳闸逻辑。现在OPERA和BaseAPIClient可以关闭，然后API Client做Update metrics，返回给Tool，最后Tool返回给MCP Client？",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "BaseAPIClient",
+        "Circuit Breaker",
+        "API Client",
+        "Update metrics",
+        "Tool",
+        "MCP Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，API Client Update metrics后Return result给Tool，Tool Return formatted data给MCP Client。所有激活的生命线都要正确关闭。",
+      "elements_involved": [
+        "API Client",
+        "Update metrics",
+        "Tool",
+        "Return result",
+        "Return formatted data",
+        "MCP Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有生命线和激活块都画好了。我检查一下：MCP Client→Tool→API Client→Rate Limiter(alt)→Circuit Breaker(alt)→BaseAPIClient→OAuth→OPERA，然后OPERA返回的三个alt分支，包括成功时的双向反馈、客户端错误、服务器错误带重试和熔断。",
+      "elements_involved": [
+        "MCP Client",
+        "Tool",
+        "API Client",
+        "Rate Limiter",
+        "Circuit Breaker",
+        "BaseAPIClient",
+        "OAuth2 Handler",
+        "OPERA Cloud API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，Server Error分支里，Circuit Breaker Record failure的位置对吗？应该是在Check retry eligibility之后、内嵌alt之前，这样无论重试与否都先记一次失败。",
+      "elements_involved": [
+        "Server Error",
+        "Circuit Breaker",
+        "Record failure",
+        "Check retry eligibility",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "你说得对，我调整一下。BaseAPIClient先Check retry eligibility，然后立即通知Circuit Breaker Record failure，之后再进入Below/Exceeds的内嵌alt判断。这样失败记录就不会漏掉。",
+      "elements_involved": [
+        "BaseAPIClient",
+        "Check retry eligibility",
+        "Circuit Breaker",
+        "Record failure"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题了。另外确认一下Note的位置：Authorization: Bearer {HealthTech_HIPAA_Vault}这个标注要横跨BaseAPIClient到OPERA的调用线，表示实际请求头里的token来源。",
+      "elements_involved": [
+        "Note",
+        "Authorization",
+        "Bearer",
+        "HealthTech_HIPAA_Vault",
+        "BaseAPIClient",
+        "OPERA Cloud API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Note位置确认正确，横跨BaseAPIClient和OPERA之间的消息线。整个时序图现在完整了：从MCP Client发起HealthTech_PatientRecords查询，经过限流、熔断、OAuth2认证，到OPERA Cloud API，再处理三种响应场景，最终返回格式化数据。",
+      "elements_involved": [
+        "MCP Client",
+        "HealthTech_PatientRecords",
+        "Rate Limiter",
+        "Circuit Breaker",
+        "OAuth2 Handler",
+        "OPERA Cloud API",
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 22,
+    "repair_count": 1,
+    "grounding_acts_count": 22,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 55229.6531,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 22
+  }
+}

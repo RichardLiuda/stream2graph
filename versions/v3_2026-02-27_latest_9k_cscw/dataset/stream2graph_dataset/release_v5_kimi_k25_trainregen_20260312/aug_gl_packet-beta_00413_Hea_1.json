@@ -1,0 +1,592 @@
+{
+  "id": "aug_gl_packet-beta_00413_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sean-galloway/RTLDesignSherpa/blob/47f8a16641658f570a69c3af3c9724b29ea39187/projects/components/stream/docs/stream_mas/assets/mermaid/12_scheduler_group_array_block.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sean-galloway/RTLDesignSherpa",
+  "diagram_type": "packet-beta",
+  "code": "graph TB\n    APB0[HealthTech_DiagnosticEngine] --> GRP0[HealthTech_EMR_Sync]\n    APB1[HealthTech_LabAnalyzer] --> GRP1[HealthTech_EMR_Sync]\n    APB7[HealthTech_DiagnosticEngine] --> GRP7[HealthTech_EMR_Sync]\n\n    CFG[HealthTech_LabAnalyzer] --> GRP0\n    CFG --> GRP1\n    CFG --> GRP7\n\n    subgraph \"Scheduler Group Array\"\n        GRP0 --> |desc_ar_*| AR_ARB[HealthTech_EMR_Sync]\n        GRP1 --> |desc_ar_*| AR_ARB\n        GRP7 --> |desc_ar_*| AR_ARB\n\n        AR_ARB --> |desc_axi_ar_*| DESC_AXI[HealthTech_LabAnalyzer]\n        DESC_AXI --> |desc_axi_r_*| R_BCAST[HealthTech_PatientRecords]\n\n        R_BCAST --> |desc_r_* ID-based claim| GRP0\n        R_BCAST --> |desc_r_*| GRP1\n        R_BCAST --> |desc_r_*| GRP7\n\n        DESC_AXI --> MON_TAP[HealthTech_LabAnalyzer]\n\n        GRP0 --> |datard/wr_valid| DATA_IF[HealthTech_PatientRecords]\n        GRP1 --> |datard/wr_valid| DATA_IF\n        GRP7 --> |datard/wr_valid| DATA_IF\n\n        GRP0 --> |mon_valid/packet| MON_AGG[HealthTech_EMR_Sync]\n        GRP1 --> |mon_valid/packet| MON_AGG\n        GRP7 --> |mon_valid/packet| MON_AGG\n        MON_TAP --> |mon_valid/packet| MON_AGG\n\n        MON_AGG --> |mon_valid/ready/packet| MON_OUT[HealthTech_HIPAA_Vault]\n    end\n\n    DATA_IF --> |\"datard[HealthTech_DiagnosticEngine]\"| RD_ENG[HealthTech_DiagnosticEngine]\n    DATA_IF --> |\"datawr[HealthTech_HIPAA_Vault]\"| WR_ENG[HealthTech_HIPAA_Vault]\n\n    RD_ENG --> |\"datard_done[HealthTech_LabAnalyzer]\"| DATA_IF\n    WR_ENG --> |\"datawr_done[HealthTech_DiagnosticEngine]\"| DATA_IF\n\n    style AR_ARB fill:#f9f,stroke:#333,stroke-width:3px\n    style DESC_AXI fill:#bbf,stroke:#333,stroke-width:2px\n    style MON_AGG fill:#bfb,stroke:#333,stroke-width:2px\n    style DATA_IF fill:#ffb,stroke:#333,stroke-width:2px",
+  "content_size": 1765,
+  "collected_at": "2026-02-06T14:09:12.660802",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gl_packet-beta_00413",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为HealthTech诊断引擎设计一个数据包调度架构。核心需求是让DiagnosticEngine和LabAnalyzer都能通过EMR同步模块访问患者记录，同时满足HIPAA合规的审计要求。",
+      "elements_involved": [
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我理解为需要三个主设备端口：APB0和APB7都对应DiagnosticEngine，APB1对应LabAnalyzer。它们各自绑定到不同的组GRP0、GRP7和GRP1，最终都汇聚到EMR_Sync。这样理解对吗？",
+      "elements_involved": [
+        "APB0",
+        "APB1",
+        "APB7",
+        "GRP0",
+        "GRP1",
+        "GRP7"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，而且LabAnalyzer还要作为配置主控，通过CFG信号同时管理这三个组。这是为了支持动态重配置诊断流程。",
+      "elements_involved": [
+        "CFG",
+        "HealthTech_LabAnalyzer",
+        "GRP0",
+        "GRP1",
+        "GRP7"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出这三个APB端口到组的映射，以及CFG的配置连接。接下来处理调度器内部结构？",
+      "elements_involved": [
+        "APB0",
+        "APB1",
+        "APB7",
+        "GRP0",
+        "GRP1",
+        "GRP7",
+        "CFG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "调度器内部需要一个仲裁器AR_ARB来处理三个组的描述符读取请求。所有组都通过desc_ar_*信号向AR_ARB发起仲裁。",
+      "elements_involved": [
+        "GRP0",
+        "GRP1",
+        "GRP7",
+        "AR_ARB",
+        "desc_ar_*"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "AR_ARB的输出是连接到DESC_AXI吗？我看到DESC_AXI标注的是LabAnalyzer，这和前面的配置角色一致。",
+      "elements_involved": [
+        "AR_ARB",
+        "DESC_AXI",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，DESC_AXI负责实际的AXI读操作，从LabAnalyzer获取描述符详情。然后DESC_AXI通过desc_axi_r_*把数据广播出去。",
+      "elements_involved": [
+        "DESC_AXI",
+        "desc_axi_ar_*",
+        "desc_axi_r_*"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "广播之后需要R_BCAST模块来分发到各个组。这里有个关键点：到GRP0的返回需要ID-based claim机制，其他组是普通desc_r_*。",
+      "elements_involved": [
+        "R_BCAST",
+        "GRP0",
+        "GRP1",
+        "GRP7",
+        "desc_r_*",
+        "ID-based claim"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，GRP0对应DiagnosticEngine，需要精确的ID匹配来确保诊断数据不被混淆。其他组是常规广播。",
+      "elements_involved": [
+        "R_BCAST",
+        "GRP0",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "AR_ARB、DESC_AXI和R_BCAST的连接已完成。我注意到DESC_AXI还有一个旁路到MON_TAP，这是监控探针吗？",
+      "elements_involved": [
+        "DESC_AXI",
+        "MON_TAP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，MON_TAP是监控探针，捕获所有描述符流量。它要和三个组的监控数据一起汇入MON_AGG聚合器。",
+      "elements_involved": [
+        "MON_TAP",
+        "GRP0",
+        "GRP1",
+        "GRP7",
+        "MON_AGG",
+        "mon_valid/packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下：GRP0、GRP1、GRP7都通过mon_valid/packet到MON_AGG，同时MON_TAP也走同样的接口？",
+      "elements_involved": [
+        "GRP0",
+        "GRP1",
+        "GRP7",
+        "MON_TAP",
+        "MON_AGG",
+        "mon_valid/packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。MON_AGG汇总后输出到MON_OUT，最终进入HIPAA_Vault做合规审计。接口是mon_valid/ready/packet。",
+      "elements_involved": [
+        "MON_AGG",
+        "MON_OUT",
+        "HealthTech_HIPAA_Vault",
+        "mon_valid/ready/packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "监控通路画好了。现在处理数据通路——三个组都连接到DATA_IF，接口是datard/wr_valid？",
+      "elements_involved": [
+        "GRP0",
+        "GRP1",
+        "GRP7",
+        "DATA_IF",
+        "datard/wr_valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，DATA_IF是数据接口枢纽。它要分出读引擎RD_ENG到DiagnosticEngine，写引擎WR_ENG到HIPAA_Vault。",
+      "elements_involved": [
+        "DATA_IF",
+        "RD_ENG",
+        "WR_ENG",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "读操作标注是datard[HealthTech_DiagnosticEngine]，写操作是datawr[HealthTech_HIPAA_Vault]。完成信号怎么处理的？",
+      "elements_involved": [
+        "DATA_IF",
+        "RD_ENG",
+        "WR_ENG",
+        "datard",
+        "datawr"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RD_ENG完成后通过datard_done返回DATA_IF，来源是LabAnalyzer。WR_ENG完成后通过datawr_done返回，来源是DiagnosticEngine。",
+      "elements_involved": [
+        "RD_ENG",
+        "WR_ENG",
+        "DATA_IF",
+        "datard_done",
+        "datawr_done",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，完成信号的方向和请求是交叉的——读完成来自LabAnalyzer，写完成来自DiagnosticEngine。这是为了匹配数据流向。",
+      "elements_involved": [
+        "datard_done",
+        "datawr_done",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在需要设置样式区分关键模块。AR_ARB用紫红色强调，DESC_AXI用蓝色，MON_AGG用绿色，DATA_IF用黄色。",
+      "elements_involved": [
+        "AR_ARB",
+        "DESC_AXI",
+        "MON_AGG",
+        "DATA_IF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "样式已应用。AR_ARB是3px边框，其他三个是2px。整体结构差不多了，需要我检查一遍连接完整性吗？",
+      "elements_involved": [
+        "AR_ARB",
+        "DESC_AXI",
+        "MON_AGG",
+        "DATA_IF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下：CFG到三个组的连接都画了吗？还有MON_TAP到MON_AGG的监控通路。",
+      "elements_involved": [
+        "CFG",
+        "GRP0",
+        "GRP1",
+        "GRP7",
+        "MON_TAP",
+        "MON_AGG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "CFG到GRP0、GRP1、GRP7都有连线。MON_TAP到MON_AGG也有mon_valid/packet。不过我刚发现DESC_AXI到R_BCAST的标签可能有歧义。",
+      "elements_involved": [
+        "CFG",
+        "MON_TAP",
+        "MON_AGG",
+        "DESC_AXI",
+        "R_BCAST"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "什么歧义？应该是desc_axi_r_*，表示AXI读数据通道。",
+      "elements_involved": [
+        "DESC_AXI",
+        "R_BCAST",
+        "desc_axi_r_*"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "抱歉，我刚才标注成了desc_axi_ar_*，这是地址通道。应该改为desc_axi_r_*表示读数据。已修正。",
+      "elements_involved": [
+        "DESC_AXI",
+        "R_BCAST",
+        "desc_axi_r_*"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好的。再确认R_BCAST到GRP0的特殊标注：ID-based claim必须明确标出，这是关键安全特性。",
+      "elements_involved": [
+        "R_BCAST",
+        "GRP0",
+        "ID-based claim"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已标注\"desc_r_* ID-based claim\"。其他两个组是普通desc_r_*。整个Scheduler Group Array子图结构清晰吗？",
+      "elements_involved": [
+        "Scheduler Group Array",
+        "R_BCAST",
+        "GRP0",
+        "GRP1",
+        "GRP7"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "子图结构可以。但DATA_IF的外部连接需要再明确——RD_ENG和WR_ENG应该在子图外面，它们直接对应物理引擎。",
+      "elements_involved": [
+        "DATA_IF",
+        "RD_ENG",
+        "WR_ENG",
+        "Scheduler Group Array"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "调整了，RD_ENG和WR_ENG现在放在子图外部，通过DATA_IF跨越子图边界连接。这样更符合实际硬件层次。",
+      "elements_involved": [
+        "DATA_IF",
+        "RD_ENG",
+        "WR_ENG",
+        "Scheduler Group Array"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "APB7的标注确认一下——它和APB0都是DiagnosticEngine，但走不同的组GRP7和GRP0。这是为了支持双通道诊断吗？",
+      "elements_involved": [
+        "APB7",
+        "APB0",
+        "HealthTech_DiagnosticEngine",
+        "GRP7",
+        "GRP0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，APB0-GRP0和APB7-GRP7形成双通道，都连到同一个DiagnosticEngine。这在图上看得很清楚。",
+      "elements_involved": [
+        "APB0",
+        "APB7",
+        "GRP0",
+        "GRP7",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查监控通路的完整性。MON_AGG到MON_OUT到HIPAA_Vault的链路必须独立且不可绕过。",
+      "elements_involved": [
+        "MON_AGG",
+        "MON_OUT",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "监控通路是独立的，不经过DATA_IF。MON_AGG直接输出到MON_OUT，进入HIPAA_Vault做审计存储。",
+      "elements_involved": [
+        "MON_AGG",
+        "MON_OUT",
+        "DATA_IF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "HIPAA_Vault在图中有两个角色——既是WR_ENG的终点，又是MON_OUT的终点。这会不会混淆？",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault",
+        "WR_ENG",
+        "MON_OUT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "这是设计意图：HIPAA_Vault既是患者数据的最终存储（通过WR_ENG），又是审计日志的存储（通过MON_OUT）。同一物理 Vault 的不同逻辑功能。",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault",
+        "WR_ENG",
+        "MON_OUT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "理解。现在验证所有模块的归属标签：AR_ARB是EMR_Sync，DESC_AXI和MON_TAP是LabAnalyzer，R_BCAST和DATA_IF是PatientRecords。",
+      "elements_involved": [
+        "AR_ARB",
+        "DESC_AXI",
+        "MON_TAP",
+        "R_BCAST",
+        "DATA_IF",
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有归属标签已核对正确。MON_AGG也是EMR_Sync，和AR_ARB一致。整个图41个元素，连接关系完整。",
+      "elements_involved": [
+        "MON_AGG",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再最后确认一下：datard_done和datawr_done的标注来源是否正确？datard_done来自LabAnalyzer，datawr_done来自DiagnosticEngine。",
+      "elements_involved": [
+        "datard_done",
+        "datawr_done",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。datard_done[HealthTech_LabAnalyzer]表示读完成的响应源，datawr_done[HealthTech_DiagnosticEngine]表示写完成的响应源。与实际数据流向相反，符合握手协议设计。",
+      "elements_involved": [
+        "datard_done",
+        "datawr_done",
+        "RD_ENG",
+        "WR_ENG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "样式方面，AR_ARB的3px边框能突出其仲裁关键性，很好。其他模块的2px保持统一。子图的标题\"Scheduler Group Array\"也准确。",
+      "elements_involved": [
+        "AR_ARB",
+        "Scheduler Group Array"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有样式和标注已最终确认。这个架构图完整展示了HealthTech诊断系统的数据包调度、监控和合规审计通路。",
+      "elements_involved": [
+        "AR_ARB",
+        "DESC_AXI",
+        "MON_AGG",
+        "DATA_IF",
+        "Scheduler Group Array"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这张图可以用于设计评审了。核心要点都覆盖到了：多主设备仲裁、描述符广播、双通道数据引擎、独立监控审计。",
+      "elements_involved": [
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 41,
+    "repair_count": 1,
+    "grounding_acts_count": 41,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 81256.7852,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 41
+  }
+}

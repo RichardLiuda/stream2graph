@@ -1,0 +1,330 @@
+{
+  "id": "aug_gl_block-beta_00303_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_FIRMWARE/blob/615cebd32230a26c23013f1c75381475e12c0b93/diagrams/ACQ_AND_TRANSMIT_EXTERNAL.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_FIRMWARE",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client\n    participant DataTrans as data_transmission.c\n    participant Acquisition as acquisition.c\n    \n    Client->>DataTrans: Connect to data socket\n    activate DataTrans\n    \n    Note over DataTrans,Acquisition: External ADC already initialized during startup\n    \n    alt mode == 0 (Education_ContentCDN)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(Education_GradeSync)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Client: non_blocking_send(Education_StudentDB) buffer\n            \n            opt Socket change detected\n                DataTrans->>DataTrans: Break acquisition loop\n            end\n        end\n    else mode == 1 (Education_LMS_Portal)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(Education_LMS_Portal)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Acquisition: pcnt_unit_get_count(Education_GradeSync)\n            Acquisition-->>DataTrans: Current counter state\n            \n            alt Edge detected (Education_ClassroomService)\n                DataTrans->>Client: non_blocking_send(Education_StudentDB) buffer\n            end\n        end\n    end\n    \n    Client->>DataTrans: Disconnect\n    DataTrans->>DataTrans: safe_close(Education_LMS_Portal)\n    deactivate DataTrans",
+  "content_size": 1551,
+  "collected_at": "2026-02-06T14:06:49.098744",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Education",
+  "seed_id": "gl_block-beta_00303",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个序列图，展示教育设备的数据采集流程。系统有两种工作模式，分别对应ContentCDN和LMS Portal，我需要你帮我梳理清楚Client、DataTrans和Acquisition这三个模块的交互。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "Education_ContentCDN",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下结构：Client作为外部发起方，先连接到DataTrans的data socket，然后进入两种模式的分支。DataTrans和Acquisition之间通过SPI通信，对吗？",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "data_transmission.c",
+        "acquisition.c",
+        "Connect to data socket"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。另外要注意，External ADC是在系统启动时就初始化好的，不是在连接时才做的，这个需要在图上标注一下。",
+      "elements_involved": [
+        "DataTrans",
+        "Acquisition",
+        "External ADC",
+        "startup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我添加了Note标注ADC预初始化。现在画第一种模式：mode==0的ContentCDN分支。这里是一个循环，直到客户端断开。每次循环DataTrans先获取spi_mutex，然后调用spi_device_polling_transmit传输GradeSync数据。",
+      "elements_involved": [
+        "mode == 0",
+        "Education_ContentCDN",
+        "loop",
+        "spi_mutex",
+        "Education_GradeSync",
+        "spi_device_polling_transmit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这里有个细节：SPI传输完成后，Acquisition要返回完成信号给DataTrans，然后释放mutex。之后DataTrans把数据通过non_blocking_send发到Client，用的是StudentDB的buffer。",
+      "elements_involved": [
+        "Acquisition",
+        "DataTrans",
+        "SPI transaction complete",
+        "Release spi_mutex",
+        "non_blocking_send",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新。我还在循环里加了一个opt分支：如果检测到socket变化，DataTrans要主动break跳出acquisition loop。",
+      "elements_involved": [
+        "Socket change detected",
+        "Break acquisition loop",
+        "opt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第二种模式LMS Portal差异比较大。同样是循环，但SPI传输的是LMS Portal数据，而且传输完成后还要调用pcnt_unit_get_count读取GradeSync的计数器状态。",
+      "elements_involved": [
+        "mode == 1",
+        "Education_LMS_Portal",
+        "pcnt_unit_get_count",
+        "Education_GradeSync",
+        "Current counter state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我注意到这里有个alt嵌套：如果检测到Edge，对应Education_ClassroomService，才执行non_blocking_send。这和第一种模式每次循环都发送不一样。",
+      "elements_involved": [
+        "Edge detected",
+        "Education_ClassroomService",
+        "alt",
+        "non_blocking_send"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，这是关键区别。ContentCDN模式是定时批量传输，LMS Portal模式是事件触发，只有检测到边沿才发送。两种模式都要等客户端断开才结束循环。",
+      "elements_involved": [
+        "Client disconnects",
+        "loop",
+        "mode == 0",
+        "mode == 1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两种模式的分支都画好了。最后收尾部分：Client主动断开连接，DataTrans执行safe_close关闭LMS Portal资源，然后deactivate。",
+      "elements_involved": [
+        "Disconnect",
+        "safe_close",
+        "Education_LMS_Portal",
+        "deactivate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，safe_close的参数有问题。我看了代码，这里关闭的是socket连接，不是LMS Portal模块本身。而且DataTrans模块名在图里应该显示为data_transmission.c，不是缩写。",
+      "elements_involved": [
+        "safe_close",
+        "Education_LMS_Portal",
+        "DataTrans",
+        "data_transmission.c"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正了，Participant名称改为data_transmission.c和acquisition.c。但safe_close的参数我需要再确认——你刚才说不是LMS Portal，那应该是什么？",
+      "elements_involved": [
+        "data_transmission.c",
+        "acquisition.c",
+        "safe_close"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "抱歉，我搞混了。safe_close确实是关闭Education_LMS_Portal，因为LMS Portal模式需要清理特定的计数器资源。ContentCDN模式不需要这个步骤。你的原图是对的。",
+      "elements_involved": [
+        "safe_close",
+        "Education_LMS_Portal",
+        "mode == 1",
+        "ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，恢复为safe_close(Education_LMS_Portal)。另外我检查了activate/deactivate的配对：DataTrans在连接时activate，断开时deactivate，生命周期正确。",
+      "elements_involved": [
+        "activate",
+        "deactivate",
+        "DataTrans",
+        "Connect to data socket",
+        "Disconnect"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再检查一下SPI通信的方向。spi_device_polling_transmit是DataTrans调用Acquisition的函数，但SPI transaction complete的返回箭头应该是虚线，表示异步完成通知。",
+      "elements_involved": [
+        "DataTrans",
+        "Acquisition",
+        "spi_device_polling_transmit",
+        "SPI transaction complete",
+        "--"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认，所有SPI complete和counter state返回都用了虚线箭头。还有pcnt_unit_get_count的返回也是虚线。",
+      "elements_involved": [
+        "SPI transaction complete",
+        "Current counter state",
+        "--",
+        "dashed arrow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "loop和opt的嵌套层级再确认一下：ContentCDN模式里，opt Socket change detected是在loop内部，和spi_mutex同一层级。LMS Portal的alt Edge detected也是在loop内部。",
+      "elements_involved": [
+        "loop",
+        "opt",
+        "alt",
+        "Socket change detected",
+        "Edge detected",
+        "nested level"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "层级正确。两个loop都是Until client disconnects条件，各自包含完整的mutex获取-传输-释放流程。LMS Portal额外多了计数器读取和条件发送。",
+      "elements_involved": [
+        "Until client disconnects",
+        "Take spi_mutex",
+        "Release spi_mutex",
+        "pcnt_unit_get_count"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认Note的位置：External ADC already initialized during startup要覆盖DataTrans和Acquisition两个模块，表示这个前提条件对两者都成立。",
+      "elements_involved": [
+        "Note over",
+        "DataTrans",
+        "Acquisition",
+        "External ADC",
+        "startup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整Note跨度。整个图现在包含：三个Participant，一个跨模块Note，一个alt分支两种mode，两个loop，一个opt，一个嵌套alt。我最后检查一遍消息流向。",
+      "elements_involved": [
+        "Client",
+        "data_transmission.c",
+        "acquisition.c",
+        "alt",
+        "loop",
+        "opt",
+        "Note over"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题了。这张图完整展示了教育设备从连接建立、双模式数据采集到连接关闭的全流程。SPI互斥锁、条件发送、资源清理这些关键点都体现出来了。",
+      "elements_involved": [
+        "Connect to data socket",
+        "spi_mutex",
+        "non_blocking_send",
+        "safe_close",
+        "Disconnect"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 21,
+    "repair_count": 2,
+    "grounding_acts_count": 21,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 62376.9898,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 21
+  }
+}

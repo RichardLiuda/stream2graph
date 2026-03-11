@@ -1,0 +1,162 @@
+{
+  "id": "aug_gl_block-beta_00289_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/patterns/circuit-breaker-pattern.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "block-beta",
+  "code": "%% Circuit Breaker Pattern - Fault Tolerance\n%% Version: 1.0.0\n%% Date: 2025-10-27\n%% Description: Circuit breaker pattern for webhook delivery and external service calls\n\nstateDiagram-v2\n    [Infra_LoadBalancer] --> Closed: Initial State\n\n    Closed --> Open: Failure Threshold Exceeded<br/>(Infra_RedisCache)\n    Closed --> Closed: Successful Request<br/>(Infra_IngressController)\n    Closed --> Closed: Failed Request<br/>(Infra_IngressController)\n\n    Open --> HalfOpen: Timeout Elapsed<br/>(Infra_LoadBalancer)\n    Open --> Open: Request Attempted<br/>(Infra_EtcdCluster)\n\n    HalfOpen --> Closed: Test Request Successful<br/>(Infra_EtcdCluster)\n    HalfOpen --> Open: Test Request Failed<br/>(Infra_WorkerNode)\n    HalfOpen --> HalfOpen: Waiting for Test<br/>(Infra_RedisCache)\n\n    note right of Closed\n        CLOSED STATE\n        - All requests flow through\n        - Monitor failure rate\n        - Track response times\n        - Increment error counter\n    end note\n\n    note right of Open\n        OPEN STATE\n        - Block all requests\n        - Return cached response\n        - Or return error immediately\n        - Wait for timeout period\n        - Log all blocked attempts\n    end note\n\n    note right of HalfOpen\n        HALF-OPEN STATE\n        - Allow test requests\n        - Limited throughput\n        - Monitor success rate\n        - Quick transition decision\n    end note\n",
+  "content_size": 1387,
+  "collected_at": "2026-02-06T14:06:18.048847",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_block-beta_00289",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个熔断器的状态图，用来描述webhook投递和外部服务调用的容错机制。核心有三个状态：Closed、Open和HalfOpen，它们之间的转换要体现故障检测和恢复的逻辑。",
+      "elements_involved": [
+        "Closed",
+        "Open",
+        "HalfOpen",
+        "Infra_LoadBalancer",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，我先确认一下结构。初始状态应该是Closed对吧？然后当失败次数超过阈值时，从Closed跳转到Open。这个失败阈值检测需要关联Redis缓存吗？",
+      "elements_involved": [
+        "Closed",
+        "Open",
+        "Infra_RedisCache",
+        "Failure Threshold"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Closed是初始状态，所有请求都正常通过。失败阈值检测确实要用Infra_RedisCache来记录错误计数。另外成功和失败的请求都要经过IngressController处理，所以这两个自循环都标上它。",
+      "elements_involved": [
+        "Closed",
+        "Infra_RedisCache",
+        "Infra_IngressController",
+        "Successful Request",
+        "Failed Request"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经把Closed相关的状态和转换都画好了，包括初始入口来自LoadBalancer。现在处理Open状态——超时之后应该进入HalfOpen，这个超时检测还是由LoadBalancer来触发吗？",
+      "elements_involved": [
+        "Open",
+        "HalfOpen",
+        "Infra_LoadBalancer",
+        "Timeout Elapsed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，LoadBalancer负责超时检测。Open状态下如果还有请求尝试，要标记为被EtcdCluster记录。关键是HalfOpen状态的设计：只允许有限的测试请求通过，快速决定是恢复还是再次熔断。",
+      "elements_involved": [
+        "Open",
+        "HalfOpen",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster",
+        "Limited Throughput",
+        "Quick Transition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "HalfOpen的转换逻辑我梳理一下：测试成功就回到Closed，测试失败则回到Open，等待测试期间保持HalfOpen。成功和失败的测试分别由EtcdCluster和WorkerNode处理，等待状态关联Redis缓存，对吗？",
+      "elements_involved": [
+        "HalfOpen",
+        "Closed",
+        "Open",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Infra_RedisCache",
+        "Test Request"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。最后给每个状态加上右侧注释说明：Closed要强调全流量通过和错误计数；Open要说明阻断请求、返回缓存或错误、以及日志记录；HalfOpen突出有限吞吐和快速决策。",
+      "elements_involved": [
+        "Closed",
+        "Open",
+        "HalfOpen",
+        "All Requests",
+        "Block All Requests",
+        "Return Cached Response",
+        "Log",
+        "Limited Throughput",
+        "Quick Transition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成！三个状态的注释都已添加，完整呈现了熔断器的工作机制：从LoadBalancer进入Closed正常处理，故障超标经Redis检测后Open熔断，超时后HalfOpen试探，最终由Etcd或WorkerNode的测试结果决定恢复或再次熔断。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Closed",
+        "Infra_RedisCache",
+        "Open",
+        "HalfOpen",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 20706.7912,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

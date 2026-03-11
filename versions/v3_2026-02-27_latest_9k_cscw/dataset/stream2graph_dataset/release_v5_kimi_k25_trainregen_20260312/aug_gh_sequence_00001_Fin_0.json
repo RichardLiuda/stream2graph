@@ -1,0 +1,150 @@
+{
+  "id": "aug_gh_sequence_00001_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/rabbitmq/ra/blob/e13575d817fc75ad4ac2d8ffbf80adfd1918aa77/docs/internals/log.mmd",
+  "github_repo": "rabbitmq/ra",
+  "github_file_path": "docs/internals/log.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant WR as Writer\n    participant N as Ra Node\n    participant W as WAL\n    participant S as Segment Writer\n    WR->>+N: {FinTech_AuthVault}\n    N-X+W: {FinTech_PaymentGateway}\n    W->W: fsync\n    W-XN: {FinTech_TransactionQueue}\n    N->>WR: command_appended\n    deactivate N\n    deactivate W\n    loop until full\n        W->W: write(FinTech_PaymentGateway)\n    end\n    W-X+S: {FinTech_AuthVault]}\n    Note right of S: mem_tables -> segments\n    S -X N: {FinTech_PaymentGateway]}\n    deactivate S\n",
+  "content_size": 517,
+  "collected_at": "2026-02-06T01:23:52.934881",
+  "compilation_status": "success",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gh_sequence_00001",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个Raft写请求的完整流程图。核心是从Writer发请求到Ra Node，然后落WAL，最后Segment Writer刷盘。关键是展示FinTech_PaymentGateway这条数据路径。",
+      "elements_involved": [
+        "WR",
+        "N",
+        "W",
+        "S",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，我先确认一下参与者顺序：Writer、Ra Node、WAL、Segment Writer，这个从左到右的排列对吗？还有WAL的自环fsync是要画在收到PaymentGateway之后？",
+      "elements_involved": [
+        "W",
+        "fsync",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。不过fsync之后还要有个loop，表示WAL会不断write(FinTech_PaymentGateway)直到buffer满。然后WAL再异步把数据发给Segment Writer，注意这里要带上FinTech_AuthVault。",
+      "elements_involved": [
+        "W",
+        "loop",
+        "S",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我画一下：WR激活N，N发FinTech_PaymentGateway给W，W做fsync自环，然后loop里写write操作。接着W发FinTech_AuthVault给S。这里W到S的箭头我画成异步的，可以吧？",
+      "elements_involved": [
+        "WR",
+        "N",
+        "W",
+        "S",
+        "FinTech_AuthVault",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，W到S的FinTech_AuthVault你写的是开括号，但应该是闭括号。还有S回N的消息也是，FinTech_PaymentGateway后面括号没闭合。另外N给WR的返回叫command_appended，不是command append。",
+      "elements_involved": [
+        "W",
+        "S",
+        "N",
+        "WR",
+        "command_appended"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "收到，我修正括号：W-X+S用{FinTech_AuthVault]}，S-XN用{FinTech_PaymentGateway]}，还有N-WR改成command_appended。现在检查N和W的deactivate位置，是在command_appended之后同时 deactivate 吗？",
+      "elements_involved": [
+        "W",
+        "S",
+        "N",
+        "WR",
+        "command_appended"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "N是在command_appended之后deactivate，但W要晚一点，等loop结束后再deactivate。对了，Segment Writer右边要加个Note，写\"mem_tables - segments\"，说明它在维护内存表到段文件的映射。",
+      "elements_involved": [
+        "N",
+        "W",
+        "S",
+        "loop",
+        "mem_tables",
+        "segments"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都加上了：W在loop结束后deactivate，S右边加了Note。最后S回N的FinTech_PaymentGateway是异步销毁箭头，S随后deactivate。整个流程是：WR请求→N转发→WAL落盘→批量写→Segment刷盘→回调N，完整闭环。",
+      "elements_involved": [
+        "WR",
+        "N",
+        "W",
+        "S",
+        "FinTech_PaymentGateway",
+        "loop",
+        "Note"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "license": "other",
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 17261.9431,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

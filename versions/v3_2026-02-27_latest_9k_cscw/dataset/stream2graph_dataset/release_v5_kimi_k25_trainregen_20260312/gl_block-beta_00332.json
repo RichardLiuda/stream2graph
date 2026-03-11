@@ -1,0 +1,468 @@
+{
+  "id": "gl_block-beta_00332",
+  "source": "gitlab",
+  "source_url": "https://github.com/liu0fanyi/async-summary/blob/d6bbd1ec1a3941225a8bf0cbc824029f962581b7/waiting/assets/ariel-os-executor-thread.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "liu0fanyi/async-summary",
+  "diagram_type": "block-beta",
+  "code": "flowchart TD\n  Init[\"Init\n    --------------\n初始化一个thread, 优先级很低默认8可以设置\n在其中运行一个定制的executor-thread\n生成一个static的spawner\n    \"]\n  Init --> |run| ExecutorThreadRun[\"\n    在init之后就会run起来\n    -------------------------\n    在loop里等待当前thread的THREAD_FLAG_WAKEUP\n    也就是wake之后就会重新轮询Poll\n\"]\n  Init --> |__pender| ExecutorThreadPender[\"\n经过了embassy的标准wake流程后走到了这里\n    --------------------------\n根据cx获得的threadid\nset 标志位THREAD_FLAG_WAKEUP\n根据更上面Thread-Scheduler已经描述过的，这会导致schedule\n\"]\n  Example --> ExampleTask\n  Example --> ExampleThread\nsubgraph task\n  ExampleTask[\"\n    标记一个task\n    默认不动\n    等待spawn\n  \"] -->\n   TaskLoop[\"loop\"] -->\n     TaskSignal[\"\n       里面使用了SIGNAL.signal(count)\n       一个值准备好可以读取\n       下次调用会直接覆盖\n       没有buffer\n     \"]\n      --> TaskTimer[\"延迟一段时间让出时间片\"] --> TaskLoop\nend\n\nsubgraph main-thread\n  TaskTimer -.让出时间片.-> BLOCKON \n  ExampleThread[\"\n    标记一个main thread\"]\n\n  ExampleThread --> SpawnTask[\"spawn了左边的task\ntask enqueue->ready，但优先级低还不会被dequeue\n\"] --> 循环10次读取 --> BLOCKON[\"block_on等待(SIGNAL.wait()返回的future)\"] --> 打印时间\n\n  BLOCKON -.实现.-> Context[\"Pin了传入的future\n这里就是SIGNAL.wait()返回的future\n    -----------------------\n组装上下文cx\ncx装入了waker\n干的thread-executor一样事\n设置当前thread的线程标志THREAD_FLAG_WAKE\n\"] --> BlockOnLoop[\"loop\"] --> Poll[\"\nfuture.poll(cx)轮询\n    ----------------------\n在本例子\n每次poll(cx)的时候SIGNAL返回的future都会设置它对应的waker(在SIGINAL的State::Waiting(waker)内)\n\"] --> PollResult[\"\nReady返回结果不然等待THREAD_FLAG_WAKER\n    ----------------------\n在本例子\n等待的过程中当前thread让出\nexecutor所在thread开始dequeue\n然后SIGNAL.signal更新了当前最新值, 并wake(这是main thread，上面那个blockon传入的cx的waker)\n所以这个wake了main thread继续poll\n当前有值了，return了res\n在外部的10次循环中继续下一次再回到这个位置wait\n然后再次让给task\n\"] --> BlockOnLoop\n\nBLOCKON -.中间出让时间片.-> TaskLoop\nend\n\n\n style BLOCKON fill:#bbf,stroke:#333,stroke-width:4px\n style PollResult fill:#bbf,stroke:#333,stroke-width:4px\n",
+  "content_size": 1804,
+  "collected_at": "2026-02-06T14:07:25.027447",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个embassy executor的完整执行流程图，重点讲清楚block_on是怎么工作的，以及task和main thread之间怎么协作。",
+      "elements_involved": [
+        "Init",
+        "ExecutorThreadRun",
+        "ExecutorThreadPender",
+        "ExampleTask",
+        "ExampleThread",
+        "BLOCKON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，那我从Init节点开始画起？这个节点应该是整个系统的入口，初始化thread和executor对吧？",
+      "elements_involved": [
+        "Init"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Init里面要说明初始化一个优先级很低的thread，默认是8，可以设置。然后运行定制的executor-thread，还要生成一个static的spawner。",
+      "elements_involved": [
+        "Init",
+        "spawner"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，Init画好了。接下来Init通过run边连接到ExecutorThreadRun，这个节点描述executor启动后在loop里等待THREAD_FLAG_WAKEUP对吧？",
+      "elements_involved": [
+        "Init",
+        "ExecutorThreadRun",
+        "THREAD_FLAG_WAKEUP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，wake之后就会重新轮询Poll。另外还要画一条__pender边到ExecutorThreadPender，这是embassy的标准wake流程走到的位置。",
+      "elements_involved": [
+        "ExecutorThreadRun",
+        "ExecutorThreadPender",
+        "THREAD_FLAG_WAKEUP",
+        "wake"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ExecutorThreadPender画好了，里面写根据cx获得的threadid设置THREAD_FLAG_WAKEUP标志位，导致schedule。那Example节点怎么安排？",
+      "elements_involved": [
+        "ExecutorThreadPender",
+        "threadid",
+        "THREAD_FLAG_WAKEUP",
+        "schedule"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Example分出两条线，一条到ExampleTask，一条到ExampleThread。这两个分别放进不同的subgraph：task和main-thread。",
+      "elements_involved": [
+        "Example",
+        "ExampleTask",
+        "ExampleThread",
+        "task",
+        "main-thread"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "subgraph建好了。ExampleTask里面写标记一个task，默认不动，等待spawn。然后连到TaskLoop？",
+      "elements_involved": [
+        "ExampleTask",
+        "TaskLoop",
+        "spawn"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，TaskLoop连到TaskSignal，这里用了SIGNAL.signal(count)，一个值准备好可以读取，下次调用直接覆盖，没有buffer。",
+      "elements_involved": [
+        "TaskLoop",
+        "TaskSignal",
+        "SIGNAL",
+        "signal",
+        "count"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "TaskSignal画好了，然后连到TaskTimer延迟一段时间让出时间片，再连回TaskLoop形成循环。这样task子图就完成了？",
+      "elements_involved": [
+        "TaskSignal",
+        "TaskTimer",
+        "TaskLoop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "task子图可以了。但TaskTimer还要用虚线连到BLOCKON，表示让出时间片的关系。现在画main-thread子图。",
+      "elements_involved": [
+        "TaskTimer",
+        "BLOCKON",
+        "main-thread"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，ExampleThread标记为main thread，然后连到SpawnTask，这里写spawn了左边的task，task enqueue-ready但优先级低还不会dequeue。",
+      "elements_involved": [
+        "ExampleThread",
+        "SpawnTask",
+        "task",
+        "enqueue-ready",
+        "dequeue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SpawnTask之后是循环10次读取，然后到BLOCKON。BLOCKON是核心，要重点标注，用蓝色填充。",
+      "elements_involved": [
+        "SpawnTask",
+        "BLOCKON",
+        "循环10次读取"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "BLOCKON里面写什么？是block_on等待SIGNAL.wait()返回的future吗？",
+      "elements_involved": [
+        "BLOCKON",
+        "SIGNAL.wait()",
+        "future"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，然后BLOCKON连到打印时间。还要画一条虚线到Context，表示实现关系。Context里面要详细说明Pin了传入的future，就是SIGNAL.wait()返回的那个。",
+      "elements_involved": [
+        "BLOCKON",
+        "打印时间",
+        "Context",
+        "Pin",
+        "SIGNAL.wait()",
+        "future"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Context画好了，里面写组装上下文cx，cx装入waker，干thread-executor一样的事，设置THREAD_FLAG_WAKE。然后连到BlockOnLoop？",
+      "elements_involved": [
+        "Context",
+        "cx",
+        "waker",
+        "THREAD_FLAG_WAKE",
+        "BlockOnLoop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，BlockOnLoop连到Poll，这里写future.poll(cx)轮询。要注明在本例子中，每次poll(cx)时SIGNAL返回的future都会设置对应的waker。",
+      "elements_involved": [
+        "BlockOnLoop",
+        "Poll",
+        "future.poll(cx)",
+        "waker",
+        "State::Waiting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Poll画好了，然后连到PollResult。PollResult也要蓝色填充对吧？里面写Ready返回结果不然等待THREAD_FLAG_WAKER？",
+      "elements_involved": [
+        "Poll",
+        "PollResult",
+        "Ready",
+        "THREAD_FLAG_WAKER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，PollResult要详细说明：在本例子中，等待过程中当前thread让出，executor所在thread开始dequeue，然后SIGNAL.signal更新最新值并wake。",
+      "elements_involved": [
+        "PollResult",
+        "thread让出",
+        "dequeue",
+        "SIGNAL.signal",
+        "wake"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里wake的是main thread吗？就是block_on传入的cx的waker？",
+      "elements_involved": [
+        "wake",
+        "main thread",
+        "block_on",
+        "cx",
+        "waker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，wake了main thread继续poll，当前有值了return res。然后在外部10次循环中继续下一次，再回到wait位置，再次让给task。",
+      "elements_involved": [
+        "wake",
+        "main thread",
+        "poll",
+        "return res",
+        "10次循环",
+        "让给task"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "PollResult连回BlockOnLoop形成循环，这样main-thread子图的主体就完成了。还需要加什么关系吗？",
+      "elements_involved": [
+        "PollResult",
+        "BlockOnLoop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "BLOCKON还要用虚线连到TaskLoop，表示中间出让时间片。这样两个子图的交互关系就完整了。",
+      "elements_involved": [
+        "BLOCKON",
+        "TaskLoop",
+        "出让时间片"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "虚线加好了。现在检查一遍：BLOCKON和PollResult用了蓝色填充，stroke-width是4px。整体结构看起来没问题。",
+      "elements_involved": [
+        "BLOCKON",
+        "PollResult"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ExecutorThreadPender的描述再确认一下，是根据cx获得的threadid设置标志位对吧？不是直接操作thread。",
+      "elements_involved": [
+        "ExecutorThreadPender",
+        "cx",
+        "threadid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，写的是根据cx获得的threadid，set标志位THREAD_FLAG_WAKEUP。这个和Thread-Scheduler的描述一致。",
+      "elements_involved": [
+        "ExecutorThreadPender",
+        "cx",
+        "threadid",
+        "THREAD_FLAG_WAKEUP",
+        "Thread-Scheduler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Context的描述我再想想，应该是THREAD_FLAG_WAKEUP还是THREAD_FLAG_WAKE？前面ExecutorThreadPender用的是WAKEUP。",
+      "elements_involved": [
+        "Context",
+        "THREAD_FLAG_WAKE",
+        "THREAD_FLAG_WAKEUP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我检查一下...Context里面现在写的是THREAD_FLAG_WAKE，但前面是THREAD_FLAG_WAKEUP。需要统一吗？",
+      "elements_involved": [
+        "Context",
+        "THREAD_FLAG_WAKE",
+        "THREAD_FLAG_WAKEUP"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "统一成THREAD_FLAG_WAKEUP吧，这是标准的标志位名称。我确认Context应该设置THREAD_FLAG_WAKEUP。",
+      "elements_involved": [
+        "Context",
+        "THREAD_FLAG_WAKEUP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修复，Context里的THREAD_FLAG_WAKE改成THREAD_FLAG_WAKEUP了。还有其他需要调整的吗？",
+      "elements_involved": [
+        "Context",
+        "THREAD_FLAG_WAKEUP"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "TaskSignal的描述，\"下次调用会直接覆盖，没有buffer\"这个要保留，这是SIGNAL和Channel的重要区别。",
+      "elements_involved": [
+        "TaskSignal",
+        "SIGNAL",
+        "覆盖",
+        "buffer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认保留。整体图现在包含：Init出发到ExecutorThreadRun和ExecutorThreadPender，Example分支到task和main-thread两个子图，所有交互关系都画清楚了。",
+      "elements_involved": [
+        "Init",
+        "ExecutorThreadRun",
+        "ExecutorThreadPender",
+        "Example",
+        "task",
+        "main-thread"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以了，这个图完整展示了embassy中block_on的执行机制，从Init初始化，到task和main thread的协作，再到SIGNAL的wake和poll流程，重点突出了BLOCKON和PollResult两个关键节点。",
+      "elements_involved": [
+        "Init",
+        "block_on",
+        "task",
+        "main thread",
+        "SIGNAL",
+        "wake",
+        "poll",
+        "BLOCKON",
+        "PollResult"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 33,
+    "repair_count": 2,
+    "grounding_acts_count": 33,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 64746.0806,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 33
+  }
+}

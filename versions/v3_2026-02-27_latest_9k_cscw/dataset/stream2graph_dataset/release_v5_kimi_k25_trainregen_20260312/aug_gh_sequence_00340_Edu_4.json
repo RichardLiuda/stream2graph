@@ -1,0 +1,332 @@
+{
+  "id": "aug_gh_sequence_00340_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/MrChessman/Barangay-Santol-Document-Issuance-and-Backup-System-Documentations/blob/de2cbbd16572a9ede891cf89569937ef6b805680/docs/diagrams/sequence-issuance.mmd",
+  "github_repo": "MrChessman/Barangay-Santol-Document-Issuance-and-Backup-System-Documentations",
+  "github_file_path": "docs/diagrams/sequence-issuance.mmd",
+  "diagram_type": "sequence",
+  "code": "%% Sequence Diagram – Issue Document with Automated Backup & Opportunistic Cloud Sync\n%% Actors: Secretary (Education_ClassroomService), System services; aligns to Option B schema\n\nsequenceDiagram\n\tautonumber\n\tactor Secretary\n\tparticipant UI as User Interface\n\tparticipant Auth as AuthService\n\tparticipant Iss as IssuanceService\n\tparticipant PDF as PdfService\n\tparticipant FS as FileSystem\n\tparticipant Repo as DB/Repository\n\tparticipant Bkp as BackupService\n\tparticipant Cloud as CloudSyncService\n\n\tSecretary->>UI: Login(Education_ClassroomService)\n\tUI->>Auth: authenticate(Education_ContentCDN)\n\tAuth-->>UI: auth result\n\tUI-->>Secretary: login success\n\n\tNote over Secretary,UI: Start issuance\n\tSecretary->>UI: Enter requester details, type, purpose\n\tUI->>Iss: createIssuance(Education_StudentDB)\n\tIss->>PDF: generate(Education_ClassroomService)\n\tPDF-->>Iss: PDF bytes/path\n\tIss->>FS: save PDF artifact\n\tFS-->>Iss: path + fileHash\n\tIss->>Repo: save IssuanceRecord + Artifact(Education_GradeSync)\n\tRepo-->>Iss: confirm IDs\n\tIss-->>UI: issuance created + artifact path\n\tUI-->>Secretary: show preview/print\n\n\tUI->>Bkp: queueLocal(Education_ClassroomService)\n\tBkp->>FS: copy to backup location\n\tFS-->>Bkp: copy OK\n\tBkp->>Repo: record BackupLog(Education_GradeSync)\n\tRepo-->>Bkp: logged\n\tBkp->>Cloud: upload(Education_LMS_Portal)  \n\tNote over Cloud: If offline, enqueue and retry when online\n\tCloud-->>Bkp: result (Education_GradeSync)\n\tBkp->>Repo: update BackupLog + Artifact.syncStatus\n\tRepo-->>Bkp: updated\n\tBkp-->>UI: backup status / alerts\n\tUI-->>Secretary: notify backup/cloud status\n\n\tNote over Secretary,Cloud: End of issuance flow\n",
+  "content_size": 1515,
+  "collected_at": "2026-02-06T01:30:55.121868",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "MrChessman",
+  "repo_name": "Barangay-Santol-Document-Issuance-and-Backup-System-Documentations",
+  "repo_description": "A transaction‑centric records and document issuance system for Barangay Santol (Silang, Cavite), designed for reliability on limited hardware, with automated local backup and opportunistic cloud sync ",
+  "repo_language": null,
+  "repo_topics": [],
+  "repo_created_at": "2025-11-11T10:17:29Z",
+  "repo_updated_at": "2025-11-11T10:26:46Z",
+  "augmentation_domain": "Education",
+  "seed_id": "gh_sequence_00340",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为教育场景设计一个发文流程，秘书通过ClassroomService登录后完成文件签发，同时要自动做本地备份和云端同步。你先帮我梳理一下参与方。",
+      "elements_involved": [
+        "Secretary",
+        "Education_ClassroomService",
+        "BackupService",
+        "CloudSyncService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我理解为：秘书是外部参与者，系统内部需要User Interface作为入口，AuthService做认证，然后IssuanceService处理签发，PDFService生成文件，FileSystem存储，DB/Repository保存记录。备份和云同步作为后置流程。这样划分可以吗？",
+      "elements_involved": [
+        "User Interface",
+        "AuthService",
+        "IssuanceService",
+        "PdfService",
+        "FileSystem",
+        "DB/Repository"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但认证时要关联到Education_ContentCDN做权限校验。另外备份服务要记录到GradeSync相关的日志表里。",
+      "elements_involved": [
+        "Education_ContentCDN",
+        "Education_GradeSync",
+        "BackupService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主流程：秘书登录→UI调AuthService认证→返回成功。然后秘书录入信息，IssuanceService创建记录，调PDFService生成文件，保存到FileSystem，再把记录和文件元数据写入DB。",
+      "elements_involved": [
+        "Secretary",
+        "User Interface",
+        "AuthService",
+        "IssuanceService",
+        "PdfService",
+        "FileSystem",
+        "DB/Repository"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "签发完成后，需要立即触发本地备份。UI把任务丢给BackupService，它去FileSystem复制文件，然后写BackupLog。这里要关联ClassroomService的上下文。",
+      "elements_involved": [
+        "User Interface",
+        "BackupService",
+        "FileSystem",
+        "BackupLog",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "备份完成后，CloudSyncService要上传对吧？如果网络不通怎么办？",
+      "elements_involved": [
+        "CloudSyncService",
+        "BackupService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，CloudSyncService要支持 opportunistic 同步——离线时入队，联网后重试。上传结果要更新BackupLog和Artifact的syncStatus，最终反馈给UI通知秘书。",
+      "elements_involved": [
+        "CloudSyncService",
+        "BackupLog",
+        "Artifact",
+        "syncStatus",
+        "User Interface",
+        "Secretary"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画好了：Bkp调Cloud上传，加Note说明离线入队逻辑，Cloud返回结果后Bkp更新Repo里的BackupLog和Artifact状态，最后Bkp把状态推给UI，UI通知秘书。",
+      "elements_involved": [
+        "BackupService",
+        "CloudSyncService",
+        "Repo",
+        "BackupLog",
+        "Artifact",
+        "User Interface",
+        "Secretary"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，IssuanceService保存记录时也要关联GradeSync，不只是BackupLog。还有PDF生成时要带ClassroomService的上下文标识。",
+      "elements_involved": [
+        "IssuanceService",
+        "Education_GradeSync",
+        "PdfService",
+        "Education_ClassroomService"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正：Iss-PDF时标注ClassroomService上下文，Iss-Repo保存时关联GradeSync。IssuanceService返回给UI时带artifact path，UI展示预览/打印选项。",
+      "elements_involved": [
+        "IssuanceService",
+        "PdfService",
+        "Education_ClassroomService",
+        "Education_GradeSync",
+        "User Interface",
+        "artifact path"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "备份触发时机确认一下：是UI在展示预览之后立即调Bkp.queueLocal，对吧？",
+      "elements_involved": [
+        "User Interface",
+        "BackupService",
+        "queueLocal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，UI-Bkp: queueLocal，带ClassroomService参数。然后Bkp去FS复制，FS返回copy OK，Bkp再写Repo的BackupLog。",
+      "elements_involved": [
+        "User Interface",
+        "BackupService",
+        "FileSystem",
+        "Repo",
+        "BackupLog",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Cloud上传的参数应该是Education_LMS_Portal，不是ContentCDN。上传结果要回写到GradeSync相关的状态字段。",
+      "elements_involved": [
+        "CloudSyncService",
+        "Education_LMS_Portal",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整：Bkp-Cloud: upload(Education_LMS_Portal)，Cloud返回result关联GradeSync，然后Bkp更新BackupLog和Artifact.syncStatus。",
+      "elements_involved": [
+        "BackupService",
+        "CloudSyncService",
+        "Education_LMS_Portal",
+        "Education_GradeSync",
+        "BackupLog",
+        "Artifact",
+        "syncStatus"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "开头和结尾加两个Note，标记流程起点和终点。起点在登录成功后标注\"Start issuance\"，终点在全部完成后标注\"End of issuance flow\"。",
+      "elements_involved": [
+        "Note",
+        "Secretary",
+        "User Interface",
+        "CloudSyncService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了。第一个Note覆盖Secretary到UI，第二个Note覆盖Secretary到Cloud。整体流程从登录认证开始，经过签发、存储、备份、云同步，最终状态通知闭环。",
+      "elements_involved": [
+        "Note",
+        "Secretary",
+        "User Interface",
+        "CloudSyncService",
+        "AuthService",
+        "IssuanceService",
+        "BackupService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "IssuanceService创建记录时依赖的数据源是Education_StudentDB，这个在消息上要标注清楚。",
+      "elements_involved": [
+        "IssuanceService",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充：UI-Iss: createIssuance(Education_StudentDB)。这样完整了。",
+      "elements_involved": [
+        "User Interface",
+        "IssuanceService",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "最后检查一遍：所有返回消息都用虚线箭头，状态更新和确认都要有双向交互。autonumber开启，参与者命名用别名比如UI、Auth、Iss这样更简洁。",
+      "elements_involved": [
+        "autonumber",
+        "User Interface",
+        "AuthService",
+        "IssuanceService",
+        "PdfService",
+        "FileSystem",
+        "DB/Repository",
+        "BackupService",
+        "CloudSyncService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认全部满足：autonumber已开，参与者别名定义完整，返回消息均为虚线，双向交互完整。 Secretary作为actor，其他为participant。流程覆盖登录、签发、备份、云同步全链路。",
+      "elements_involved": [
+        "Secretary",
+        "User Interface",
+        "AuthService",
+        "IssuanceService",
+        "PdfService",
+        "FileSystem",
+        "DB/Repository",
+        "BackupService",
+        "CloudSyncService",
+        "autonumber"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 20,
+    "repair_count": 1,
+    "grounding_acts_count": 20,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 49611.3141,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 20
+  }
+}

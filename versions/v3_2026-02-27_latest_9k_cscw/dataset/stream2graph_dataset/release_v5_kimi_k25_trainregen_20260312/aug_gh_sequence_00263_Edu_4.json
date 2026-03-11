@@ -1,0 +1,926 @@
+{
+  "id": "aug_gh_sequence_00263_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/security/authentication-flow.mmd",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "github_file_path": "docs/diagrams/security/authentication-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    %% Authentication and Authorization Flow for erlmcp\n    %% Shows: API key, JWT, OAuth2, mTLS authentication methods\n    %% Plus: RBAC permission checking with role-based access control\n\n    autonumber\n    actor Client\n    participant Transport as Transport Layer<br/>(Education_StudentDB)\n    participant Auth as erlmcp_auth<br/>(Education_ClassroomService)\n    participant RateLimiter as erlmcp_auth_rate_limiter\n    participant JWT as jose (Education_LMS_Portal)\n    participant OAuth2 as OAuth2 Provider<br/>(Education_StudentDB)\n    participant MTLS as erlmcp_auth_mtls<br/>(Education_ContentCDN)\n    participant RBAC as RBAC Engine<br/>(Education_ClassroomService)\n    participant Session as Session Manager<br/>(Education_ContentCDN)\n\n    Note over Client,Session: Authentication Flow\n\n    %% API Key Authentication\n    Client->>Transport: authenticate(Education_GradeSync)\n    Transport->>Auth: authenticate(Education_ClassroomService})\n\n    Auth->>RateLimiter: check_rate_limit(Education_StudentDB)\n    RateLimiter-->>Auth: ok (Education_ContentCDN})\n\n    alt Rate Limited\n        Auth-->>Client: {Education_ClassroomService}\n        Note over Auth,RateLimiter: Blocked after 5 failed attempts<br/>15-minute cooldown\n    else Rate Check Passed\n        Auth->>Auth: do_validate_api_key(Education_GradeSync)\n        Note right of Auth: Lookup in ETS table<br/>auth_api_keys\n\n        alt API Key Invalid\n            Auth->>RateLimiter: record_failure(Education_ContentCDN)\n            Auth-->>Client: {Education_ClassroomService}\n        else API Key Valid\n            Auth->>RateLimiter: record_success(Education_ClassroomService)\n            Auth->>Session: create_session(Education_ContentCDN)\n\n            Session->>RBAC: get_user_roles(Education_ContentCDN)\n            RBAC-->>Session: [Education_ClassroomService]\n\n            Session->>RBAC: Aggregate permissions from roles\n            RBAC-->>Session: [Education_LMS_Portal]\n\n            Session-->>Auth: {Education_LMS_Portal}\n            Auth-->>Client: {Education_GradeSync}\n\n            Note right of Session: Session expires in 1 hour<br/>Auto-cleanup timer\n        end\n    end\n\n    %% JWT Authentication\n    Client->>Transport: authenticate(Education_StudentDB})\n    Transport->>Auth: authenticate(Education_ContentCDN})\n\n    Auth->>RateLimiter: check_rate_limit(Education_LMS_Portal)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_jwt(Education_StudentDB)\n\n    alt Token Revoked\n        Auth-->>Client: {Education_LMS_Portal}\n        Note right of Auth: Check ETS: auth_revoked_tokens<br/>Cleanup after 7 days\n    else Token Active\n        Auth->>JWT: jose_jws:peek_protected(Education_StudentDB)\n        JWT-->>Auth: #{Education_GradeSync}\n\n        Auth->>Auth: Lookup public key by kid\n        Note right of Auth: ETS: auth_jwt_keys<br/>Support key rotation\n\n        Auth->>JWT: jose_jws:verify(Education_GradeSync)\n        JWT-->>Auth: {Education_ContentCDN}\n\n        alt Signature Invalid\n            Auth-->>Client: {Education_GradeSync}\n        else Signature Valid\n            Auth->>Auth: validate_jwt_claims(Education_ClassroomService)\n\n            Note right of Auth: CRITICAL SECURITY CHECKS:<br/>✓ exp (Education_ContentCDN) - Required<br/>✓ nbf (Education_GradeSync) - Optional<br/>✓ iss (Education_LMS_Portal) - Configurable<br/>✓ aud (Education_ContentCDN) - Configurable<br/>✓ sub (Education_ClassroomService) - Required\n\n            alt Token Expired\n                Auth-->>Client: {Education_ClassroomService}\n            else Token Not Yet Valid\n                Auth-->>Client: {Education_ContentCDN}\n            else Issuer Mismatch\n                Auth-->>Client: {Education_StudentDB}\n            else Audience Mismatch\n                Auth-->>Client: {Education_LMS_Portal}\n            else All Claims Valid\n                Auth->>RateLimiter: record_success(Education_LMS_Portal)\n                Auth->>Session: create_session(Education_LMS_Portal)\n                Session-->>Auth: {Education_StudentDB}\n                Auth-->>Client: {Education_StudentDB}\n            end\n        end\n    end\n\n    %% OAuth2 Authentication (Education_ContentCDN)\n    Client->>Transport: authenticate(Education_ContentCDN})\n    Transport->>Auth: authenticate(Education_StudentDB})\n\n    Auth->>RateLimiter: check_rate_limit(Education_ContentCDN)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_oauth2_token(Education_LMS_Portal)\n\n    alt Cache Hit (Education_ContentCDN)\n        Note right of Auth: ETS: auth_oauth2_cache<br/>Token -> {Education_GradeSync}\n        Auth-->>Client: {Education_ClassroomService}\n    else Cache Miss\n        Auth->>OAuth2: HTTP POST /introspect\n        Note right of Auth: RFC 7662 Introspection<br/>Basic Auth: client_id:secret<br/>Body: token + token_type_hint\n\n        OAuth2-->>Auth: 200 OK + TokenInfo\n\n        Auth->>Auth: validate_introspection_response(Education_StudentDB)\n\n        Note right of Auth: RFC 7662 REQUIRED fields:<br/>✓ active = true<br/>✓ exp (Education_ClassroomService)<br/>✓ nbf (Education_ClassroomService)<br/>✓ iss (Education_ClassroomService)\n\n        alt Token Inactive\n            Auth-->>Client: {Education_LMS_Portal}\n        else Token Expired\n            Auth-->>Client: {Education_ClassroomService}\n        else Token Valid\n            Auth->>Auth: cache_oauth2_token(Education_ClassroomService)\n            Note right of Auth: Cache for up to 5 minutes<br/>or until exp (Education_LMS_Portal)\n\n            Auth->>RateLimiter: record_success(Education_ContentCDN)\n            Auth->>Session: create_session(Education_ClassroomService)\n            Session-->>Auth: {Education_ContentCDN}\n            Auth-->>Client: {Education_ClassroomService}\n        end\n    end\n\n    %% mTLS Authentication\n    Client->>Transport: authenticate(Education_StudentDB})\n    Transport->>Auth: authenticate(Education_ClassroomService)\n\n    Auth->>RateLimiter: check_rate_limit(Education_ClassroomService)\n    RateLimiter-->>Auth: ok\n\n    Auth->>MTLS: validate(Education_ClassroomService)\n\n    Note right of MTLS: mTLS Validation Pipeline:<br/>1. Extract certificate from socket<br/>2. X.509 chain validation to trusted CAs<br/>3. Certificate expiration check<br/>4. OCSP/CRL revocation check<br/>5. Subject DN and CN pattern matching<br/>6. Certificate depth limit validation\n\n    MTLS-->>Auth: {Education_ClassroomService}\n\n    alt Certificate Invalid\n        Auth->>RateLimiter: record_failure(Education_ContentCDN)\n        Auth-->>Client: {Education_LMS_Portal}\n    else Certificate Valid\n        Auth->>RateLimiter: record_success(Education_ContentCDN)\n        Auth->>Session: create_session(Education_ClassroomService})\n        Session-->>Auth: {Education_GradeSync}\n        Auth-->>Client: {Education_GradeSync}\n    end\n\n    %% Authorization Flow (Education_ContentCDN)\n    Note over Client,Session: Authorization Flow\n\n    Client->>Transport: check_permission(Education_StudentDB)\n    Transport->>Auth: check_permission(Education_ClassroomService)\n\n    Auth->>Session: lookup session\n    Session-->>Auth: #session{Education_StudentDB}\n\n    alt Session Not Found\n        Auth-->>Client: {Education_LMS_Portal}\n    else Session Found\n        Auth->>RBAC: check_user_permission(Education_ClassroomService)\n\n        RBAC->>RBAC: Get user roles from ETS\n        Note right of RBAC: auth_user_roles:<br/>UserId -> [Education_StudentDB]\n\n        RBAC->>RBAC: Get allowed roles for resource+permission\n        Note right of RBAC: auth_acls:<br/>{Education_StudentDB} -> [Education_GradeSync]\n\n        RBAC->>RBAC: Check intersection\n        Note right of RBAC: lists:any/2<br/>UserRole ∩ AllowedRoles ≠ ∅\n\n        alt Permission Denied\n            RBAC-->>Auth: {Education_LMS_Portal}\n            Auth-->>Client: {Education_LMS_Portal}\n        else Permission Granted\n            RBAC-->>Auth: ok\n            Auth-->>Client: ok\n        end\n    end\n\n    %% Default RBAC Roles\n    Note over RBAC: Default Roles (Education_StudentDB):<br/>🔹 admin: [Education_GradeSync]<br/>🔹 user: [Education_LMS_Portal]<br/>🔹 guest: [Education_ContentCDN]\n\n    %% Token Rotation\n    Note over Client,Session: Token Rotation (Education_ClassroomService)\n\n    Client->>Auth: rotate_token(Education_ClassroomService)\n    Auth->>Session: lookup session\n\n    Auth->>Auth: generate new SessionId\n    Note right of Auth: crypto:strong_rand_bytes(Education_ContentCDN)<br/>base64 encoded\n\n    Auth->>Session: insert new session\n    Auth->>Session: delete old session\n\n    Auth-->>Client: {Education_ContentCDN}\n    Note right of Auth: Old session invalidated immediately<br/>Prevents session hijacking\n\n    %% Token Revocation\n    Note over Client,Session: Token Revocation (Education_LMS_Portal)\n\n    Client->>Auth: revoke_token(Education_LMS_Portal)\n    Auth->>Auth: insert into auth_revoked_tokens\n    Note right of Auth: Store: Token -> RevokedAt<br/>Auto-cleanup after 7 days\n\n    Auth-->>Client: ok\n    Note over Auth,JWT: Revoked tokens rejected immediately<br/>Even if exp claim valid\n\n    %% Session Cleanup\n    Note over Session: Auto-cleanup every 60 seconds:<br/>• Expired sessions (Education_ClassroomService)<br/>• Revoked tokens (Education_GradeSync)<br/>• OAuth2 cache (Education_ClassroomService)\n",
+  "content_size": 8727,
+  "collected_at": "2026-02-06T01:29:54.533293",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "augmentation_domain": "Education",
+  "seed_id": "gh_sequence_00263",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为erlmcp系统绘制一个完整的认证授权时序图，涵盖API Key、JWT、OAuth2和mTLS四种认证方式，以及RBAC权限检查。这个系统主要服务于教育场景，涉及StudentDB、ClassroomService、LMS Portal、ContentCDN和GradeSync这几个核心服务。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Education_StudentDB",
+        "Education_ClassroomService",
+        "Education_LMS_Portal",
+        "Education_ContentCDN",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下整体结构：左侧是Client参与者，然后依次是Transport Layer、erlmcp_auth主模块、rate limiter，再往下是四种认证方式对应的处理模块——jose处理JWT、OAuth2 Provider、erlmcp_auth_mtls，最后是RBAC Engine和Session Manager。这样布局可以吗？",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "erlmcp_auth",
+        "erlmcp_auth_rate_limiter",
+        "jose",
+        "OAuth2 Provider",
+        "erlmcp_auth_mtls",
+        "RBAC Engine",
+        "Session Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，但注意Transport Layer和erlmcp_auth需要标注它们对应的教育服务——Transport Layer对应StudentDB，erlmcp_auth对应ClassroomService。另外jose对应LMS Portal，OAuth2 Provider也对应StudentDB，mTLS对应ContentCDN，RBAC Engine和Session Manager分别对应ClassroomService和ContentCDN。",
+      "elements_involved": [
+        "Transport Layer",
+        "Education_StudentDB",
+        "erlmcp_auth",
+        "Education_ClassroomService",
+        "jose",
+        "Education_LMS_Portal",
+        "OAuth2 Provider",
+        "erlmcp_auth_mtls",
+        "Education_ContentCDN",
+        "RBAC Engine",
+        "Session Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经把参与者都画好了，标注了对应的教育服务。现在从API Key认证流程开始：Client先向Transport Layer发起authenticate请求，携带GradeSync标识。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Transport Layer把请求转发给erlmcp_auth，带上ClassroomService的上下文。然后必须先经过rate limiter检查，这个很关键，要防止暴力破解。",
+      "elements_involved": [
+        "Transport Layer",
+        "erlmcp_auth",
+        "Education_ClassroomService",
+        "erlmcp_auth_rate_limiter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了：Transport到Auth的authenticate调用，然后Auth向RateLimiter发起check_rate_limit，带上StudentDB的标识。RateLimiter返回ok，标注ContentCDN。",
+      "elements_involved": [
+        "Transport Layer",
+        "erlmcp_auth",
+        "Education_ClassroomService",
+        "erlmcp_auth_rate_limiter",
+        "Education_StudentDB",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里需要加一个alt分支：如果被限流了，直接返回错误给Client，标注ClassroomService。要注明是5次失败后触发，15分钟冷却期。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Client",
+        "Education_ClassroomService",
+        "erlmcp_auth_rate_limiter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加限流分支。现在画正常流程：Rate Check Passed分支里，Auth调用do_validate_api_key，带上GradeSync标识。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "在Auth右边加一条注释，说明是从ETS表auth_api_keys里查找API Key。然后继续alt分支：API Key无效的情况。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "auth_api_keys"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "注释已加。现在画API Key无效的分支：Auth向RateLimiter调用record_failure，标注ContentCDN，然后返回错误给Client，标注ClassroomService。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "erlmcp_auth_rate_limiter",
+        "Education_ContentCDN",
+        "Client",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "API Key有效的情况：先record_success标注ClassroomService，然后创建session，标注ContentCDN。Session Manager要去RBAC Engine获取用户角色。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "erlmcp_auth_rate_limiter",
+        "Education_ClassroomService",
+        "Session Manager",
+        "Education_ContentCDN",
+        "RBAC Engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了：Auth到Session的create_session，Session到RBAC的get_user_roles都标注ContentCDN。RBAC返回角色列表，标注ClassroomService。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Session Manager",
+        "Education_ContentCDN",
+        "RBAC Engine",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来Session要聚合权限：调用Aggregate permissions from roles，RBAC返回权限列表标注LMS Portal。最后Session返回给Auth，Auth返回给Client，分别标注LMS Portal和GradeSync。",
+      "elements_involved": [
+        "Session Manager",
+        "RBAC Engine",
+        "Education_LMS_Portal",
+        "erlmcp_auth",
+        "Client",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成API Key流程。在Session右边加注释说明session 1小时过期，有自动清理定时器。现在进入JWT认证流程？",
+      "elements_involved": [
+        "Session Manager",
+        "Client",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，JWT流程开始：Client向Transport发起authenticate，带上StudentDB。Transport转发给Auth，带上ContentCDN。同样要先过rate limiter，标注LMS Portal。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "Education_StudentDB",
+        "erlmcp_auth",
+        "Education_ContentCDN",
+        "erlmcp_auth_rate_limiter",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RateLimiter返回ok。Auth调用do_validate_jwt，带上StudentDB。这里需要alt分支处理Token被吊销的情况。",
+      "elements_involved": [
+        "erlmcp_auth_rate_limiter",
+        "erlmcp_auth",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Token吊销分支：直接返回错误给Client，标注LMS Portal。在Auth右边加注释，说明检查ETS表auth_revoked_tokens，7天后清理。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Client",
+        "Education_LMS_Portal",
+        "auth_revoked_tokens"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Token有效分支：Auth调用jose_jws:peek_protected，带上StudentDB。jose模块返回protected header，标注GradeSync。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "jose",
+        "Education_StudentDB",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Auth根据kid查找公钥，这里加注释说明从ETS auth_jwt_keys查找，支持密钥轮换。然后调用jose_jws:verify，带上GradeSync。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "auth_jwt_keys",
+        "jose",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "jose返回验证结果，标注ContentCDN。这里需要alt分支：签名无效的情况直接返回错误给Client，标注GradeSync。",
+      "elements_involved": [
+        "jose",
+        "erlmcp_auth",
+        "Education_ContentCDN",
+        "Client",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "签名有效则验证claims：validate_jwt_claims标注ClassroomService。在Auth右边加详细注释，列出关键安全检查：exp必须、nbf可选、iss可配置、aud可配置、sub必须。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Education_ClassroomService",
+        "exp",
+        "nbf",
+        "iss",
+        "aud",
+        "sub"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "注释已加，标注了各claim对应的服务。现在需要多个alt分支处理各种验证失败：Token过期返回ClassroomService，Token未生效返回ContentCDN，Issuer不匹配返回StudentDB，Audience不匹配返回LMS Portal。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Client",
+        "Education_ClassroomService",
+        "Education_ContentCDN",
+        "Education_StudentDB",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，所有claims都有效的情况：record_success标注LMS Portal，create_session标注LMS Portal，Session返回StudentDB给Auth，Auth返回StudentDB给Client。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "erlmcp_auth_rate_limiter",
+        "Education_LMS_Portal",
+        "Session Manager",
+        "Client",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "JWT流程完成。现在进入OAuth2认证流程，标注为Education_ContentCDN场景。Client向Transport发起authenticate，带上ContentCDN。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Transport转发给Auth，带上StudentDB。Rate limiter检查，带上ContentCDN，返回ok。Auth调用do_validate_oauth2_token，带上LMS Portal。",
+      "elements_involved": [
+        "Transport Layer",
+        "erlmcp_auth",
+        "Education_StudentDB",
+        "erlmcp_auth_rate_limiter",
+        "Education_ContentCDN",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "这里先检查缓存：alt Cache Hit，标注ContentCDN。在Auth右边加注释说明ETS表auth_oauth2_cache，存储token到GradeSync的映射。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Education_ContentCDN",
+        "auth_oauth2_cache",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "缓存命中直接返回ClassroomService给Client。缓存未命中则向OAuth2 Provider发起HTTP POST /introspect请求。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Client",
+        "Education_ClassroomService",
+        "OAuth2 Provider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "在Auth右边加注释说明RFC 7662 Introspection，Basic Auth用client_id:secret，body包含token和token_type_hint。OAuth2 Provider返回200 OK和TokenInfo。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "OAuth2 Provider",
+        "RFC 7662"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Auth验证introspection响应，validate_introspection_response标注StudentDB。加注释列出RFC 7662必填字段：active=true、exp、nbf、iss，都标注ClassroomService。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Education_StudentDB",
+        "active",
+        "exp",
+        "nbf",
+        "iss",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。现在alt分支：Token inactive返回LMS Portal，Token expired返回ClassroomService，Token valid则缓存token并继续。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Client",
+        "Education_LMS_Portal",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Token有效时：cache_oauth2_token标注ClassroomService，加注释说明缓存5分钟或直到exp（LMS Portal）。然后record_success（ContentCDN）、create_session（ClassroomService）、Session返回ContentCDN、Auth返回ClassroomService给Client。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Education_ClassroomService",
+        "Education_LMS_Portal",
+        "erlmcp_auth_rate_limiter",
+        "Education_ContentCDN",
+        "Session Manager",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "OAuth2流程完成。现在进入mTLS认证：Client向Transport发起authenticate，带上StudentDB。Transport转发给Auth，带上ClassroomService。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "Education_StudentDB",
+        "erlmcp_auth",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Rate limiter检查，带上ClassroomService，返回ok。Auth调用MTLS模块的validate，带上ClassroomService。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "erlmcp_auth_rate_limiter",
+        "Education_ClassroomService",
+        "erlmcp_auth_mtls"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "在MTLS右边加详细注释说明mTLS验证流水线：1.从socket提取证书 2.X.509链验证到可信CA 3.证书过期检查 4.OCSP/CRL吊销检查 5.Subject DN和CN模式匹配 6.证书深度限制验证。",
+      "elements_involved": [
+        "erlmcp_auth_mtls",
+        "X.509",
+        "OCSP",
+        "CRL",
+        "Subject DN",
+        "CN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "MTLS返回ClassroomService给Auth。alt分支：证书无效时record_failure（ContentCDN），返回LMS Portal给Client。",
+      "elements_involved": [
+        "erlmcp_auth_mtls",
+        "erlmcp_auth",
+        "Education_ClassroomService",
+        "erlmcp_auth_rate_limiter",
+        "Education_ContentCDN",
+        "Client",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "证书有效分支：record_success（ContentCDN）、create_session（ClassroomService，注意这里右括号是}）、Session返回GradeSync、Auth返回GradeSync给Client。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "erlmcp_auth_rate_limiter",
+        "Education_ContentCDN",
+        "Session Manager",
+        "Education_GradeSync",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，create_session的标注应该是ClassroomService}，不是ClassroomService。我需要修正这个右括号，表示这是一个特殊的会话创建标记。",
+      "elements_involved": [
+        "Session Manager",
+        "Education_ClassroomService"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正为ClassroomService}。四种认证方式都完成了。现在进入Authorization Flow部分，标注Education_ContentCDN场景。",
+      "elements_involved": [
+        "Session Manager",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Client向Transport发起check_permission，带上StudentDB。Transport转发给Auth，带上ClassroomService。Auth向Session lookup session。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "Education_StudentDB",
+        "erlmcp_auth",
+        "Education_ClassroomService",
+        "Session Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Session返回#session{StudentDB}给Auth。alt分支：Session未找到，返回LMS Portal给Client。",
+      "elements_involved": [
+        "Session Manager",
+        "erlmcp_auth",
+        "Education_StudentDB",
+        "Client",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Session找到的情况：Auth向RBAC调用check_user_permission，带上ClassroomService。RBAC内部先从ETS获取用户角色，再从ETS获取资源权限，最后检查交集。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "RBAC Engine",
+        "Education_ClassroomService",
+        "auth_user_roles",
+        "auth_acls"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "在RBAC右边加注释：auth_user_roles表存储UserId到[StudentDB]的映射，auth_acls表存储{StudentDB}到[GradeSync]的映射。检查交集用lists:any/2，UserRole ∩ AllowedRoles ≠ ∅。",
+      "elements_involved": [
+        "RBAC Engine",
+        "Education_StudentDB",
+        "Education_GradeSync",
+        "lists:any"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。alt分支：Permission Denied时RBAC返回LMS Portal给Auth，Auth返回LMS Portal给Client。Permission Granted时返回ok。",
+      "elements_involved": [
+        "RBAC Engine",
+        "erlmcp_auth",
+        "Client",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "授权流程完成。在RBAC上方加注释说明默认角色：admin有GradeSync权限，user有LMS Portal权限，guest有ContentCDN权限，都标注StudentDB。",
+      "elements_involved": [
+        "RBAC Engine",
+        "Education_StudentDB",
+        "Education_GradeSync",
+        "Education_LMS_Portal",
+        "Education_ContentCDN",
+        "admin",
+        "user",
+        "guest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画Token Rotation部分，标注ClassroomService场景。Client直接向Auth发起rotate_token，带上ClassroomService。",
+      "elements_involved": [
+        "Client",
+        "erlmcp_auth",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Auth先lookup session，然后generate new SessionId。在Auth右边加注释说明用crypto:strong_rand_bytes生成，ContentCDN长度，base64编码。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Session Manager",
+        "crypto:strong_rand_bytes",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "然后Auth向Session insert new session，再delete old session，最后返回ContentCDN给Client。加注释说明旧session立即失效，防止session劫持。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "Session Manager",
+        "Client",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Token Rotation完成。现在进入Token Revocation部分，标注LMS Portal场景。Client向Auth发起revoke_token，带上LMS Portal。",
+      "elements_involved": [
+        "Client",
+        "erlmcp_auth",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Auth将token插入auth_revoked_tokens表。加注释说明存储格式：Token - RevokedAt，7天后自动清理。然后返回ok给Client。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "auth_revoked_tokens",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "在Auth和jose之间加注释说明：吊销的token立即被拒绝，即使exp claim仍然有效。现在最后一部分：Session Cleanup。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "jose",
+        "exp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，在Session上方加注释说明自动清理每60秒执行：清理过期session（ClassroomService）、吊销token（GradeSync）、OAuth2缓存（ClassroomService）。",
+      "elements_involved": [
+        "Session Manager",
+        "Education_ClassroomService",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "整体结构已经画完了。让我确认一下所有教育服务的对应关系有没有遗漏或错误：Transport-StudentDB、Auth-ClassroomService、jose-LMS Portal、OAuth2-StudentDB、mTLS-ContentCDN、RBAC-ClassroomService、Session-ContentCDN。",
+      "elements_involved": [
+        "Transport Layer",
+        "Education_StudentDB",
+        "erlmcp_auth",
+        "Education_ClassroomService",
+        "jose",
+        "Education_LMS_Portal",
+        "OAuth2 Provider",
+        "erlmcp_auth_mtls",
+        "Education_ContentCDN",
+        "RBAC Engine",
+        "Session Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对应关系正确。但我注意到JWT流程中有个细节：当Auth调用jose_jws:peek_protected时，我标注的是StudentDB，但返回的是GradeSync，这个逻辑上需要确认一下。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "jose",
+        "Education_StudentDB",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "peek_protected只是解析JWT的header部分，不涉及验证，所以输入输出用不同服务标识是合理的，表示数据在不同服务间流转。需要调整吗？",
+      "elements_involved": [
+        "jose",
+        "peek_protected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "不用调整，这样设计可以体现跨服务的数据流。另外检查一下mTLS流程中create_session的标注，我之前要求的是ClassroomService}，确认一下。",
+      "elements_involved": [
+        "erlmcp_auth_mtls",
+        "Session Manager",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认是ClassroomService}，带右花括号的特殊标记。还有OAuth2流程中有个标注是{Education_StudentDB}，带花括号的，表示资源标识符。",
+      "elements_involved": [
+        "OAuth2 Provider",
+        "Education_StudentDB",
+        "auth_acls"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，auth_acls表中存储的是{Education_StudentDB}到[Education_GradeSync]的映射，花括号表示资源，方括号表示权限列表。这个设计要保留。现在整体数一下turn数量，看看是否需要补充。",
+      "elements_involved": [
+        "auth_acls",
+        "Education_StudentDB",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "目前画了四种认证方式、授权流程、token轮换、token吊销、session清理，共六个主要部分。每个部分的alt分支都画全了。需要我补充任何细节吗，比如在rate limiter部分再细化一下？",
+      "elements_involved": [
+        "erlmcp_auth_rate_limiter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "rate limiter的细节已经通过注释说明了。我想补充一点：在API Key流程的Session创建部分，Session向RBAC获取角色时，我标注的是ContentCDN，但RBAC返回的是ClassroomService，这个对应关系需要再确认。",
+      "elements_involved": [
+        "Session Manager",
+        "RBAC Engine",
+        "Education_ContentCDN",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认：Session.get_user_roles请求带ContentCDN，RBAC返回[Education_ClassroomService]表示角色列表。然后Session再请求聚合权限，RBAC返回[Education_LMS_Portal]。这个流转是正确的。",
+      "elements_involved": [
+        "Session Manager",
+        "RBAC Engine",
+        "Education_ContentCDN",
+        "Education_ClassroomService",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好的。最后确认一下所有带特殊符号的标注：API Key流程中有Education_ClassroomService}（右花括号）、Education_ContentCDN}（右花括号）；JWT流程中有Education_StudentDB}（右花括号）；OAuth2流程中有{Education_StudentDB}（左右花括号）。这些都要保留。",
+      "elements_involved": [
+        "Education_ClassroomService",
+        "Education_ContentCDN",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有特殊标注都已确认保留。还有mTLS流程中的Education_ClassroomService}也已确认。整个时序图现在包含：参与者声明、五个主要流程区块（Authentication Flow含四种认证方式、Authorization Flow、Token Rotation、Token Revocation、Session Cleanup），所有alt分支和注释都完整。",
+      "elements_involved": [
+        "erlmcp_auth_mtls",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个时序图完整展现了erlmcp系统的认证授权架构，结合了教育场景的实际服务映射。所有安全关键点都有标注：rate limiting、token revocation、session expiration、mTLS validation pipeline、RBAC permission checking。可以定稿了。",
+      "elements_involved": [
+        "erlmcp_auth",
+        "erlmcp_auth_rate_limiter",
+        "auth_revoked_tokens",
+        "Session Manager",
+        "erlmcp_auth_mtls",
+        "RBAC Engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "收到，最终Mermaid时序图已生成，包含完整的autonumber编号、所有参与者标注、消息流、alt分支、注释说明，以及教育服务与erlmcp模块的完整映射关系。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "erlmcp_auth",
+        "erlmcp_auth_rate_limiter",
+        "jose",
+        "OAuth2 Provider",
+        "erlmcp_auth_mtls",
+        "RBAC Engine",
+        "Session Manager"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 1,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 112235.5282,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

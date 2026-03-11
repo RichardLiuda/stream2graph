@@ -1,0 +1,208 @@
+{
+  "id": "gh_sequence_00916",
+  "source": "github",
+  "source_url": "https://github.com/luth9r/FitTracker/blob/c81958bfbd32229654cff70c18fdc0d6e0541f71/docs/google-oauth-login-flow.mmd",
+  "github_repo": "luth9r/FitTracker",
+  "github_file_path": "docs/google-oauth-login-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "%%{init: {'look':'neo', 'theme':'redux-color'}}%%\nsequenceDiagram\n    participant C as Client\n    participant G as Google OAuth\n    participant AC as AuthController\n    participant GOS as GoogleOAuthService\n    participant GT as Google Token API\n    participant GV as Google Validator\n    participant UR as UserRepository\n    participant DB as PostgreSQL\n    participant JTG as JwtTokenGenerator\n\n    C->>C: Generate PKCE parameters\n    C->>G: Redirect to Google OAuth\n    G-->>C: Redirect with code\n    \n    C->>AC: POST /api/auth/google-login<br/>{code, codeVerifier}\n    AC->>GOS: ExchangeCodeForTokens(code, codeVerifier)\n    GOS->>GT: POST https://oauth2.googleapis.com/token\n    GT-->>GOS: {access_token, id_token, ...}\n    GOS->>GV: ValidateAsync(id_token)\n    GV-->>GOS: {sub, email, ...}\n    GOS-->>AC: GoogleTokenPayload\n    \n    AC->>UR: FindByGoogleProviderId(sub)\n    UR->>DB: SELECT * FROM Users<br/>WHERE GoogleProviderId = ?\n    DB-->>UR: User found\n    UR-->>AC: user\n    \n    AC->>JTG: GenerateAuthToken(userId)\n    JTG-->>AC: authToken\n    AC-->>C: 200 OK + Set-Cookie: auth-token\n",
+  "content_size": 1100,
+  "collected_at": "2026-02-06T01:50:43.764377",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 2,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个Google OAuth登录的完整时序图。流程是：前端Client先本地生成PKCE参数，然后跳转到Google OAuth授权，拿到code之后发给我们的AuthController。",
+      "elements_involved": [
+        "Client",
+        "Google OAuth",
+        "AuthController",
+        "PKCE",
+        "code"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，PKCE那一步是Client自己内部完成的，不需要外部交互对吧？然后AuthController收到code之后，是直接去换token，还是交给别的服务处理？",
+      "elements_involved": [
+        "Client",
+        "AuthController",
+        "code",
+        "token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "交给GoogleOAuthService处理。GOS会调用Google Token API去换access_token和id_token，拿到之后还要用Google Validator验证id_token，解析出sub和email。",
+      "elements_involved": [
+        "GoogleOAuthService",
+        "Google Token API",
+        "Google Validator",
+        "access_token",
+        "id_token",
+        "sub",
+        "email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把前半段画出来：Client生成PKCE，重定向到Google OAuth，返回code，然后POST到AuthController，Controller调用GOS的ExchangeCodeForTokens方法，GOS再去请求Google Token API。",
+      "elements_involved": [
+        "Client",
+        "Google OAuth",
+        "AuthController",
+        "GoogleOAuthService",
+        "ExchangeCodeForTokens",
+        "Google Token API",
+        "code",
+        "codeVerifier"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Token API返回access_token和id_token之后，GOS要调Google Validator做ValidateAsync验证，验证通过拿到sub，然后回到Controller。",
+      "elements_involved": [
+        "Google Token API",
+        "GoogleOAuthService",
+        "Google Validator",
+        "ValidateAsync",
+        "sub",
+        "id_token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "验证完之后，Controller怎么查用户？直接调UserRepository还是经过什么层？",
+      "elements_involved": [
+        "AuthController",
+        "UserRepository"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "直接调UserRepository的FindByGoogleProviderId方法，用sub去查。Repository再访问PostgreSQL，SQL大概是SELECT * FROM Users WHERE GoogleProviderId = ?。如果找到用户，返回给Controller。",
+      "elements_involved": [
+        "AuthController",
+        "UserRepository",
+        "FindByGoogleProviderId",
+        "sub",
+        "PostgreSQL",
+        "GoogleProviderId",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了：UR去DB查询，DB返回User，UR把user回传给AC。那最后一步token生成怎么设计？",
+      "elements_involved": [
+        "UserRepository",
+        "PostgreSQL",
+        "AuthController",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后Controller调用JwtTokenGenerator的GenerateAuthToken，传入userId，拿到authToken之后，通过Set-Cookie返回给Client，状态码200 OK。",
+      "elements_involved": [
+        "AuthController",
+        "JwtTokenGenerator",
+        "GenerateAuthToken",
+        "userId",
+        "authToken",
+        "Set-Cookie",
+        "Client",
+        "200 OK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下完整流程：Client → Google OAuth → AuthController → GoogleOAuthService → Google Token API → Google Validator → 回到Controller → UserRepository → PostgreSQL → 回到Controller → JwtTokenGenerator → 最后Set-Cookie给Client。所有异步返回都用虚线箭头，对吧？",
+      "elements_involved": [
+        "Client",
+        "Google OAuth",
+        "AuthController",
+        "GoogleOAuthService",
+        "Google Token API",
+        "Google Validator",
+        "UserRepository",
+        "PostgreSQL",
+        "JwtTokenGenerator",
+        "Set-Cookie"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，还有几个细节：Client生成PKCE是自己指向自己的循环，Google Token API和Google Validator的返回都是虚线，最后Cookie设置别忘了。",
+      "elements_involved": [
+        "Client",
+        "PKCE",
+        "Google Token API",
+        "Google Validator",
+        "Set-Cookie"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 11,
+    "repair_count": 0,
+    "grounding_acts_count": 11,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:38Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:38Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 20431.0741,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 9
+  }
+}

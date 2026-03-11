@@ -83,6 +83,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-samples", type=int, default=0)
     parser.add_argument("--sample-ids-file", type=str, default="")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument(
+        "--resume-skip-mode",
+        type=str,
+        default="all",
+        choices=["all", "success_only"],
+    )
     parser.add_argument("--provider", type=str, default="reference_dialogue")
     parser.add_argument("--provider-name", type=str, default="")
     parser.add_argument("--model", type=str, default="")
@@ -153,7 +159,15 @@ def main() -> None:
 
     completed_ids: set[str] = set()
     if args.resume and output_jsonl.exists():
-        completed_ids = {str(row.get("sample_id")) for row in read_jsonl(output_jsonl)}
+        existing_rows = read_jsonl(output_jsonl)
+        if args.resume_skip_mode == "success_only":
+            completed_ids = {
+                str(row.get("sample_id"))
+                for row in existing_rows
+                if row.get("sample_id") and bool(row.get("parse_valid")) and not row.get("error")
+            }
+        else:
+            completed_ids = {str(row.get("sample_id")) for row in existing_rows if row.get("sample_id")}
     elif output_jsonl.exists():
         output_jsonl.unlink()
 
@@ -302,6 +316,7 @@ def main() -> None:
         "sample_count_skipped": skipped,
         "failure_count": failures,
         "parse_failure_count": parse_failures,
+        "resume_skip_mode": args.resume_skip_mode if args.resume else "disabled",
         "output_jsonl": str(output_jsonl),
         "generator": generator_config,
         "rate_controls": rate_controls,

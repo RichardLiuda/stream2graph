@@ -1,0 +1,788 @@
+{
+  "id": "aug_gl_block-beta_00226_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/bsbodden/barudb/blob/dc97c4d833ff103d104f2e68bfec8fba50980d8e/final_report/diagrams/block_cache_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "bsbodden/barudb",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client Code\n    participant BlockCache as Block Cache\n    participant EvictionPolicy as Eviction Policy\n    participant TTLManager as TTL Manager\n    participant Storage as Storage Layer\n    \n    %% Define participant boxes with consistent colors\n    rect rgba(HealthTech_LabAnalyzer)\n        note right of BlockCache: Cache components\n        note right of EvictionPolicy: Policy components\n        note right of TTLManager: TTL components\n    end\n    rect rgba(HealthTech_HIPAA_Vault)\n        note right of Storage: Storage components\n    end\n    \n    %% Block cache operations\n    Client->>BlockCache: get_block(HealthTech_PatientRecords)\n    \n    %% Check if block is in cache\n    BlockCache->>BlockCache: lookup(HealthTech_HIPAA_Vault)\n    \n    alt block found in cache\n        %% Update access statistics\n        BlockCache->>EvictionPolicy: record_access(HealthTech_LabAnalyzer)\n        EvictionPolicy-->>BlockCache: updated_metadata\n        \n        %% Check if TTL expired\n        BlockCache->>TTLManager: is_expired(HealthTech_PatientRecords)\n        \n        alt block expired\n            TTLManager-->>BlockCache: true\n            BlockCache->>BlockCache: remove_from_cache(HealthTech_DiagnosticEngine)\n            \n            %% Load from storage\n            BlockCache->>Storage: read_block(HealthTech_DiagnosticEngine)\n            Storage-->>BlockCache: block_data\n            \n            %% Insert back with refreshed TTL\n            BlockCache->>TTLManager: set_expiry(HealthTech_PatientRecords)\n            BlockCache->>EvictionPolicy: add_entry(HealthTech_HIPAA_Vault)\n            \n            BlockCache-->>Client: block_data\n        else block not expired\n            TTLManager-->>BlockCache: false\n            BlockCache-->>Client: cached_block_data\n        end\n    else block not found in cache\n        %% Load from storage\n        BlockCache->>Storage: read_block(HealthTech_DiagnosticEngine)\n        Storage-->>BlockCache: block_data\n        \n        %% Check if cache is full\n        BlockCache->>EvictionPolicy: is_cache_full(HealthTech_LabAnalyzer)\n        \n        alt cache full - need eviction\n            EvictionPolicy-->>BlockCache: true\n            \n            %% Policy determines what to evict\n            BlockCache->>EvictionPolicy: select_victim(HealthTech_EMR_Sync)\n            \n            alt using LRU policy\n                note right of EvictionPolicy: Least Recently Used block selected\n            else using LFU policy\n                note right of EvictionPolicy: Least Frequently Used block selected\n            else using TinyLFU policy\n                note right of EvictionPolicy: Frequency sketch determines victim\n            end\n            \n            EvictionPolicy-->>BlockCache: victim_block_id\n            \n            %% Evict the selected block\n            BlockCache->>BlockCache: evict_block(HealthTech_LabAnalyzer)\n            BlockCache->>TTLManager: remove_expiry(HealthTech_EMR_Sync)\n        else cache has space\n            EvictionPolicy-->>BlockCache: false\n        end\n        \n        %% Insert new block\n        BlockCache->>BlockCache: insert_block(HealthTech_EMR_Sync)\n        BlockCache->>EvictionPolicy: add_entry(HealthTech_DiagnosticEngine)\n        EvictionPolicy-->>BlockCache: success\n        BlockCache->>TTLManager: set_expiry(HealthTech_EMR_Sync)\n        TTLManager-->>BlockCache: success\n        \n        BlockCache-->>Client: block_data\n    end\n    \n    %% Periodic TTL cleanup (HealthTech_EMR_Sync)\n    loop TTL cleanup interval\n        TTLManager->>TTLManager: check_expired_entries(HealthTech_HIPAA_Vault)\n        \n        loop For each expired entry\n            TTLManager->>BlockCache: notify_expired(HealthTech_DiagnosticEngine)\n            BlockCache->>BlockCache: remove_from_cache(HealthTech_LabAnalyzer)\n            BlockCache->>EvictionPolicy: remove_entry(HealthTech_LabAnalyzer)\n        end\n    end",
+  "content_size": 3655,
+  "collected_at": "2026-02-06T14:04:54.927677",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gl_block-beta_00226",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为医疗数据系统设计一个块缓存的序列图，核心场景是Client Code查询HealthTech_PatientRecords时的完整缓存生命周期。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这个缓存系统需要包含哪些核心组件？除了Block Cache本身，是否需要独立的策略管理和过期控制？",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要四个主要参与者：Client Code作为入口，Block Cache作为核心，Eviction Policy处理替换策略，TTL Manager管理过期，最后还要连到Storage Layer做持久化。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出这五个参与者的基础框架。注意到这是医疗场景，我打算用HealthTech_LabAnalyzer和HealthTech_HIPAA_Vault的配色来区分缓存组件和存储组件。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "配色方案可以，Cache组件和Policy、TTL放在LabAnalyzer色块，Storage单独放在HIPAA_Vault色块，这样符合数据安全分区的要求。",
+      "elements_involved": [
+        "HealthTech_LabAnalyzer",
+        "HealthTech_HIPAA_Vault",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "现在开始主流程：Client Code发起get_block请求查询HealthTech_PatientRecords，Block Cache先内部lookup检查HealthTech_HIPAA_Vault的索引？",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "get_block",
+        "HealthTech_PatientRecords",
+        "lookup",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，lookup的参数应该是HealthTech_HIPAA_Vault，表示在受保护的数据域内查找。这里要分叉处理：命中缓存和未命中两种情况。",
+      "elements_involved": [
+        "Block Cache",
+        "lookup",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加alt分支：block found in cache。在命中分支里，Block Cache需要通知Eviction Policy更新访问统计。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "record_access"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "record_access的参数用HealthTech_LabAnalyzer，表示这是实验室分析类的访问模式。Eviction Policy返回updated_metadata给Block Cache。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "record_access",
+        "HealthTech_LabAnalyzer",
+        "updated_metadata"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新。接下来Block Cache要询问TTL Manager检查HealthTech_PatientRecords是否过期？",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "is_expired",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，这里需要嵌套alt：如果TTL Manager返回true表示过期，Block Cache要执行remove_from_cache，参数是HealthTech_DiagnosticEngine，然后从Storage Layer重新加载。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "is_expired",
+        "remove_from_cache",
+        "HealthTech_DiagnosticEngine",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "过期分支已添加：Block Cache调用read_block从Storage Layer获取数据，参数是HealthTech_DiagnosticEngine。然后需要刷新TTL并重新插入缓存。",
+      "elements_involved": [
+        "Block Cache",
+        "Storage Layer",
+        "read_block",
+        "HealthTech_DiagnosticEngine",
+        "set_expiry",
+        "add_entry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "set_expiry的参数回到HealthTech_PatientRecords，因为这是原始请求的数据；add_entry给Eviction Policy的参数用HealthTech_HIPAA_Vault，表示受保护数据的元数据记录。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "set_expiry",
+        "HealthTech_PatientRecords",
+        "Eviction Policy",
+        "add_entry",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整参数。过期分支最后Block Cache返回block_data给Client Code。现在处理未过期分支：TTL Manager返回false，直接返回cached_block_data。",
+      "elements_involved": [
+        "Block Cache",
+        "Client Code",
+        "block_data",
+        "cached_block_data",
+        "TTL Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "命中缓存的两个子分支都完整了。现在处理else分支：block not found in cache，这是缓存未命中的完整流程。",
+      "elements_involved": [
+        "Block Cache",
+        "Storage Layer",
+        "read_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "未命中分支已添加：Block Cache从Storage Layer read_block获取HealthTech_DiagnosticEngine的数据。接下来需要检查缓存是否已满。",
+      "elements_involved": [
+        "Block Cache",
+        "Storage Layer",
+        "read_block",
+        "HealthTech_DiagnosticEngine",
+        "Eviction Policy",
+        "is_cache_full"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "is_cache_full的参数用HealthTech_LabAnalyzer。如果返回true，需要执行完整的eviction流程：先select_victim，参数是HealthTech_EMR_Sync。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "is_cache_full",
+        "HealthTech_LabAnalyzer",
+        "select_victim",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "select_victim这里需要展开策略细节吗？我们支持LRU、LFU、TinyLFU三种策略。",
+      "elements_involved": [
+        "Eviction Policy",
+        "LRU",
+        "LFU",
+        "TinyLFU"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要展开，用alt展示三种策略：LRU选择最近最少使用，LFU选择最少频繁使用，TinyLFU用frequency sketch决定。每种策略右侧加note说明。",
+      "elements_involved": [
+        "Eviction Policy",
+        "LRU",
+        "LFU",
+        "TinyLFU",
+        "Least Recently Used",
+        "Least Frequently Used",
+        "Frequency sketch"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "三种策略分支已添加，每个都有右侧注释。Eviction Policy最终返回victim_block_id给Block Cache，然后执行evict_block和remove_expiry。",
+      "elements_involved": [
+        "Eviction Policy",
+        "Block Cache",
+        "victim_block_id",
+        "evict_block",
+        "remove_expiry",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "evict_block的参数是HealthTech_LabAnalyzer，remove_expiry给TTL Manager的参数是HealthTech_EMR_Sync。如果缓存未满，Eviction Policy直接返回false。",
+      "elements_involved": [
+        "Block Cache",
+        "evict_block",
+        "HealthTech_LabAnalyzer",
+        "TTL Manager",
+        "remove_expiry",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "缓存空间检查的两个分支都完成了。现在添加新块插入流程：Block Cache执行insert_block，参数HealthTech_EMR_Sync。",
+      "elements_involved": [
+        "Block Cache",
+        "insert_block",
+        "HealthTech_EMR_Sync",
+        "Eviction Policy",
+        "add_entry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "insert_block之后，add_entry给Eviction Policy的参数用HealthTech_DiagnosticEngine，然后设置TTL，参数HealthTech_EMR_Sync，最后返回block_data给Client。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "add_entry",
+        "HealthTech_DiagnosticEngine",
+        "TTL Manager",
+        "set_expiry",
+        "HealthTech_EMR_Sync",
+        "Client Code",
+        "block_data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "主流程的缓存未命中分支已完成。现在需要添加周期性TTL清理的后台流程，用loop实现，标注HealthTech_EMR_Sync。",
+      "elements_involved": [
+        "TTL Manager",
+        "loop",
+        "TTL cleanup interval",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，TTL cleanup interval循环内，TTL Manager自己执行check_expired_entries，参数HealthTech_HIPAA_Vault，然后嵌套loop处理每个过期项。",
+      "elements_involved": [
+        "TTL Manager",
+        "check_expired_entries",
+        "HealthTech_HIPAA_Vault",
+        "loop",
+        "For each expired entry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "内层循环已添加：TTL Manager通知Block Cache有notify_expired，参数HealthTech_DiagnosticEngine；Block Cache执行remove_from_cache和remove_entry。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "notify_expired",
+        "HealthTech_DiagnosticEngine",
+        "remove_from_cache",
+        "remove_entry",
+        "HealthTech_LabAnalyzer",
+        "Eviction Policy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "remove_from_cache的参数是HealthTech_LabAnalyzer，remove_entry给Eviction Policy的参数也是HealthTech_LabAnalyzer。这样整个清理流程就闭环了。",
+      "elements_involved": [
+        "Block Cache",
+        "remove_from_cache",
+        "HealthTech_LabAnalyzer",
+        "Eviction Policy",
+        "remove_entry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "整个序列图结构已完成。我检查一下：主流程覆盖了缓存命中（过期/未过期）和未命中（需要eviction/不需要eviction），后台流程有TTL清理。参数都按医疗数据类型区分了。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "发现一个参数问题：Block Cache内部lookup的参数应该是HealthTech_HIPAA_Vault，但我之前说的是检查PatientRecords的索引，实际上lookup应该直接查缓存索引，参数保持HealthTech_HIPAA_Vault没问题，但让我再确认record_access的参数。",
+      "elements_involved": [
+        "Block Cache",
+        "lookup",
+        "record_access",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下当前状态：lookup(HealthTech_HIPAA_Vault)，record_access(HealthTech_LabAnalyzer)，这两个参数确实不同，前者是数据安全域，后者是访问模式类型。需要调整吗？",
+      "elements_involved": [
+        "Block Cache",
+        "lookup",
+        "HealthTech_HIPAA_Vault",
+        "record_access",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "不需要调整，这样设计是合理的：lookup在HIPAA保护域内搜索，record_access记录LabAnalyzer类型的访问模式。继续检查其他参数。",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我注意到is_expired和set_expiry的参数都是HealthTech_PatientRecords，但remove_from_cache在过期分支用的是HealthTech_DiagnosticEngine，这个不一致需要统一吗？",
+      "elements_involved": [
+        "TTL Manager",
+        "is_expired",
+        "set_expiry",
+        "HealthTech_PatientRecords",
+        "remove_from_cache",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这是有意的设计：is_expired/set_expiry操作的是逻辑数据类型PatientRecords，但remove_from_cache操作的是物理存储块DiagnosticEngine。医疗数据常做这种逻辑-物理分离。",
+      "elements_involved": [
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine",
+        "TTL Manager",
+        "Block Cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解了，这是医疗系统的数据分层设计。那read_block用HealthTech_DiagnosticEngine也是同样的物理层操作逻辑？",
+      "elements_involved": [
+        "Storage Layer",
+        "read_block",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Storage Layer只处理物理块。另外检查select_victim用HealthTech_EMR_Sync，这是电子病历同步的上下文，表示eviction策略要考虑EMR数据的同步状态。",
+      "elements_involved": [
+        "Eviction Policy",
+        "select_victim",
+        "HealthTech_EMR_Sync",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "参数语义都确认了。我优化一下note的位置，让Cache components、Policy components、TTL components的注释更靠近对应的参与者。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "在TinyLFU策略的note里，把\"Frequency sketch determines victim\"写完整，强调这是用频率草图做准入和淘汰的决策。",
+      "elements_involved": [
+        "Eviction Policy",
+        "TinyLFU",
+        "Frequency sketch"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新TinyLFU的注释。现在检查所有返回消息：updated_metadata、block_data、cached_block_data、victim_block_id、success这些虚线箭头都正确使用了--语法。",
+      "elements_involved": [
+        "Eviction Policy",
+        "Block Cache",
+        "updated_metadata",
+        "block_data",
+        "cached_block_data",
+        "victim_block_id",
+        "success",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "确认success返回：Eviction Policy的add_entry返回success，TTL Manager的set_expiry也返回success，这两个是独立的确认。",
+      "elements_involved": [
+        "Eviction Policy",
+        "add_entry",
+        "success",
+        "TTL Manager",
+        "set_expiry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "两个success返回都已标注。再确认一下loop的标注：外层是\"TTL cleanup interval\"，内层是\"For each expired entry\"，都带HealthTech_EMR_Sync标记。",
+      "elements_involved": [
+        "TTL Manager",
+        "loop",
+        "TTL cleanup interval",
+        "HealthTech_EMR_Sync",
+        "For each expired entry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查rect色块：第一个rect包含BlockCache、EvictionPolicy、TTLManager的notes，用HealthTech_LabAnalyzer色；第二个rect只包含Storage的note，用HealthTech_HIPAA_Vault色。",
+      "elements_involved": [
+        "rect",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_HIPAA_Vault",
+        "BlockCache",
+        "EvictionPolicy",
+        "TTLManager",
+        "Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "色块分组已确认。我注意到第一个rect的note都是\"right of\"对应组件，这样视觉上会形成右侧注释列，比较清晰。",
+      "elements_involved": [
+        "rect",
+        "note right of",
+        "BlockCache",
+        "EvictionPolicy",
+        "TTLManager",
+        "Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "对，右侧注释列的设计很好。再检查所有alt和else的配对：主流程有block found/block not found，block expired/block not expired，cache full/cache has space；eviction策略有LRU/LFU/TinyLFU三选一。",
+      "elements_involved": [
+        "alt",
+        "else",
+        "block found",
+        "block not found",
+        "block expired",
+        "block not expired",
+        "cache full",
+        "cache has space",
+        "LRU",
+        "LFU",
+        "TinyLFU"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有条件分支都已正确闭合。最后统计一下交互数量：Client-BlockCache 2次（get_block和返回），BlockCache内部操作多次，与Eviction Policy 6次交互，与TTL Manager 5次交互，与Storage Layer 2次交互，加上后台清理循环。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：在缓存未命中的插入流程中，add_entry和set_expiry的调用顺序，以及它们返回success后再给Client返回数据，这个时序要准确。",
+      "elements_involved": [
+        "Block Cache",
+        "insert_block",
+        "add_entry",
+        "set_expiry",
+        "success",
+        "Client Code",
+        "block_data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整时序：insert_block(HealthTech_EMR_Sync) → add_entry(HealthTech_DiagnosticEngine) → 收到success → set_expiry(HealthTech_EMR_Sync) → 收到success → 最后返回block_data给Client。",
+      "elements_involved": [
+        "Block Cache",
+        "insert_block",
+        "HealthTech_EMR_Sync",
+        "add_entry",
+        "HealthTech_DiagnosticEngine",
+        "set_expiry",
+        "success",
+        "Client Code",
+        "block_data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "时序正确。现在整个图覆盖了：正常缓存命中返回、缓存命中但过期刷新、缓存未命中直接加载、缓存未命中需要eviction后加载、后台TTL清理五种场景。",
+      "elements_involved": [
+        "cached_block_data",
+        "block_data",
+        "evict_block",
+        "TTL cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我最后优化一下注释的表述，把\"Cache components\"、\"Policy components\"、\"TTL components\"、\"Storage components\"的说明写得更专业一些？",
+      "elements_involved": [
+        "note",
+        "Cache components",
+        "Policy components",
+        "TTL components",
+        "Storage components"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持简洁即可，当前表述已经清晰。重点是医疗数据类型的参数设计准确体现了HIPAA合规、实验室分析、诊断引擎、EMR同步等不同业务域的区分。",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终检查完成：所有参与者定义正确，rect色块分组合理，alt/else/loop嵌套正确闭合，消息参数与医疗数据类型匹配，返回消息使用虚线箭头，注释位置恰当。",
+      "elements_involved": [
+        "participant",
+        "rect",
+        "alt",
+        "else",
+        "loop",
+        "note",
+        "-",
+        "--"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "序列图定稿。这个设计完整展示了医疗数据块缓存的核心机制，包括访问追踪、TTL管理、多级淘汰策略和后台清理，所有组件交互都符合HealthTech各业务域的数据特性。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 51,
+    "repair_count": 1,
+    "grounding_acts_count": 51,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 109855.0911,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 51
+  }
+}

@@ -1,0 +1,149 @@
+{
+  "id": "aug_ot_stateDiagram_00046_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/aminshahid573/todo-grpc/blob/fc06a441c73b41687132aec6f3ef0641aa675617/docs/diagrams/token_lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "aminshahid573/todo-grpc",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [IoT_Industrial_ActuatorController] --> Login: User Credentials\n    Login --> TokensGenerated: Success\n    \n    state TokensGenerated {IoT_Industrial_EdgeNode] --> AccessToken_Stateless\n        [IoT_Industrial_MQTT_Broker] --> RefreshToken_Stateful\n    }\n    \n    AccessToken_Stateless --> Active: valid for 15m\n    Active --> Expired: after 15m\n    Expired --> Refresh: use RefreshToken\n    \n    RefreshToken_Stateful --> StoredInDB: Active for 7d\n    StoredInDB --> Rotated: Refresh RPC called\n    Rotated --> DeletedFromDB: Old Token\n    Rotated --> StoredInDB: New Token Pair Issued\n    \n    StoredInDB --> Revoked: DeleteUser called\n    Revoked --> [IoT_Industrial_PLC_Logic]\n    \n    Expired --> [IoT_Industrial_MQTT_Broker]\n",
+  "content_size": 634,
+  "collected_at": "2026-02-06T10:37:11.344273",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00046",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网场景设计一个认证状态机。场景是ActuatorController通过用户凭证登录，成功后生成双Token体系。关键是AccessToken要无状态、15分钟有效期，RefreshToken有状态、存数据库、7天有效期。",
+      "elements_involved": [
+        "IoT_Industrial_ActuatorController",
+        "Login",
+        "TokensGenerated",
+        "AccessToken_Stateless",
+        "RefreshToken_Stateful"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，双Token结构。TokensGenerated作为一个复合状态，里面包含EdgeNode和MQTT_Broker两个并行的Token来源对吗？还是说我理解错了，应该是EdgeNode生成AccessToken、MQTT_Broker生成RefreshToken？",
+      "elements_involved": [
+        "TokensGenerated",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，TokensGenerated是复合状态，EdgeNode负责无状态的AccessToken，MQTT_Broker负责有状态的RefreshToken。这是分布式架构，两个组件各自托管不同类型的Token。",
+      "elements_involved": [
+        "TokensGenerated",
+        "IoT_Industrial_EdgeNode",
+        "AccessToken_Stateless",
+        "IoT_Industrial_MQTT_Broker",
+        "RefreshToken_Stateful"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主线画出来：ActuatorController发起Login，成功进入TokensGenerated，里面分叉到AccessToken和RefreshToken两条线。AccessToken经过Active状态，15分钟后变为Expired，这时候要用RefreshToken去刷新。",
+      "elements_involved": [
+        "Login",
+        "TokensGenerated",
+        "Active",
+        "Expired",
+        "Refresh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RefreshToken那条线需要仔细处理。它一开始存在StoredInDB状态，当调用Refresh RPC时进入Rotated。Rotated这里有个关键分支：旧Token要DeletedFromDB，同时新Token Pair要回到StoredInDB。",
+      "elements_involved": [
+        "RefreshToken_Stateful",
+        "StoredInDB",
+        "Rotated",
+        "DeletedFromDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Rotated同时指向DeletedFromDB和StoredInDB，这是一个分叉还是顺序执行？还有，如果用户调用DeleteUser，RefreshToken应该直接Revoked吧？",
+      "elements_involved": [
+        "Rotated",
+        "DeletedFromDB",
+        "StoredInDB",
+        "Revoked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Rotated是原子性的替换操作，旧的去DeletedFromDB，新的回StoredInDB。DeleteUser触发Revoked，然后整个流程终结到PLC_Logic，表示设备控制权移交。另外Expired状态如果刷新失败，也要回到MQTT_Broker重新协商。",
+      "elements_involved": [
+        "Rotated",
+        "Revoked",
+        "IoT_Industrial_PLC_Logic",
+        "Expired",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成了。整个状态机覆盖了登录、Token生成、AccessToken生命周期、RefreshToken轮换与吊销的完整流程。复合状态TokensGenerated清晰展示了EdgeNode和MQTT_Broker的协作关系。",
+      "elements_involved": [
+        "stateDiagram-v2",
+        "TokensGenerated",
+        "AccessToken_Stateless",
+        "RefreshToken_Stateful"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:35Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:35Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 18704.0455,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

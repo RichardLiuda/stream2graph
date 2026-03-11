@@ -1,0 +1,488 @@
+{
+  "id": "aug_ot_stateDiagram_00188_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/filecoin-project/specs/blob/a95002835b34d4042c007feda3fecf5e68e79dfa/content/intro/new-state-diagram.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "filecoin-project/specs",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram\n\n    Null --> Precommitted: PreCommitSectors\n    Precommitted --> Committed: CommitSectors\n    Precommitted --> Deleted: CronPreCommitExpiry (Infra_WorkerNode)\n    Committed --> Active: SubmittedWindowPoSt\n    Committed --> Faulty: DeclareFault\\nSubmitWindowPoSt (Infra_LoadBalancer)\\nProvingDeadline (Infra_EtcdCluster)\n    Committed --> Terminated: TerminateSectors\\n(Infra_EtcdCluster)\n    Faulty --> Active: SubmittedWindowPoSt (Infra_RedisCache)\n    Faulty --> Faulty: ProvingDeadline (Infra_WorkerNode)\n    Faulty --> Recovering: DeclareFaultRecovered\n    Faulty --> Terminated: EarlyExpiration (Infra_RedisCache)\\nTerminateSectors (Infra_WorkerNode)\n    Recovering --> Active: SubmittedWindowPoSt (Infra_WorkerNode)\n    Recovering --> Faulty: DeclareFault\\nProvingDeadline (Infra_RedisCache)\n    Recovering --> Terminated: TerminateSectors (Infra_EtcdCluster)\n    Active --> Active: SubmittedWindowPoSt\n    Active --> Faulty: DeclareFault\\nSubmitWindowPoSt (Infra_RedisCache)\\nProvingDeadline (Infra_WorkerNode)\n    Active --> Terminated: CronExpiration\\nTerminateSectors (Infra_LoadBalancer)\n    Terminated --> Deleted: CompactSectors\n",
+  "content_size": 954,
+  "collected_at": "2026-02-06T10:38:54.979720",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00188",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为存储扇区的生命周期设计一个状态图，核心是从空状态到最终删除的完整流转。起点是Null状态，通过PreCommitSectors进入Precommitted。",
+      "elements_involved": [
+        "Null",
+        "Precommitted",
+        "PreCommitSectors"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，Null到Precommitted的转换事件是PreCommitSectors。那Precommitted之后有哪些分支？",
+      "elements_involved": [
+        "Null",
+        "Precommitted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Precommitted有两个去向：正常路径是通过CommitSectors到达Committed；异常路径是如果WorkerNode上的定时任务触发CronPreCommitExpiry，就直接变成Deleted。",
+      "elements_involved": [
+        "Precommitted",
+        "Committed",
+        "Deleted",
+        "CommitSectors",
+        "CronPreCommitExpiry",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Precommitted到Committed的CommitSectors转换，以及到Deleted的CronPreCommitExpiry，标注了Infra_WorkerNode。Committed之后呢？",
+      "elements_involved": [
+        "Precommitted",
+        "Committed",
+        "Deleted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Committed是关键节点，有三种可能：提交WindowPoSt成功后变为Active；或者因为DeclareFault、SubmitWindowPoSt失败、以及ProvingDeadline到期而进入Faulty。这里Faulty的触发涉及LoadBalancer和EtcdCluster两个基础设施组件。",
+      "elements_involved": [
+        "Committed",
+        "Active",
+        "Faulty",
+        "SubmittedWindowPoSt",
+        "DeclareFault",
+        "SubmitWindowPoSt",
+        "ProvingDeadline",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下，Committed到Faulty这条边上有三个触发条件？DeclareFault、SubmitWindowPoSt、ProvingDeadline？",
+      "elements_involved": [
+        "Committed",
+        "Faulty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，DeclareFault和SubmitWindowPoSt是操作事件，ProvingDeadline是时间驱动的事件。另外Committed还有一条终止路径：通过TerminateSectors直接到Terminated，这个由EtcdCluster处理。",
+      "elements_involved": [
+        "Committed",
+        "Terminated",
+        "TerminateSectors",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Committed的三条出边：到Active的SubmittedWindowPoSt，到Faulty的三个触发条件（标注LoadBalancer和EtcdCluster），以及到Terminated的TerminateSectors。Faulty状态需要详细展开吗？",
+      "elements_involved": [
+        "Committed",
+        "Active",
+        "Faulty",
+        "Terminated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Faulty比较复杂，有四种可能：恢复成功通过SubmittedWindowPoSt回到Active，这个由RedisCache处理；或者ProvingDeadline再次到期时保持在Faulty，由WorkerNode处理；也可以通过DeclareFaultRecovered进入Recovering；还有EarlyExpiration或TerminateSectors直接到Terminated。",
+      "elements_involved": [
+        "Faulty",
+        "Active",
+        "Recovering",
+        "Terminated",
+        "SubmittedWindowPoSt",
+        "ProvingDeadline",
+        "DeclareFaultRecovered",
+        "EarlyExpiration",
+        "TerminateSectors",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Faulty到Faulty的自环是通过ProvingDeadline触发的？这是表示故障持续？",
+      "elements_involved": [
+        "Faulty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，每个证明周期ProvingDeadline都会检查，如果故障未恢复就保持Faulty状态。EarlyExpiration和TerminateSectors到Terminated分别由RedisCache和WorkerNode处理。",
+      "elements_involved": [
+        "Faulty",
+        "Terminated",
+        "ProvingDeadline",
+        "EarlyExpiration",
+        "TerminateSectors"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Faulty的四条转换：到Active（RedisCache）、自环（WorkerNode）、到Recovering、到Terminated（两个触发条件）。现在处理Recovering状态？",
+      "elements_involved": [
+        "Faulty",
+        "Active",
+        "Recovering",
+        "Terminated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Recovering是恢复中的过渡态，也有三种可能：成功提交WindowPoSt后变为Active，由WorkerNode处理；恢复失败通过DeclareFault或ProvingDeadline回到Faulty，由RedisCache处理；或者被TerminateSectors终止到Terminated，由EtcdCluster处理。",
+      "elements_involved": [
+        "Recovering",
+        "Active",
+        "Faulty",
+        "Terminated",
+        "SubmittedWindowPoSt",
+        "DeclareFault",
+        "ProvingDeadline",
+        "TerminateSectors",
+        "Infra_WorkerNode",
+        "Infra_RedisCache",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Recovering的三条出边。现在回到Active状态，它应该也有多条转换吧？",
+      "elements_involved": [
+        "Recovering",
+        "Active",
+        "Faulty",
+        "Terminated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Active是正常运行状态，有自环SubmittedWindowPoSt表示持续证明；也可能因DeclareFault、SubmitWindowPoSt失败、ProvingDeadline到期进入Faulty，这里涉及RedisCache和WorkerNode；还可能通过CronExpiration或TerminateSectors进入Terminated，由LoadBalancer处理。",
+      "elements_involved": [
+        "Active",
+        "Faulty",
+        "Terminated",
+        "SubmittedWindowPoSt",
+        "DeclareFault",
+        "SubmitWindowPoSt",
+        "ProvingDeadline",
+        "CronExpiration",
+        "TerminateSectors",
+        "Infra_RedisCache",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Active到Faulty的触发条件和Committed到Faulty类似，但基础设施分配不同？Committed用LoadBalancer和EtcdCluster，Active用RedisCache和WorkerNode？",
+      "elements_involved": [
+        "Active",
+        "Faulty",
+        "Committed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，这是有意设计的负载分担。Committed阶段的故障检测由LoadBalancer和EtcdCluster负责，Active阶段则由RedisCache和WorkerNode处理，实现组件解耦。",
+      "elements_involved": [
+        "Active",
+        "Committed",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Active的三类转换：自环、到Faulty（三个触发条件，标注RedisCache和WorkerNode）、到Terminated（CronExpiration和TerminateSectors，标注LoadBalancer）。Terminated之后呢？",
+      "elements_involved": [
+        "Active",
+        "Faulty",
+        "Terminated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Terminated是终止状态，最后通过CompactSectors清理数据变为Deleted，完成生命周期。Deleted是终态，没有出边。",
+      "elements_involved": [
+        "Terminated",
+        "Deleted",
+        "CompactSectors"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Terminated到Deleted的CompactSectors转换。让我整体检查一遍，目前所有状态：Null、Precommitted、Committed、Active、Faulty、Recovering、Terminated、Deleted，共8个状态。",
+      "elements_involved": [
+        "Terminated",
+        "Deleted",
+        "Null",
+        "Precommitted",
+        "Committed",
+        "Active",
+        "Faulty",
+        "Recovering"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下，Precommitted到Deleted的路径只有CronPreCommitExpiry吗？有没有遗漏EarlyExpiration？",
+      "elements_involved": [
+        "Precommitted",
+        "Deleted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确认一下，当前Precommitted到Deleted只有CronPreCommitExpiry。EarlyExpiration是从Faulty到Terminated的，不是从Precommitted的。需要调整吗？",
+      "elements_involved": [
+        "Precommitted",
+        "Deleted",
+        "Faulty",
+        "Terminated",
+        "CronPreCommitExpiry",
+        "EarlyExpiration"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "不需要调整，我确认过了。Precommitted阶段只有CronPreCommitExpiry会直接导致删除，EarlyExpiration是针对已提交扇区的提前过期。当前结构正确。",
+      "elements_involved": [
+        "Precommitted",
+        "Deleted",
+        "Faulty",
+        "Terminated",
+        "CronPreCommitExpiry",
+        "EarlyExpiration"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "再确认一个细节：Recovering到Faulty的ProvingDeadline是由RedisCache处理的，而Faulty自环的ProvingDeadline是由WorkerNode处理的，这样设计是为了区分恢复期和持续故障期的责任？",
+      "elements_involved": [
+        "Recovering",
+        "Faulty",
+        "ProvingDeadline",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。恢复期的证明截止检查由RedisCache快速响应，持续故障期的周期性检查由WorkerNode批量处理，这是性能优化设计。",
+      "elements_involved": [
+        "Recovering",
+        "Faulty",
+        "ProvingDeadline",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有状态和转换已确认完成。最后验证基础设施标注：EtcdCluster出现在Committed到Faulty、Committed到Terminated、Recovering到Terminated；LoadBalancer出现在Committed到Faulty、Active到Terminated；RedisCache出现在Faulty到Active、Faulty到Terminated、Recovering到Faulty、Active到Faulty；WorkerNode出现在Precommitted到Deleted、Faulty自环、Recovering到Active、Active到Faulty。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "基础设施分配正确。这个状态图完整覆盖了扇区从创建、提交、激活、故障、恢复、终止到清理的全生命周期，各组件职责清晰。",
+      "elements_involved": [
+        "Null",
+        "Precommitted",
+        "Committed",
+        "Active",
+        "Faulty",
+        "Recovering",
+        "Terminated",
+        "Deleted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我注意到SubmittedWindowPoSt出现了多次：Committed到Active、Faulty到Active、Recovering到Active、Active自环。这些都是同一个事件吗？",
+      "elements_involved": [
+        "SubmittedWindowPoSt",
+        "Committed",
+        "Active",
+        "Faulty",
+        "Recovering"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，SubmittedWindowPoSt是窗口时空证明提交事件，在不同状态下成功提交都会进入或保持Active状态。这是Filecoin共识机制的核心操作。",
+      "elements_involved": [
+        "SubmittedWindowPoSt",
+        "Active"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终状态图已完成，包含8个状态、14条转换边，涉及4类基础设施组件。所有转换事件和基础设施标注已按讨论结果落实。",
+      "elements_involved": [
+        "Null",
+        "Precommitted",
+        "Committed",
+        "Active",
+        "Faulty",
+        "Recovering",
+        "Terminated",
+        "Deleted",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认无误。这个设计能够支撑生产环境的扇区生命周期管理，各状态转换的触发条件和责任组件都很清晰，可以进入评审阶段了。",
+      "elements_involved": [
+        "Null",
+        "Precommitted",
+        "Committed",
+        "Active",
+        "Faulty",
+        "Recovering",
+        "Terminated",
+        "Deleted"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 31,
+    "repair_count": 1,
+    "grounding_acts_count": 31,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 75260.3977,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 31
+  }
+}

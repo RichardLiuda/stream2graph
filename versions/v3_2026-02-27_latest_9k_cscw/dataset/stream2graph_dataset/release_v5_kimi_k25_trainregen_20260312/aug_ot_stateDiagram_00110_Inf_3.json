@@ -1,0 +1,198 @@
+{
+  "id": "aug_ot_stateDiagram_00110_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Three-Rivers-Tech/finance_feedback_engine/blob/414c209b886adbac796e1d4ceea68c4cf81baebc/docs/diagrams/circuit_breaker_state.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Three-Rivers-Tech/finance_feedback_engine",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_LoadBalancer] --> CLOSED\n\n    state CLOSED {Infra_WorkerNode] --> Normal\n        Normal --> IncrementFailures: execute_trade fails\n        IncrementFailures --> CheckThreshold: failure_count++\n        CheckThreshold --> Normal: count < 3\n        CheckThreshold --> [Infra_LoadBalancer]: count >= 3\n\n        Normal --> ResetCount: execute_trade succeeds\n        ResetCount --> Normal: failure_count = 0\n    }\n\n    CLOSED --> OPEN: Threshold Reached 3 failures\n\n    state OPEN {Infra_WorkerNode] --> BlockCalls\n        BlockCalls --> CheckTimeout: All calls raise CircuitBreakerError\n        CheckTimeout --> BlockCalls: elapsed < 60s\n        CheckTimeout --> [Infra_EtcdCluster]: elapsed >= 60s\n    }\n\n    OPEN --> HALF_OPEN: Recovery Timeout Expired\n\n    state HALF_OPEN {Infra_RedisCache] --> TestRecovery\n        TestRecovery --> EvaluateResult: Allow ONE test call\n        EvaluateResult --> [Infra_IngressController]: Success\n        EvaluateResult --> ReOpen: Failure\n\n        ReOpen --> [Infra_LoadBalancer]\n    }\n\n    HALF_OPEN --> CLOSED: Test Call Succeeds\n    HALF_OPEN --> OPEN: Test Call Fails\n\n    style CLOSED fill:#4CAF50,stroke:#2E7D32,color:#fff\n    style OPEN fill:#F44336,stroke:#C62828,color:#fff\n    style HALF_OPEN fill:#FFC107,stroke:#F57C00,color:#333",
+  "content_size": 1199,
+  "collected_at": "2026-02-06T10:38:00.530796",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 1,
+  "repo_owner": "Three-Rivers-Tech",
+  "repo_name": "finance_feedback_engine",
+  "repo_description": "Finance feedback engine is an automated portfolio simulation tool using the LLM models of your choice.",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2025-11-19T00:29:36Z",
+  "repo_updated_at": "2026-01-22T19:46:09Z",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00110",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为熔断器模式画一个状态图。核心场景是：LoadBalancer后面的WorkerNode在执行交易时可能失败，连续失败3次要触发熔断，进入OPEN状态。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "CLOSED",
+        "Normal",
+        "execute_trade",
+        "CheckThreshold"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以初始状态是CLOSED，内部包含Normal和IncrementFailures这些子状态？失败计数达到3时，CLOSED要转换到OPEN？",
+      "elements_involved": [
+        "CLOSED",
+        "OPEN",
+        "IncrementFailures",
+        "CheckThreshold",
+        "Threshold Reached 3 failures"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，CLOSED内部Normal处理正常交易，失败时走IncrementFailures累加，CheckThreshold判断阈值。达到3次后CLOSED整体转到OPEN。另外成功交易要ResetCount清零。",
+      "elements_involved": [
+        "Normal",
+        "ResetCount",
+        "execute_trade succeeds",
+        "failure_count = 0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把CLOSED状态内部结构画出来：Normal连接IncrementFailures（execute_trade fails），IncrementFailures到CheckThreshold（failure_count++），CheckThreshold分两条返回路径。",
+      "elements_involved": [
+        "CLOSED",
+        "Normal",
+        "IncrementFailures",
+        "CheckThreshold",
+        "ResetCount"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OPEN状态的设计：进入后要BlockCalls拦截所有请求，同时启动60秒超时检查。超时后不是直接恢复，而是进入HALF_OPEN试探状态。",
+      "elements_involved": [
+        "OPEN",
+        "BlockCalls",
+        "CheckTimeout",
+        "HALF_OPEN",
+        "Recovery Timeout Expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下OPEN内部：BlockCalls收到请求都抛CircuitBreakerError，CheckTimeout检查elapsed，不到60秒回BlockCalls，到了60秒转到EtcdCluster标记超时完成，然后OPEN整体转到HALF_OPEN？",
+      "elements_involved": [
+        "OPEN",
+        "BlockCalls",
+        "CheckTimeout",
+        "All calls raise CircuitBreakerError",
+        "elapsed < 60s",
+        "elapsed = 60s",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。HALF_OPEN是关键：只允许一个测试请求，由RedisCache里的TestRecovery处理。测试结果决定是走IngressController恢复成功，还是ReOpen重新熔断。",
+      "elements_involved": [
+        "HALF_OPEN",
+        "Infra_RedisCache",
+        "TestRecovery",
+        "EvaluateResult",
+        "Infra_IngressController",
+        "ReOpen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "HALF_OPEN结构已添加：TestRecovery允许一个测试调用，EvaluateResult分支——成功到IngressController，失败走ReOpen回LoadBalancer。HALF_OPEN整体也有两条转出路径到CLOSED或OPEN。",
+      "elements_involved": [
+        "HALF_OPEN",
+        "TestRecovery",
+        "EvaluateResult",
+        "Infra_IngressController",
+        "ReOpen",
+        "Infra_LoadBalancer",
+        "Test Call Succeeds",
+        "Test Call Fails"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后加颜色区分状态：CLOSED用绿色表示健康，OPEN用红色警示，HALF_OPEN用黄色提醒注意。",
+      "elements_involved": [
+        "CLOSED",
+        "OPEN",
+        "HALF_OPEN",
+        "style CLOSED fill:#4CAF50",
+        "style OPEN fill:#F44336",
+        "style HALF_OPEN fill:#FFC107"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "颜色已应用：CLOSED绿色(#4CAF50)、OPEN红色(#F44336)、HALF_OPEN黄色(#FFC107)。整个熔断器状态流转图完成了，从LoadBalancer初始进入，经过三种状态的完整生命周期。",
+      "elements_involved": [
+        "CLOSED",
+        "OPEN",
+        "HALF_OPEN",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 0,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:36Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:36Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 26767.6501,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

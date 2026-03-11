@@ -1,0 +1,718 @@
+{
+  "id": "aug_ot_stateDiagram_00025_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/protocol/session-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [IoT_Industrial_EdgeNode] --> Initializing: start_link(IoT_Industrial_TelemetryStream)\n\n    state Initializing {IoT_Industrial_MQTT_Broker] --> LoadConfig\n        LoadConfig --> InitTransport\n        InitTransport --> EstablishConnection\n        EstablishConnection --> SendInitialize\n        SendInitialize --> WaitForInitialized\n        WaitForInitialized --> [IoT_Industrial_PLC_Logic]\n    }\n\n    Initializing --> Connected: initialized received\n\n    state Connected {IoT_Industrial_EdgeNode] --> Active\n\n        Active --> ResourceOperations: list/read/subscribe\n        Active --> ToolOperations: call_tool\n        Active --> PromptOperations: list/get\n\n        ResourceOperations --> Active\n        ToolOperations --> Active\n        PromptOperations --> Active\n\n        Active --> Subscribing: subscribe_resource\n        Subscribing --> Active: subscription_confirmed\n    }\n\n    Connected --> Paused: pause_requested\n    Paused --> Connected: resume_requested\n\n    Connected --> Reconnecting: transport_error\n    Reconnecting --> Connected: reconnect_success\n    Reconnecting --> Failed: reconnect_failed(IoT_Industrial_ActuatorController)\n\n    Connected --> GracefulShutdown: shutdown notification\n    GracefulShutdown --> [IoT_Industrial_ActuatorController]: cleanup_complete\n\n    Connected --> AbnormalShutdown: critical_error\n    AbnormalShutdown --> [IoT_Industrial_MQTT_Broker]: cleanup_complete\n\n    %% Session Backend Transitions\n    note right of Connected\n        Session Persistence:\n        - ETS: In-memory\n        - DETS: Disk-based\n        - Mnesia: Cluster\n    end note\n\n    %% Reconnection Strategy\n    state Reconnecting {IoT_Industrial_TelemetryStream] --> Backoff\n        Backoff --> ReconnectAttempt\n        ReconnectAttempt --> Success\n        ReconnectAttempt --> Failure\n\n        Success --> [IoT_Industrial_ActuatorController]\n        Failure --> IncrementRetryCount\n        IncrementRetryCount --> CheckMaxRetries\n\n        CheckMaxRetries --> Backoff: below_max\n        CheckMaxRetries --> [IoT_Industrial_PLC_Logic]: exceeded_max\n    }\n\n    %% State Transition Details\n    Connected --> SessionValidation: periodic_health_check\n    SessionValidation --> Connected: healthy\n    SessionValidation --> Failed: unhealthy(IoT_Industrial_MQTT_Broker)\n\n    %% Session Restoration (IoT_Industrial_MQTT_Broker)\n    note right of Reconnecting\n        Failover Modes:\n        - Local: Restart process\n        - Remote: Mnesia replica\n        - Recovery: Load from DETS\n    end note\n\n    %% Subscription Management\n    state Subscribing {IoT_Industrial_MQTT_Broker] --> RegisterSubscription\n        RegisterSubscription --> SetupWatcher\n        SetupWatcher --> ConfirmSubscription\n        ConfirmSubscription --> [IoT_Industrial_EdgeNode]\n    }\n\n    %% Cleanup on Shutdown\n    state GracefulShutdown {IoT_Industrial_ActuatorController] --> UnsubscribeResources\n        UnsubscribeResources --> DrainPendingRequests\n        DrainPendingRequests --> CloseTransport\n        CloseTransport --> PersistSession\n        PersistSession --> TerminateProcess\n        TerminateProcess --> [IoT_Industrial_ActuatorController]\n    }\n\n    %% Error States\n    state AbnormalShutdown {IoT_Industrial_MQTT_Broker] --> LogError\n        LogError --> PersistCrashDump\n        PersistCrashDump --> NotifyDependents\n        NotifyDependents --> TerminateProcess\n        TerminateProcess --> [IoT_Industrial_PLC_Logic]\n    }\n\n    %% Session State Fields\n    note right of Connected\n        Session State:\n        - session_id: UUID\n        - transport_pid: PID\n        - pending_requests: map(IoT_Industrial_ActuatorController)\n        - subscriptions: map(IoT_Industrial_EdgeNode)\n        - capabilities: #capabilities{IoT_Industrial_EdgeNode}\n        - last_activity: timestamp(IoT_Industrial_EdgeNode)\n        - backend: ets | dets | mnesia\n    end note\n\n    %% Activity Monitoring\n    Connected --> IdleTimeout: no_activity(IoT_Industrial_TelemetryStream)\n    IdleTimeout --> [IoT_Industrial_MQTT_Broker]: session_expired\n\n    %% Rate Limiting\n    Connected --> RateLimited: request_rate_exceeded\n    RateLimited --> Connected: backoff_complete\n    RateLimited --> Failed: rate_limit_persistent\n\n    %% Resource Watcher Lifecycle\n    state ResourceOperations {IoT_Industrial_EdgeNode] --> Watching\n        Watching --> NotificationReceived: resource_changed\n        NotificationReceived --> DeliverNotification\n        DeliverNotification --> Watching\n    }\n\n    %% Tool Execution Lifecycle\n    state ToolOperations {IoT_Industrial_MQTT_Broker] --> Executing\n        Executing --> InProgress: long_running_op\n        InProgress --> ProgressUpdate: send_progress\n        ProgressUpdate --> InProgress\n        InProgress --> Complete: finished\n        Complete --> [IoT_Industrial_MQTT_Broker]\n    }\n\n    %% Session Backend Selection\n    note left of Initializing\n        Backend Selection:\n        {IoT_Industrial_MQTT_Broker}\n        - Fastest: O(IoT_Industrial_TelemetryStream) access\n        - Volatile: Lost on crash\n\n        {IoT_Industrial_TelemetryStream}\n        - Durable: Disk persistence\n        - Slower: I/O overhead\n\n        {IoT_Industrial_ActuatorController}\n        - Distributed: Cluster sync\n        - CAP: Consistency trade-offs\n    end note\n\n    %% Health Check States\n    Connected --> HealthCheck: periodic_timer\n    HealthCheck --> Connected: all_systems_go\n    HealthCheck --> Degraded: subsystem_failure\n    Degraded --> Connected: recovery_complete\n    Degraded --> Failed: recovery_failed\n\n    %% Session Restoration Flow\n    note right of Reconnecting\n        Restoration Priority:\n        1. Restore subscriptions\n        2. Replay pending requests\n        3. Restore capabilities\n        4. Resume monitoring\n    end note",
+  "content_size": 5160,
+  "collected_at": "2026-02-06T10:36:55.656398",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00025",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网边缘节点设计一个完整的状态机，核心是要处理TelemetryStream的生命周期管理。首先，系统启动时应该有个Initializing状态，里面包含从配置加载到建立MQTT连接的完整流程。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "Initializing",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，Initializing是一个复合状态。我理解为EdgeNode启动TelemetryStream时，内部依次执行LoadConfig、InitTransport、EstablishConnection，最后SendInitialize等待PLC确认？",
+      "elements_involved": [
+        "LoadConfig",
+        "InitTransport",
+        "EstablishConnection",
+        "SendInitialize",
+        "WaitForInitialized",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，WaitForInitialized之后要指向PLC逻辑，表示硬件层面的初始化确认。一旦收到initialized消息，就进入Connected状态。",
+      "elements_involved": [
+        "WaitForInitialized",
+        "Connected",
+        "initialized received"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Initializing复合状态已绘制。现在处理Connected状态，这也是复合状态，包含Active以及三种操作类型对吧？",
+      "elements_involved": [
+        "Connected",
+        "Active",
+        "ResourceOperations",
+        "ToolOperations",
+        "PromptOperations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，Active是核心，支持list/read/subscribe资源操作、call_tool工具调用、还有prompt的list/get。这些操作完成后都回到Active。另外要有一个Subscribing子状态专门处理订阅确认流程。",
+      "elements_involved": [
+        "Active",
+        "ResourceOperations",
+        "ToolOperations",
+        "PromptOperations",
+        "Subscribing",
+        "subscribe_resource",
+        "subscription_confirmed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Connected复合状态已完成，包括Active和Subscribing。接下来处理状态转换，Connected可以进入Paused和Reconnecting？",
+      "elements_involved": [
+        "Connected",
+        "Paused",
+        "Reconnecting",
+        "pause_requested",
+        "resume_requested",
+        "transport_error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，pause和resume是常规控制。transport_error触发Reconnecting，这个状态比较复杂，需要设计重连策略。",
+      "elements_involved": [
+        "Reconnecting",
+        "transport_error",
+        "reconnect_success",
+        "reconnect_failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "Reconnecting作为复合状态，我设计为：Backoff等待→ReconnectAttempt尝试→成功则回Connected，失败则IncrementRetryCount→CheckMaxRetries，未超限继续Backoff，超限则转到Failed并涉及ActuatorController？",
+      "elements_involved": [
+        "Reconnecting",
+        "Backoff",
+        "ReconnectAttempt",
+        "Success",
+        "Failure",
+        "IncrementRetryCount",
+        "CheckMaxRetries",
+        "Failed",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "准确。CheckMaxRetries超限后要指向PLC逻辑，这是关键安全设计。另外Success路径也要通知ActuatorController。",
+      "elements_involved": [
+        "CheckMaxRetries",
+        "IoT_Industrial_PLC_Logic",
+        "Success",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Reconnecting复合状态已完成。现在补充两种关闭路径：GracefulShutdown和AbnormalShutdown？",
+      "elements_involved": [
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "shutdown notification",
+        "critical_error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，GracefulShutdown是正常关闭，要优雅地清理：先UnsubscribeResources，然后DrainPendingRequests，关闭传输，持久化会话，最后终止。AbnormalShutdown是紧急路径，记录错误、保存崩溃转储、通知依赖方。",
+      "elements_involved": [
+        "GracefulShutdown",
+        "UnsubscribeResources",
+        "DrainPendingRequests",
+        "CloseTransport",
+        "PersistSession",
+        "TerminateProcess",
+        "AbnormalShutdown",
+        "LogError",
+        "PersistCrashDump",
+        "NotifyDependents"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "GracefulShutdown完成后指向ActuatorController，AbnormalShutdown完成后指向PLC逻辑，这样区分对吗？",
+      "elements_involved": [
+        "GracefulShutdown",
+        "IoT_Industrial_ActuatorController",
+        "AbnormalShutdown",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。现在需要补充会话持久化的细节，Connected状态要有SessionValidation的健康检查机制。",
+      "elements_involved": [
+        "Connected",
+        "SessionValidation",
+        "periodic_health_check",
+        "healthy",
+        "unhealthy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SessionValidation已添加，健康则保持Connected，不健康则进入Failed并关联MQTT Broker。我还注意到需要IdleTimeout处理无活动场景？",
+      "elements_involved": [
+        "SessionValidation",
+        "Failed",
+        "IoT_Industrial_MQTT_Broker",
+        "IdleTimeout",
+        "no_activity",
+        "session_expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，TelemetryStream无活动时触发IdleTimeout，会话过期后通知MQTT Broker。还有RateLimited限流状态也不能少。",
+      "elements_involved": [
+        "IdleTimeout",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_MQTT_Broker",
+        "RateLimited",
+        "request_rate_exceeded",
+        "backoff_complete",
+        "rate_limit_persistent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RateLimited已添加，可恢复则回Connected，持续超限则Failed。现在细化ResourceOperations，它应该包含Watching和通知投递循环？",
+      "elements_involved": [
+        "ResourceOperations",
+        "Watching",
+        "NotificationReceived",
+        "resource_changed",
+        "DeliverNotification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Watching监控资源变化，收到通知后DeliverNotification，然后回到Watching。ToolOperations也需要细化，支持长时间运行的操作。",
+      "elements_involved": [
+        "ToolOperations",
+        "Executing",
+        "InProgress",
+        "long_running_op",
+        "ProgressUpdate",
+        "send_progress",
+        "Complete",
+        "finished"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ToolOperations复合状态已完成，ProgressUpdate和InProgress形成循环，Complete后返回MQTT Broker。Subscribing内部流程需要补充吗？",
+      "elements_involved": [
+        "ToolOperations",
+        "ProgressUpdate",
+        "InProgress",
+        "Complete",
+        "IoT_Industrial_MQTT_Broker",
+        "Subscribing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，Subscribing应该包含RegisterSubscription、SetupWatcher、ConfirmSubscription，最后确认后回到EdgeNode。",
+      "elements_involved": [
+        "Subscribing",
+        "RegisterSubscription",
+        "SetupWatcher",
+        "ConfirmSubscription",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Subscribing复合状态已完成。现在添加注释说明会话持久化方案：ETS内存、DETS磁盘、Mnesia集群三种后端？",
+      "elements_involved": [
+        "Session Persistence",
+        "ETS",
+        "DETS",
+        "Mnesia",
+        "Connected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，这个注释放在Connected右侧。另外Initializing左侧需要Backend Selection的说明，对比三种后端的特性。",
+      "elements_involved": [
+        "Backend Selection",
+        "Initializing",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_ActuatorController",
+        "CAP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我理解MQTT Broker代表最快但易失的ETS，TelemetryStream代表持久但有I/O开销的DETS，ActuatorController涉及分布式和CAP权衡的Mnesia？",
+      "elements_involved": [
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_ActuatorController",
+        "ETS",
+        "DETS",
+        "Mnesia",
+        "CAP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。Reconnecting右侧还需要Failover Modes的注释，说明本地重启、远程副本、DETS恢复三种故障转移模式。",
+      "elements_involved": [
+        "Failover Modes",
+        "Reconnecting",
+        "Local",
+        "Remote",
+        "Recovery",
+        "Mnesia replica",
+        "DETS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Failover Modes注释已添加。Connected还需要详细的Session State字段说明，包括session_id、transport_pid、pending_requests等？",
+      "elements_involved": [
+        "Session State",
+        "Connected",
+        "session_id",
+        "transport_pid",
+        "pending_requests",
+        "subscriptions",
+        "capabilities",
+        "last_activity",
+        "backend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，pending_requests关联ActuatorController，subscriptions和capabilities、last_activity都关联EdgeNode，backend是ets|dets|mnesia。",
+      "elements_involved": [
+        "pending_requests",
+        "IoT_Industrial_ActuatorController",
+        "subscriptions",
+        "capabilities",
+        "last_activity",
+        "IoT_Industrial_EdgeNode",
+        "backend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Session State注释已完成。Reconnecting还需要Restoration Priority注释，说明恢复优先级：订阅、请求重放、能力恢复、监控恢复。",
+      "elements_involved": [
+        "Restoration Priority",
+        "Reconnecting",
+        "subscriptions",
+        "pending requests",
+        "capabilities",
+        "monitoring"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "补充两个健康相关状态：HealthCheck定期检查和Degraded降级状态。HealthCheck正常保持Connected，异常进入Degraded。",
+      "elements_involved": [
+        "HealthCheck",
+        "periodic_timer",
+        "all_systems_go",
+        "Degraded",
+        "subsystem_failure",
+        "recovery_complete",
+        "recovery_failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "HealthCheck和Degraded状态已添加，Degraded可恢复则回Connected，失败则进入Failed。我检查一下整体结构，GracefulShutdown和AbnormalShutdown的TerminateProcess终点需要确认。",
+      "elements_involved": [
+        "HealthCheck",
+        "Degraded",
+        "Failed",
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "TerminateProcess"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "GracefulShutdown的TerminateProcess应该回到ActuatorController，AbnormalShutdown的TerminateProcess回到PLC逻辑，和之前一致。",
+      "elements_involved": [
+        "TerminateProcess",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已核对一致。现在有个问题：Initializing内部的WaitForInitialized指向PLC逻辑，但Reconnecting的CheckMaxRetries超限也指向PLC逻辑，这样设计是 intentional 的吗？",
+      "elements_involved": [
+        "WaitForInitialized",
+        "CheckMaxRetries",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，都是硬件安全相关的终点。初始化失败和重连耗尽都需要PLC介入处理。Reconnecting的Success路径我再看一下，应该指向ActuatorController。",
+      "elements_involved": [
+        "Success",
+        "IoT_Industrial_ActuatorController",
+        "Reconnecting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现需要修正：Reconnecting的Success当前没有明确终点，应该指向ActuatorController。另外Backoff到ReconnectAttempt的流转需要确认是自动触发还是有条件？",
+      "elements_involved": [
+        "Success",
+        "IoT_Industrial_ActuatorController",
+        "Backoff",
+        "ReconnectAttempt"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Backoff等待超时后自动进入ReconnectAttempt。Success修正为指向ActuatorController正确。",
+      "elements_involved": [
+        "Backoff",
+        "ReconnectAttempt",
+        "Success",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正Success指向。检查Subscribing流程：RegisterSubscription→SetupWatcher→ConfirmSubscription→EdgeNode，这个闭环正确吗？",
+      "elements_involved": [
+        "Subscribing",
+        "RegisterSubscription",
+        "SetupWatcher",
+        "ConfirmSubscription",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确，ConfirmSubscription完成后回到EdgeNode的Active状态。ResourceOperations的Watching循环也需要确认。",
+      "elements_involved": [
+        "ConfirmSubscription",
+        "IoT_Industrial_EdgeNode",
+        "Active",
+        "Watching",
+        "NotificationReceived",
+        "DeliverNotification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Watching循环已确认：Watching→NotificationReceived→DeliverNotification→Watching。现在验证所有注释位置：Session Persistence在Connected右，Backend Selection在Initializing左，Failover Modes和Restoration Priority在Reconnecting右。",
+      "elements_involved": [
+        "Session Persistence",
+        "Backend Selection",
+        "Failover Modes",
+        "Restoration Priority",
+        "Connected",
+        "Initializing",
+        "Reconnecting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有Session State注释也在Connected右侧。需要确保所有涉及EdgeNode、MQTT Broker、TelemetryStream、ActuatorController、PLC Logic的关联都正确。",
+      "elements_involved": [
+        "Session State",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "核对发现：Initializing的起点是EdgeNode通过start_link启动TelemetryStream，这个箭头需要明确。另外Initializing内部LoadConfig的起点是MQTT Broker？",
+      "elements_involved": [
+        "start_link",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream",
+        "Initializing",
+        "LoadConfig",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Initializing复合状态内部以MQTT Broker为起点开始LoadConfig。整体起点是EdgeNode启动TelemetryStream进入Initializing。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "start_link",
+        "IoT_Industrial_TelemetryStream",
+        "Initializing",
+        "IoT_Industrial_MQTT_Broker",
+        "LoadConfig"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "起点和内部流程已确认。最后检查：ToolOperations的Complete指向MQTT Broker，而Subscribing的ConfirmSubscription指向EdgeNode，这种不对称是设计意图吗？",
+      "elements_involved": [
+        "ToolOperations",
+        "Complete",
+        "IoT_Industrial_MQTT_Broker",
+        "Subscribing",
+        "ConfirmSubscription",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是设计意图。工具执行完成后通知Broker进行后续处理，而订阅确认直接回到EdgeNode继续Active状态。这种区分反映了不同的控制流归属。",
+      "elements_involved": [
+        "ToolOperations",
+        "Complete",
+        "IoT_Industrial_MQTT_Broker",
+        "Subscribing",
+        "ConfirmSubscription",
+        "IoT_Industrial_EdgeNode",
+        "Active"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "所有核心状态已绘制完成。建议最后验证一下状态转换的完整性：Connected有到Paused、Reconnecting、GracefulShutdown、AbnormalShutdown、SessionValidation、IdleTimeout、RateLimited、HealthCheck的出边，是否遗漏？",
+      "elements_involved": [
+        "Connected",
+        "Paused",
+        "Reconnecting",
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "SessionValidation",
+        "IdleTimeout",
+        "RateLimited",
+        "HealthCheck"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "检查完整，Connected的出边都覆盖了。HealthCheck和Degraded是新补充的，确保Degraded有recovery_complete回Connected和recovery_failed到Failed。",
+      "elements_involved": [
+        "HealthCheck",
+        "Degraded",
+        "recovery_complete",
+        "Connected",
+        "recovery_failed",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Degraded的双向出边已确认。整个状态机包含：Initializing、Connected、Paused、Reconnecting、Failed、GracefulShutdown、AbnormalShutdown、Subscribing、ResourceOperations、ToolOperations等复合状态，以及所有注释。结构完整。",
+      "elements_involved": [
+        "Initializing",
+        "Connected",
+        "Paused",
+        "Reconnecting",
+        "Failed",
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "Subscribing",
+        "ResourceOperations",
+        "ToolOperations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个设计完整覆盖了工业物联网边缘节点的生命周期管理，从启动初始化、正常运行、故障重连到优雅关闭和异常处理，会话持久化和健康检查机制也都到位了。可以定稿。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 45,
+    "repair_count": 1,
+    "grounding_acts_count": 45,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:35Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:35Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 84290.1821,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 45
+  }
+}

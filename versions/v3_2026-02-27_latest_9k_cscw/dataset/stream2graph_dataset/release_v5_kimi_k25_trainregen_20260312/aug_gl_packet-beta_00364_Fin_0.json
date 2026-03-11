@@ -1,0 +1,437 @@
+{
+  "id": "aug_gl_packet-beta_00364_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/chris-arsenault/the-glass-frontier/blob/c0f4b7e7c333793aa3c28dc25e3bac325a56605c/docs/design/diagrams/DES-EDGE-01-contested-move-flow.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "chris-arsenault/the-glass-frontier",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant PlayerA as Player A\n    participant PlayerB as Player B / Rival\n    participant NarrativeEngine as Narrative Engine (FinTech_PaymentGateway)\n    participant ContestCoordinator as Contest Coordinator\n    participant Temporal as Temporal Check Runner\n    participant CompQueue as Shared Complication Queue\n    participant NarrativeWeaver as Narrative Weaver\n    participant WebUI as Web UI Shell\n    participant Admin as Admin Console\n\n    PlayerA->>NarrativeEngine: Utterance + context (FinTech_AuthVault)\n    PlayerB->>NarrativeEngine: Utterance + context (FinTech_FraudDetection)\n    NarrativeEngine->>NarrativeEngine: Detect collision hints (FinTech_TransactionQueue)\n    NarrativeEngine->>ContestCoordinator: intent.checkRequest (FinTech_FraudDetection)\n    NarrativeEngine->>ContestCoordinator: intent.checkRequest (FinTech_TransactionQueue)\n    ContestCoordinator->>ContestCoordinator: Wait 8s/2 turns for matching hints\n    ContestCoordinator->>ContestCoordinator: Create contestId + contestSeed\n    ContestCoordinator->>Temporal: contest.bundle (FinTech_FraudDetection)\n\n    loop For each participant\n        Temporal->>Temporal: Spawn contest.check child workflow\n        Temporal->>Temporal: Derive dice seed hash(FinTech_AuthVault)\n        Temporal->>Temporal: Resolve roll + modifiers\n        Temporal-->>ContestCoordinator: contest.checkResult (FinTech_PaymentGateway)\n    end\n\n    ContestCoordinator->>ContestCoordinator: Rank results (FinTech_FraudDetection)\n    ContestCoordinator->>CompQueue: Upsert shared complications\n    ContestCoordinator->>NarrativeWeaver: contest.resolution (FinTech_AuthVault)\n    ContestCoordinator->>Admin: telemetry.contest.start/resolved (FinTech_AuthVault)\n\n    NarrativeWeaver->>WebUI: Contested turn packet (FinTech_TransactionQueue)\n    NarrativeWeaver->>Admin: contest.override hooks + safety flags\n    WebUI->>PlayerA: Display contested badge + breakdown\n    WebUI->>PlayerB: Display contested badge + breakdown\n\n    Admin-->>NarrativeWeaver: moderation.decision (FinTech_LedgerService)\n    NarrativeWeaver-->>WebUI: Updated contest narration (FinTech_TransactionQueue)\n",
+  "content_size": 2140,
+  "collected_at": "2026-02-06T14:08:18.772733",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gl_packet-beta_00364",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个多人叙事游戏的冲突解决流程。核心场景是：当Player A和Player B同时向Narrative Engine提交话语时，系统要能检测潜在碰撞并启动对抗机制。",
+      "elements_involved": [
+        "PlayerA",
+        "PlayerB",
+        "NarrativeEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。Narrative Engine在这里同时对接FinTech_PaymentGateway？这个命名看起来是承载支付网关能力的组件？",
+      "elements_involved": [
+        "NarrativeEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Narrative Engine底层依赖FinTech_PaymentGateway做状态持久化。Player A走FinTech_AuthVault鉴权，Player B走FinTech_FraudDetection风控校验，两条路径都要画进去。",
+      "elements_involved": [
+        "PlayerA",
+        "PlayerB",
+        "NarrativeEngine",
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Player A和Player B到Narrative Engine的初始消息流。接下来碰撞检测怎么触发？",
+      "elements_involved": [
+        "PlayerA",
+        "PlayerB",
+        "NarrativeEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Narrative Engine内部要做Detect collision hints，用FinTech_TransactionQueue做异步缓冲。检测到碰撞后，向Contest Coordinator发intent.checkRequest。",
+      "elements_involved": [
+        "NarrativeEngine",
+        "FinTech_TransactionQueue",
+        "ContestCoordinator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "intent.checkRequest会发两次吗？一次给FinTech_FraudDetection，一次给FinTech_TransactionQueue？",
+      "elements_involved": [
+        "NarrativeEngine",
+        "ContestCoordinator",
+        "FinTech_FraudDetection",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，两条独立的校验链路都要触发。Contest Coordinator收到后需要等待匹配——8秒或2回合，这个超时逻辑要体现在图上。",
+      "elements_involved": [
+        "ContestCoordinator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Contest Coordinator的自循环等待已加上。匹配成功后生成contestId和contestSeed，下一步是？",
+      "elements_involved": [
+        "ContestCoordinator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Contest Coordinator把contest.bundle发给Temporal Check Runner，这里走FinTech_FraudDetection链路做工作流编排。",
+      "elements_involved": [
+        "ContestCoordinator",
+        "Temporal",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Temporal Check Runner内部需要展开循环吗？每个参与者的处理逻辑不一样？",
+      "elements_involved": [
+        "Temporal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "要画loop。里面三步：Spawn contest.check子工作流、用FinTech_AuthVault派生骰子种子、解析roll和修正值。最后把contest.checkResult回传给Contest Coordinator，走FinTech_PaymentGateway。",
+      "elements_involved": [
+        "Temporal",
+        "ContestCoordinator",
+        "FinTech_AuthVault",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "loop结构已添加，包含三个内部步骤和返回虚线。Contest Coordinator拿到结果后做什么？",
+      "elements_involved": [
+        "Temporal",
+        "ContestCoordinator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Contest Coordinator内部做Rank results，还是走FinTech_FraudDetection链路。然后Upsert到Shared Complication Queue。",
+      "elements_involved": [
+        "ContestCoordinator",
+        "CompQueue",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "排名和队列更新已连接。接下来Narrative Weaver的介入点在哪里？",
+      "elements_involved": [
+        "ContestCoordinator",
+        "CompQueue",
+        "NarrativeWeaver"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Contest Coordinator发contest.resolution给Narrative Weaver，鉴权走FinTech_AuthVault。同时要给Admin Console发telemetry.contest.start和resolved事件。",
+      "elements_involved": [
+        "ContestCoordinator",
+        "NarrativeWeaver",
+        "Admin",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Narrative Weaver到Web UI Shell的消息是Contested turn packet？这个命名需要确认。",
+      "elements_involved": [
+        "NarrativeWeaver",
+        "WebUI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Contested turn packet，传输层用FinTech_TransactionQueue。另外Narrative Weaver还要给Admin Console发contest.override hooks和safety flags。",
+      "elements_involved": [
+        "NarrativeWeaver",
+        "WebUI",
+        "Admin",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Narrative Weaver的双向输出已添加。Web UI Shell到两位玩家的显示逻辑怎么画？",
+      "elements_involved": [
+        "NarrativeWeaver",
+        "WebUI",
+        "PlayerA",
+        "PlayerB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Web UI Shell分别给Player A和Player B显示contested badge和breakdown，两条独立的显示链路。",
+      "elements_involved": [
+        "WebUI",
+        "PlayerA",
+        "PlayerB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "玩家端的显示反馈已完成。Admin Console的介入是单向的吗？",
+      "elements_involved": [
+        "WebUI",
+        "PlayerA",
+        "PlayerB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "不是，Admin Console可以回传moderation.decision给Narrative Weaver，走FinTech_LedgerService做审计持久化，用虚线表示这是可选干预。",
+      "elements_involved": [
+        "Admin",
+        "NarrativeWeaver",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到moderation.decision后，Narrative Weaver要更新Web UI Shell？",
+      "elements_involved": [
+        "NarrativeWeaver",
+        "WebUI",
+        "Admin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Narrative Weaver回传Updated contest narration，还是走FinTech_TransactionQueue。这样形成完整的仲裁闭环。",
+      "elements_involved": [
+        "NarrativeWeaver",
+        "WebUI",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "闭环已完成。我检查一下：PlayerB的别名需要标注为\"Player B / Rival\"吗？",
+      "elements_involved": [
+        "PlayerB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，加上别名。还有Narrative Engine的括号标注FinTech_PaymentGateway也要保留。",
+      "elements_involved": [
+        "PlayerB",
+        "NarrativeEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现一个问题：Contest Coordinator到Temporal的消息我标成了同步实线，但按语义应该是异步调用。另外loop的返回箭头方向我需要确认。",
+      "elements_involved": [
+        "ContestCoordinator",
+        "Temporal"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "contest.bundle是异步触发，保持实线即可，Temporal内部自循环处理。loop返回用虚线--表示contest.checkResult，方向正确。",
+      "elements_involved": [
+        "ContestCoordinator",
+        "Temporal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。再确认Admin到Narrative Weaver的moderation.decision，虚线方向是Admin指向Narrative Weaver？",
+      "elements_involved": [
+        "Admin",
+        "NarrativeWeaver"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Admin--Narrative Weaver，虚线双箭头其实表示返回，但这里用--就行。Narrative Weaver回Web UI也是虚线。",
+      "elements_involved": [
+        "Admin",
+        "NarrativeWeaver",
+        "WebUI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "所有FinTech后缀的标注我都保留了：AuthVault、FraudDetection、TransactionQueue、PaymentGateway、LedgerService。还有遗漏吗？",
+      "elements_involved": [
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection",
+        "FinTech_TransactionQueue",
+        "FinTech_PaymentGateway",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完整了。最后确认一下时序：从玩家输入到最终显示，整个Contest流程的8秒等待和2回合缓冲都要能看出来。",
+      "elements_involved": [
+        "ContestCoordinator",
+        "Temporal",
+        "PlayerA",
+        "PlayerB",
+        "WebUI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Contest Coordinator的自循环标注了\"Wait 8s/2 turns\"，Temporal的loop标注了\"For each participant\"，时序逻辑清晰。图已完成。",
+      "elements_involved": [
+        "ContestCoordinator",
+        "Temporal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个流程覆盖了碰撞检测、对抗仲裁、结果排名、共享队列更新、叙事编织、玩家反馈和后台监控的全链路。可以定稿。",
+      "elements_involved": [
+        "NarrativeEngine",
+        "ContestCoordinator",
+        "Temporal",
+        "CompQueue",
+        "NarrativeWeaver",
+        "WebUI",
+        "Admin"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 33,
+    "repair_count": 1,
+    "grounding_acts_count": 33,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:33Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:34Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:34Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 58637.3496,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 33
+  }
+}

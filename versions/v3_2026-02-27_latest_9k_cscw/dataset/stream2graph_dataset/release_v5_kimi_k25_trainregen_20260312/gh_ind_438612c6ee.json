@@ -1,0 +1,183 @@
+{
+  "id": "gh_ind_438612c6ee",
+  "source": "github_industrial",
+  "repo": "twirl/The-API-Book",
+  "license": "other",
+  "code": "sequenceDiagram\n    participant U as Client\n    participant D as Gateway D\n    participant A as Authorization<br/>Service A\n    participant B as User Profiles<br/>Service B\n    participant C as Orders<br/>Service C\n    U->>+D: GET /v1/state<br/>Authorization: Bearer #60;token#62;\n    D->>+A: GET /v1/auth<br/><token>\n    A-->>-D: { status, user_id }\n    par\n        alt Cached profile found\n            D->>+B: GET /v1/profiles/{user_id}\n            B-->>-D: 200 OK<br/>Cache-Control: #60;parameters#62;<br/>{ profile }\n        end\n    and \n        D->>+C: GET /v1/orders?user_id=#60;user_id#62;<br/>If-None-Match: #60;revision#62;\n        alt Wrong revision\n            C-->>D: 200 OK<br/>ETag: #60;revision#62;<br/>{ orders }\n        else Actual revision\n            C-->>D: 304 Not Modified\n        end\n        deactivate C\n    end\n    D-->>-U: { profile, orders }\n",
+  "diagram_type": "participant size:600..900",
+  "collected_at": "2026-02-27T03:35:38.175318",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个获取用户状态的完整流程。客户端先打到Gateway D，然后Gateway要同时去Authorization Service做鉴权、去User Profiles拿用户信息、还要并行去Orders查订单。关键是Orders那边要有缓存协商机制，用If-None-Match来判断要不要返回新数据。",
+      "elements_involved": [
+        "Client",
+        "Gateway D",
+        "Authorization Service A",
+        "User Profiles Service B",
+        "Orders Service C",
+        "GET /v1/state",
+        "Bearer token",
+        "If-None-Match",
+        "revision"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，并行结构。我确认一下：Authorization Service返回的是user_id和status，然后Gateway用这个user_id同时去查Profiles和Orders？Orders那边的alt分支是304 Not Modified和200 OK两种情况对吧？",
+      "elements_involved": [
+        "Authorization Service A",
+        "user_id",
+        "User Profiles Service B",
+        "Orders Service C",
+        "alt",
+        "304 Not Modified",
+        "200 OK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。另外Profiles那边其实也有缓存逻辑——如果命中缓存就直接返回，所以也要包一个alt。不过Profiles的缓存是Gateway D自己控制的Cache-Control参数，和Orders的ETag机制不太一样。",
+      "elements_involved": [
+        "User Profiles Service B",
+        "alt",
+        "Cached profile found",
+        "Cache-Control",
+        "parameters"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我把五个participant都建好了，Client、Gateway D、Authorization Service A、User Profiles Service B、Orders Service C。第一笔是Client带Bearer token发GET /v1/state到Gateway D。然后Gateway同步调Authorization的GET /v1/auth，拿到user_id之后开par并行。",
+      "elements_involved": [
+        "Client",
+        "Gateway D",
+        "Authorization Service A",
+        "User Profiles Service B",
+        "Orders Service C",
+        "GET /v1/state",
+        "Bearer token",
+        "GET /v1/auth",
+        "par"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Authorization的返回格式注意一下，是{ status, user_id }这种JSON结构。还有Orders那边的URL参数是user_id，header里带If-None-Match: revision。如果revision对不上就返回200带新orders和ETag，对上就直接304 Not Modified。",
+      "elements_involved": [
+        "Authorization Service A",
+        "status",
+        "user_id",
+        "Orders Service C",
+        "GET /v1/orders",
+        "If-None-Match",
+        "revision",
+        "ETag",
+        "304 Not Modified"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Orders分支画好了，alt里面两个分支：Wrong revision走200 OK返回orders和新的ETag，Actual revision走304 Not Modified。我注意到Orders用的是虚线返回？",
+      "elements_involved": [
+        "Orders Service C",
+        "alt",
+        "Wrong revision",
+        "Actual revision",
+        "200 OK",
+        "304 Not Modified",
+        "ETag",
+        "orders"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "Orders返回给Gateway应该是实线箭头，只有最后Gateway返回给Client才是虚线。还有Orders那边画完记得deactivate，不然生命周期没结束。Profiles那边B返回D也是实线，200 OK带Cache-Control和profile数据。",
+      "elements_involved": [
+        "Orders Service C",
+        "Gateway D",
+        "deactivate",
+        "User Profiles Service B",
+        "200 OK",
+        "Cache-Control",
+        "profile"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已修正，Orders返回改实线并加了deactivate。最后Gateway D把聚合好的{ profile, orders }虚线返回给Client。整个流程：鉴权→并行查Profiles和Orders（各自带缓存策略）→聚合返回，对吗？",
+      "elements_involved": [
+        "Orders Service C",
+        "Gateway D",
+        "Client",
+        "profile",
+        "orders",
+        "Authorization Service A",
+        "User Profiles Service B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。Authorization Service那里token用尖括号包一下表示占位符，Orders的user_id参数和revision也同理。这样整个时序图就完整了。",
+      "elements_involved": [
+        "Authorization Service A",
+        "token",
+        "Orders Service C",
+        "user_id",
+        "revision"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 1,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:40Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:37Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:37Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 26368.0055,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

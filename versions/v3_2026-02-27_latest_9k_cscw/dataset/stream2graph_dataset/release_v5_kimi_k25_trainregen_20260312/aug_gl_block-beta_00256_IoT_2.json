@@ -1,0 +1,769 @@
+{
+  "id": "aug_gl_block-beta_00256_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sn-ravance/Ollama_Docker/blob/3f2dd7761e30b51c2206a8b7e7938cf783b2c200/docs/Ollama_ZTA.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sn-ravance/Ollama_Docker",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    actor C as Client (IoT_Industrial_TelemetryStream)\n    actor N as NGINX (IoT_Industrial_TelemetryStream)\n    actor P as oauth2-proxy (IoT_Industrial_TelemetryStream)\n    actor I as Identity Provider (IoT_Industrial_MQTT_Broker)\n    actor F as Prompt/Policy Filter (IoT_Industrial_ActuatorController)\n    actor O as Ollama (IoT_Industrial_EdgeNode)\n    actor L as SIEM / Local Logs\n\n    C ->> N : HTTPS request to /api/generate\n    N ->> N : Verify TLS handshake + client cert (IoT_Industrial_TelemetryStream), apply WAF/rate-limit/CORS\n    alt mTLS missing/invalid\n        N ->> C : 401/403 (IoT_Industrial_TelemetryStream)\n        N ->> L : Log TLS/authn failure + client info (IoT_Industrial_TelemetryStream)\n    else mTLS valid\n        N ->> L : Log access (IoT_Industrial_TelemetryStream)\n    end\n\n    N ->> P : subrequest /oauth2/auth (IoT_Industrial_EdgeNode)\n    alt No valid session cookie\n        P ->> N : 401 Unauthorized (IoT_Industrial_PLC_Logic)\n        N ->> C : 302 Redirect → /oauth2/start\n        C ->> P : GET /oauth2/start\n        P ->> C : 302 Redirect → I /authorize (IoT_Industrial_ActuatorController)\n        C ->> I : User login + MFA (IoT_Industrial_PLC_Logic)\n        I ->> C : 302 Redirect → P /oauth2/callback?code=...\n        C ->> P : GET /oauth2/callback (IoT_Industrial_TelemetryStream)\n        P ->> C : Set secure session cookie, 302 back to original URL\n        C ->> N : Retry original /api/* request (IoT_Industrial_EdgeNode)\n        N ->> P : subrequest /oauth2/auth\n        P ->> N : 200 OK + X-Auth headers (IoT_Industrial_ActuatorController)\n    else Valid session present\n        P ->> N : 200 OK + X-Auth headers (IoT_Industrial_TelemetryStream)\n    end\n    N ->> L : Log auth decision + user/group claims (IoT_Industrial_TelemetryStream)\n\n    N ->> F : POST /filter (IoT_Industrial_ActuatorController)\n    alt Policy violation (IoT_Industrial_EdgeNode)\n        F ->> N : 406/422 with reason code\n        N ->> C : 4xx safe error (IoT_Industrial_MQTT_Broker)\n    else Allowed\n        F ->> N : 200 Allowed\n    end\n\n    N ->> O : POST /api/generate (IoT_Industrial_TelemetryStream)\n    O ->> N : Streamed tokens / chunked response\n    loop while streaming tokens\n        N ->> C : Forward token chunks (IoT_Industrial_EdgeNode)\n    end\n\n    N ->> L : Access + security events (IoT_Industrial_PLC_Logic)\n    P ->> L : Auth events (IoT_Industrial_ActuatorController)\n    F ->> L : Policy evaluation results (IoT_Industrial_PLC_Logic)\n    O ->> L : Inference metrics (IoT_Industrial_TelemetryStream)\n\n    N ->> C : 200 OK (IoT_Industrial_ActuatorController) OR controlled 4xx with safe message\n",
+  "content_size": 2389,
+  "collected_at": "2026-02-06T14:05:29.968003",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_block-beta_00256",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网边缘AI推理场景设计一个完整的访问控制时序图。核心需求是：Client通过NGINX访问Ollama大模型，但必须经过多层安全校验。",
+      "elements_involved": [
+        "Client (IoT_Industrial_TelemetryStream)",
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "Ollama (IoT_Industrial_EdgeNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个典型的零信任架构。我理解为Client先打到NGINX，NGINX作为入口网关。但第一层校验是什么？直接OAuth2还是先TLS？",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第一层必须是mTLS。工业场景下设备证书是身份根基。NGINX先验证Client的TLS握手和客户端证书，同时做WAF、速率限制和CORS。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "Client (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，mTLS作为第一道闸门。如果证书无效或缺失，NGINX直接返回401/403，并且要把失败日志打到SIEM对吧？",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "SIEM / Local Logs",
+        "Client (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，TLS/authn失败必须记录client info到SIEM。如果mTLS通过，也要记一条access日志。这是审计要求。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "SIEM / Local Logs",
+        "Client (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "那mTLS之后进入OAuth2流程？我打算用oauth2-proxy作为独立组件，NGINX通过subrequest方式向它鉴权。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "subrequest是对的，但这里有个分支：如果用户没有有效session cookie，要走完整的OIDC登录流程。我需要Identity Provider支持MFA。",
+      "elements_involved": [
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Identity Provider (IoT_Industrial_MQTT_Broker)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我来梳理无session时的完整重定向链：oauth2-proxy返回401给NGINX，NGINX 302到/oauth2/start，然后重定向到Identity Provider的/authorize，用户登录+MFA后再回调。",
+      "elements_involved": [
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Identity Provider (IoT_Industrial_MQTT_Broker)",
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "Client (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "流程正确。注意回调到oauth2-proxy的/oauth2/callback时要带code，然后设置secure session cookie，最后302回原URL。",
+      "elements_involved": [
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Client (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：Client重试原请求，NGINX再次subrequest到oauth2-proxy，这次返回200 OK并带上X-Auth头部。如果本来就有valid session，也是直接200+X-Auth。",
+      "elements_involved": [
+        "Client (IoT_Industrial_TelemetryStream)",
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OAuth2通过后还有一层关键控制：Prompt/Policy Filter。所有请求必须过内容安全策略检查，防止提示词注入或违规内容。",
+      "elements_involved": [
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "NGINX (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Policy Filter是独立服务？NGINX转发POST /filter过去，然后根据返回决定放行还是拦截？",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，独立服务。如果策略违规，Filter返回406/422带reason code，NGINX给Client安全的4xx错误，不能暴露内部细节。",
+      "elements_involved": [
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "Client (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加策略分支：违规时406/422，允许时返回200 Allowed。通过后NGINX才POST到Ollama的/api/generate。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "Ollama (IoT_Industrial_EdgeNode)",
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Ollama响应是流式的，需要设计loop来forward token chunks。NGINX边收边发给Client，不能等完整响应。",
+      "elements_involved": [
+        "Ollama (IoT_Industrial_EdgeNode)",
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "Client (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解了，streaming场景。我画一个loop：while streaming tokens，NGINX持续forward chunks给Client。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "Client (IoT_Industrial_EdgeNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后要完善审计日志。五个组件都要往SIEM打：NGINX打access+security events，oauth2-proxy打auth events，Filter打policy evaluation，Ollama打inference metrics。",
+      "elements_involved": [
+        "SIEM / Local Logs",
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "Ollama (IoT_Industrial_EdgeNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加四条日志流向SIEM。最终响应给Client是200 OK，或者受控的4xx with safe message。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "Client (IoT_Industrial_ActuatorController)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我再看一眼，oauth2-proxy返回401给NGINX的那个分支，你标注的是IoT_Industrial_PLC_Logic，这个actor标签是不是用错了？",
+      "elements_involved": [
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "NGINX (IoT_Industrial_PLC_Logic)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确实有问题。oauth2-proxy返回401给NGINX，NGINX作为接收方应该保持自己的标签IoT_Industrial_TelemetryStream，而不是变成PLC_Logic。我修正这个标注。",
+      "elements_involved": [
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "NGINX (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "还有一处，Client重试原请求时标注的是IoT_Industrial_EdgeNode，但Client本身应该是TelemetryStream标签吧？",
+      "elements_involved": [
+        "Client (IoT_Industrial_EdgeNode)",
+        "NGINX (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "对，Client的actor标签应该始终是IoT_Industrial_TelemetryStream。EdgeNode是Ollama的标签。我统一修正Client的所有标注。",
+      "elements_involved": [
+        "Client (IoT_Industrial_TelemetryStream)",
+        "NGINX (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "再看oauth2-proxy回调设置cookie那一步，标注是IoT_Industrial_TelemetryStream，但这时候是Client接收响应，应该是Client的视角？",
+      "elements_involved": [
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Client (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里我理解是oauth2-proxy的动作标注，不是接收方。但确实容易混淆。按照惯例，消息标注是发送方的标签。oauth2-proxy属于TelemetryStream组，所以标注正确。",
+      "elements_involved": [
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "明白了，发送方标注。那再检查：X-Auth headers返回给NGINX时，标注是IoT_Industrial_ActuatorController，但oauth2-proxy应该还是TelemetryStream？",
+      "elements_involved": [
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "NGINX (IoT_Industrial_ActuatorController)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现错误！oauth2-proxy发送X-Auth headers，标注应该是IoT_Industrial_TelemetryStream，不是ActuatorController。我修正这两处。",
+      "elements_involved": [
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "NGINX (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Policy Filter返回200 Allowed给NGINX，标注是IoT_Industrial_EdgeNode？Filter应该是ActuatorController组吧。",
+      "elements_involved": [
+        "Prompt/Policy Filter (IoT_Industrial_EdgeNode)",
+        "NGINX (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "正确，Filter属于ActuatorController组。EdgeNode是Ollama的。我修正Filter的所有标注。",
+      "elements_involved": [
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "NGINX (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "NGINX POST到Ollama的标注检查：Ollama是EdgeNode，这个是对的。但loop里的forward标注是EdgeNode，NGINX作为发送方应该是TelemetryStream？",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_EdgeNode)",
+        "Client (IoT_Industrial_EdgeNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "对，NGINX forward tokens给Client，NGINX的标注应该是TelemetryStream，不是EdgeNode。修正loop内的标注。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "Client (IoT_Industrial_EdgeNode)"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SIEM日志部分：NGINX打access+security events标注是PLC_Logic？NGINX应该是TelemetryStream。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_PLC_Logic)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "错误，NGINX到SIEM的日志标注应该是TelemetryStream。PLC_Logic是Identity Provider的组。修正。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "oauth2-proxy打auth events到SIEM，标注ActuatorController——这个也不对，oauth2-proxy是TelemetryStream。",
+      "elements_involved": [
+        "oauth2-proxy (IoT_Industrial_ActuatorController)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确认错误，oauth2-proxy属于TelemetryStream组。修正auth events的标注。",
+      "elements_involved": [
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Filter打policy evaluation标注PLC_Logic？应该是ActuatorController。",
+      "elements_involved": [
+        "Prompt/Policy Filter (IoT_Industrial_PLC_Logic)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "对，Filter是ActuatorController。修正policy evaluation results的标注。",
+      "elements_involved": [
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Ollama打inference metrics标注TelemetryStream——但Ollama应该是EdgeNode？",
+      "elements_involved": [
+        "Ollama (IoT_Industrial_TelemetryStream)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "错误，Ollama是EdgeNode。修正inference metrics的标注。",
+      "elements_involved": [
+        "Ollama (IoT_Industrial_EdgeNode)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有最终响应：NGINX给Client 200 OK或4xx，标注ActuatorController。NGINX应该是TelemetryStream。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_ActuatorController)",
+        "Client (IoT_Industrial_ActuatorController)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正，NGINX的最终响应标注应为TelemetryStream，Client的接收标注也应为TelemetryStream。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "Client (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再看alt分支的名称：\"mTLS missing/invalid\"和\"mTLS valid\"，以及\"No valid session cookie\"和\"Valid session present\"，还有\"Policy violation\"和\"Allowed\"，这些命名是否准确？",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "分支命名清晰。但注意到\"Policy violation\"后面跟了(IoT_Industrial_EdgeNode)，这是多余的标注，应该去掉，只保留分支逻辑名称。",
+      "elements_involved": [
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意，alt分支名称不应该带标注。另外检查actor定义：C、N、P、I、F、O、L七个角色，标签都正确吗？",
+      "elements_involved": [
+        "Client (IoT_Industrial_TelemetryStream)",
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Identity Provider (IoT_Industrial_MQTT_Broker)",
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "Ollama (IoT_Industrial_EdgeNode)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "检查中发现Identity Provider标注是IoT_Industrial_MQTT_Broker，但之前讨论的是PLC_Logic？",
+      "elements_involved": [
+        "Identity Provider (IoT_Industrial_MQTT_Broker)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "确实不一致。按照工业物联网架构，Identity Provider应该对应PLC_Logic组，负责认证逻辑。MQTT_Broker是另一个组件。修正actor定义。",
+      "elements_involved": [
+        "Identity Provider (IoT_Industrial_PLC_Logic)"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已修正Identity Provider为PLC_Logic。那涉及Identity Provider的消息标注都要同步检查。比如/authorize重定向标注是ActuatorController？",
+      "elements_involved": [
+        "Identity Provider (IoT_Industrial_PLC_Logic)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "错误，Identity Provider返回302重定向，标注应该是PLC_Logic，不是ActuatorController。修正。",
+      "elements_involved": [
+        "Identity Provider (IoT_Industrial_PLC_Logic)",
+        "Client (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "User login + MFA的标注也是PLC_Logic？这是Client发送到Identity Provider的消息。",
+      "elements_involved": [
+        "Client (IoT_Industrial_PLC_Logic)",
+        "Identity Provider (IoT_Industrial_PLC_Logic)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Client发送到Identity Provider，Client的标注是TelemetryStream，不是PLC_Logic。修正。",
+      "elements_involved": [
+        "Client (IoT_Industrial_TelemetryStream)",
+        "Identity Provider (IoT_Industrial_PLC_Logic)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正Client的login+MFA请求标注为TelemetryStream。",
+      "elements_involved": [
+        "Client (IoT_Industrial_TelemetryStream)",
+        "Identity Provider (IoT_Industrial_PLC_Logic)"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再看oauth2-proxy的actor标签，代码里是(IoT_Industrial_TelemetryStream)，但之前有个缩写P的定义，需要确认一致性。",
+      "elements_involved": [
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一致，P就是oauth2-proxy，标签TelemetryStream。但注意到代码里有个消息\"N - N : Verify TLS handshake\"，这是自环消息，标注正确。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "自环消息的标注是TelemetryStream，正确。现在整体检查：七个actor，mTLS分支，OAuth2分支，Policy分支，Streaming loop，四条SIEM日志。结构完整。",
+      "elements_involved": [
+        "Client (IoT_Industrial_TelemetryStream)",
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Identity Provider (IoT_Industrial_PLC_Logic)",
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "Ollama (IoT_Industrial_EdgeNode)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成所有修正。最终确认：mTLS alt分支（missing/invalid vs valid），OAuth2 alt分支（no session vs valid session），Policy alt分支（violation vs allowed），以及while streaming tokens的loop结构。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "Ollama (IoT_Industrial_EdgeNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后确认标注一致性：所有NGINX作为发送方的消息都应该是TelemetryStream，oauth2-proxy也是TelemetryStream，Identity Provider是PLC_Logic，Filter是ActuatorController，Ollama是EdgeNode。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Identity Provider (IoT_Industrial_PLC_Logic)",
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "Ollama (IoT_Industrial_EdgeNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "完全确认。已交叉验证：NGINX(7条发送，全TelemetryStream)，oauth2-proxy(6条发送，全TelemetryStream)，Identity Provider(2条发送，全PLC_Logic)，Filter(3条发送，全ActuatorController)，Ollama(2条发送，全EdgeNode)。",
+      "elements_involved": [
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Identity Provider (IoT_Industrial_PLC_Logic)",
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "Ollama (IoT_Industrial_EdgeNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：Client的actor别名是\"C as Client (IoT_Industrial_TelemetryStream)\"，但代码里有个缩写\"iot industrial actuatorcontr\"在grounded terms里，需要确认没有使用。",
+      "elements_involved": [
+        "Client (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，代码中使用的是完整标签IoT_Industrial_TelemetryStream，没有使用缩写actuatorcontr或mqtt br。 grounded terms里的缩写是备用参考。",
+      "elements_involved": [
+        "Client (IoT_Industrial_TelemetryStream)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最终验证消息流向：C→N→P→I→P→C→N→F→N→O→N→C，以及并行到L的日志流。主链路清晰，审计完备。",
+      "elements_involved": [
+        "Client (IoT_Industrial_TelemetryStream)",
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Identity Provider (IoT_Industrial_PLC_Logic)",
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "Ollama (IoT_Industrial_EdgeNode)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "时序图已完成全部修正和验证。包含：3个alt分支处理不同安全层级，1个loop处理流式响应，5个组件向SIEM输出审计日志，完整的OIDC登录流程含MFA，以及mTLS双向认证。",
+      "elements_involved": [
+        "Client (IoT_Industrial_TelemetryStream)",
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Identity Provider (IoT_Industrial_PLC_Logic)",
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "Ollama (IoT_Industrial_EdgeNode)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认交付。该图完整描述了工业物联网边缘AI的安全访问控制流程，符合零信任架构要求，审计可追溯，流式响应支持完备。",
+      "elements_involved": [
+        "Client (IoT_Industrial_TelemetryStream)",
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Identity Provider (IoT_Industrial_PLC_Logic)",
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "Ollama (IoT_Industrial_EdgeNode)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "交付确认。所有actor标签、消息标注、分支结构、循环逻辑均已校正，与最终Mermaid代码完全一致。",
+      "elements_involved": [
+        "Client (IoT_Industrial_TelemetryStream)",
+        "NGINX (IoT_Industrial_TelemetryStream)",
+        "oauth2-proxy (IoT_Industrial_TelemetryStream)",
+        "Identity Provider (IoT_Industrial_PLC_Logic)",
+        "Prompt/Policy Filter (IoT_Industrial_ActuatorController)",
+        "Ollama (IoT_Industrial_EdgeNode)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 62,
+    "repair_count": 13,
+    "grounding_acts_count": 62,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:33Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:33Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 135015.62,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 62
+  }
+}

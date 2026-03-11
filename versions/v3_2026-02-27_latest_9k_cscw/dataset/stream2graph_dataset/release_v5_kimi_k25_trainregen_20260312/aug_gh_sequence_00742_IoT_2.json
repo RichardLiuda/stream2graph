@@ -1,0 +1,380 @@
+{
+  "id": "aug_gh_sequence_00742_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/edx/commerce-coordinator/blob/25bb739e9ccaba9407808c494cd3461172fd1fa3/docs/decisions/arch-diagrams/mobile-create-order.mmd",
+  "github_repo": "edx/commerce-coordinator",
+  "github_file_path": "docs/decisions/arch-diagrams/mobile-create-order.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant User\n    participant MobileApp\n    participant CTBackend as CT Backend\n    participant IAPValidator as IAP Validator (IoT_Industrial_MQTT_Broker)\n    participant MobileStore as Mobile Store (IoT_Industrial_MQTT_Broker)\n    participant CoCo as Commercetools (IoT_Industrial_MQTT_Broker)\n    participant EventSystem\n\n    User->>MobileApp: Starts in-app purchase\n    MobileApp->>CTBackend: Sends purchase info (IoT_Industrial_MQTT_Broker)\n\n    CTBackend->>CoCo: Get CT customer by LMS user ID\n    alt Customer does not exist\n        CTBackend->>CoCo: Create customer with user info\n        CoCo-->>CTBackend: Return newly created customer\n    else Customer exists\n        CTBackend->>CoCo: Update customer if needed\n        CoCo-->>CTBackend: Return updated customer\n    end\n\n    CTBackend->>CoCo: Check if user already has a cart\n    CoCo-->>CTBackend: Return existing cart or none\n    alt Cart exists\n        CTBackend->>CoCo: Delete old cart\n    end\n\n    CTBackend->>CoCo: Add the product, set external price (IoT_Industrial_ActuatorController), set `mobileOrder=true` in new cart\n    CoCo-->>CTBackend: Return new cart\n\n    CTBackend->>IAPValidator: Validate the purchase token\n    IAPValidator->>MobileStore: Send token to Google or Apple\n    MobileStore-->>IAPValidator: Get token result\n\n    IAPValidator->>CoCo: Check if token was already used\n    alt Token is already used\n        IAPValidator-->>CTBackend: Tell backend it is a duplicate\n        CTBackend->>CoCo: Delete the new cart\n        CTBackend-->>MobileApp: **Show error (IoT_Industrial_ActuatorController)**\n    else Token is valid\n        IAPValidator-->>CTBackend: Send transaction info\n    end\n\n    CTBackend->>EventSystem: Send event - checkout started\n    CTBackend->>EventSystem: Send event - item added to cart\n\n    CTBackend->>CoCo: Create a payment using the token info\n    CTBackend->>CoCo: Updates payment object to set custom field usdCentAmount with product's USD price\n    alt Payment creation failed\n        CoCo-->>CTBackend: **Error while creating payment**\n        CTBackend-->>MobileApp: **Show error (IoT_Industrial_PLC_Logic)**\n    else\n        CoCo-->>CTBackend: Return payment\n        CTBackend->>EventSystem: Send event - payment method used\n\n        CTBackend->>CoCo: Attach payment to the cart\n        alt Attaching payment failed\n            CoCo-->>CTBackend: **Error while attaching payment**\n            CTBackend-->>MobileApp: **Show error (IoT_Industrial_ActuatorController)**\n        else\n            CoCo-->>CTBackend: Return updated cart\n\n            CTBackend->>CoCo: Create order from cart\n            alt Order creation failed\n                CoCo-->>CTBackend: **Error while creating order**\n                CTBackend-->>MobileApp: **Show error (IoT_Industrial_EdgeNode)**\n            else\n                CoCo-->>CTBackend: Return order\n\n                CTBackend->>CoCo: Mark items as ready for delivery\n                alt Updating item state failed\n                    CoCo-->>CTBackend: **Error while updating item states**\n                    CTBackend-->>MobileApp: **Show error (IoT_Industrial_ActuatorController)**\n                else\n                    CoCo-->>CTBackend: Return updated order\n\n                    CTBackend->>EventSystem: Send event - order completed\n                    CTBackend-->>MobileApp: Show success (IoT_Industrial_MQTT_Broker)\n                end\n            end\n        end\n    end\n",
+  "content_size": 3340,
+  "collected_at": "2026-02-06T01:36:24.179277",
+  "compilation_status": "success",
+  "license": "agpl-3.0",
+  "license_name": "GNU Affero General Public License v3.0",
+  "license_url": "https://api.github.com/licenses/agpl-3.0",
+  "repo_stars": 11,
+  "repo_forks": 7,
+  "repo_owner": "edx",
+  "repo_name": "commerce-coordinator",
+  "repo_description": "A controller to manage commerce workflows and services",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2021-10-01T19:08:54Z",
+  "repo_updated_at": "2026-01-14T15:27:30Z",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gh_sequence_00742",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要梳理一下移动端应用内购买的完整流程。用户从MobileApp发起购买，后端要和Commercetools以及IAP验证服务交互。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "Commercetools",
+        "IAP验证服务"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，我先确认一下参与者的命名。Commercetools在图里简写为CoCo可以吗？还有IAP验证服务，我看到代码里标注了IoT_Industrial_MQTT_Broker，这是实际部署的组件名？",
+      "elements_involved": [
+        "CoCo",
+        "IAP Validator",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，CoCo作为别名。IoT_Industrial_MQTT_Broker是IAPValidator、MobileStore和CoCo这三个组件实际运行的基础设施标识，需要保留在括号里。",
+      "elements_involved": [
+        "CoCo",
+        "IAP Validator",
+        "MobileStore",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，参与者已添加：User、MobileApp、CTBackend、IAPValidator、MobileStore、CoCo，还有EventSystem。括号标注也处理好了。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore",
+        "CoCo",
+        "EventSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "流程开始是用户在MobileApp里启动购买，然后MobileApp把购买信息发给CTBackend。这里的信息传输要标注IoT_Industrial_MQTT_Broker。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：User到MobileApp的\"Starts in-app purchase\"，以及MobileApp到CTBackend的\"Sends purchase info (IoT_Industrial_MQTT_Broker)\"。",
+      "elements_involved": [
+        "User-MobileApp",
+        "MobileApp-CTBackend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来CTBackend要去CoCo查询客户，用LMS的user ID。这里有个分支：客户不存在就创建，存在就更新。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "LMS user ID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这个alt分支我理解为：Customer does not exist和Customer exists两种情况，返回都是customer对象。对吗？",
+      "elements_involved": [
+        "alt",
+        "Customer does not exist",
+        "Customer exists"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。然后CTBackend要检查用户是否已有购物车，有的话要删掉旧的，再创建新购物车。",
+      "elements_involved": [
+        "cart",
+        "CTBackend",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：查询购物车的循环，以及\"Delete old cart\"的条件分支。接下来是创建新购物车的步骤？",
+      "elements_involved": [
+        "CTBackend-CoCo",
+        "Delete old cart",
+        "Add the product"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，CTBackend调用CoCo添加商品，设置外部价格，这里要标注IoT_Industrial_ActuatorController，还要设mobileOrder=true。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "IoT_Industrial_ActuatorController",
+        "mobileOrder",
+        "external price"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：\"Add the product, set external price (IoT_Industrial_ActuatorController), set `mobileOrder=true` in new cart\"。然后进入IAP验证环节？",
+      "elements_involved": [
+        "CTBackend-CoCo",
+        "IoT_Industrial_ActuatorController",
+        "mobileOrder"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，CTBackend把token发给IAPValidator验证。IAPValidator再和MobileStore交互，去Google或Apple验证。",
+      "elements_involved": [
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore",
+        "Google",
+        "Apple",
+        "token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加验证链路。接下来IAPValidator还要检查token是否已被使用，这里又有一个分支。",
+      "elements_involved": [
+        "IAPValidator",
+        "CoCo",
+        "token",
+        "already used"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，如果token已使用，要回传duplicate给CTBackend，CTBackend删掉购物车，然后给MobileApp返回错误，标注IoT_Industrial_ActuatorController。",
+      "elements_involved": [
+        "token already used",
+        "CTBackend",
+        "CoCo",
+        "Delete the new cart",
+        "MobileApp",
+        "error",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加重复token的处理分支。如果token有效，IAPValidator把交易信息回传给CTBackend，然后CTBackend要发两个事件？",
+      "elements_involved": [
+        "IAPValidator-CTBackend",
+        "EventSystem",
+        "checkout started",
+        "item added to cart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，checkout started和item added to cart两个事件。然后CTBackend创建payment，要设置usdCentAmount字段。",
+      "elements_involved": [
+        "CTBackend",
+        "EventSystem",
+        "payment",
+        "usdCentAmount"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加事件和payment创建。这里又有一个分支：payment创建失败的话，要给MobileApp返回错误，标注IoT_Industrial_PLC_Logic。",
+      "elements_involved": [
+        "Payment creation failed",
+        "CTBackend",
+        "MobileApp",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。如果成功，CTBackend再发一个payment method used事件，然后把payment attach到购物车。这里还有失败分支，错误标注IoT_Industrial_ActuatorController。",
+      "elements_involved": [
+        "payment method used",
+        "Attach payment",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加attach payment的分支。接下来是创建订单？",
+      "elements_involved": [
+        "CTBackend-CoCo",
+        "Create order from cart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，CTBackend用购物车创建订单。如果失败，返回错误给MobileApp，这次标注IoT_Industrial_EdgeNode。",
+      "elements_involved": [
+        "Create order",
+        "Order creation failed",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加订单创建分支。成功之后CTBackend要把订单标记为ready for delivery？",
+      "elements_involved": [
+        "Mark items as ready for delivery",
+        "CoCo--CTBackend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，更新订单状态。如果失败，错误还是标注IoT_Industrial_ActuatorController。",
+      "elements_involved": [
+        "Updating item state failed",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。最后成功的话，CTBackend发order completed事件，然后给MobileApp返回成功，标注IoT_Industrial_MQTT_Broker。",
+      "elements_involved": [
+        "order completed",
+        "CTBackend-EventSystem",
+        "CTBackend--MobileApp",
+        "success",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我检查一下，所有错误标注都对了：ActuatorController出现了三次，PLC_Logic一次，EdgeNode一次，MQTT_Broker在成功消息里。",
+      "elements_involved": [
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。整个序列图已完整，包含6个参与者、多个alt条件分支、异步事件发送，以及IoT工业组件的标注。",
+      "elements_involved": [
+        "sequence diagram",
+        "participants",
+        "alt branches",
+        "EventSystem"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 26,
+    "repair_count": 0,
+    "grounding_acts_count": 26,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v5_kimi_k25_trainregen_20260312",
+  "release_built_at": "2026-03-11T18:56:32Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-11T18:56:32Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_final_v5_pipeline\\generated_final.jsonl",
+    "latency_ms": 44459.59,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 26
+  }
+}
