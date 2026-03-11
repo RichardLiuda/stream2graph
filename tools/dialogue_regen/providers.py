@@ -304,17 +304,18 @@ class GeminiGenerateContentGenerator(JSONHttpGenerator):
         api_key_env = str(config.get("api_key_env", "GOOGLE_API_KEY"))
         model_name = str(config["model"])
         api_key = os.environ.get(api_key_env, "")
-        endpoint = str(
-            config.get(
-                "endpoint",
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}",
-            )
+        configured_endpoint = str(config.get("endpoint", "")).strip()
+        endpoint = configured_endpoint or (
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
         )
         super().__init__({**config, "endpoint": endpoint})
         self.api_key_env = api_key_env
         self.temperature = float(config.get("temperature", 0.2))
         self.max_output_tokens = int(config.get("max_output_tokens", 4096))
         self.thinking_budget = int(config.get("thinking_budget", 0))
+        self.response_mime_type = str(config.get("response_mime_type", "")).strip()
+        self.response_schema = config.get("response_schema")
+        self.response_json_schema = config.get("response_json_schema")
 
     def generate(self, sample: DialogueRegenSample) -> DialogueGenerationResult:
         api_key = os.environ.get(self.api_key_env)
@@ -337,6 +338,12 @@ class GeminiGenerateContentGenerator(JSONHttpGenerator):
             }
             if self.thinking_budget >= 0:
                 payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": self.thinking_budget}
+            if self.response_mime_type:
+                payload["generationConfig"]["responseMimeType"] = self.response_mime_type
+            if self.response_schema is not None:
+                payload["generationConfig"]["responseSchema"] = self.response_schema
+            if self.response_json_schema is not None:
+                payload["generationConfig"]["responseJsonSchema"] = self.response_json_schema
             t0 = time.time()
             response = self._post_json(payload, {})
             latency_ms = (time.time() - t0) * 1000.0
@@ -392,4 +399,3 @@ def build_generator(config: dict[str, Any]) -> DialogueGenerator:
     if provider == "google_generate_content":
         return GeminiGenerateContentGenerator(config)
     raise ValueError(f"Unsupported dialogue regeneration provider: {provider}")
-
