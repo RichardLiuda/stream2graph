@@ -25,6 +25,10 @@ The platform is designed to support a rigorous paper workflow with:
   - orchestration entrypoint that runs the full paper-style benchmark workflow
 - `tools/eval/run_openai_benchmark.py`
   - GPT / OpenAI-specific benchmark entrypoint with retries, config materialization, and optional bundle publishing
+- `tools/eval/run_gemini_benchmark.py`
+  - Gemini-specific benchmark entrypoint for the official Google interface
+- `tools/eval/run_openai_compatible_benchmark.py`
+  - benchmark entrypoint for official OpenAI-compatible providers such as Kimi, DeepSeek, MiniMax, Qwen DashScope, and SiliconFlow
 - `tools/eval/export_run_bundle.py`
   - exports selected run outputs into a git-trackable bundle under `reports/evaluation/published/`
 - `tools/eval/common.py`
@@ -47,6 +51,16 @@ The platform is designed to support a rigorous paper workflow with:
 - `openai_responses`
   - frontier API baseline
   - supports timeout, retry, backoff, and request pacing controls
+- `moonshot_chat_completions`
+  - official Moonshot / Kimi OpenAI-compatible endpoint
+- `deepseek_chat_completions`
+  - official DeepSeek OpenAI-compatible endpoint
+- `minimax_chat_completions`
+  - official MiniMax OpenAI-compatible endpoint
+- `dashscope_chat_completions`
+  - official Qwen DashScope OpenAI-compatible endpoint
+- `siliconflow_chat_completions`
+  - SiliconFlow-hosted open-weight models via OpenAI-compatible endpoint
 - `anthropic_messages`
   - frontier API baseline
 - `google_generate_content`
@@ -133,6 +147,22 @@ and can optionally publish a commit-ready bundle:
 python tools/eval/run_openai_benchmark.py --model gpt-4.1 --split test --publish-bundle
 ```
 
+### 7. Run Gemini with the official Google interface
+
+```bash
+python tools/eval/run_gemini_benchmark.py --config configs/evaluation/gemini_benchmark.example.json
+```
+
+### 8. Run Kimi / DeepSeek / MiniMax / Qwen / SiliconFlow with OpenAI-compatible endpoints
+
+```bash
+python tools/eval/run_openai_compatible_benchmark.py --config configs/evaluation/deepseek_benchmark.example.json
+python tools/eval/run_openai_compatible_benchmark.py --config configs/evaluation/moonshot_kimi_benchmark.example.json
+python tools/eval/run_openai_compatible_benchmark.py --config configs/evaluation/minimax_benchmark.example.json
+python tools/eval/run_openai_compatible_benchmark.py --config configs/evaluation/qwen_dashscope_benchmark.example.json
+python tools/eval/run_openai_compatible_benchmark.py --config configs/evaluation/siliconflow_benchmark.example.json
+```
+
 ## Main offline metrics
 
 - normalized exact match
@@ -180,5 +210,11 @@ The repository includes smoke configs under `configs/evaluation/`:
 - `benchmark_report_release_test_smoke.json`
 - `eval_suite_release_test_smoke.json`
 - `openai_gpt_benchmark.example.json`
+- `gemini_benchmark.example.json`
+- `moonshot_kimi_benchmark.example.json`
+- `deepseek_benchmark.example.json`
+- `minimax_benchmark.example.json`
+- `qwen_dashscope_benchmark.example.json`
+- `siliconflow_benchmark.example.json`
 
 These are intended to verify the pipeline without requiring model weights or API keys.

@@ -99,6 +99,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    raw_config = json.loads(resolve_path(args.config).read_text(encoding="utf-8")) if args.config else {}
     output_jsonl = resolve_path(args.output_jsonl)
     manifest_output = (
         resolve_path(args.manifest_output)
@@ -121,7 +122,12 @@ def main() -> None:
     elif output_jsonl.exists():
         output_jsonl.unlink()
 
-    predictor_config = _predictor_config_from_args(args)
+    predictor_config = {
+        key: raw_config[key]
+        for key in {"extra_body", "provider_name"}
+        if key in raw_config
+    }
+    predictor_config.update(_predictor_config_from_args(args))
     static_rows = None
     if predictor_config.get("provider") == "static_jsonl" and predictor_config.get("static_rows_path"):
         static_rows = read_jsonl(resolve_path(str(predictor_config["static_rows_path"])))

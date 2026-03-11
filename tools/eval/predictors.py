@@ -306,6 +306,90 @@ class OpenAIResponsesPredictor(JSONHttpPredictor):
         return "\n".join(chunks).strip()
 
 
+class OpenAICompatibleChatPredictor(JSONHttpPredictor):
+    provider = "openai_compatible_chat"
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        if not config.get("endpoint"):
+            raise ValueError("OpenAI-compatible chat predictor requires an endpoint.")
+        super().__init__(config)
+        self.provider_name = str(config.get("provider_name", config.get("provider", self.provider)))
+        self.api_key_env = str(config.get("api_key_env", "OPENAI_API_KEY"))
+        self.temperature = float(config.get("temperature", 0.0))
+        self.max_tokens = int(config.get("max_tokens", config.get("max_output_tokens", 2048)))
+        self.extra_body = config.get("extra_body", {}) if isinstance(config.get("extra_body"), dict) else {}
+
+    def predict(self, sample: EvaluationSample) -> PredictionResult:
+        api_key = os.environ.get(self.api_key_env)
+        if not api_key:
+            return PredictionResult(
+                provider=self.provider_name,
+                model_name=self.model_name,
+                generated_code="",
+                raw_output_text="",
+                latency_ms=0.0,
+                error=f"missing environment variable: {self.api_key_env}",
+            )
+
+        try:
+            payload = {
+                "model": self.model_name,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": sample.prompt},
+                ],
+                "max_tokens": self.max_tokens,
+                "temperature": self.temperature,
+            }
+            payload.update(self.extra_body)
+            t0 = time.time()
+            response = self._post_json(payload, {"Authorization": f"Bearer {api_key}"})
+            latency_ms = (time.time() - t0) * 1000.0
+            raw_text = self._extract_text(response)
+            finish_reason = None
+            if isinstance(response.get("choices"), list) and response.get("choices"):
+                finish_reason = response["choices"][0].get("finish_reason")
+            usage = response.get("usage", {}) if isinstance(response.get("usage"), dict) else {}
+            if not usage and isinstance(response.get("choices"), list) and response.get("choices"):
+                candidate_usage = response["choices"][0].get("usage")
+                if isinstance(candidate_usage, dict):
+                    usage = candidate_usage
+            return PredictionResult(
+                provider=self.provider_name,
+                model_name=self.model_name,
+                generated_code=extract_mermaid_candidate(raw_text),
+                raw_output_text=raw_text,
+                latency_ms=round(latency_ms, 4),
+                finish_reason=finish_reason,
+                usage=usage,
+            )
+        except Exception as exc:
+            return PredictionResult(
+                provider=self.provider_name,
+                model_name=self.model_name,
+                generated_code="",
+                raw_output_text="",
+                latency_ms=0.0,
+                error=str(exc),
+            )
+
+    def _extract_text(self, response: dict[str, Any]) -> str:
+        chunks: list[str] = []
+        for choice in response.get("choices", []):
+            message = choice.get("message", {})
+            content = message.get("content")
+            if isinstance(content, str):
+                chunks.append(content)
+                continue
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict):
+                        text = item.get("text")
+                        if isinstance(text, str):
+                            chunks.append(text)
+        return "\n".join(chunks).strip()
+
+
 class AnthropicMessagesPredictor(JSONHttpPredictor):
     provider = "anthropic_messages"
 
@@ -447,6 +531,14 @@ class GeminiGenerateContentPredictor(JSONHttpPredictor):
 
 def build_predictor(config: dict[str, Any], static_rows: Optional[list[dict]] = None) -> Predictor:
     provider = str(config.get("provider", "gold_reference"))
+    openai_compatible_providers = {
+        "openai_compatible_chat",
+        "moonshot_chat_completions",
+        "deepseek_chat_completions",
+        "minimax_chat_completions",
+        "dashscope_chat_completions",
+        "siliconflow_chat_completions",
+    }
     if provider == "gold_reference":
         return GoldReferencePredictor()
     if provider == "static_jsonl":
@@ -455,6 +547,8 @@ def build_predictor(config: dict[str, Any], static_rows: Optional[list[dict]] = 
         return LocalHFPredictor(config)
     if provider == "openai_responses":
         return OpenAIResponsesPredictor(config)
+    if provider in openai_compatible_providers:
+        return OpenAICompatibleChatPredictor(config)
     if provider == "anthropic_messages":
         return AnthropicMessagesPredictor(config)
     if provider == "google_generate_content":
