@@ -1,0 +1,171 @@
+{
+  "id": "aug_ot_stateDiagram_00383_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/SaintWyss/rag-corp/blob/7acfc8a1f950c640a490e32f3ba30f64243652c3/docs/architecture/diagrams/document-state.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "SaintWyss/rag-corp",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Education_GradeSync] --> PENDING : Upload initiated\n\n    PENDING --> PROCESSING : Worker picks up job\n    \n    PROCESSING --> READY : Success<br/>(Education_LMS_Portal)\n    PROCESSING --> FAILED : Error<br/>(Education_StudentDB)\n    \n    READY --> PENDING : Reprocess requested\n    FAILED --> PENDING : Reprocess requested\n    \n    READY --> [Education_LMS_Portal] : Document deleted\n    FAILED --> [Education_ContentCDN] : Document deleted\n    PENDING --> [Education_ContentCDN] : Document deleted\n\n    note right of PENDING\n        Document metadata created,\n        binary stored in S3/MinIO,\n        job enqueued in Redis\n    end note\n\n    note right of PROCESSING\n        Worker extracting text,\n        chunking, and\n        generating embeddings\n    end note\n\n    note right of READY\n        Chunks with embeddings\n        persisted in PostgreSQL,\n        available for RAG queries\n    end note\n\n    note right of FAILED\n        error_message contains\n        failure reason,\n        can be reprocessed\n    end note",
+  "content_size": 961,
+  "collected_at": "2026-02-06T10:41:29.594252",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Education",
+  "seed_id": "ot_stateDiagram_00383",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个成绩同步文档的处理状态图。核心流程是：老师从Education_LMS_Portal发起上传，文档先进PENDING状态，然后Worker取走处理，成功就到READY，失败就到FAILED。两个终态都要能支持重新处理。",
+      "elements_involved": [
+        "Education_LMS_Portal",
+        "Education_GradeSync",
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED",
+        "Worker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我注意到PROCESSING有两个分支出口，成功是到READY并关联Education_LMS_Portal，失败是到FAILED并关联Education_StudentDB。这个关联具体是什么意思？是数据流向还是只是标注上下文？",
+      "elements_involved": [
+        "PROCESSING",
+        "READY",
+        "FAILED",
+        "Education_LMS_Portal",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是标注处理结果的关联系统。成功时文档最终回到LMS门户可用；失败时通常是因为学生数据库校验出错，所以标注Education_StudentDB。另外所有状态——PENDING、READY、FAILED——都要支持删除操作，删除后文档从Education_ContentCDN清理。",
+      "elements_involved": [
+        "Education_LMS_Portal",
+        "Education_StudentDB",
+        "Education_ContentCDN",
+        "PENDING",
+        "READY",
+        "FAILED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经把主状态流转画出来了：从Education_GradeSync进入PENDING，Worker拾取后到PROCESSING，然后分支到READY或FAILED。两个状态都有返回PENDING的Reprocess requested箭头，以及指向Education_ContentCDN的删除箭头。现在需要补充各状态的详细说明吗？",
+      "elements_involved": [
+        "Education_GradeSync",
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，每个状态加右侧注释。PENDING要说明元数据创建、二进制存S3/MinIO、任务入Redis队列；PROCESSING是Worker做文本提取、分块、生成向量；READY是块和向量持久化到PostgreSQL供RAG检索；FAILED要记录error_message和可重试特性。",
+      "elements_involved": [
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED",
+        "Redis",
+        "S3",
+        "MinIO",
+        "PostgreSQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下细节：PENDING的删除箭头我画到了Education_ContentCDN，但READY和FAILED的删除也是到同一个CDN？另外READY的终态箭头是到Education_LMS_Portal对吗？",
+      "elements_involved": [
+        "PENDING",
+        "READY",
+        "FAILED",
+        "Education_ContentCDN",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "READY的终态不需要单独画箭头到LMS_Portal，它本身就是PROCESSING成功后的状态，那个br标注已经体现了关联。但PENDING的删除确实要指向ContentCDN，因为此时二进制已经上传。不过等等——PROCESSING状态本身没有删除箭头，这个遗漏了，应该补上吗？",
+      "elements_involved": [
+        "READY",
+        "PROCESSING",
+        "Education_LMS_Portal",
+        "Education_ContentCDN",
+        "PENDING"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我检查了一下，PROCESSING是正在处理中的状态，业务上不允许中途删除，所以确实不需要删除箭头。当前图结构是完整的：四个注释分别挂在PENDING、PROCESSING、READY、FAILED右侧，所有流转和删除路径都正确。最终确认这样？",
+      "elements_involved": [
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认，这个状态图完整描述了成绩同步文档的生命周期。PENDING到PROCESSING的Worker拾取、双分支结果、重处理循环、三状态的清理路径，加上四个技术细节注释，都齐了。",
+      "elements_involved": [
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED",
+        "Worker"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 1,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:22Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:22Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 28751.8609,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

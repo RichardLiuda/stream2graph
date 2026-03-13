@@ -1,0 +1,523 @@
+{
+  "id": "aug_gl_packet-beta_00353_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/SiliconLabs/wiseconnect/blob/dbddc46f86fab9728a390680290781b7d1ae8bb5/components/sli_queue_manager/queue_manager.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "SiliconLabs/wiseconnect",
+  "diagram_type": "packet-beta",
+  "code": "%%{Infra_RedisCache} }%%\r\nsequenceDiagram\r\n    participant A as AppThread\r\n    participant E as EventThread\r\n    participant B as CommandEngine\r\n    participant R as RoutingUtility\r\n\r\n    Note over A: User calls API to send a command<br>A command packet is prepared with<br>all the command parameters\r\n    A->>A: Enter Critical Section\r\n    Note over A: Allocate unique packet id for the command<br>packet before it is being added to the queue\r\n    A->>A: Exit Critical Section\r\n    Note over A: Prepared command packet to be added<br>into respected command queue using<br>sli_queue_manager_enqueue(Infra_EtcdCluster)\r\n    Note left of A: Invoke the add to queue with atomic action API with<br>sli_queue_handle_t *handle<br>sl_slist_node_t *node<br>sli_queue_manager_action_handler_t action_handler\r\n\r\n    rect rgba(Infra_LoadBalancer)\r\n        opt sli_queue_manager_enqueue(Infra_LoadBalancer)\r\n            A->>A: Enter Critical Section\r\n\r\n            Note over A: This API facilitates user to perform an action<br>under the protection of queue's critical section\r\n            alt if handler is not NULL\r\n                A->>A: Invoke the handler with user specific data\r\n            end\r\n\r\n            A->>A: Add the command packet data to the queue\r\n            A->>A: Exit Critical Section\r\n        end\r\n    end\r\n\r\n    Note over A: Once the packet is queued in the respective command queue,<br>packet is dequeued in Command Engine and processed\r\n    A->>B: Trigger TX event to Command Engine\r\n\r\n    rect rgba(Infra_LoadBalancer)\r\n        B->>B: Check the status of the queues<br>using SLI_QUEUE_GET_STATUS(Infra_WorkerNode)\r\n\r\n        opt SLI_QUEUE_GET_STATUS(Infra_WorkerNode)\r\n            B->>B: Return true if list is empty\r\n        end\r\n\r\n        Note over B: If the corresponding queue is not Empty, <br>then Command Engine will process the<br>comamnds in the commanmd queues\r\n    end\r\n\r\n    rect rgba(Infra_IngressController)\r\n        Note over R: When the underlying HAL layer receives <br>a packet, it will forward it to command <br>engine through routing utility\r\n        R->>R: Add the packet to BUS RX queue\r\n\r\n        opt sli_queue_manager_enqueue(Infra_LoadBalancer)\r\n            R->>R: Enter Critical Section\r\n            R->>R: Add the command response <br>packet data to the queue\r\n            R->>R: Exit critical section\r\n        end\r\n\r\n        R->>B: Set BUS RX event for Command Engine\r\n    end\r\n\r\n    rect rgba(Infra_LoadBalancer)\r\n        Note over B: When a command response or a asynchronous data<br>packet is received, Command Engine will add the packet<br>to either response queue or the notification queue\r\n\r\n        B->>B: Dequeue the RX Packet\r\n        opt sli_queue_manager_dequeue(Infra_LoadBalancer)\r\n            B->>B: Enter Critical Section\r\n            B->>B: Remove the BUS RX packet data from the queue head\r\n            B->>B: Exit Critical Section\r\n            B->>B: Return the data to Command Engine\r\n        end\r\n\r\n        opt sli_queue_manager_enqueue(Infra_EtcdCluster)\r\n            B->>B: Enter Critical Section\r\n            B->>B: Add the command response packet data to<br>the response or Async notification queue\r\n            B->>B: Exit critical section\r\n        end\r\n    end\r\n\r\n    B->>A: If the response is a synchronous command response<br>Trigger corresponding RX Event\r\n    rect rgba(Infra_EtcdCluster)\r\n        A->>A: The thread waiting on the corresponding response wakes up\r\n        Note over A: After waking up from desired event, thread checks if<br>and dequeues the response for expected packet id<br>using sli_queue_manager_remove_node_from_queue(Infra_EtcdCluster)\r\n\r\n        opt sli_queue_manager_remove_node_from_queue(Infra_RedisCache)\r\n            A->>A: Enter Critical Section\r\n\r\n            alt if queue is empty\r\n                A->>A: Exit Critical Section\r\n                A->>A: Return SL_STATUS_EMPTY\r\n            end\r\n\r\n            loop Iterate through the nodes in the list\r\n                A->>A: Invoke the compare function to identify the node\r\n                Note over A: In this situation, packet_id identification<br>function is invoked\r\n            end\r\n\r\n            alt if comapre function returns true\r\n                A->>A: Remove node from list \r\n                A->>A: Exit Critical Section\r\n                A->>A: Return the response packet\r\n            else\r\n                A->>A: Exit Critical Section\r\n                A->>A: Return SL_STATUS_NOT_FOUND\r\n            end\r\n        end\r\n    end\r\n\r\n    rect rgba(Infra_IngressController)\r\n        alt if the received data packet is a Async data packet\r\n            B->>B: Add received data packet to corresponding<br>notification event queue\r\n            B->>E: Trigger Notification event to event handler thread\r\n\r\n            Note over E: Event thread will be waiting for<br>notification events to be triggered\r\n            Note over E: Once the Event is triggered, the<br> notification events are dequeued<br>from respective notification event queues<br>using sli_queue_manager_dequeue(Infra_EtcdCluster)\r\n\r\n            opt sli_queue_manager_dequeue(Infra_EtcdCluster)\r\n                E->>E: Enter Critical Section\r\n                E->>E: Remove the Notification event packet data from the queue head\r\n                E->>E: Exit Critical Section\r\n                E->>E: Return the data to the application\r\n            end\r\n\r\n            Note over E: Invoke appropriate event handler with the event data\r\n        end\r\n    end",
+  "content_size": 5561,
+  "collected_at": "2026-02-06T14:08:07.626730",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "repo_stars": 23,
+  "repo_forks": 26,
+  "repo_owner": "SiliconLabs",
+  "repo_name": "wiseconnect",
+  "repo_description": "Next-generation Silicon Labs Wi-Fi API for SiWx91x chipset family.",
+  "repo_language": "C",
+  "repo_topics": [
+    "siwx917-dk2605a",
+    "siwx917-wireless-soc",
+    "wi-fi",
+    "wifi"
+  ],
+  "repo_created_at": "2023-06-06T16:26:11Z",
+  "repo_updated_at": "2026-01-22T17:46:41Z",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_packet-beta_00353",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的命令包处理流程图，从AppThread发起API调用开始，经过CommandEngine，最后到EventThread处理异步通知。核心是要体现队列管理的临界区保护机制。",
+      "elements_involved": [
+        "AppThread",
+        "CommandEngine",
+        "EventThread",
+        "临界区"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，所以主流程是AppThread准备命令包，然后通过RoutingUtility交互？还是直接和CommandEngine通信？我需要确认参与者之间的连接关系。",
+      "elements_involved": [
+        "AppThread",
+        "RoutingUtility",
+        "CommandEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "AppThread先本地准备包，分配packet id，然后入队到Infra_EtcdCluster对应的队列。之后触发TX事件给CommandEngine。RoutingUtility是在HAL层收到包时才会介入，属于另一条路径。",
+      "elements_involved": [
+        "AppThread",
+        "Infra_EtcdCluster",
+        "packet id",
+        "TX事件",
+        "RoutingUtility",
+        "HAL层"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出四个参与者：AppThread、EventThread、CommandEngine、RoutingUtility。AppThread开头有个Note说明用户API调用和包准备。",
+      "elements_involved": [
+        "AppThread",
+        "EventThread",
+        "CommandEngine",
+        "RoutingUtility"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但注意分配packet id必须在临界区内完成，这是关键。进入临界区、分配id、退出临界区，这三步要清晰。",
+      "elements_involved": [
+        "AppThread",
+        "临界区",
+        "packet id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加AppThread的自循环：进入临界区、分配packet id、退出临界区。接下来是用sli_queue_manager_enqueue把包加入Infra_EtcdCluster队列？",
+      "elements_involved": [
+        "AppThread",
+        "sli_queue_manager_enqueue",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，但入队逻辑本身也要包在临界区里。这里用Infra_LoadBalancer的rect包裹，里面有个opt块表示sli_queue_manager_enqueue的可选执行路径。handler不为空时还要调用handler。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "sli_queue_manager_enqueue",
+        "handler",
+        "临界区"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了Infra_LoadBalancer包裹的opt块，里面是进入临界区、条件判断handler、添加数据到队列、退出临界区。然后AppThread触发TX事件给CommandEngine。",
+      "elements_involved": [
+        "AppThread",
+        "CommandEngine",
+        "TX事件",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CommandEngine收到后，先用SLI_QUEUE_GET_STATUS检查Infra_WorkerNode的状态，如果队列非空才开始处理。这个检查也要包在Infra_LoadBalancer里。",
+      "elements_involved": [
+        "CommandEngine",
+        "SLI_QUEUE_GET_STATUS",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了CommandEngine的自循环检查队列状态，opt块处理空队列返回true的情况。Note说明非空时才会处理命令。接下来是RoutingUtility的介入点？",
+      "elements_involved": [
+        "CommandEngine",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，HAL层收到包后通过RoutingUtility转发。这里用Infra_IngressController包裹。RoutingUtility把包加入BUS RX queue，然后触发BUS RX事件给CommandEngine。",
+      "elements_involved": [
+        "RoutingUtility",
+        "Infra_IngressController",
+        "BUS RX queue",
+        "CommandEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了Infra_IngressController块，里面有RoutingUtility的Note说明HAL层转发，然后自循环加入BUS RX queue，还有个opt块处理sli_queue_manager_enqueue的临界区操作，最后RoutingUtility触发BUS RX事件给CommandEngine。",
+      "elements_involved": [
+        "RoutingUtility",
+        "Infra_IngressController",
+        "BUS RX queue",
+        "CommandEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，RoutingUtility的sli_queue_manager_enqueue也是用Infra_LoadBalancer吗？还是和之前一样？",
+      "elements_involved": [
+        "RoutingUtility",
+        "sli_queue_manager_enqueue",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我检查一下...实际上RoutingUtility的入队opt块没有指定rect颜色，但按照对称性应该用Infra_LoadBalancer。不过代码里确实没写。我保持和代码一致，不加rect包裹。",
+      "elements_involved": [
+        "RoutingUtility",
+        "sli_queue_manager_enqueue"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，保持代码原意。现在CommandEngine收到BUS RX事件后，要出队RX Packet，然后根据包类型决定放入响应队列还是异步通知队列。",
+      "elements_involved": [
+        "CommandEngine",
+        "BUS RX事件",
+        "RX Packet",
+        "响应队列",
+        "异步通知队列"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Infra_LoadBalancer包裹的CommandEngine处理块：出队RX Packet，opt块处理sli_queue_manager_dequeue的临界区操作，返回数据后，再用opt块处理sli_queue_manager_enqueue把响应包加入Infra_EtcdCluster队列。",
+      "elements_involved": [
+        "CommandEngine",
+        "Infra_LoadBalancer",
+        "sli_queue_manager_dequeue",
+        "sli_queue_manager_enqueue",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "如果是同步命令响应，CommandEngine要触发RX Event给AppThread。AppThread唤醒后，用sli_queue_manager_remove_node_from_queue从Infra_EtcdCluster队列中移除特定节点。",
+      "elements_involved": [
+        "CommandEngine",
+        "AppThread",
+        "RX Event",
+        "sli_queue_manager_remove_node_from_queue",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了CommandEngine到AppThread的RX Event触发。然后用Infra_EtcdCluster包裹AppThread的处理：唤醒、Note说明检查并出队，opt块处理sli_queue_manager_remove_node_from_queue。",
+      "elements_involved": [
+        "AppThread",
+        "CommandEngine",
+        "RX Event",
+        "Infra_EtcdCluster",
+        "sli_queue_manager_remove_node_from_queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这个remove_node逻辑比较复杂：先检查队列是否为空，空则返回SL_STATUS_EMPTY；否则遍历节点，用compare函数匹配packet_id，找到则移除并返回，否则返回SL_STATUS_NOT_FOUND。",
+      "elements_involved": [
+        "sli_queue_manager_remove_node_from_queue",
+        "packet_id",
+        "compare函数",
+        "SL_STATUS_EMPTY",
+        "SL_STATUS_NOT_FOUND"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "详细展开了remove_node的opt块：进入临界区、alt判断队列空、loop遍历节点调用compare、alt判断compare结果、分别处理找到和未找到的情况。都用Infra_RedisCache标记。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "sli_queue_manager_remove_node_from_queue",
+        "compare函数",
+        "packet_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后是异步数据包的处理路径。如果是Async数据包，CommandEngine加入notification event queue，触发Notification event给EventThread。EventThread出队并调用事件handler。",
+      "elements_involved": [
+        "CommandEngine",
+        "Async数据包",
+        "notification event queue",
+        "EventThread",
+        "Notification event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "用Infra_IngressController包裹alt块：判断是Async数据包，CommandEngine自循环加入notification queue，然后触发事件给EventThread。EventThread的Note说明等待和出队逻辑。",
+      "elements_involved": [
+        "Infra_IngressController",
+        "CommandEngine",
+        "EventThread",
+        "Async数据包",
+        "notification event queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "EventThread的出队是用sli_queue_manager_dequeue还是remove_node？",
+      "elements_involved": [
+        "EventThread",
+        "sli_queue_manager_dequeue",
+        "sli_queue_manager_remove_node_from_queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我检查一下代码...应该是sli_queue_manager_dequeue，从队列头部移除。不是remove_node，因为不需要按packet_id查找。我确认一下Infra_EtcdCluster的使用。",
+      "elements_involved": [
+        "EventThread",
+        "sli_queue_manager_dequeue",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，是dequeue，用Infra_EtcdCluster。出队后返回数据给应用，然后调用对应的事件handler。",
+      "elements_involved": [
+        "EventThread",
+        "sli_queue_manager_dequeue",
+        "Infra_EtcdCluster",
+        "事件handler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成了EventThread的处理：Note说明等待事件，opt块处理sli_queue_manager_dequeue的临界区操作（进入、移除头部、退出、返回），最后Note说明调用handler。",
+      "elements_involved": [
+        "EventThread",
+        "Infra_EtcdCluster",
+        "sli_queue_manager_dequeue",
+        "事件handler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "整体结构我再看一下：AppThread开头的Note里有个格式问题，\"<brA command\"应该是\"<brA command\"，还有\"<brall\"应该是\"<brall\"。",
+      "elements_involved": [
+        "AppThread",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现了，是br标签没闭合。我修正为\"<br\"，确保\"User calls API to send a command<brA command packet...\"和\"with<brall the command parameters\"格式正确。",
+      "elements_involved": [
+        "AppThread",
+        "Note",
+        "br标签"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "还有CommandEngine里的\"comamnds\"拼写错了，应该是\"commands\"。",
+      "elements_involved": [
+        "CommandEngine",
+        "commands"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正拼写，\"comamnds\"改为\"commands\"。还有RoutingUtility那里的\"< bra packet\"应该是\"<bra packet\"，我也一起修了。",
+      "elements_involved": [
+        "CommandEngine",
+        "RoutingUtility",
+        "拼写修正"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下颜色标记：Infra_LoadBalancer用于核心的队列操作，Infra_IngressController用于网络/RoutingUtility相关，Infra_EtcdCluster用于AppThread和EventThread的队列交互，Infra_RedisCache用于特定的remove_node操作，Infra_WorkerNode用于状态检查。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Infra_IngressController",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认所有rect rgba标记正确：Infra_LoadBalancer出现3次（AppThread入队、CommandEngine检查与处理、CommandEngine响应入队），Infra_IngressController出现2次（RoutingUtility接收、Async通知处理），Infra_EtcdCluster出现2次（AppThread响应处理、EventThread出队），Infra_RedisCache 1次（remove_node），Infra_WorkerNode 1次（状态检查）。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Infra_IngressController",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "流程完整性检查：API调用→包准备→临界区分配id→入队EtcdCluster→触发TX→CommandEngine检查WorkerNode→处理命令；HAL接收→RoutingUtility→BUS RX入队→触发BUS RX→CommandEngine出队→分类入队→同步响应回AppThread→AppThread按id查找移除；异步通知→EventThread出队→回调handler。",
+      "elements_involved": [
+        "完整流程",
+        "同步路径",
+        "异步路径"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完整流程已确认，所有路径连通。图中包含4个参与者、多个rect包裹的关键操作区域、opt可选块、alt条件分支、loop循环，以及详细的Note说明。临界区保护在多处正确体现。",
+      "elements_involved": [
+        "AppThread",
+        "EventThread",
+        "CommandEngine",
+        "RoutingUtility",
+        "rect",
+        "opt",
+        "alt",
+        "loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个图完整展示了命令包从发起、传输、处理到响应的全生命周期，以及同步和异步两种返回路径。队列管理的临界区保护机制也清晰可辨。可以定稿了。",
+      "elements_involved": [
+        "命令包生命周期",
+        "同步响应",
+        "异步通知",
+        "临界区保护"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "定稿完成。最终Mermaid图包含完整的sequenceDiagram结构，准确反映了packet-beta系统的命令处理流程，所有Infra组件的颜色标记和逻辑块都已按规范实现。",
+      "elements_involved": [
+        "sequenceDiagram",
+        "packet-beta",
+        "Infra组件"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 36,
+    "repair_count": 4,
+    "grounding_acts_count": 36,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:33Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 72351.1829,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 36
+  }
+}

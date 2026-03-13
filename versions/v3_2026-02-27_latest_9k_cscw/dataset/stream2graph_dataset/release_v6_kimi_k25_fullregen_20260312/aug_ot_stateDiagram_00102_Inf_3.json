@@ -1,0 +1,149 @@
+{
+  "id": "aug_ot_stateDiagram_00102_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/yiiy80/wine-inventory/blob/a5093c530519b63b41067584488eecab1062ebf8/mmd/%E3%82%B9%E3%83%86%E3%83%BC%E3%83%88%E5%9B%B3_%E5%9C%A8%E5%BA%AB%E5%87%BA%E5%BA%AB%E5%87%A6%E7%90%86.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "yiiy80/wine-inventory",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_WorkerNode] --> Idle: システム待機\n\n    Idle --> InputForm: 出庫操作開始\n    note right of InputForm : StockTransactionModal表示\n\n    InputForm --> Validating: フォーム送信\n    note right of Validating : 数量・在庫・理由チェック\n\n    Validating --> InputForm: バリデーションエラー\n    note right of InputForm : エラー表示・再入力促し\n\n    Validating --> SendingRequest: バリデーション成功\n    note right of SendingRequest : APIリクエスト送信\n\n    SendingRequest --> ProcessingBackend: HTTPリクエスト受信\n    note right of ProcessingBackend : inventory.py stock_out処理\n\n    ProcessingBackend --> CheckingWine: Wine存在確認\n    note right of CheckingWine : DBクエリ実行\n\n    CheckingWine --> WineNotFound: Wineなし\n    note right of WineNotFound : HTTP 404\n\n    CheckingWine --> CheckingStock: Wineあり\n    note right of CheckingStock : 在庫数量チェック\n\n    CheckingStock --> InsufficientStock: 在庫不足\n    note right of InsufficientStock : HTTP 400\n\n    CheckingStock --> CreatingTransaction: 在庫充足\n    note right of CreatingTransaction : InventoryTransaction作成\n\n    CreatingTransaction --> UpdatingStock: トランザクション作成成功\n    note right of UpdatingStock : Wine.current_stock更新\n\n    UpdatingStock --> CommittingTransaction: 在庫更新成功\n    note right of CommittingTransaction : DBコミット\n\n    CommittingTransaction --> LoggingOperation: コミット成功\n    note right of LoggingOperation : OperationLog作成\n\n    LoggingOperation --> Success: ログ記録成功\n    note right of Success : TransactionResponse返却\n\n    WineNotFound --> ErrorResponse: エラー処理\n    InsufficientStock --> ErrorResponse: エラー処理\n\n    ErrorResponse --> ErrorHandling: APIレイヤーエラー処理\n    note right of ErrorHandling : エラーレスポンス送信\n\n    ErrorHandling --> ErrorDisplay: Frontendエラー受信\n    note right of ErrorDisplay : エラーメッセージ表示\n\n    ErrorDisplay --> InputForm: 再入力促し\n\n    Success --> SuccessResponse: API成功レスポンス\n    note right of SuccessResponse : InventoryTransaction返却\n\n    SuccessResponse --> SuccessDisplay: Frontend成功受信\n    note right of SuccessDisplay : 成功メッセージ表示\n\n    SuccessDisplay --> RefreshingList: 在庫リスト再読み込み\n    note right of RefreshingList : UIデータ更新\n\n    RefreshingList --> Completed: 操作完了\n    note right of Completed : 最終状態\n\n    Completed --> [Infra_LoadBalancer]: システム待機へ戻る\n\n    note left of Idle : 初期状態\n    note right of Completed : 終了状態",
+  "content_size": 2177,
+  "collected_at": "2026-02-06T10:37:55.323085",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00102",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为库存出库流程画一个状态图。核心场景是：用户在弹窗里填出库单，系统校验后扣减库存。关键节点要有表单输入、后端校验、库存检查这些环节。",
+      "elements_involved": [
+        "InputForm",
+        "Validating",
+        "CheckingStock"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我注意到校验环节有两种走向：一种是校验失败回到表单，另一种是成功后发请求到后端。另外库存检查这块，是不是要区分Wine存在性检查和库存数量检查两个独立状态？",
+      "elements_involved": [
+        "Validating",
+        "InputForm",
+        "SendingRequest",
+        "CheckingWine",
+        "CheckingStock"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，拆成CheckingWine和CheckingStock两个状态更清晰。CheckingWine查数据库确认酒款存在，不存在就404；存在的话进CheckingStock判断current_stock够不够。库存不足返回400，充足才创建事务。",
+      "elements_involved": [
+        "CheckingWine",
+        "WineNotFound",
+        "CheckingStock",
+        "InsufficientStock",
+        "CreatingTransaction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，那事务创建成功后，我画成CreatingTransaction→UpdatingStock→CommittingTransaction的链式结构，最后是LoggingOperation记录操作日志。错误分支统一收敛到ErrorResponse处理，再经ErrorHandling到前端ErrorDisplay，最终都能回到InputForm让用户重试。",
+      "elements_involved": [
+        "CreatingTransaction",
+        "UpdatingStock",
+        "CommittingTransaction",
+        "LoggingOperation",
+        "ErrorResponse",
+        "ErrorHandling",
+        "ErrorDisplay",
+        "InputForm"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "链式结构没问题。成功路径最后要加上SuccessDisplay和RefreshingList，让用户看到成功提示并刷新库存列表。另外起点和终点要体现基础设施层，从WorkerNode进入Idle，最终回到LoadBalancer。",
+      "elements_involved": [
+        "SuccessDisplay",
+        "RefreshingList",
+        "Completed",
+        "Infra_WorkerNode",
+        "Idle",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已绘制完成。Idle作为初始状态，标注了系统待机；Completed作为结束状态。所有note都补充了具体实现细节，比如inventory.py的stock_out处理、DB查询和commit操作等。",
+      "elements_involved": [
+        "Idle",
+        "Completed",
+        "ProcessingBackend",
+        "CommittingTransaction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "稍等，Success之后直接到SuccessDisplay感觉少了API响应环节。应该加一个SuccessResponse状态，表示后端返回InventoryTransaction数据，前端接收后再显示成功界面。",
+      "elements_involved": [
+        "Success",
+        "SuccessResponse",
+        "SuccessDisplay"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。现在成功路径是LoggingOperation→Success→SuccessResponse→SuccessDisplay→RefreshingList→Completed，和错误路径形成对称结构。所有状态流转都符合实际代码逻辑了。",
+      "elements_involved": [
+        "SuccessResponse",
+        "SuccessDisplay",
+        "RefreshingList",
+        "Completed"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 18711.9067,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

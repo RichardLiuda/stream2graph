@@ -1,0 +1,277 @@
+{
+  "id": "aug_ot_stateDiagram_00353_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Ulisses37/ktor-server-sandbox/blob/82adffecc1811b5b839dbd70f410a2c2e7e214fd/docs/system_lock_state_machine.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Ulisses37/ktor-server-sandbox",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n[IoT_Industrial_MQTT_Broker] --> Idle: File Opened (IoT_Industrial_TelemetryStream)\n\n    state \"User Edits File\" as UserAction\n    Idle --> UserAction: User types a character\n\n    state \"Request Lock\" as RequestLock {IoT_Industrial_MQTT_Broker)\n        }\n    }\n\n    GrantLock --> LockedState: 200 OK\n    DenyLock --> ConflictState: 409 Conflict\n\n    state \"Locked (IoT_Industrial_EdgeNode)\" as LockedState {IoT_Industrial_TelemetryStream] --> Editing\n        Editing --> Heartbeat: Every 30s\n        Heartbeat --> ServerUpdate: UPDATE locks SET timestamp\n        ServerUpdate --> Editing: 200 OK\n        \n        Editing --> Unlock: User saves/closes/stops\n    }\n\n    state \"Conflict (IoT_Industrial_EdgeNode)\" as ConflictState {IoT_Industrial_ActuatorController] --> ShowWarning: Display \"File Locked by User B\"\n        ShowWarning --> Idle: User cancels edit\n    }\n\n    Unlock --> Idle: DELETE /lock (IoT_Industrial_EdgeNode)\n    \n    note right of Heartbeat\n        Prevents \"Stale Locks\" if\n        PC crashes or loses power.\n    end note",
+  "content_size": 1259,
+  "collected_at": "2026-02-06T10:41:06.727564",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00353",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网场景设计一个协作编辑的状态图，核心是多个EdgeNode通过MQTT Broker协同编辑文件时的锁机制。初始状态应该是Idle，当TelemetryStream推送文件打开事件时触发。",
+      "elements_involved": [
+        "Idle",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，Idle是起始状态。那用户开始编辑后进入什么状态？我假设有一个UserAction状态来表示用户正在输入？",
+      "elements_involved": [
+        "UserAction",
+        "Idle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，UserAction代表用户编辑文件的状态。当用户在Idle状态下输入字符时，就转移到UserAction。这时候系统需要向MQTT Broker请求文件锁。",
+      "elements_involved": [
+        "UserAction",
+        "RequestLock",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我添加了UserAction到RequestLock的转移。RequestLock应该是一个复合状态吗？因为它涉及Broker的交互逻辑。",
+      "elements_involved": [
+        "RequestLock"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RequestLock确实是复合状态，内部包含IoT_Industrial_MQTT_Broker的处理逻辑。请求成功后进入LockedState，失败则进入ConflictState。",
+      "elements_involved": [
+        "RequestLock",
+        "LockedState",
+        "ConflictState",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "锁定成功返回200 OK到LockedState，这个我理解。那ConflictState的触发条件是什么状态码？",
+      "elements_involved": [
+        "GrantLock",
+        "DenyLock",
+        "LockedState",
+        "ConflictState"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "ConflictState由409 Conflict触发，对应DenyLock。这个状态代表另一个EdgeNode已经持有了锁。",
+      "elements_involved": [
+        "DenyLock",
+        "ConflictState",
+        "409 Conflict",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加409 Conflict的转移。LockedState也是复合状态吧？需要体现EdgeNode和TelemetryStream的关系。",
+      "elements_involved": [
+        "LockedState",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，LockedState内部首先是Editing状态，由TelemetryStream触发进入。然后必须有心跳机制防止僵死锁。",
+      "elements_involved": [
+        "LockedState",
+        "Editing",
+        "Heartbeat",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "心跳每30秒触发一次？然后更新服务器锁的时间戳？",
+      "elements_involved": [
+        "Heartbeat",
+        "ServerUpdate",
+        "30s"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Heartbeat每30秒触发ServerUpdate，执行UPDATE locks SET timestamp，成功后返回200 OK回到Editing。",
+      "elements_involved": [
+        "Heartbeat",
+        "ServerUpdate",
+        "Editing",
+        "200 OK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "心跳机制已添加。用户保存或关闭文件时应该解锁，我添加了一个Unlock状态？",
+      "elements_involved": [
+        "Unlock",
+        "Editing",
+        "Idle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "Unlock不需要作为独立状态，应该是Editing直接转移到Idle，同时触发DELETE /lock请求，标注是由EdgeNode发起的。",
+      "elements_involved": [
+        "Editing",
+        "Idle",
+        "DELETE /lock",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，Editing直接回到Idle。ConflictState内部需要处理什么？用户看到冲突提示后的选择？",
+      "elements_involved": [
+        "ConflictState",
+        "ShowWarning",
+        "Idle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ConflictState是复合状态，内部有ShowWarning状态，由ActuatorController触发显示\"File Locked by User B\"。用户可以选择取消编辑回到Idle。",
+      "elements_involved": [
+        "ConflictState",
+        "ShowWarning",
+        "IoT_Industrial_ActuatorController",
+        "Idle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，ShowWarning到Idle的转移标注为\"User cancels edit\"。最后需要在Heartbeat旁边加个注释说明防僵死锁的用途。",
+      "elements_involved": [
+        "ShowWarning",
+        "Idle",
+        "Heartbeat",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "注释内容写：Prevents 'Stale Locks' if PC crashes or loses power. 放在Heartbeat右侧。",
+      "elements_involved": [
+        "Heartbeat",
+        "note right of Heartbeat",
+        "Stale Locks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "注释已添加。我检查一下整体结构：Idle起始，经TelemetryStream打开文件，用户编辑触发锁请求，成功进入带心跳的LockedState，失败进入ConflictState显示警告，解锁后回到Idle。",
+      "elements_involved": [
+        "Idle",
+        "LockedState",
+        "ConflictState",
+        "Heartbeat",
+        "Unlock"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。这个状态图完整描述了工业物联网环境下，基于MQTT Broker的多节点协作编辑锁机制，心跳机制确保了系统容错性。",
+      "elements_involved": [
+        "IoT_Industrial_MQTT_Broker",
+        "Heartbeat",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 19,
+    "repair_count": 1,
+    "grounding_acts_count": 19,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:22Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:22Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 39827.3163,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 19
+  }
+}

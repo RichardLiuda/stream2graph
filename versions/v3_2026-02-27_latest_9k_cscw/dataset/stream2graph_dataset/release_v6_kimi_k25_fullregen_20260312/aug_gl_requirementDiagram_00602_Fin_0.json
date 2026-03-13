@@ -1,0 +1,301 @@
+{
+  "id": "aug_gl_requirementDiagram_00602_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ylmzunal/scalable-llm-over-kubernetes-deployment/blob/1b46a8e09526433e25151879ff4c084c2da2dd58/diagrams/deployment_sequence_diagram.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ylmzunal/scalable-llm-over-kubernetes-deployment",
+  "diagram_type": "requirementDiagram",
+  "code": "sequenceDiagram\n    participant DEV as Developer\n    participant GIT as Git Repository\n    participant DOCKER as Docker Build\n    participant AR as Artifact Registry\n    participant GKE as GKE Cluster\n    participant K8S as Kubernetes API\n    participant POD as Backend Pod\n    participant OL as Ollama Container\n    participant HPA as HPA Controller\n    \n    Note over DEV,HPA: CI/CD Deployment Pipeline\n    \n    DEV->>+GIT: git push (FinTech_FraudDetection)\n    GIT->>-DEV: Push confirmed\n    \n    DEV->>+DOCKER: ./deploy-gke.sh\n    DOCKER->>DOCKER: Validate Prerequisites\n    DOCKER->>DOCKER: Setup GCloud Auth\n    \n    Note over DOCKER,AR: Image Build Process\n    DOCKER->>+DOCKER: Build Ollama Image\n    Note over DOCKER: FROM ollama/ollama:latest<br/>RUN ollama pull tinyllama\n    DOCKER->>-DOCKER: Ollama Image Ready\n    \n    DOCKER->>+DOCKER: Build Backend Image\n    Note over DOCKER: FROM python:3.11<br/>COPY app/ requirements.txt\n    DOCKER->>-DOCKER: Backend Image Ready\n    \n    DOCKER->>+DOCKER: Build Frontend Image\n    Note over DOCKER: FROM node:18 (FinTech_LedgerService)<br/>FROM nginx:alpine (FinTech_LedgerService)\n    DOCKER->>-DOCKER: Frontend Image Ready\n    \n    DOCKER->>+AR: Push Images\n    AR->>AR: Store Images with Tags\n    AR->>-DOCKER: Push Complete\n    \n    Note over DOCKER,HPA: Kubernetes Deployment\n    DOCKER->>+K8S: kubectl apply -f k8s/rbac.yaml\n    K8S->>-DOCKER: RBAC Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/configmap-cloud.yaml\n    K8S->>-DOCKER: ConfigMap Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/backend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Backend Pods\n    \n    K8S->>+POD: Create Backend Pod\n    POD->>+AR: Pull Backend Image\n    AR->>-POD: Image Downloaded\n    POD->>+AR: Pull Ollama Image\n    AR->>-POD: Image Downloaded\n    \n    Note over POD,OL: Pod Startup Sequence\n    POD->>+OL: Start Ollama Container\n    OL->>OL: Initialize Ollama Server\n    OL->>OL: Load TinyLlama Model (FinTech_LedgerService)\n    OL->>-POD: Ollama Ready (FinTech_FraudDetection)\n    \n    POD->>+POD: Start FastAPI Container\n    POD->>POD: Initialize FastAPI App\n    POD->>+OL: Test Connection (FinTech_PaymentGateway)\n    OL->>-POD: Connection Successful\n    POD->>-POD: FastAPI Ready\n    \n    POD->>+K8S: Report Pod Ready\n    K8S->>-POD: Readiness Confirmed\n    K8S->>-DOCKER: Backend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/frontend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Frontend Pods\n    K8S->>-DOCKER: Frontend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/hpa-cloud.yaml\n    K8S->>+HPA: Create HPA Resources\n    HPA->>HPA: Monitor Backend Metrics\n    HPA->>-K8S: HPA Active\n    K8S->>-DOCKER: HPA Applied\n    \n    DOCKER->>+K8S: kubectl get services\n    K8S->>-DOCKER: External IP Available\n    DOCKER->>-DEV: Deployment Complete<br/>App URL: http://EXTERNAL-IP\n    \n    Note over DEV,HPA: Health Verification\n    DEV->>+GKE: curl http://EXTERNAL-IP/health\n    GKE->>+POD: Route Health Check\n    POD->>+OL: Verify Ollama Status\n    OL->>-POD: Status OK\n    POD->>-GKE: Health Check Passed\n    GKE->>-DEV: 200 OK\n    \n    Note over DEV,HPA: Auto-scaling Verification\n    HPA->>+POD: Monitor CPU/Memory\n    POD->>-HPA: Metrics: CPU 30%, Memory 40%\n    HPA->>HPA: Within Thresholds (FinTech_FraudDetection)\n    \n    Note over DEV,HPA: Rolling Update Process\n    DEV->>+DOCKER: Deploy New Version\n    DOCKER->>+AR: Push Updated Images\n    AR->>-DOCKER: Images Updated\n    \n    DOCKER->>+K8S: kubectl apply (FinTech_FraudDetection)\n    K8S->>K8S: Rolling Update Strategy\n    K8S->>+POD: Create New Pod\n    POD->>POD: Start New Version\n    POD->>-K8S: New Pod Ready\n    K8S->>K8S: Terminate Old Pod\n    K8S->>-DOCKER: Rolling Update Complete\n    DOCKER->>-DEV: Update Successful",
+  "content_size": 3703,
+  "collected_at": "2026-02-06T14:13:15.259540",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gl_requirementDiagram_00602",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为这个FinTech欺诈检测系统画一个完整的CI/CD部署流程图，从开发者提交代码到最终服务上线。重点要体现GKE集群的部署细节，特别是Ollama容器和Backend Pod的启动顺序。",
+      "elements_involved": [
+        "Developer",
+        "FinTech_FraudDetection",
+        "GKE Cluster",
+        "Ollama Container",
+        "Backend Pod"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先确认一下整体结构：开发者通过Git推送代码，触发Docker构建，然后推送到Artifact Registry，最后在GKE上部署。这里Ollama容器和Backend Pod是什么关系？是同一个Pod里的两个容器吗？",
+      "elements_involved": [
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster",
+        "Ollama Container",
+        "Backend Pod"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Ollama Container和FastAPI Backend是同一个Pod里的两个容器，Ollama要先启动并加载TinyLlama模型，Backend才能启动。这个依赖关系很关键，要在图里体现出来。另外我们还有Frontend和HPA自动扩缩容。",
+      "elements_involved": [
+        "Ollama Container",
+        "Backend Pod",
+        "TinyLlama Model",
+        "FastAPI",
+        "Frontend",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我先把参与者列出来：Developer、Git Repository、Docker Build、Artifact Registry、GKE Cluster、Kubernetes API、Backend Pod、Ollama Container、HPA Controller。开头加个总标题Note，说明这是CI/CD Deployment Pipeline。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster",
+        "Kubernetes API",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "参与者没问题。开发者先push代码到Git，触发FinTech_FraudDetection项目的构建。然后执行deploy-gke.sh脚本，这个脚本要先验证环境、配置GCloud认证。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "FinTech_FraudDetection",
+        "deploy-gke.sh",
+        "GCloud Auth"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我加上开发者push代码的交互，以及Git确认返回。然后Docker Build阶段，我加个Note标注Image Build Process，里面分三步：先构建Ollama镜像，基于ollama/ollama:latest，还要pull tinyllama模型。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Ollama Image",
+        "ollama/ollama:latest",
+        "tinyllama"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Ollama镜像构建完成后，继续构建Backend镜像，用python:3.11基础镜像，复制app目录和requirements.txt。然后是Frontend镜像，这里有点特殊——我们同时服务FinTech_LedgerService，所以Node构建阶段和Nginx部署阶段都要标注这个项目名。",
+      "elements_involved": [
+        "Backend Image",
+        "python:3.11",
+        "Frontend Image",
+        "node:18",
+        "nginx:alpine",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加三个镜像的构建流程，每个都有详细的Note说明Dockerfile内容。然后Docker把三个镜像都推送到Artifact Registry，Registry存储带标签的镜像后返回确认。",
+      "elements_involved": [
+        "Docker Build",
+        "Artifact Registry",
+        "Ollama Image",
+        "Backend Image",
+        "Frontend Image"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "进入Kubernetes部署阶段。先应用RBAC配置，然后ConfigMap，再部署Backend。Backend Deployment会触发Kubernetes API调度Pod创建。这里要详细画出Pod启动序列：先拉取Backend镜像和Ollama镜像，然后启动Ollama容器，初始化服务并加载TinyLlama模型，注意这里要标注FinTech_LedgerService。",
+      "elements_involved": [
+        "Kubernetes API",
+        "RBAC",
+        "ConfigMap",
+        "Backend Deployment",
+        "Backend Pod",
+        "Ollama Container",
+        "TinyLlama Model",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Ollama Ready的返回需要标注FinTech_FraudDetection吗？还是只在加载模型时标注FinTech_LedgerService？另外Backend启动后还要测试Ollama连接，这里标注FinTech_PaymentGateway？",
+      "elements_involved": [
+        "Ollama Container",
+        "Backend Pod",
+        "FinTech_FraudDetection",
+        "FinTech_LedgerService",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Ollama Ready返回标注FinTech_FraudDetection，连接测试标注FinTech_PaymentGateway。这样三个FinTech项目都有体现。Pod就绪后报告给K8S，然后继续部署Frontend和HPA。",
+      "elements_involved": [
+        "Ollama Container",
+        "Backend Pod",
+        "FinTech_FraudDetection",
+        "FinTech_PaymentGateway",
+        "Frontend",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加完整的Pod启动序列，包括镜像拉取、容器启动、模型加载、连接测试、就绪报告。然后Frontend部署完成，HPA创建资源并开始监控Backend指标。最后Docker获取外部IP，返回给开发者完整的部署完成信息。",
+      "elements_involved": [
+        "Backend Pod",
+        "Ollama Container",
+        "Frontend",
+        "HPA Controller",
+        "External IP",
+        "Developer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要加上健康检查和自动扩缩容验证的验证流程。开发者通过外部IP访问health端点，请求路由到Backend Pod，Pod再验证Ollama状态，返回200 OK。HPA要展示监控CPU和内存指标的过程，标注当前CPU 30%、内存40%，并在阈值判断处标注FinTech_FraudDetection。",
+      "elements_involved": [
+        "Developer",
+        "GKE Cluster",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller",
+        "Health Check",
+        "CPU",
+        "Memory",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Health Verification和Auto-scaling Verification两个Note区块，包含完整的健康检查流程和HPA监控指标。最后还需要Rolling Update流程吗？",
+      "elements_involved": [
+        "Health Verification",
+        "Auto-scaling Verification",
+        "Developer",
+        "HPA Controller",
+        "Backend Pod"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，加上Rolling Update Process。开发者触发新版本部署，Docker推送更新镜像到Artifact Registry，然后kubectl apply，这里标注FinTech_FraudDetection。K8S执行滚动更新：创建新Pod、启动新版本、新Pod就绪后终止旧Pod。",
+      "elements_involved": [
+        "Rolling Update Process",
+        "Developer",
+        "Docker Build",
+        "Artifact Registry",
+        "Kubernetes API",
+        "Backend Pod",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成Rolling Update流程，包含镜像更新、apply操作、滚动策略、新旧Pod替换的完整序列。整个图从开发者push代码开始，到滚动更新完成结束，覆盖了CI/CD全生命周期。请确认是否还需要调整？",
+      "elements_involved": [
+        "Developer",
+        "Docker Build",
+        "Artifact Registry",
+        "Kubernetes API",
+        "Backend Pod",
+        "Rolling Update"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整体结构没问题。确认一下关键依赖关系都体现出来了：Ollama先于Backend启动、健康检查包含Ollama状态验证、HPA持续监控指标、滚动更新保证零停机。这个图可以直接用于团队评审了。",
+      "elements_involved": [
+        "Ollama Container",
+        "Backend Pod",
+        "Health Check",
+        "HPA Controller",
+        "Rolling Update"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 17,
+    "repair_count": 0,
+    "grounding_acts_count": 17,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 49853.4887,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 17
+  }
+}

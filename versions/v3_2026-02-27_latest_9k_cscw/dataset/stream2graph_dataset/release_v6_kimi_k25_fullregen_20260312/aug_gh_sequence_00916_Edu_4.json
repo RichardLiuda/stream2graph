@@ -1,0 +1,163 @@
+{
+  "id": "aug_gh_sequence_00916_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/luth9r/FitTracker/blob/c81958bfbd32229654cff70c18fdc0d6e0541f71/docs/google-oauth-login-flow.mmd",
+  "github_repo": "luth9r/FitTracker",
+  "github_file_path": "docs/google-oauth-login-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "%%{Education_LMS_Portal}}%%\nsequenceDiagram\n    participant C as Client\n    participant G as Google OAuth\n    participant AC as AuthController\n    participant GOS as GoogleOAuthService\n    participant GT as Google Token API\n    participant GV as Google Validator\n    participant UR as UserRepository\n    participant DB as PostgreSQL\n    participant JTG as JwtTokenGenerator\n\n    C->>C: Generate PKCE parameters\n    C->>G: Redirect to Google OAuth\n    G-->>C: Redirect with code\n    \n    C->>AC: POST /api/auth/google-login<br/>{Education_LMS_Portal}\n    AC->>GOS: ExchangeCodeForTokens(Education_StudentDB)\n    GOS->>GT: POST https://oauth2.googleapis.com/token\n    GT-->>GOS: {Education_GradeSync}\n    GOS->>GV: ValidateAsync(Education_ContentCDN)\n    GV-->>GOS: {Education_ClassroomService}\n    GOS-->>AC: GoogleTokenPayload\n    \n    AC->>UR: FindByGoogleProviderId(Education_GradeSync)\n    UR->>DB: SELECT * FROM Users<br/>WHERE GoogleProviderId = ?\n    DB-->>UR: User found\n    UR-->>AC: user\n    \n    AC->>JTG: GenerateAuthToken(Education_ContentCDN)\n    JTG-->>AC: authToken\n    AC-->>C: 200 OK + Set-Cookie: auth-token\n",
+  "content_size": 1100,
+  "collected_at": "2026-02-06T01:50:43.764377",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 2,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "augmentation_domain": "Education",
+  "seed_id": "gh_sequence_00916",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为教育LMS门户设计一个完整的Google OAuth登录流程。核心场景是学生通过Google账号一键登录系统，然后我们要从Google获取用户信息，在我们自己的PostgreSQL里查找或创建用户，最后签发JWT令牌。",
+      "elements_involved": [
+        "Client",
+        "Google OAuth",
+        "AuthController",
+        "PostgreSQL",
+        "JwtTokenGenerator",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，为了安全性，PKCE流程需要吗？还有，Google OAuth返回的code是由前端直接传给后端，还是中间有其他处理？",
+      "elements_involved": [
+        "Client",
+        "Google OAuth",
+        "AuthController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要PKCE，Client先生成PKCE参数，然后重定向到Google。Google回调后，Client把code发到AuthController的/api/auth/google-login端点。接下来AuthController要调用GoogleOAuthService去换token。",
+      "elements_involved": [
+        "Client",
+        "Google OAuth",
+        "AuthController",
+        "GoogleOAuthService",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主流程画出来：Client生成PKCE后跳转到Google OAuth，返回code后Client POST到AuthController。然后AuthController调用GoogleOAuthService的ExchangeCodeForTokens方法，这里需要调用Google Token API。",
+      "elements_involved": [
+        "Client",
+        "Google OAuth",
+        "AuthController",
+        "GoogleOAuthService",
+        "Google Token API",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，但要注意GoogleOAuthService拿到access token后，还需要用Google Validator验证token的合法性，并且提取用户payload。验证通过后，AuthController要用UserRepository去查我们的PostgreSQL，看这个人是不是已经注册过。",
+      "elements_involved": [
+        "GoogleOAuthService",
+        "Google Token API",
+        "Google Validator",
+        "AuthController",
+        "UserRepository",
+        "PostgreSQL",
+        "Education_ContentCDN",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下：GoogleOAuthService调用Google Token API换到token后，是同步调用Google Validator做ValidateAsync，然后把GoogleTokenPayload返回给AuthController？",
+      "elements_involved": [
+        "GoogleOAuthService",
+        "Google Token API",
+        "Google Validator",
+        "AuthController",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。AuthController拿到payload后，调用UserRepository的FindByGoogleProviderId方法，带上GradeSync相关的标识去查库。PostgreSQL返回用户数据后，如果找到了，就调用JwtTokenGenerator生成最终的auth token。",
+      "elements_involved": [
+        "AuthController",
+        "UserRepository",
+        "PostgreSQL",
+        "JwtTokenGenerator",
+        "Education_GradeSync",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "流程完成了：UserRepository查询PostgreSQL返回用户，AuthController调用JwtTokenGenerator的GenerateAuthToken拿到token，最后返回200 OK给Client，同时Set-Cookie带上auth-token。整个Education LMS Portal的登录闭环就打通了。",
+      "elements_involved": [
+        "UserRepository",
+        "PostgreSQL",
+        "AuthController",
+        "JwtTokenGenerator",
+        "Client",
+        "Education_ContentCDN",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 28366.3111,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

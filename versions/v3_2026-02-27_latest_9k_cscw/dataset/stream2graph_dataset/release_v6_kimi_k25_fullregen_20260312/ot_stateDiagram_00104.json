@@ -1,0 +1,204 @@
+{
+  "id": "ot_stateDiagram_00104",
+  "source": "other",
+  "source_url": "https://github.com/musel25/lab_software_eng/blob/abe7b632a47ca8035f732e0dc34d75fc4b0d8b1b/code/diagram7_2.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "musel25/lab_software_eng",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    %% ───────── Top-level flow ─────────\n    [*] --> WaitForEntryRequest\n\n    WaitForEntryRequest --> ProcSecCard : reqReadSecurityCard\n    ProcSecCard --> WaitForEntryRequest : flagSecurityCardFailure\n    ProcSecCard --> ProcBioData        : CardStatus==Valid\n    ProcBioData  --> UnlockLockAP      : Authenticated\n    UnlockLockAP --> WaitForEntryRequest : evAccessPointLocked\n\n    %% ───────── Composite ① ─────────\n    state \"ProcessingSecurityCardData\" as ProcSecCard {\n        [*] --> ValidatingCard\n        ValidatingCard --> WaitForEntryRequest : SecCardFailure / ScFailCount&lt;3\n        ValidatingCard --> Fail3Card           : SecCardFailure / ScFailCount&gt;=3\n        ValidatingCard --> exit                : CardStatus==Valid\n\n        state Fail3Card {\n            [*] --> DisableAccount\n            DisableAccount --> exit : done\n        }\n        exit --> [*]\n    }\n\n    %% ───────── Composite ② ─────────\n    state \"ProcessingBiometricData\" as ProcBioData {\n        [*] --> AuthenticatingBio\n        AuthenticatingBio --> WaitForEntryRequest : BsTimeout\n        AuthenticatingBio --> Fail3Bio           : BioScanFailure / BFailCount&gt;=3\n        AuthenticatingBio --> exit               : Authenticated\n\n        state Fail3Bio {\n            [*] --> DisableAccountB\n            DisableAccountB --> exit : done\n        }\n        exit --> [*]\n    }\n\n    %% ───────── Composite ③ ─────────\n    state \"UnlockingAndLockingAccessPoint\" as UnlockLockAP {\n        [*] --> Locked\n        Locked --> Unlocking : reqUnlockAccessPoint\n        Unlocking --> Unlocked : evAccessPointUnlocked\n        Unlocked --> Locked : reqLockAccessPoint\n    }",
+  "content_size": 1667,
+  "collected_at": "2026-02-06T10:37:56.625984",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个门禁系统的状态图，核心流程是：用户先刷安全卡，验证通过后还要做生物识别，最后才能解锁门禁。整个系统从等待入场请求开始。",
+      "elements_involved": [
+        "WaitForEntryRequest",
+        "ProcSecCard",
+        "ProcBioData",
+        "UnlockLockAP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，那刷卡失败的情况怎么处理？是回到等待状态，还是有次数限制？",
+      "elements_involved": [
+        "ProcSecCard",
+        "WaitForEntryRequest",
+        "SecCardFailure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "刷卡验证我们做成一个复合状态，叫ProcessingSecurityCardData。里面先走ValidatingCard，如果验证失败且次数小于3次，回到WaitForEntryRequest；如果连续失败3次，要进入Fail3Card子状态，最终禁用账户。",
+      "elements_involved": [
+        "ProcSecCard",
+        "ValidatingCard",
+        "Fail3Card",
+        "DisableAccount",
+        "ScFailCount"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，ProcSecCard复合状态画好了，包含ValidatingCard和Fail3Card子状态。验证通过时CardStatus==Valid就退出到生物识别流程。生物识别那边也是类似的失败处理逻辑吗？",
+      "elements_involved": [
+        "ProcSecCard",
+        "ValidatingCard",
+        "Fail3Card",
+        "DisableAccount",
+        "ProcBioData"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，生物识别做成ProcessingBiometricData复合状态，里面是AuthenticatingBio。超时BsTimeout要回到等待状态，扫描失败BioScanFailure的话也是3次阈值，超过就进Fail3Bio禁用账户。",
+      "elements_involved": [
+        "ProcBioData",
+        "AuthenticatingBio",
+        "BsTimeout",
+        "BioScanFailure",
+        "Fail3Bio",
+        "DisableAccountB",
+        "BFailCount"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下，生物识别认证成功Authenticated之后，就进入最后的门禁控制流程，对吗？",
+      "elements_involved": [
+        "ProcBioData",
+        "AuthenticatingBio",
+        "UnlockLockAP",
+        "Authenticated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，最后一个是UnlockingAndLockingAccessPoint复合状态，包含Locked、Unlocking、Unlocked三个状态。从Locked收到reqUnlockAccessPoint进入Unlocking，解锁成功后到Unlocked，再收到reqLockAccessPoint回到Locked。",
+      "elements_involved": [
+        "UnlockLockAP",
+        "Locked",
+        "Unlocking",
+        "Unlocked",
+        "reqUnlockAccessPoint",
+        "evAccessPointUnlocked",
+        "reqLockAccessPoint"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "三个复合状态都画好了。不过我发现一个问题：门禁锁定后evAccessPointLocked应该回到哪里？",
+      "elements_involved": [
+        "UnlockLockAP",
+        "Locked",
+        "evAccessPointLocked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "门禁重新锁定后，整个流程回到WaitForEntryRequest，等待下一个入场请求。另外，如果刷卡阶段直接flagSecurityCardFailure，也是回到等待状态。",
+      "elements_involved": [
+        "UnlockLockAP",
+        "WaitForEntryRequest",
+        "evAccessPointLocked",
+        "ProcSecCard",
+        "flagSecurityCardFailure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，连接关系都补上了。再确认下命名：ProcessingSecurityCardData、ProcessingBiometricData、UnlockingAndLockingAccessPoint，这三个复合状态的别名分别是ProcSecCard、ProcBioData、UnlockLockAP，对吗？",
+      "elements_involved": [
+        "ProcSecCard",
+        "ProcBioData",
+        "UnlockLockAP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "对的，另外ValidatingCard回到等待状态的条件要写清楚是SecCardFailure / ScFailCount<3，Fail3Card那里是=3，这个边界条件别搞混了。",
+      "elements_involved": [
+        "ValidatingCard",
+        "WaitForEntryRequest",
+        "SecCardFailure",
+        "ScFailCount",
+        "Fail3Card"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "检查完毕，所有状态转移、守卫条件、复合状态嵌套都符合要求。生物识别和刷卡都是3次失败禁用，门禁支持解锁/上锁的完整循环，初始状态是WaitForEntryRequest。",
+      "elements_involved": [
+        "WaitForEntryRequest",
+        "ProcSecCard",
+        "ProcBioData",
+        "UnlockLockAP",
+        "Fail3Card",
+        "Fail3Bio",
+        "DisableAccount",
+        "DisableAccountB"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 12,
+    "repair_count": 0,
+    "grounding_acts_count": 12,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:43Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:27Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:27Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 34223.665,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

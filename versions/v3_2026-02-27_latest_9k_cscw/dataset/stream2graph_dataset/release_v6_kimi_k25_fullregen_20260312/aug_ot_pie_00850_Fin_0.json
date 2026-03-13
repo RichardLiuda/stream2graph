@@ -1,0 +1,190 @@
+{
+  "id": "aug_ot_pie_00850_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/kotek-7/minpuzz/blob/654b51056933c621c2671ca993745a92ad3af09d/docs/sequence-game-connection.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "kotek-7/minpuzz",
+  "diagram_type": "pie",
+  "code": "%%{FinTech_AuthVault}}}%%\n\nsequenceDiagram\n    participant U1 as ユーザー1\n    participant F1 as フロントエンド1\n    participant B as バックエンド\n    participant R as Redis\n    participant F2 as フロントエンド2\n    participant U2 as ユーザー2\n\n    Note over U1,U2: ゲーム接続フェーズ（match-found 後）\n\n    par 両チームに並行通知\n        B->>F1: Socket to teamA: match-found（matchId, self, partner）\n        F1->>F1: ゲーム画面に遷移（接続待ち表示）\n    and\n        B->>F2: Socket to teamB: match-found（同一ペイロード）\n        F2->>F2: ゲーム画面に遷移（接続待ち表示）\n    end\n\n    Note over F1,F2: 各プレイヤーがゲームルームに接続登録（参加直後に game-init を受信）\n    par 両チームが並行接続\n        U1->>F1: ゲーム接続開始\n        F1->>B: Socket emit: join-game（matchId, teamId, userId）\n        B-->>F1: game-init（board, pieces, startedAt?, duration?）\n        Note over B,F1: 即座に本人へ state-sync も送出（最新全量）\n        B-->>F1: state-sync（board, pieces, score, timer?, matchStatus）\n        Note over B: publicルームへ参加（progress/game-end/timer-sync用）\n        B->>B: room:match:{FinTech_TransactionQueue}:public に join\n        B->>R: SADD match:{FinTech_AuthVault}:team:{FinTech_PaymentGateway}:connected userId\n    and\n        U2->>F2: ゲーム接続開始\n        F2->>B: Socket emit: join-game（matchId, teamId, userId）\n        B-->>F2: game-init（board, pieces, startedAt?, duration?）\n        B-->>F2: state-sync（board, pieces, score, timer?, matchStatus）\n        B->>B: room:match:{FinTech_LedgerService}:public に join\n        B->>R: SADD match:{FinTech_AuthVault}:team:{FinTech_AuthVault}:connected userId\n    end\n\n    B->>R: 接続数を確認（teamA/B が期待人数に到達?）\n    alt 全プレイヤーが接続完了\n        R-->>B: 達成\n        B->>R: match を READY に更新、チーム両方を IN_GAME に更新\n        Note over B: ゲーム開始通知（チームルームに限定）＋タイマー開始\n        B->>F1: Socket to teamA room: game-start（matchId）\n        B->>F2: Socket to teamB room: game-start（matchId）\n        B->>R: match:{FinTech_LedgerService}:timer = {FinTech_FraudDetection}\n        Note over B: timer-sync を public に5秒周期で送出開始\n    else まだ接続待ち\n        Note over U1,U2: 接続待ち表示を継続\n    end\n\n    Note over U1,U2: 次: docs/in-game/sequence-in-game.mmd（game-start以後のゲーム操作）\n",
+  "content_size": 2111,
+  "collected_at": "2026-02-06T10:47:53.768596",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "ot_pie_00850",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个匹配成功后的游戏连接时序图。场景是：用户1和用户2分别通过各自的前端连到后端，后端用Redis管理连接状态，等两边都就绪了再广播游戏开始。关键要体现并行通知和并行连接这两个par块。",
+      "elements_involved": [
+        "U1",
+        "F1",
+        "B",
+        "R",
+        "F2",
+        "U2",
+        "par",
+        "match-found",
+        "join-game"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我注意到你提到了Redis的SADD操作，这个是用来记录每个team的已连接用户对吧？还有那个public房间，是用于进度同步和计时器广播的？",
+      "elements_involved": [
+        "R",
+        "SADD",
+        "public",
+        "team",
+        "connected",
+        "progress",
+        "timer-sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，SADD是把userId加到match:{matchId}:team:{teamId}:connected这个集合里。public房间是后端自己join的，用来给两边发timer-sync。另外game-init和state-sync要区分清楚：game-init是初始化数据，state-sync是即时状态同步。",
+      "elements_involved": [
+        "SADD",
+        "match",
+        "team",
+        "connected",
+        "public",
+        "game-init",
+        "state-sync",
+        "board",
+        "pieces"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先画出主干：六个参与者排开，U1/F1/B/R/F2/U2。第一个par块是后端并行通知两个前端match-found，然后各自转游戏画面。第二个par块是两边用户同时发起连接，后端处理join-game，返回game-init和state-sync，同时后端join public房间并写Redis。",
+      "elements_involved": [
+        "U1",
+        "F1",
+        "B",
+        "R",
+        "F2",
+        "U2",
+        "par",
+        "match-found",
+        "join-game",
+        "game-init",
+        "state-sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "连接流程后面要加一个alt分支：全玩家连接完成就发game-start并启动计时器，否则继续等待。计时器用Redis存，key是match:{matchId}:timer，值先设个占位。timer-sync要5秒周期往public发。",
+      "elements_involved": [
+        "alt",
+        "READY",
+        "IN_GAME",
+        "game-start",
+        "timer",
+        "timer-sync",
+        "public"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下：state-sync是在game-init之后立刻发吗？还有那个SADD操作，teamA和teamB的teamId应该不同吧，我图上需要体现两个不同的team标识？",
+      "elements_involved": [
+        "state-sync",
+        "game-init",
+        "SADD",
+        "teamA",
+        "teamB",
+        "teamId"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "state-sync确实是紧跟着game-init发，但有个细节我之前没说清楚：game-init只发一次，state-sync可以认为是即时同步。teamId方面，两边应该是不同的，比如teamA和teamB，但matchId是同一个。不过你图上用teamA/teamB示意就行，不用写死具体ID。",
+      "elements_involved": [
+        "state-sync",
+        "game-init",
+        "teamA",
+        "teamB",
+        "matchId"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整。现在图上有完整的双par结构，alt分支区分了全连接完成和等待状态，Redis的SADD和timer设置也标清楚了。最后加了个Note指向下一篇文档in-game的序列图。你看看还有要补充的吗？",
+      "elements_involved": [
+        "par",
+        "alt",
+        "SADD",
+        "timer",
+        "Note",
+        "in-game",
+        "sequence-in-game.mmd"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以了。注意开头的Note要说明这是match-found后的连接阶段，结尾的Note要指向下一个文档。整体逻辑通了：匹配通知→并行连接→Redis计数→就绪判断→游戏开始→计时器启动。",
+      "elements_involved": [
+        "Note",
+        "match-found",
+        "game-start",
+        "timer",
+        "Redis",
+        "match"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 1,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 28847.0733,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 5
+  }
+}

@@ -1,0 +1,523 @@
+{
+  "id": "gl_timeline_00089",
+  "source": "gitlab",
+  "source_url": "https://github.com/developer-jutra/dj-course/blob/521f7ffbc19450d8a3b52098f5c36b6a6d159874/M8/modelling/tms-er-diagram.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "developer-jutra/dj-course",
+  "diagram_type": "timeline",
+  "code": "erDiagram\n    %% MODUŁ ZASOBÓW I DOSTĘPNOŚCI\n    RESOURCE ||--o{ RESOURCE_AVAILABILITY : \"timeline\"\n    RESOURCE ||--o{ TRANSPORT_RESOURCE : \"assigned_to\"\n    \n    %% MODUŁ KADROWY (HR)\n    HR_DRIVER ||--o{ DRIVER_DOCUMENT : \"holds\"\n    HR_DRIVER |o--o| RESOURCE : \"represents_as_resource\"\n    \n    %% MODUŁ FLOTY (FLEET)\n    FLEET_VEHICLE ||--o{ RESOURCE : \"represents_as_resource\"\n    VEHICLE_CATEGORY ||--o{ FLEET_VEHICLE : \"defines\"\n    \n    %% MODUŁ ZAMÓWIEŃ (SALES)\n    CONTRAHENT ||--o{ ADDRESS : \"manages\"\n    CONTRAHENT ||--o{ ORDER : \"places\"\n    ORDER_STATUS ||--o{ ORDER : \"defines\"\n    ORDER ||--|{ SHIPMENT : \"consists_of\"\n    \n    %% MODUŁ TRANSPORTU (OPERATIONS)\n    TRANSPORT ||--o{ TRANSPORT_RESOURCE : \"uses\"\n    TRANSPORT ||--o{ MANIFEST_ITEM : \"executes\"\n    SHIPMENT ||--o{ MANIFEST_ITEM : \"included_in\"\n\n    CONTRAHENT {\n        int id PK\n        string name\n        string tax_id\n        string internal_code\n        jsonb contact_details\n    }\n\n    ADDRESS {\n        int id PK\n        int contrahent_id FK\n        string label\n        jsonb full_address_data \"city, street, post_code, country, contact_person, phone\"\n    }\n\n    ORDER {\n        int id PK\n        int contrahent_id FK\n        int status_id FK\n        string customer_ref \"Numer zamówienia klienta\"\n        datetime created_at\n        datetime deadline \"Termin realizacji całości\"\n        decimal total_agreed_price \"Kwota netto\"\n        string currency\n        text internal_notes\n    }\n\n    ORDER_STATUS {\n        int id PK\n        string code \"DRAFT, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED\"\n        string display_name\n    }\n\n    SHIPMENT {\n        int id PK\n        int order_id FK\n        jsonb pickup_address_snapshot \"Snapshot z ADDRESS\"\n        jsonb delivery_address_snapshot \"Snapshot z ADDRESS\"\n        decimal weight\n        int pallets_count\n        string goods_description\n        jsonb requirements \"np. temperatura, ADR\"\n    }\n\n    TRANSPORT {\n        int id PK\n        int transport_status_id \"1:DRAFT, 2:READY, 3:IN_TRANSIT, 4:COMPLETED\"\n        tsrange scheduled_range\n        string route_notes\n        decimal estimated_km\n    }\n\n    TRANSPORT_RESOURCE {\n        int id PK\n        int transport_id FK\n        int resource_id FK\n        string role \"PRIMARY_DRIVER, SUPPORT_DRIVER, VEHICLE, TRAILER\"\n    }\n\n    RESOURCE {\n        int id PK\n        string resource_type \"DRIVER / VEHICLE / WAREHOUSE\"\n        jsonb metadata \"Snapshot dla dyspozytora\"\n        int external_id \"FK do HR_DRIVER lub FLEET_VEHICLE\"\n    }\n\n    RESOURCE_AVAILABILITY {\n        int id PK\n        int resource_id FK\n        tsrange busy_range \"GiST Index\"\n        string reason \"TRANSPORT / MAINTENANCE / HOLIDAY\"\n        int reference_transport_id \"Opcjonalne powiązanie z TRANSPORT.id\"\n    }\n\n    HR_DRIVER {\n        int id PK\n        string first_name\n        string last_name\n        string employee_id\n        jsonb contact_info\n    }\n\n    DRIVER_DOCUMENT {\n        int id PK\n        int driver_id FK\n        string doc_type\n        string doc_number\n        date expiry_date\n        jsonb metadata \"np. kategorie prawa jazdy\"\n    }\n\n    FLEET_VEHICLE {\n        int id PK\n        int category_id FK\n        string plates\n        string vin\n        jsonb technical_specs\n    }\n\n    VEHICLE_CATEGORY {\n        int id PK\n        string name\n        string code\n    }\n\n    MANIFEST_ITEM {\n        int id PK\n        int shipment_id FK\n        int transport_id FK\n        int sequence_order\n        string action_type \"LOAD / UNLOAD\"\n        datetime actual_time \"Rzeczywisty czas operacji\"\n    }",
+  "content_size": 3585,
+  "collected_at": "2026-02-06T14:02:32.928603",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个运输管理系统的ER图，核心要解决资源调度和订单履约的联动。先从资源模块开始吧——司机、车辆、仓库都应该作为可调度资源统一管理。",
+      "elements_involved": [
+        "RESOURCE",
+        "RESOURCE_AVAILABILITY",
+        "TRANSPORT_RESOURCE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。RESOURCE作为核心抽象实体，用resource_type字段区分DRIVER、VEHICLE、WAREHOUSE三种类型。那资源的时间占用怎么表达？比如司机休假、车辆维修这些状态。",
+      "elements_involved": [
+        "RESOURCE",
+        "RESOURCE_AVAILABILITY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，RESOURCE和RESOURCE_AVAILABILITY是一对多的时间线关系。busy_range用tsrange类型，还要支持GiST索引加速查询。reason字段标注占用原因：TRANSPORT运输任务、MAINTENANCE维修、HOLIDAY休假。",
+      "elements_involved": [
+        "RESOURCE_AVAILABILITY",
+        "busy_range",
+        "reason"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，RESOURCE_AVAILABILITY包含id、resource_id外键、busy_range时间区间、reason枚举，还有可选的reference_transport_id关联具体运输任务。接下来HR司机模块怎么对接？",
+      "elements_involved": [
+        "RESOURCE_AVAILABILITY",
+        "reference_transport_id",
+        "HR_DRIVER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "HR_DRIVER是人事系统的实体，通过可选的一对一关系关联到RESOURCE。一个司机可能还没录入调度系统，所以是|o--o|。另外司机持有多份证件，比如驾照、资格证，需要DRIVER_DOCUMENT子表。",
+      "elements_involved": [
+        "HR_DRIVER",
+        "RESOURCE",
+        "DRIVER_DOCUMENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加HR_DRIVER字段：first_name、last_name、employee_id、contact_info。DRIVER_DOCUMENT包含doc_type、doc_number、expiry_date，还有metadata存驾照类别等扩展信息。",
+      "elements_involved": [
+        "HR_DRIVER",
+        "DRIVER_DOCUMENT",
+        "expiry_date"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "车队模块类似。FLEET_VEHICLE也关联到RESOURCE，同时VEHICLE_CATEGORY定义车辆分类，比如厢式货车、冷藏车、平板车。",
+      "elements_involved": [
+        "FLEET_VEHICLE",
+        "VEHICLE_CATEGORY",
+        "RESOURCE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "FLEET_VEHICLE包含plates车牌号、vin车架号、technical_specs技术参数。VEHICLE_CATEGORY用name和code标识。确认一下：车辆和司机都是独立的一对多关联RESOURCE，而不是直接互相关联？",
+      "elements_involved": [
+        "FLEET_VEHICLE",
+        "VEHICLE_CATEGORY",
+        "plates",
+        "vin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是的，它们只在调度层面通过TRANSPORT_RESOURCE产生关联。实际运输任务中才确定哪辆车配哪个司机。这样设计更灵活，支持临时换车、双驾等情况。",
+      "elements_involved": [
+        "TRANSPORT_RESOURCE",
+        "FLEET_VEHICLE",
+        "HR_DRIVER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "那订单销售模块开始吧。CONTRAHENT作为客户实体，需要管理多个地址，同时可以下多个订单。",
+      "elements_involved": [
+        "CONTRAHENT",
+        "ADDRESS",
+        "ORDER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，CONTRAHENT包含name客户名称、tax_id税号、internal_code内部编码、contact_details联系信息。ADDRESS要支持完整地址结构：city城市、street街道、post_code邮编、country国家、contact_person联系人、phone电话。",
+      "elements_involved": [
+        "CONTRAHENT",
+        "ADDRESS",
+        "tax_id",
+        "internal_code"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已配置ADDRESS的full_address_data为jsonb类型。ORDER表需要关联客户和状态，还有customer_ref客户订单号、created_at创建时间、deadline履约截止日期、total_agreed_price约定金额。",
+      "elements_involved": [
+        "ADDRESS",
+        "ORDER",
+        "customer_ref",
+        "deadline"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ORDER_STATUS状态机用code枚举：DRAFT草稿、CONFIRMED已确认、IN_PROGRESS进行中、COMPLETED已完成、CANCELLED已取消。一个订单包含多个SHIPMENT运单，这是关键拆分。",
+      "elements_involved": [
+        "ORDER_STATUS",
+        "ORDER",
+        "SHIPMENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "SHIPMENT和ADDRESS的关系怎么处理？如果客户修改地址，历史运单应该保留当时的地址信息。",
+      "elements_involved": [
+        "SHIPMENT",
+        "ADDRESS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "完全正确。SHIPMENT用pickup_address_snapshot和delivery_address_snapshot两个jsonb字段做地址快照，不直接外键关联。这样即使客户删除或修改地址，历史数据也不受影响。",
+      "elements_involved": [
+        "SHIPMENT",
+        "pickup_address_snapshot",
+        "delivery_address_snapshot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加SHIPMENT字段：weight重量、pallets_count托盘数、goods_description货物描述、requirements特殊要求比如温度控制或ADR危险品标识。",
+      "elements_involved": [
+        "SHIPMENT",
+        "weight",
+        "pallets_count",
+        "requirements"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在到核心的运输执行模块。TRANSPORT是调度单元，关联多个TRANSPORT_RESOURCE来确定执行资源，同时通过MANIFEST_ITEM执行具体的装卸操作。",
+      "elements_involved": [
+        "TRANSPORT",
+        "TRANSPORT_RESOURCE",
+        "MANIFEST_ITEM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "TRANSPORT_RESOURCE的role字段区分PRIMARY_DRIVER主驾、SUPPORT_DRIVER副驾、VEHICLE车辆、TRAILER挂车，这样设计对吗？",
+      "elements_involved": [
+        "TRANSPORT_RESOURCE",
+        "role"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。TRANSPORT本身有scheduled_range计划时间区间、route_notes路线备注、estimated_km预估里程。transport_status_id用整数：1草稿、2就绪、3运输中、4已完成。",
+      "elements_involved": [
+        "TRANSPORT",
+        "scheduled_range",
+        "estimated_km",
+        "transport_status_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "MANIFEST_ITEM作为运单和运输的关联实体，需要sequence_order排序、action_type区分LOAD装货和UNLOAD卸货，还有actual_time记录实际操作时间。",
+      "elements_involved": [
+        "MANIFEST_ITEM",
+        "sequence_order",
+        "action_type",
+        "actual_time"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，MANIFEST_ITEM一头关联SHIPMENT，一头关联TRANSPORT，实现多对多关系。一个运单可以被拆到多个运输任务，一个运输任务也可以合并多个运单。",
+      "elements_involved": [
+        "MANIFEST_ITEM",
+        "SHIPMENT",
+        "TRANSPORT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "RESOURCE的external_id字段我理解是关联HR_DRIVER或FLEET_VEHICLE的具体ID，但metadata存什么内容？",
+      "elements_involved": [
+        "RESOURCE",
+        "external_id",
+        "metadata"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "metadata是给调度员的快照信息，比如司机的驾龄、常用路线，车辆的当前里程、保险到期日等。这样调度时不用跨表查询，提升性能。",
+      "elements_involved": [
+        "RESOURCE",
+        "metadata"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完善所有字段。检查一下模块划分：资源与可用性、HR人事、Fleet车队、Sales销售订单、Operations运输执行，五个模块边界清晰。",
+      "elements_involved": [
+        "RESOURCE",
+        "HR_DRIVER",
+        "FLEET_VEHICLE",
+        "ORDER",
+        "TRANSPORT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "有个细节，ORDER的currency币种字段需要限制长度，internal_notes内部备注用text类型支持长文本。另外DRIVER_DOCUMENT的expiry_date要做索引，方便预警即将过期的证件。",
+      "elements_involved": [
+        "ORDER",
+        "currency",
+        "internal_notes",
+        "DRIVER_DOCUMENT",
+        "expiry_date"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已记录。RESOURCE_AVAILABILITY的GiST索引在busy_range上，支持时间重叠查询，这对排期冲突检测很关键。",
+      "elements_involved": [
+        "RESOURCE_AVAILABILITY",
+        "busy_range",
+        "GiST Index"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再确认下关系方向。CONTRAHENT到ORDER是一对多，但ORDER到SHIPMENT是一对多还是多对多？业务上一个运单能否属于多个订单？",
+      "elements_involved": [
+        "CONTRAHENT",
+        "ORDER",
+        "SHIPMENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "当前设计是ORDER ||--|{ SHIPMENT，即一对多。如果业务需要合并订单发货，应该通过TRANSPORT层面的MANIFEST_ITEM聚合，而不是SHIPMENT直接多对多。这样保持运单的订单归属清晰。",
+      "elements_involved": [
+        "ORDER",
+        "SHIPMENT",
+        "MANIFEST_ITEM",
+        "TRANSPORT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意，保持当前设计。SHIPMENT的requirements字段用jsonb很灵活，可以扩展温控、易碎、危险品等各种要求。",
+      "elements_involved": [
+        "SHIPMENT",
+        "requirements"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完整ER图已绘制完毕。最后核对：所有主键都是int自增，外键命名规范为表名_id，jsonb字段用于灵活结构，tsrange用于时间区间。",
+      "elements_involved": [
+        "id",
+        "PK",
+        "FK",
+        "jsonb",
+        "tsrange"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "FLEET_VEHICLE的plates字段要考虑跨国业务，不同国家车牌格式不同，用string足够。VIN是17位标准格式，但我们也用string保持兼容。",
+      "elements_involved": [
+        "FLEET_VEHICLE",
+        "plates",
+        "vin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已确认。VEHICLE_CATEGORY的code可以用SHORT、LONG、FRIDGE、TANK等缩写，name显示完整名称。",
+      "elements_involved": [
+        "VEHICLE_CATEGORY",
+        "code",
+        "name"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有个小调整，ORDER的total_agreed_price用decimal避免浮点误差，currency默认EUR但支持多币种。deadline字段对履约监控很重要，需要单独索引。",
+      "elements_involved": [
+        "ORDER",
+        "total_agreed_price",
+        "currency",
+        "deadline"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部字段类型和索引建议已标注。整个模型支持从客户下单、订单拆分、运单生成、资源调度、运输执行到完成确认的全流程。",
+      "elements_involved": [
+        "ORDER",
+        "SHIPMENT",
+        "TRANSPORT",
+        "RESOURCE",
+        "MANIFEST_ITEM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。特别是RESOURCE_AVAILABILITY的timeline设计，让司机和车辆的时间占用可视化，调度员可以直观看到资源冲突。",
+      "elements_involved": [
+        "RESOURCE_AVAILABILITY",
+        "timeline",
+        "busy_range"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "最终确认各模块关系：资源模块被HR和Fleet复用，销售模块独立，运输模块聚合所有信息。MANIFEST_ITEM作为事实表连接运单和运输任务。",
+      "elements_involved": [
+        "RESOURCE",
+        "HR_DRIVER",
+        "FLEET_VEHICLE",
+        "SALES",
+        "OPERATIONS",
+        "MANIFEST_ITEM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "设计完成。这个模型支撑了运输管理的核心业务流程，各模块解耦又通过RESOURCE和MANIFEST_ITEM灵活关联，可以进入开发阶段了。",
+      "elements_involved": [
+        "RESOURCE",
+        "MANIFEST_ITEM",
+        "TRANSPORT",
+        "ORDER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ER图最终版本已锁定，包含15个实体、14组关系，覆盖资源调度、人事管理、车队管理、销售订单、运输执行五大业务域。",
+      "elements_involved": [
+        "CONTRAHENT",
+        "ADDRESS",
+        "ORDER",
+        "ORDER_STATUS",
+        "SHIPMENT",
+        "TRANSPORT",
+        "TRANSPORT_RESOURCE",
+        "RESOURCE",
+        "RESOURCE_AVAILABILITY",
+        "HR_DRIVER",
+        "DRIVER_DOCUMENT",
+        "FLEET_VEHICLE",
+        "VEHICLE_CATEGORY",
+        "MANIFEST_ITEM"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 38,
+    "repair_count": 0,
+    "grounding_acts_count": 38,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 78234.1392,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 38
+  }
+}

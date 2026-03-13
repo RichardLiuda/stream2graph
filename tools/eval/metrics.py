@@ -161,7 +161,7 @@ class MermaidCompileChecker:
         with tempfile.TemporaryDirectory(prefix="stream2graph_eval_") as tmp_dir:
             tmp_path = Path(tmp_dir)
             input_path = tmp_path / "candidate.mmd"
-            output_path = tmp_path / "candidate.out"
+            output_path = tmp_path / "candidate.svg"
             input_path.write_text(normalized, encoding="utf-8")
             command = self.command_template.format(input=str(input_path), output=str(output_path))
             try:
@@ -170,14 +170,16 @@ class MermaidCompileChecker:
                     shell=True,
                     check=False,
                     capture_output=True,
-                    text=True,
+                    text=False,
                     timeout=self.timeout_sec,
                 )
+                stdout_text = completed.stdout.decode("utf-8", errors="replace") if completed.stdout else ""
+                stderr_text = completed.stderr.decode("utf-8", errors="replace") if completed.stderr else ""
                 payload = {
                     "compile_success": completed.returncode == 0,
                     "returncode": completed.returncode,
-                    "stdout": completed.stdout[-5000:],
-                    "stderr": completed.stderr[-5000:],
+                    "stdout": stdout_text[-5000:],
+                    "stderr": stderr_text[-5000:],
                     "command": command,
                 }
             except subprocess.TimeoutExpired as exc:

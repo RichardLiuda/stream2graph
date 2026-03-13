@@ -1,0 +1,221 @@
+{
+  "id": "aug_gh_sequence_00302_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/KiritoMainBro88/kiritomainbro-monorepo/blob/f022137c7dc280db2b032ae9e3a88a305fa49167/docs/diagrams/payments_manual.mmd",
+  "github_repo": "KiritoMainBro88/kiritomainbro-monorepo",
+  "github_file_path": "docs/diagrams/payments_manual.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant C as Customer\n    participant W as Web Frontend\n    participant A as API Server\n    participant D as Database\n    participant S as Staff\n    participant F as File Storage\n    \n    Note over C,F: Manual Payment Flow\n    \n    %% Start Payment\n    C->>W: Click \"Pay Now\"\n    W->>A: POST /payments/manual/start\n    Note right of W: {Infra_EtcdCluster}\n    \n    A->>D: Create Payment record\n    Note right of A: status: PENDING\n    D-->>A: Payment created\n    A-->>W: {Infra_LoadBalancer}\n    W-->>C: Show payment instructions\n    \n    %% Upload Proof\n    C->>W: Upload payment proof\n    W->>A: POST /payments/manual/proof\n    Note right of W: multipart/form-data<br/>{Infra_EtcdCluster}\n    \n    A->>F: Store proof file\n    Note right of A: Validate file type, size\n    F-->>A: File stored\n    A->>D: Update Payment\n    Note right of A: status: UNDER_REVIEW<br/>proofUrl: file_path\n    D-->>A: Payment updated\n    A-->>W: {Infra_RedisCache}\n    W-->>C: \"Payment under review\"\n    \n    %% Staff Review\n    S->>W: Login to admin panel\n    W->>A: GET /admin/payments/pending\n    A->>D: Query pending payments\n    D-->>A: Pending payments\n    A-->>W: List of pending payments\n    W-->>S: Show payment details & proof\n    \n    alt Payment Approved\n        S->>W: Click \"Approve\"\n        W->>A: POST /payments/manual/review\n        Note right of W: {Infra_IngressController}\n        \n        A->>D: Update Payment\n        Note right of A: status: SUCCEEDED<br/>reviewedAt: now(Infra_EtcdCluster)\n        D-->>A: Payment updated\n        \n        A->>D: Update Order\n        Note right of A: status: PAID<br/>paidAt: now(Infra_WorkerNode)\n        D-->>A: Order updated\n        \n        A->>D: Create Delivery\n        Note right of A: Generate token hash<br/>status: PENDING\n        D-->>A: Delivery created\n        \n        A-->>W: {Infra_IngressController}\n        W-->>S: \"Payment approved\"\n        \n        %% Notify Customer\n        A->>D: Create Notification\n        Note right of A: type: PAYMENT_APPROVED\n        D-->>A: Notification created\n        A-->>C: SSE: payment.status\n        \n    else Payment Rejected\n        S->>W: Click \"Reject\"\n        W->>A: POST /payments/manual/review\n        Note right of W: {Infra_RedisCache}\n        \n        A->>D: Update Payment\n        Note right of A: status: FAILED<br/>reviewedAt: now(Infra_EtcdCluster)\n        D-->>A: Payment updated\n        \n        A->>D: Update Order\n        Note right of A: status: CANCELED<br/>canceledAt: now(Infra_EtcdCluster)\n        D-->>A: Order updated\n        \n        A-->>W: {Infra_LoadBalancer}\n        W-->>S: \"Payment rejected\"\n        \n        %% Notify Customer\n        A->>D: Create Notification\n        Note right of A: type: PAYMENT_REJECTED\n        D-->>A: Notification created\n        A-->>C: SSE: payment.status\n    end\n    \n    %% Customer Response\n    C->>W: Check payment status\n    W->>A: GET /orders/{Infra_EtcdCluster}\n    A->>D: Query order with payment\n    D-->>A: Order data\n    A-->>W: Order details\n    W-->>C: Show updated status\n    \n    alt Payment Approved\n        C->>W: Access delivery\n        W->>A: POST /deliveries/reveal\n        Note right of W: {Infra_RedisCache}\n        \n        A->>D: Verify token & update delivery\n        Note right of A: revealsLeft: 0<br/>revealedAt: now(Infra_WorkerNode)\n        D-->>A: Delivery updated\n        \n        A-->>W: {Infra_IngressController}\n        W-->>C: Show delivery content\n    end\n",
+  "content_size": 3413,
+  "collected_at": "2026-02-06T01:30:26.059391",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 2,
+  "repo_forks": 0,
+  "repo_owner": "KiritoMainBro88",
+  "repo_name": "kiritomainbro-monorepo",
+  "repo_description": "KMB monorepo (web + api) with Next.js, NestJS, Prisma, Turborepo, full security hardening and CI/CD",
+  "repo_language": "TypeScript",
+  "repo_topics": [],
+  "repo_created_at": "2025-10-09T16:51:12Z",
+  "repo_updated_at": "2025-10-24T07:26:58Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "gh_sequence_00302",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个手动付款流程的时序图，涉及客户、Web前端、API服务器、数据库、客服后台和文件存储这几个参与者。流程分三大块：客户发起付款并上传凭证、客服审核、客户查看结果和提货。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Staff",
+        "File Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，我先确认一下参与者的命名。客户用C，Web前端用W，API服务器用A，数据库用D，客服用S，文件存储用F，这样可以吗？另外整个流程需要加个总标题说明是手动付款流程。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Staff",
+        "File Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，缩写命名没问题。第一块流程是客户点击\"立即支付\"，前端把请求发到API服务器，服务器创建待付款记录，状态是PENDING，然后返回支付指引给客户。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，第一块画好了。客户上传付款凭证时，前端用multipart/form-data格式发到API，API把文件存到文件存储，验证类型和大小后，更新支付状态为UNDER_REVIEW，同时记录proofUrl，最后通知客户\"正在审核\"。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "File Storage",
+        "Database"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是客服审核环节。客服登录后台，前端去拉取待审核的支付列表，API查数据库返回pending状态的记录，客服看到详情和凭证图片后，可以点通过或拒绝。",
+      "elements_involved": [
+        "Staff",
+        "Web Frontend",
+        "API Server",
+        "Database"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "审核结果这块我用alt分支来画。通过的话，状态变成SUCCEEDED，同时要更新订单为PAID，还要创建发货记录生成token，状态是PENDING；拒绝的话状态变成FAILED，订单取消。两种结果都要通知客户。",
+      "elements_involved": [
+        "Staff",
+        "API Server",
+        "Database",
+        "Customer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，通知客户用SSE推送payment.status。通过和拒绝都要走创建Notification这个步骤，类型分别是PAYMENT_APPROVED和PAYMENT_REJECTED。时间戳字段注意区分下，审核通过时订单的paidAt和发货的创建时间都要记录。",
+      "elements_involved": [
+        "API Server",
+        "Database",
+        "Customer",
+        "Notification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "审核分支画完了。最后一块是客户响应流程：客户查支付状态，前端调GET /orders/{id}，API返回订单详情。如果已经审核通过，客户可以点\"查看提货\"，前端调reveal接口，API验证token后把发货记录的revealsLeft改成0，标记revealedAt，然后展示内容给客户。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Delivery"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我检查一下，revealsLeft和revealedAt的更新应该在WorkerNode上执行，不是EtcdCluster。另外reveal接口的缓存层应该用RedisCache，不是IngressController。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Infra_RedisCache",
+        "Infra_IngressController"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，我修正一下。reveal流程中API更新delivery时标注Infra_WorkerNode，前端到API的POST /deliveries/reveal标注Infra_RedisCache。还有别的地方需要调整基础设施标注吗？",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再确认几个基础设施节点：客户发起支付和上传凭证时，前端到API经过EtcdCluster；客服审核的POST请求经过IngressController；SSE推送和列表查询的响应经过LoadBalancer或RedisCache，你统一检查一下标注。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都检查并标注好了。支付启动和凭证上传用EtcdCluster，审核通过和拒绝的POST用IngressController，列表查询响应用LoadBalancer，状态查询和reveal用RedisCache，订单和发货的时间戳更新用WorkerNode，审核时间戳用EtcdCluster。整个流程现在完整了。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题，这个时序图涵盖了手动付款的完整生命周期，从客户发起、上传凭证、客服审核、结果通知到最终提货，基础设施的标注也清晰。可以定稿了。",
+      "elements_involved": [
+        "Manual Payment Flow",
+        "Customer",
+        "Staff",
+        "Delivery"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 13,
+    "repair_count": 1,
+    "grounding_acts_count": 13,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 39098.4204,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 13
+  }
+}

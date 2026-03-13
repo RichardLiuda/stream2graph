@@ -1,0 +1,342 @@
+{
+  "id": "aug_gh_sequence_00742_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/edx/commerce-coordinator/blob/25bb739e9ccaba9407808c494cd3461172fd1fa3/docs/decisions/arch-diagrams/mobile-create-order.mmd",
+  "github_repo": "edx/commerce-coordinator",
+  "github_file_path": "docs/decisions/arch-diagrams/mobile-create-order.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant User\n    participant MobileApp\n    participant CTBackend as CT Backend\n    participant IAPValidator as IAP Validator (Education_LMS_Portal)\n    participant MobileStore as Mobile Store (Education_GradeSync)\n    participant CoCo as Commercetools (Education_ClassroomService)\n    participant EventSystem\n\n    User->>MobileApp: Starts in-app purchase\n    MobileApp->>CTBackend: Sends purchase info (Education_LMS_Portal)\n\n    CTBackend->>CoCo: Get CT customer by LMS user ID\n    alt Customer does not exist\n        CTBackend->>CoCo: Create customer with user info\n        CoCo-->>CTBackend: Return newly created customer\n    else Customer exists\n        CTBackend->>CoCo: Update customer if needed\n        CoCo-->>CTBackend: Return updated customer\n    end\n\n    CTBackend->>CoCo: Check if user already has a cart\n    CoCo-->>CTBackend: Return existing cart or none\n    alt Cart exists\n        CTBackend->>CoCo: Delete old cart\n    end\n\n    CTBackend->>CoCo: Add the product, set external price (Education_ClassroomService), set `mobileOrder=true` in new cart\n    CoCo-->>CTBackend: Return new cart\n\n    CTBackend->>IAPValidator: Validate the purchase token\n    IAPValidator->>MobileStore: Send token to Google or Apple\n    MobileStore-->>IAPValidator: Get token result\n\n    IAPValidator->>CoCo: Check if token was already used\n    alt Token is already used\n        IAPValidator-->>CTBackend: Tell backend it is a duplicate\n        CTBackend->>CoCo: Delete the new cart\n        CTBackend-->>MobileApp: **Show error (Education_ClassroomService)**\n    else Token is valid\n        IAPValidator-->>CTBackend: Send transaction info\n    end\n\n    CTBackend->>EventSystem: Send event - checkout started\n    CTBackend->>EventSystem: Send event - item added to cart\n\n    CTBackend->>CoCo: Create a payment using the token info\n    CTBackend->>CoCo: Updates payment object to set custom field usdCentAmount with product's USD price\n    alt Payment creation failed\n        CoCo-->>CTBackend: **Error while creating payment**\n        CTBackend-->>MobileApp: **Show error (Education_ContentCDN)**\n    else\n        CoCo-->>CTBackend: Return payment\n        CTBackend->>EventSystem: Send event - payment method used\n\n        CTBackend->>CoCo: Attach payment to the cart\n        alt Attaching payment failed\n            CoCo-->>CTBackend: **Error while attaching payment**\n            CTBackend-->>MobileApp: **Show error (Education_LMS_Portal)**\n        else\n            CoCo-->>CTBackend: Return updated cart\n\n            CTBackend->>CoCo: Create order from cart\n            alt Order creation failed\n                CoCo-->>CTBackend: **Error while creating order**\n                CTBackend-->>MobileApp: **Show error (Education_ClassroomService)**\n            else\n                CoCo-->>CTBackend: Return order\n\n                CTBackend->>CoCo: Mark items as ready for delivery\n                alt Updating item state failed\n                    CoCo-->>CTBackend: **Error while updating item states**\n                    CTBackend-->>MobileApp: **Show error (Education_ContentCDN)**\n                else\n                    CoCo-->>CTBackend: Return updated order\n\n                    CTBackend->>EventSystem: Send event - order completed\n                    CTBackend-->>MobileApp: Show success (Education_GradeSync)\n                end\n            end\n        end\n    end\n",
+  "content_size": 3340,
+  "collected_at": "2026-02-06T01:36:24.179277",
+  "compilation_status": "success",
+  "license": "agpl-3.0",
+  "license_name": "GNU Affero General Public License v3.0",
+  "license_url": "https://api.github.com/licenses/agpl-3.0",
+  "repo_stars": 11,
+  "repo_forks": 7,
+  "repo_owner": "edx",
+  "repo_name": "commerce-coordinator",
+  "repo_description": "A controller to manage commerce workflows and services",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2021-10-01T19:08:54Z",
+  "repo_updated_at": "2026-01-14T15:27:30Z",
+  "augmentation_domain": "Education",
+  "seed_id": "gh_sequence_00742",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个移动端应用内购买的完整时序图，核心流程是从用户发起购买，经过CT Backend，最终到订单完成。关键系统包括MobileApp、CTBackend、IAP验证服务、应用商店、Commercetools核心，还有事件系统。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore",
+        "CoCo",
+        "EventSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。IAP验证服务这里我注意到标注了Education_LMS_Portal，MobileStore标注了Education_GradeSync，CoCo标注了Education_ClassroomService，这些别名需要体现在图上吗？",
+      "elements_involved": [
+        "IAPValidator",
+        "MobileStore",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，这些别名很重要，因为业务方习惯用教育系统的名称来识别。IAP验证服务对应LMS门户，MobileStore对应成绩同步系统，Commercetools核心对应课堂服务。",
+      "elements_involved": [
+        "IAPValidator",
+        "MobileStore",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，参与者都设置好了。现在画第一步：用户通过MobileApp发起应用内购买，MobileApp把购买信息发送到CTBackend，这里需要标注是Education_LMS_Portal相关的信息。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是客户处理逻辑。CTBackend需要到Commercetools查询客户，用LMS的用户ID来匹配。这里有个分支：客户不存在就创建，存在就更新。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "分支画好了，alt块包含创建新客户和更新现有客户两种情况，都有返回结果。接下来呢？",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后CTBackend检查这个用户是否已有购物车。如果有，要删除旧购物车，避免冲突。之后创建新购物车，加入产品，设置外部价格，标记mobileOrder=true。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "设置外部价格这里，标注Education_ClassroomService对吗？还有mobileOrder=true这个自定义字段。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，外部价格关联课堂服务，mobileOrder标记这是移动端订单。然后CTBackend把购买令牌发给IAP验证服务做验证。",
+      "elements_involved": [
+        "CTBackend",
+        "IAPValidator",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "IAP验证流程画好了：IAPValidator把令牌发给MobileStore（Google或Apple），拿到结果后再到Commercetools检查令牌是否已被使用。",
+      "elements_involved": [
+        "IAPValidator",
+        "MobileStore",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里有个关键异常分支：如果令牌已被使用，要删除刚才创建的购物车，返回错误给MobileApp，错误来源标注Education_ClassroomService。",
+      "elements_involved": [
+        "IAPValidator",
+        "CTBackend",
+        "CoCo",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "异常分支已添加，令牌重复使用的处理流程完整了。正常路径是IAPValidator把交易信息返回给CTBackend，然后继续？",
+      "elements_involved": [
+        "IAPValidator",
+        "CTBackend",
+        "CoCo",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，正常路径继续。CTBackend要发送两个事件：checkout started和item added to cart，都发到EventSystem。然后创建支付对象，用令牌信息。",
+      "elements_involved": [
+        "CTBackend",
+        "EventSystem",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "创建支付后，还要更新支付对象的自定义字段usdCentAmount，填入产品的美元价格，对吗？",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，usdCentAmount字段必须设置。这里又有一个异常分支：如果支付创建失败，要返回错误给MobileApp，这次错误来源是Education_ContentCDN。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "支付创建失败的异常分支已画好。正常路径是支付创建成功，发送payment method used事件，然后把支付附加到购物车。",
+      "elements_involved": [
+        "CTBackend",
+        "EventSystem",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "附加支付也可能失败，这是另一个异常点。失败时返回错误，来源标注Education_LMS_Portal。成功的话，用更新后的购物车创建订单。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "附加支付失败的异常分支已添加，来源是LMS门户。正常路径继续创建订单。订单创建也有失败可能吧？",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，订单创建失败要返回错误，来源还是Education_ClassroomService。成功的话，把订单项标记为ready for delivery，准备交付。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "订单创建的异常分支画好了。标记准备交付这个步骤也有异常处理吗？",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "有，更新订单项状态失败时，返回错误给MobileApp，来源是Education_ContentCDN。这是最后一个异常点了。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有异常分支都画完整了。最后成功路径：返回更新后的订单，发送order completed事件到EventSystem，然后CTBackend通知MobileApp显示成功，来源标注Education_GradeSync。",
+      "elements_involved": [
+        "CTBackend",
+        "EventSystem",
+        "MobileApp",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我检查一下，错误来源的标注都正确吗？ClassroomService出现了多次，ContentCDN两次，LMS_Portal两次，GradeSync一次在成功消息。",
+      "elements_involved": [
+        "CoCo",
+        "MobileApp",
+        "IAPValidator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。整个流程覆盖了6个主要参与者，包含4个嵌套的alt异常分支，所有业务别名都正确标注，事件系统的发送点也都标记清楚了。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore",
+        "CoCo",
+        "EventSystem"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 24,
+    "repair_count": 0,
+    "grounding_acts_count": 24,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 53528.5335,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 24
+  }
+}

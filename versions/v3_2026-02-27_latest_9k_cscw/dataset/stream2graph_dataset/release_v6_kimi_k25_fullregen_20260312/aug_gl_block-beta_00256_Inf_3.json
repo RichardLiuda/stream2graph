@@ -1,0 +1,798 @@
+{
+  "id": "aug_gl_block-beta_00256_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sn-ravance/Ollama_Docker/blob/3f2dd7761e30b51c2206a8b7e7938cf783b2c200/docs/Ollama_ZTA.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sn-ravance/Ollama_Docker",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    actor C as Client (Infra_LoadBalancer)\n    actor N as NGINX (Infra_WorkerNode)\n    actor P as oauth2-proxy (Infra_WorkerNode)\n    actor I as Identity Provider (Infra_LoadBalancer)\n    actor F as Prompt/Policy Filter (Infra_WorkerNode)\n    actor O as Ollama (Infra_LoadBalancer)\n    actor L as SIEM / Local Logs\n\n    C ->> N : HTTPS request to /api/generate\n    N ->> N : Verify TLS handshake + client cert (Infra_LoadBalancer), apply WAF/rate-limit/CORS\n    alt mTLS missing/invalid\n        N ->> C : 401/403 (Infra_LoadBalancer)\n        N ->> L : Log TLS/authn failure + client info (Infra_LoadBalancer)\n    else mTLS valid\n        N ->> L : Log access (Infra_RedisCache)\n    end\n\n    N ->> P : subrequest /oauth2/auth (Infra_WorkerNode)\n    alt No valid session cookie\n        P ->> N : 401 Unauthorized (Infra_RedisCache)\n        N ->> C : 302 Redirect → /oauth2/start\n        C ->> P : GET /oauth2/start\n        P ->> C : 302 Redirect → I /authorize (Infra_LoadBalancer)\n        C ->> I : User login + MFA (Infra_LoadBalancer)\n        I ->> C : 302 Redirect → P /oauth2/callback?code=...\n        C ->> P : GET /oauth2/callback (Infra_EtcdCluster)\n        P ->> C : Set secure session cookie, 302 back to original URL\n        C ->> N : Retry original /api/* request (Infra_WorkerNode)\n        N ->> P : subrequest /oauth2/auth\n        P ->> N : 200 OK + X-Auth headers (Infra_LoadBalancer)\n    else Valid session present\n        P ->> N : 200 OK + X-Auth headers (Infra_LoadBalancer)\n    end\n    N ->> L : Log auth decision + user/group claims (Infra_LoadBalancer)\n\n    N ->> F : POST /filter (Infra_WorkerNode)\n    alt Policy violation (Infra_LoadBalancer)\n        F ->> N : 406/422 with reason code\n        N ->> C : 4xx safe error (Infra_WorkerNode)\n    else Allowed\n        F ->> N : 200 Allowed\n    end\n\n    N ->> O : POST /api/generate (Infra_IngressController)\n    O ->> N : Streamed tokens / chunked response\n    loop while streaming tokens\n        N ->> C : Forward token chunks (Infra_WorkerNode)\n    end\n\n    N ->> L : Access + security events (Infra_EtcdCluster)\n    P ->> L : Auth events (Infra_RedisCache)\n    F ->> L : Policy evaluation results (Infra_LoadBalancer)\n    O ->> L : Inference metrics (Infra_LoadBalancer)\n\n    N ->> C : 200 OK (Infra_RedisCache) OR controlled 4xx with safe message\n",
+  "content_size": 2389,
+  "collected_at": "2026-02-06T14:05:29.968003",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_block-beta_00256",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的AI推理服务安全架构时序图，核心是大模型推理入口的安全防护。先确定一下参与者：Client、NGINX、oauth2-proxy、Identity Provider、Prompt Filter、Ollama，还有SIEM做统一日志。",
+      "elements_involved": [
+        "Client (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Identity Provider (Infra_LoadBalancer)",
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "Ollama (Infra_LoadBalancer)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个典型的零信任AI网关架构。Client到NGINX的第一跳是HTTPS到/api/generate对吧？我需要确认NGINX在这里承担的角色——它后面挂着oauth2-proxy做认证，自己还要做TLS和WAF？",
+      "elements_involved": [
+        "Client (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，NGINX作为入口网关，先验证mTLS客户端证书，同时做WAF、限流、CORS。这些都在WorkerNode上跑。如果mTLS有问题直接返回401/403，同时记日志到SIEM。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "SIEM / Local Logs",
+        "Client (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先画出Client到NGINX的HTTPS请求，加上NGINX自循环的TLS验证和WAF处理，然后用alt分支处理mTLS失败的情况。",
+      "elements_involved": [
+        "Client (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "mTLS失败的分支里，NGINX要返回401/403给Client，同时把失败信息发到SIEM，带上客户端信息。成功的话只记访问日志到RedisCache。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "Client (Infra_LoadBalancer)",
+        "SIEM / Local Logs",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有个细节：mTLS成功时的访问日志是写到RedisCache，但失败时的安全事件是写到SIEM？两个不同的后端？",
+      "elements_involved": [
+        "SIEM / Local Logs",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，设计如此。RedisCache做高频访问日志的缓冲，SIEM专门收安全事件。mTLS失败属于安全事件，走SIEM；普通访问日志走RedisCache。",
+      "elements_involved": [
+        "SIEM / Local Logs",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加mTLS的alt分支，失败时NGINX到SIEM记TLS/authn失败，成功时NGINX到RedisCache记访问日志。接下来是oauth2-proxy的认证流程？",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "SIEM / Local Logs",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，NGINX向oauth2-proxy发subrequest到/oauth2/auth验证session。这里要分两种情况：没有有效session cookie，和已有有效session。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画出NGINX到oauth2-proxy的subrequest。先处理无session的情况：oauth2-proxy返回401，NGINX302重定向到/oauth2/start？",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Client (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，完整的OAuth2授权码流程。Client访问/oauth2/start，oauth2-proxy再302到Identity Provider的/authorize端点。",
+      "elements_involved": [
+        "Client (Infra_LoadBalancer)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Identity Provider (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Identity Provider是在LoadBalancer上？用户登录和MFA都在那里完成？",
+      "elements_involved": [
+        "Identity Provider (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，IdP部署在LoadBalancer后面，支持用户登录+MFA。完成后IdP 302重定向回oauth2-proxy的callback地址，带授权码。",
+      "elements_involved": [
+        "Identity Provider (Infra_LoadBalancer)",
+        "oauth2-proxy (Infra_WorkerNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画出IdP到Client的302，再到oauth2-proxy callback。callback处理时我需要确认——这里涉及EtcdCluster？",
+      "elements_involved": [
+        "Identity Provider (Infra_LoadBalancer)",
+        "Client (Infra_LoadBalancer)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "callback请求本身标注了Infra_EtcdCluster，可能是session状态存储的位置。oauth2-proxy处理完设置secure session cookie，然后302回原始URL。",
+      "elements_involved": [
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Infra_EtcdCluster",
+        "Client (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，已添加callback处理（关联EtcdCluster）和设置cookie后的重定向。然后Client重试原始请求，NGINX再次subrequest验证，这次返回200和X-Auth头。",
+      "elements_involved": [
+        "Client (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，另外还要画一个分支：如果一开始就有valid session，oauth2-proxy直接返回200+X-Auth头，跳过整个登录流程。",
+      "elements_involved": [
+        "oauth2-proxy (Infra_WorkerNode)",
+        "NGINX (Infra_WorkerNode)",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充valid session的分支。两个分支都结束后，NGINX要把认证决策和用户组信息记到SIEM，这里标注的是Infra_LoadBalancer。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "SIEM / Local Logs",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，认证日志走LoadBalancer后端。接下来进入Prompt/Policy Filter环节，NGINX向Filter服务POST /filter做内容安全审查。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画出NGINX到Filter的POST /filter。这里也有alt分支：策略违规返回406/422，允许则返回200 Allowed。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "Prompt/Policy Filter (Infra_WorkerNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "违规时Filter返回406/422带reason code，NGINX给Client返回4xx安全错误，不能暴露内部细节。允许时才继续往后走。",
+      "elements_involved": [
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "NGINX (Infra_WorkerNode)",
+        "Client (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Filter的两个分支。允许通过后，NGINX向Ollama发POST /api/generate，这里标注的是Infra_IngressController。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "Ollama (Infra_LoadBalancer)",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Ollama在LoadBalancer后面，通过IngressController暴露。Ollama返回流式token，NGINX用loop转发chunk给Client。",
+      "elements_involved": [
+        "Ollama (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "Client (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画出Ollama到NGINX的流式响应，加上loop循环转发token chunks到Client。流结束后还有一批日志要写。",
+      "elements_involved": [
+        "Ollama (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "Client (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后统一收口：NGINX记访问+安全事件到EtcdCluster，oauth2-proxy记认证事件到RedisCache，Filter记策略评估结果到LoadBalancer，Ollama记推理指标到LoadBalancer。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "Ollama (Infra_LoadBalancer)",
+        "SIEM / Local Logs",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下：四个组件分别写SIEM，但后端存储不同——NGINX走EtcdCluster，oauth2-proxy走RedisCache，Filter和Ollama都走LoadBalancer？这是按数据类型分的？",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "Ollama (Infra_LoadBalancer)",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，架构上做了分流：EtcdCluster存高一致性安全事件，RedisCache做高频认证日志缓冲，LoadBalancer后端是统一的SIEM摄取端点，收策略和推理指标。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加四条到SIEM的日志线。最后NGINX给Client返回200 OK或受控的4xx安全响应，标注的是RedisCache？",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "Client (Infra_LoadBalancer)",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，最后这个标注有问题。返回Client的200 OK或4xx应该是Infra_WorkerNode，不是RedisCache。RedisCache是前面某个日志的后端。让我检查一下——哦，是NGINX到RedisCache的访问日志，不是最终响应。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "Client (Infra_LoadBalancer)",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，修正：NGINX到Client的最终响应标注为Infra_WorkerNode。但回头看代码，最后一步确实标注了Infra_RedisCache——我需要再确认这是有意为之还是笔误？",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "Client (Infra_LoadBalancer)",
+        "Infra_RedisCache"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "按代码来，保留Infra_RedisCache。可能设计上最终响应状态也异步记到RedisCache做统计，标注的是这个语义。我们保持与代码一致。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "Client (Infra_LoadBalancer)",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，保持Infra_RedisCache标注。整体流程已画完，我检查一下各参与者的位置：Client、NGINX、oauth2-proxy、Filter都是Infra_WorkerNode或LoadBalancer，Ollama和IdP是LoadBalancer。",
+      "elements_involved": [
+        "Client (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "Ollama (Infra_LoadBalancer)",
+        "Identity Provider (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Client应该是Infra_LoadBalancer，作为入口负载均衡。NGINX、oauth2-proxy、Filter都在WorkerNode上跑，是实际处理节点。Ollama和IdP作为核心服务，也在LoadBalancer后面做高可用。",
+      "elements_involved": [
+        "Client (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "Ollama (Infra_LoadBalancer)",
+        "Identity Provider (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。我再过一遍关键路径：HTTPS入站→mTLS+WAF→OAuth2认证（含MFA）→Prompt过滤→Ollama流式推理→多源日志汇聚。整个链路有四处alt分支，两处loop。",
+      "elements_involved": [
+        "all"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，安全纵深很完整。不过我想再明确一下Filter的部署——它和NGINX、oauth2-proxy同节点，是sidecar模式还是独立服务？",
+      "elements_involved": [
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "从标注看都是Infra_WorkerNode，可能是同节点不同容器，或者同一Pod里的多个容器。时序图上我们保持独立actor，实际部署是共节点。",
+      "elements_involved": [
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，这样画清楚。还有，oauth2-proxy的session存储用了EtcdCluster，这在callback步骤标注了，但其他步骤没有重复标注，保持简洁。",
+      "elements_involved": [
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认。我再看一下日志部分：NGINX写了两次到SIEM相关后端，一次是mTLS失败时到SIEM/LoadBalancer，一次是认证决策后到LoadBalancer，还有最后是到EtcdCluster。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "SIEM / Local Logs",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "三次：mTLS阶段（失败时）、OAuth2认证后、最终请求完成后。分别对应安全事件、认证决策、完整访问记录。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，三次日志写入，后端不同。oauth2-proxy和Filter、Ollama各写一次，总共七条到SIEM的线。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "Ollama (Infra_LoadBalancer)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数量对了。再看一下alt的嵌套关系：第一层是mTLS验证，第二层在mTLS通过里是OAuth2认证（有无session），第三层在Filter处是策略检查。三层alt没有嵌套冲突吧？",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Prompt/Policy Filter (Infra_WorkerNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "结构上：mTLS alt在最早，结束后进入OAuth2 alt，OAuth2结束后进入Filter alt。三个alt是顺序关系，不是嵌套，逻辑清晰。loop只在最后的流式转发那里。",
+      "elements_involved": [
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "Ollama (Infra_LoadBalancer)",
+        "Client (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确，loop只包裹NGINX转发token chunks到Client的过程。Ollama到NGINX的流式响应是单箭头，然后进入loop做转发。",
+      "elements_involved": [
+        "Ollama (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "Client (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认loop范围。我再检查一下标注的后端一致性：oauth2-proxy在认证成功返回200时标注Infra_LoadBalancer，callback时标注Infra_EtcdCluster，最后写日志到Infra_RedisCache。三个不同的后端。",
+      "elements_involved": [
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，设计上oauth2-proxy依赖多个基础设施：LoadBalancer做出口，EtcdCluster做session状态，RedisCache做日志缓冲。这是合理的。",
+      "elements_involved": [
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Filter只在最后写日志时标注了Infra_LoadBalancer，请求和响应都没有标注。这是有意省略还是漏了？",
+      "elements_involved": [
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "按代码来，Filter的POST /filter和返回都没有标注，只有最后到SIEM的线有Infra_LoadBalancer。保持这样，可能Filter是本地进程间通信，不经过网络基础设施。",
+      "elements_involved": [
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "NGINX (Infra_WorkerNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "了解，保持无标注。Ollama也是类似：推理请求和流式响应没有标注，只有最后的metrics日志有Infra_LoadBalancer。",
+      "elements_involved": [
+        "Ollama (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Ollama到NGINX的流式响应是长连接，可能走内部网络，不特定标注。metrics上报走标准负载均衡出口。",
+      "elements_involved": [
+        "Ollama (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "整体结构我检查完了。有个小建议：Client的角色名是\"Client (Infra_LoadBalancer)\"，但代码里actor C as后面有空格，我写成\"Client (Infra_LoadBalancer)\"没问题吧？",
+      "elements_involved": [
+        "Client (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题，括号里的基础设施标注是设计的一部分。所有参与者都带括号标注，保持一致。",
+      "elements_involved": [
+        "Client (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Identity Provider (Infra_LoadBalancer)",
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "Ollama (Infra_LoadBalancer)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终确认所有参与者：C-Client (Infra_LoadBalancer)、N-NGINX (Infra_WorkerNode)、P-oauth2-proxy (Infra_WorkerNode)、I-Identity Provider (Infra_LoadBalancer)、F-Prompt/Policy Filter (Infra_WorkerNode)、O-Ollama (Infra_LoadBalancer)、L-SIEM / Local Logs。",
+      "elements_involved": [
+        "Client (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Identity Provider (Infra_LoadBalancer)",
+        "Prompt/Policy Filter (Infra_WorkerNode)",
+        "Ollama (Infra_LoadBalancer)",
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SIEM的标注是\"SIEM / Local Logs\"，没有括号基础设施，因为它接收来自多个后端的数据，本身不绑定单一基础设施。",
+      "elements_involved": [
+        "SIEM / Local Logs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，SIEM是汇聚点。我再数一下交互线：C-N、N-N自循环、N-P、P-N、N-C重定向、C-P、P-C、C-I、I-C、C-P callback、P-C、C-N重试、N-P、P-N、N-F、F-N、N-O、O-N、N-C loop内、各到L的线。总共约20+条消息。",
+      "elements_involved": [
+        "all"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "数量差不多，复杂的OAuth2流程占了大部分。最后确认一下：302重定向的箭头方向，都是从服务指向Client，然后Client发起新请求，对吗？",
+      "elements_involved": [
+        "Client (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Identity Provider (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，302是服务端响应，箭头从N到C、P到C、I到C。然后Client主动发起的GET，箭头从C到P、C到I、C到N。方向正确。",
+      "elements_involved": [
+        "Client (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "oauth2-proxy (Infra_WorkerNode)",
+        "Identity Provider (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "很好，整个时序图完整呈现了AI推理服务的零信任安全架构。从网络层mTLS，到应用层OAuth2+MFA，再到内容安全过滤，最后到审计日志，四层防护。",
+      "elements_involved": [
+        "all"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "图已完成，我最后生成代码验证一下语法。所有alt都有对应的else和end，loop有end，参与者声明正确，应该能正常渲染。",
+      "elements_involved": [
+        "all"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "辛苦了，这个图可以直接用于架构评审和安全合规审计。流式推理的loop部分特别重要，要突出它是边生成边返回，不是等全部完成。",
+      "elements_involved": [
+        "Ollama (Infra_LoadBalancer)",
+        "NGINX (Infra_WorkerNode)",
+        "Client (Infra_LoadBalancer)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已突出loop的实时性。整体图结构清晰，安全控制点明确，可以作为生产环境的参考架构。还有其他需要调整的吗？",
+      "elements_involved": [
+        "all"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "暂时没有了，后续如果有WAF规则更新或者Filter策略变更，我们再迭代。当前版本可以冻结为v1.0基线。",
+      "elements_involved": [
+        "all"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "收到，标记为v1.0基线版本。时序图已最终确认，包含完整的mTLS、OAuth2、Prompt过滤、流式推理和审计日志流程。",
+      "elements_involved": [
+        "all"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 62,
+    "repair_count": 2,
+    "grounding_acts_count": 62,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 136881.3293,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 62
+  }
+}

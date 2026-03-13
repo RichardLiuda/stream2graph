@@ -1,0 +1,159 @@
+{
+  "id": "gh_sequence_00569",
+  "source": "github",
+  "source_url": "https://github.com/MESH-Research/invenio-stats-dashboard/blob/8b96c4598deaf08814b9b0fc7c7244a297725a45/docs/event-reindexing-sequence.mmd",
+  "github_repo": "MESH-Research/invenio-stats-dashboard",
+  "github_file_path": "docs/event-reindexing-sequence.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant CLI as CLI Command\n    participant Service as EventReindexingService\n    participant OpenSearch as OpenSearch Cluster\n    participant Bookmark as Bookmark API\n    participant Metadata as RDM Records Index\n\n    CLI->>Service: reindex_events()\n    Service->>Service: update_and_verify_templates()\n    Service->>OpenSearch: Check/Update Templates\n\n    loop For Each Event Type\n        Service->>OpenSearch: get_monthly_indices(event_type)\n        OpenSearch-->>Service: List of monthly indices\n\n        loop For Each Monthly Index\n            Service->>Service: migrate_monthly_index()\n            Service->>OpenSearch: create_enriched_index()\n            OpenSearch-->>Service: New index name\n\n            Service->>Bookmark: get_bookmark()\n            Bookmark-->>Service: Last processed ID\n\n            loop Batch Processing\n                Service->>Service: check_health_conditions()\n                Service->>OpenSearch: process_monthly_index_batch()\n                Service->>Metadata: get_metadata_for_records()\n                Metadata-->>Service: Record metadata\n                Service->>Service: enrich_events()\n                Service->>OpenSearch: bulk_index()\n                Service->>Bookmark: set_bookmark()\n            end\n\n            Service->>Service: validate_enriched_data()\n            Service->>OpenSearch: update_aliases()\n\n            alt Current Month Index\n                Service->>OpenSearch: setup_write_alias()\n                Service->>OpenSearch: migrate_new_records()\n            end\n\n            Service->>OpenSearch: delete_old_index()\n        end\n    end\n\n    Service-->>CLI: Migration results\n",
+  "content_size": 1663,
+  "collected_at": "2026-02-06T01:34:05.120021",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 3,
+  "repo_forks": 0,
+  "repo_owner": "MESH-Research",
+  "repo_name": "invenio-stats-dashboard",
+  "repo_description": "A usage statistics dashboard for InvenioRDM instances",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2025-05-07T13:44:58Z",
+  "repo_updated_at": "2026-01-24T04:34:06Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个事件重索引的完整流程。核心是从CLI命令触发，经过EventReindexingService来协调整个迁移过程，最终把数据批量写入OpenSearch Cluster。关键是要有断点续传机制，所以得引入Bookmark API来记录处理进度。",
+      "elements_involved": [
+        "CLI Command",
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Bookmark API",
+        "reindex_events()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下结构：CLI调用Service的reindex_events()方法，然后Service要先处理模板相关的事情？我看到有个update_and_verify_templates()和Check/Update Templates的交互。",
+      "elements_involved": [
+        "CLI Command",
+        "EventReindexingService",
+        "update_and_verify_templates()",
+        "Check/Update Templates"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，模板校验是前置步骤。然后进入主循环：按Event Type逐个处理，每个类型下再按月索引拆分。这里有两个嵌套循环——外层遍历事件类型，内层遍历该类型的月度索引。",
+      "elements_involved": [
+        "Event Type",
+        "monthly indices",
+        "get_monthly_indices()",
+        "loop For Each Event Type",
+        "loop For Each Monthly Index"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我画出了双层循环结构。对于每个月度索引，Service会先调用migrate_monthly_index()，然后创建 enriched index。这里有个细节：创建新索引后，Service要从Bookmark API获取上次处理的位置，对吧？",
+      "elements_involved": [
+        "migrate_monthly_index()",
+        "create_enriched_index()",
+        "Bookmark API",
+        "get_bookmark()",
+        "Last processed ID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，get_bookmark()返回Last processed ID，这样批量处理就能从断点继续。接下来是核心的Batch Processing循环：每次批量前要check_health_conditions()，然后从RDM Records Index获取元数据， enrich之后再bulk_index到OpenSearch，最后更新bookmark。",
+      "elements_involved": [
+        "Batch Processing",
+        "check_health_conditions()",
+        "RDM Records Index",
+        "get_metadata_for_records()",
+        "enrich_events()",
+        "bulk_index()",
+        "set_bookmark()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "批量循环画好了。我注意到月度索引处理完后还有几个步骤：validate_enriched_data()、update_aliases()，然后有个alt分支处理当月索引的情况——需要setup_write_alias()和migrate_new_records()，最后delete_old_index()。这个alt条件是\"Current Month Index\"吗？",
+      "elements_involved": [
+        "validate_enriched_data()",
+        "update_aliases()",
+        "alt Current Month Index",
+        "setup_write_alias()",
+        "migrate_new_records()",
+        "delete_old_index()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，当月索引特殊处理是因为可能有新数据持续写入，需要保留写别名。非当月索引直接清理即可。所有类型和索引处理完后，Service把Migration results返回给CLI。",
+      "elements_involved": [
+        "Current Month Index",
+        "write alias",
+        "Migration results",
+        "CLI Command"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。整个流程已经画出来了：从CLI触发，模板预检，双层循环遍历事件类型和月度索引，内部批量处理配合Bookmark断点续传，最后别名切换和旧索引清理。我检查一下各参与者交互是否完整——CLI、Service、OpenSearch、Bookmark、Metadata五个参与者，调用关系都对应上了。",
+      "elements_involved": [
+        "CLI Command",
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Bookmark API",
+        "RDM Records Index"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 30241.7817,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

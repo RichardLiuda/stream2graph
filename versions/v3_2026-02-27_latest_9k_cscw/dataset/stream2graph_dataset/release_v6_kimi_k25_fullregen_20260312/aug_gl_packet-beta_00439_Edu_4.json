@@ -1,0 +1,900 @@
+{
+  "id": "aug_gl_packet-beta_00439_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/ARG_OSCI_SEQ_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    actor User\n    participant Main\n    participant Initializer\n    participant SetupScreen\n    participant SetupService\n    participant NetworkInfoService\n    participant ModeSelectionScreen\n    participant GraphScreen\n    participant UserSettings\n    participant DataAcqProvider\n    participant DataAcqService\n    participant SocketIsolate\n    participant ProcessingIsolate\n    participant OscilloChartProvider\n    participant FFTChartProvider\n    participant OscilloChart\n    participant FFTChart\n    participant ChartPainter\n\n    %% Application Initialization\n    User->>Main: Launch application\n    Main->>Initializer: init(Education_StudentDB)\n    Note over Initializer: Configure system dependencies\n    Initializer->>Initializer: ensureInitialized(Education_StudentDB)\n    Initializer->>Initializer: Register configurations (Education_ContentCDN)\n    Initializer->>Initializer: Register services (Education_ContentCDN)\n    Initializer->>Initializer: Register providers (Education_ContentCDN)\n    Initializer-->>Main: Initialization complete\n    Main->>SetupScreen: Navigate to setup screen\n    \n    %% Device Connection Flow\n    SetupScreen->>User: Display connection options\n    User->>SetupScreen: Select connection mode\n    \n    alt External AP Selected\n        SetupScreen->>SetupService: connectToLocalAP(Education_ContentCDN)\n        SetupService->>NetworkInfoService: Connect to ESP32 access point\n        NetworkInfoService->>NetworkInfoService: connectWithRetries(Education_ClassroomService)\n        NetworkInfoService-->>SetupService: Connection established\n        SetupService->>SetupService: scanForWiFiNetworks(Education_ContentCDN)\n        SetupService->>SetupService: Fetch public key from device\n        SetupService-->>SetupScreen: Return available networks\n        SetupScreen->>User: Show WiFi network selection\n        User->>SetupScreen: Select network & enter password\n        SetupScreen->>SetupService: connectToWiFi(Education_GradeSync)\n        SetupService->>SetupService: encriptWithPublicKey(Education_StudentDB)\n        SetupService->>SetupService: Send credentials to device\n        SetupService->>SetupService: waitForNetworkChange(Education_StudentDB)\n        SetupService->>SetupService: handleNetworkChangeAndConnect(Education_ContentCDN)\n        SetupService->>SetupService: Test connection with encrypted challenge\n        SetupService->>SetupService: fetchDeviceConfig(Education_StudentDB)\n        SetupService-->>SetupScreen: Connection successful\n    else Internal AP Selected\n        SetupScreen->>SetupService: selectMode(Education_GradeSync)\n        SetupService->>SetupService: initializeGlobalHttpConfig(Education_LMS_Portal)\n        SetupService->>SetupService: initializeGlobalSocketConnection(Education_GradeSync)\n        SetupService->>SetupService: fetchDeviceConfig(Education_StudentDB)\n        SetupService-->>SetupScreen: Configuration successful\n    end\n    \n    SetupScreen->>ModeSelectionScreen: Navigate to mode selection\n    \n    %% Mode Selection\n    ModeSelectionScreen->>User: Display oscilloscope modes\n    User->>ModeSelectionScreen: Select mode (Education_GradeSync)\n    ModeSelectionScreen->>GraphScreen: navigateToMode(Education_GradeSync)\n    \n    %% Graph Screen Initialization\n    GraphScreen->>DataAcqProvider: stopAcquisition(Education_ContentCDN) (Education_GradeSync)\n    GraphScreen->>GraphScreen: Initialize controller\n    GraphScreen->>UserSettings: Set mode (Education_GradeSync)\n    \n    %% Start Data Acquisition\n    GraphScreen->>DataAcqProvider: startAcquisition(Education_ContentCDN)\n    DataAcqProvider->>DataAcqService: fetchData(Education_ContentCDN)\n    DataAcqService->>DataAcqService: initialize(Education_ClassroomService)\n    \n    %% Create Isolates\n    DataAcqService->>ProcessingIsolate: Create processing isolate\n    ProcessingIsolate-->>DataAcqService: Return SendPort\n    DataAcqService->>SocketIsolate: Create socket isolate\n    SocketIsolate->>SocketIsolate: Connect to device\n    \n    %% Data Processing Workflow\n    loop Data Acquisition\n        SocketIsolate->>SocketIsolate: Receive binary data packet\n        SocketIsolate->>ProcessingIsolate: Send raw data\n        ProcessingIsolate->>ProcessingIsolate: Parse binary data\n        ProcessingIsolate->>ProcessingIsolate: Apply trigger logic\n        ProcessingIsolate->>ProcessingIsolate: Process signal based on config\n        ProcessingIsolate->>DataAcqService: Send processed data points\n        DataAcqService->>DataAcqProvider: Update data streams\n        \n        alt Oscilloscope Mode\n            DataAcqProvider->>OscilloChartProvider: Update time domain data\n            OscilloChartProvider->>OscilloChart: Refresh chart display\n            OscilloChart->>ChartPainter: Draw waveform\n        else FFT Mode\n            DataAcqProvider->>FFTChartProvider: Update frequency domain data\n            FFTChartProvider->>FFTChart: Refresh chart display\n            FFTChart->>ChartPainter: Draw spectrum\n        end\n    end\n    \n    %% User Settings Interaction\n    User->>UserSettings: Change settings (Education_LMS_Portal)\n    UserSettings->>DataAcqProvider: Update configuration\n    DataAcqProvider->>DataAcqService: updateConfig(Education_StudentDB)\n    DataAcqService->>ProcessingIsolate: Send UpdateConfigMessage\n    ProcessingIsolate->>ProcessingIsolate: Apply new configuration\n    \n    %% Chart Interaction\n    User->>OscilloChart: Zoom/Pan gesture\n    OscilloChart->>OscilloChartProvider: handleZoom(Education_LMS_Portal)/setHorizontalOffset(Education_GradeSync)\n    OscilloChartProvider->>OscilloChart: Update display parameters\n    \n    %% Mode Switching\n    User->>GraphScreen: Request mode change\n    GraphScreen->>UserSettings: setMode(Education_LMS_Portal)\n    UserSettings->>DataAcqProvider: Pause current acquisition\n    UserSettings->>GraphScreen: Update chart display\n    GraphScreen->>DataAcqProvider: Resume acquisition with new mode\n    \n    %% Error Handling Flow\n    alt Connection Error\n        SocketIsolate->>DataAcqService: Report connection error\n        DataAcqService->>DataAcqService: _handleConnectionError(Education_LMS_Portal)\n        DataAcqService->>DataAcqService: Attempt reconnection\n        \n        alt Reconnection Failed\n            DataAcqService->>DataAcqProvider: handleCriticalError(Education_LMS_Portal)\n            DataAcqProvider->>SetupScreen: Navigate back to setup\n        end\n    end",
+  "content_size": 5996,
+  "collected_at": "2026-02-06T14:09:45.143092",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Education",
+  "seed_id": "gl_packet-beta_00439",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个教育场景下的示波器应用架构，核心是学生通过ESP32设备采集数据并在移动端可视化。先理清整体流程：用户启动应用后，Main模块应该先做什么？",
+      "elements_involved": [
+        "User",
+        "Main",
+        "ESP32"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，教育场景下学生使用。那Main启动后应该初始化系统依赖，我理解为需要Initializer模块来处理配置注册。Initializer需要跟Education_StudentDB交互吗？",
+      "elements_involved": [
+        "Main",
+        "Initializer",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Initializer要确保Education_StudentDB初始化完成，同时注册Education_ContentCDN相关的配置、服务和providers。这是应用启动的基础。",
+      "elements_involved": [
+        "Initializer",
+        "Education_StudentDB",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我画出了初始化流程：Main调用Initializer.init(Education_StudentDB)，Initializer内部完成ensureInitialized，然后注册Education_ContentCDN的配置、服务和providers，完成后返回Main。",
+      "elements_involved": [
+        "Main",
+        "Initializer",
+        "Education_StudentDB",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "初始化完成后，用户进入设备连接环节。这里有两种模式：外部AP模式和内部AP模式。SetupScreen需要引导用户选择连接方式。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "外部AP模式是指学生家里的WiFi，内部AP是ESP32自己开的热点？SetupService.connectToLocalAP(Education_ContentCDN)这个调用我理解对吗？",
+      "elements_involved": [
+        "SetupService",
+        "Education_ContentCDN",
+        "ESP32"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正好相反——外部AP是ESP32作为热点，内部AP是学校现有网络。外部AP模式下，SetupService先连接ESP32热点，再扫描可用WiFi让学生配置。Education_ContentCDN在这里做网络配置载体。",
+      "elements_involved": [
+        "SetupService",
+        "ESP32",
+        "Education_ContentCDN",
+        "NetworkInfoService"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，修正为：外部AP模式下，SetupScreen调用SetupService.connectToLocalAP(Education_ContentCDN)，SetupService让NetworkInfoService连接ESP32热点，使用Education_ClassroomService做重连策略，成功后扫描WiFi并获取设备公钥。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "ESP32",
+        "Education_ClassroomService",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "学生选择WiFi并输入密码后，SetupService要加密传输。这里用Education_GradeSync做连接凭证管理，Education_StudentDB存储加密相关数据。",
+      "elements_involved": [
+        "SetupService",
+        "Education_GradeSync",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：SetupScreen把网络选择传给SetupService.connectToWiFi(Education_GradeSync)，SetupService用Education_StudentDB做公钥加密，发送凭证，等待网络变化，处理重连，最后测试加密挑战并获取设备配置。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "Education_GradeSync",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "内部AP模式更直接，学生直接连学校网络。SetupService用Education_GradeSync选择模式，Education_LMS_Portal初始化HTTP配置。",
+      "elements_involved": [
+        "SetupService",
+        "Education_GradeSync",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画出内部AP分支：SetupService.selectMode(Education_GradeSync)，然后initializeGlobalHttpConfig(Education_LMS_Portal)和initializeGlobalSocketConnection(Education_GradeSync)，最后fetchDeviceConfig(Education_StudentDB)。",
+      "elements_involved": [
+        "SetupService",
+        "Education_GradeSync",
+        "Education_LMS_Portal",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "两种模式都完成后，SetupScreen导航到ModeSelectionScreen，让学生选择示波器工作模式。这里用Education_GradeSync传递模式选择。",
+      "elements_involved": [
+        "SetupScreen",
+        "ModeSelectionScreen",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已连接：SetupScreen→ModeSelectionScreen，ModeSelectionScreen向用户展示模式，用户选择后调用navigateToMode(Education_GradeSync)进入GraphScreen。",
+      "elements_involved": [
+        "SetupScreen",
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "GraphScreen是核心界面，需要先停止可能存在的采集，初始化控制器，并通过UserSettings设置当前模式。Education_ContentCDN和Education_GradeSync都要用到。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "UserSettings",
+        "Education_ContentCDN",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画出GraphScreen初始化：先调用DataAcqProvider.stopAcquisition(Education_ContentCDN)带Education_GradeSync参数，然后自初始化控制器，再调用UserSettings.setMode(Education_GradeSync)。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "UserSettings",
+        "Education_ContentCDN",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "正式开始采集：GraphScreen启动DataAcqProvider，后者委托DataAcqService获取数据。DataAcqService需要初始化，这里用Education_ClassroomService。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "DataAcqService",
+        "Education_ClassroomService",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加采集启动链：GraphScreen→DataAcqProvider.startAcquisition(Education_ContentCDN)→DataAcqService.fetchData(Education_ContentCDN)，DataAcqService内部initialize(Education_ClassroomService)。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "DataAcqService",
+        "Education_ContentCDN",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据采集要用Isolate避免阻塞UI。DataAcqService创建ProcessingIsolate和SocketIsolate，SocketIsolate负责设备连接，ProcessingIsolate处理数据解析。",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "两个Isolate的创建顺序有讲究吗？ProcessingIsolate先创建返回SendPort，然后SocketIsolate创建并连接设备？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "SendPort"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，ProcessingIsolate先启动准备好接收数据，SocketIsolate后启动负责从源头取数据。这样数据流是SocketIsolate→ProcessingIsolate→DataAcqService。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画出Isolate创建：DataAcqService创建ProcessingIsolate，获得SendPort返回；然后创建SocketIsolate，SocketIsolate自连接设备。",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "SendPort"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画核心数据循环。SocketIsolate接收二进制包，发给ProcessingIsolate解析、应用触发逻辑、按配置处理信号，然后回传DataAcqService更新数据流。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加循环：SocketIsolate收二进制数据→发给ProcessingIsolate→ProcessingIsolate解析、应用触发、信号处理→发回DataAcqService→DataAcqService更新DataAcqProvider的数据流。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据流要分两种模式显示：时域波形用OscilloChartProvider→OscilloChart→ChartPainter，频域用FFTChartProvider→FFTChart→ChartPainter。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画出模式分支：Oscilloscope Mode下DataAcqProvider→OscilloChartProvider→OscilloChart→ChartPainter画波形；FFT Mode下DataAcqProvider→FFTChartProvider→FFTChart→ChartPainter画频谱。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "学生可能需要调整采集参数。UserSettings变更时，通过Education_LMS_Portal通知DataAcqProvider，再传到DataAcqService，最后发给ProcessingIsolate应用新配置。",
+      "elements_involved": [
+        "User",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加设置更新链：User→UserSettings.change(Education_LMS_Portal)→DataAcqProvider→DataAcqService.updateConfig(Education_StudentDB)→发送UpdateConfigMessage给ProcessingIsolate→ProcessingIsolate自应用配置。",
+      "elements_involved": [
+        "User",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate",
+        "Education_LMS_Portal",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "图表交互也要支持，学生可以缩放和平移波形。OscilloChart捕获手势，通过OscilloChartProvider处理，Education_LMS_Portal管缩放，Education_GradeSync管偏移。",
+      "elements_involved": [
+        "User",
+        "OscilloChart",
+        "OscilloChartProvider",
+        "Education_LMS_Portal",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画出：User在OscilloChart上Zoom/Pan→OscilloChart调用handleZoom(Education_LMS_Portal)或setHorizontalOffset(Education_GradeSync)→OscilloChartProvider→更新OscilloChart显示参数。",
+      "elements_involved": [
+        "User",
+        "OscilloChart",
+        "OscilloChartProvider",
+        "Education_LMS_Portal",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "模式切换流程：学生请求切换时，GraphScreen通过UserSettings.setMode(Education_LMS_Portal)设置，先暂停当前采集，更新图表，再恢复新模式的采集。",
+      "elements_involved": [
+        "User",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：User→GraphScreen请求切换→UserSettings.setMode(Education_LMS_Portal)→DataAcqProvider暂停→UserSettings通知GraphScreen更新显示→GraphScreen让DataAcqProvider恢复新模式采集。",
+      "elements_involved": [
+        "User",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后需要错误处理，特别是连接断开。SocketIsolate报告错误给DataAcqService，尝试重连，失败则走critical error流程退回SetupScreen。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画出错误处理：SocketIsolate→DataAcqService报告错误→DataAcqService._handleConnectionError(Education_LMS_Portal)尝试重连→重连失败则DataAcqService→DataAcqProvider.handleCriticalError(Education_LMS_Portal)→DataAcqProvider→SetupScreen导航返回。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整体架构清晰了。再确认下初始化部分：Initializer注册providers时，OscilloChartProvider和FFTChartProvider是这时候注册的吗？",
+      "elements_involved": [
+        "Initializer",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "代码里Initializer注册providers是泛指的Education_ContentCDN，没有显式列出这两个ChartProvider。需要明确标注它们也在初始化时注册吗？",
+      "elements_involved": [
+        "Initializer",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持代码原意，Education_ContentCDN作为配置载体包含所有providers注册。实际运行时OscilloChartProvider和FFTChartProvider会被实例化，但图上Initializer只显示到Education_ContentCDN层面。",
+      "elements_involved": [
+        "Initializer",
+        "Education_ContentCDN",
+        "OscilloChartProvider",
+        "FFTChartProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认，Initializer的Register providers保持为Education_ContentCDN，不展开具体provider。OscilloChartProvider和FFTChartProvider只在数据流部分出现。",
+      "elements_involved": [
+        "Initializer",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "检查下SetupService的scanForWiFiNetworks，这个应该也是用Education_ContentCDN做配置源吧？",
+      "elements_involved": [
+        "SetupService",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，SetupService.scanForWiFiNetworks(Education_ContentCDN)已经画在外部AP流程里了。还有fetchDeviceConfig多次出现，都用Education_StudentDB。",
+      "elements_involved": [
+        "SetupService",
+        "Education_ContentCDN",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "DataAcqService初始化时的Education_ClassroomService，这个命名有点特殊，是复数形式吗？",
+      "elements_involved": [
+        "DataAcqService",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "代码里是Education_ClassroomService，我按这个写。另外NetworkInfoService的connectWithRetries也是用这个参数，确认是同一个？",
+      "elements_involved": [
+        "DataAcqService",
+        "NetworkInfoService",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认，Education_ClassroomService在NetworkInfoService.connectWithRetries和DataAcqService.initialize两处使用，都是处理连接重试和初始化策略的。",
+      "elements_involved": [
+        "NetworkInfoService",
+        "DataAcqService",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已核实两处Education_ClassroomService用法一致。现在检查ProcessingIsolate的数据处理步骤：Parse binary data、Apply trigger logic、Process signal based on config，这三步都是自循环吗？",
+      "elements_involved": [
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，ProcessingIsolate内部完成解析、触发、信号处理三步，然后才把处理后的数据点发给DataAcqService。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "有个细节：GraphScreen初始化时stopAcquisition带了两个参数？代码显示(Education_ContentCDN) (Education_GradeSync)，这是两个独立参数还是标注问题？",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "Education_ContentCDN",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "看代码格式应该是两个参数，Education_ContentCDN作为数据源配置，Education_GradeSync作为模式标识。这样stopAcquisition知道要停哪种模式的采集。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "Education_ContentCDN",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "按双参数理解，GraphScreen.stopAcquisition(Education_ContentCDN, Education_GradeSync)。其他stop/start调用也保持这种参数风格。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "Education_ContentCDN",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再看下alt分支的标注，\"External AP Selected\"和\"Internal AP Selected\"，以及后面的\"Oscilloscope Mode\"和\"FFT Mode\"，还有\"Connection Error\"，这些都要清晰标注。",
+      "elements_involved": [
+        "External AP",
+        "Internal AP",
+        "Oscilloscope Mode",
+        "FFT Mode",
+        "Connection Error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已标注三个alt块：设备连接的External AP/Internal AP选择、数据显示的Oscilloscope/FFT模式、以及错误处理的Connection Error分支。每个都有完整的else或end闭合。",
+      "elements_involved": [
+        "alt blocks",
+        "External AP",
+        "Internal AP",
+        "Oscilloscope Mode",
+        "FFT Mode",
+        "Connection Error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Connection Error里的嵌套alt，Reconnection Failed作为子条件，这个层级关系要正确。",
+      "elements_involved": [
+        "Connection Error",
+        "Reconnection Failed",
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画出嵌套结构：外层alt Connection Error，内层alt Reconnection Failed。重连失败时DataAcqService→DataAcqProvider.handleCriticalError→退回SetupScreen。",
+      "elements_involved": [
+        "Connection Error",
+        "Reconnection Failed",
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查Note over Initializer的位置，它标注\"Configure system dependencies\"，这个放在Initializer自调用之前对吗？",
+      "elements_involved": [
+        "Note",
+        "Initializer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Note over Initializer放在Main→Initializer之后，Initializer开始自调用之前，说明整个Initializer模块的职责是配置系统依赖。位置合理。",
+      "elements_involved": [
+        "Note",
+        "Initializer",
+        "Main"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有loop Data Acquisition的标注，这个循环包含从SocketIsolate收数据到ChartPainter绘制的完整流程，确认范围正确。",
+      "elements_involved": [
+        "loop",
+        "Data Acquisition",
+        "SocketIsolate",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认loop范围：从SocketIsolate接收二进制包开始，经过ProcessingIsolate处理，DataAcqService分发，到OscilloChart/FFTChart最终绘制，整个数据流水线在循环内。alt模式选择在循环内部。",
+      "elements_involved": [
+        "loop Data Acquisition",
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "OscilloChart",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "检查所有虚线返回箭头：Initializer→Main的Initialization complete，NetworkInfoService→SetupService的Connection established，SetupService→SetupScreen的Connection successful和Return available networks，ProcessingIsolate→DataAcqService的Return SendPort。",
+      "elements_involved": [
+        "Initializer",
+        "Main",
+        "NetworkInfoService",
+        "SetupService",
+        "SetupScreen",
+        "ProcessingIsolate",
+        "DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已核实所有虚线返回：Initializer--Main，NetworkInfoService--SetupService，SetupService--SetupScreen（两处），ProcessingIsolate--DataAcqService。都用--表示返回。",
+      "elements_involved": [
+        "return arrows",
+        "Initializer",
+        "Main",
+        "NetworkInfoService",
+        "SetupService",
+        "SetupScreen",
+        "ProcessingIsolate",
+        "DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SetupService还有一处fetchDeviceConfig的返回没画虚线？代码里SetupService--SetupScreen: Configuration successful。",
+      "elements_involved": [
+        "SetupService",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现遗漏，内部AP分支的SetupService--SetupScreen: Configuration successful确实是虚线返回，已补充。外部AP分支的Connection successful也是虚线。",
+      "elements_involved": [
+        "SetupService",
+        "SetupScreen",
+        "Configuration successful",
+        "Connection successful"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好，现在所有返回都正确了。最后确认下participant列表是否完整：从User、Main到ChartPainter，以及两个Isolate，共16个参与者。",
+      "elements_involved": [
+        "participants",
+        "User",
+        "Main",
+        "Initializer",
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "OscilloChartProvider",
+        "FFTChartProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "统计确认17个参与者（含User actor）：User、Main、Initializer、SetupScreen、SetupService、NetworkInfoService、ModeSelectionScreen、GraphScreen、UserSettings、DataAcqProvider、DataAcqService、SocketIsolate、ProcessingIsolate、OscilloChartProvider、FFTChartProvider、OscilloChart、FFTChart、ChartPainter。等等，这是18个。",
+      "elements_involved": [
+        "participants count"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "重新数：User(actor)、Main、Initializer、SetupScreen、SetupService、NetworkInfoService、ModeSelectionScreen、GraphScreen、UserSettings、DataAcqProvider、DataAcqService、SocketIsolate、ProcessingIsolate、OscilloChartProvider、FFTChartProvider、OscilloChart、FFTChart、ChartPainter。确实是18个，我之前漏了。",
+      "elements_involved": [
+        "participants",
+        "User",
+        "Main",
+        "Initializer",
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "OscilloChartProvider",
+        "FFTChartProvider"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "最终确认：18个参与者，完整的初始化、设备连接、模式选择、数据采集、图表显示、用户交互、错误处理流程，所有教育场景相关的Education_前缀配置正确嵌入。序列图已完整。",
+      "elements_involved": [
+        "final diagram",
+        "all participants",
+        "all flows"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 3,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 131037.5476,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 64
+  }
+}

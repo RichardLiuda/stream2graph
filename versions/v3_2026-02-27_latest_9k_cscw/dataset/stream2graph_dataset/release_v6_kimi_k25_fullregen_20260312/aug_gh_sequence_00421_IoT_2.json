@@ -1,0 +1,320 @@
+{
+  "id": "aug_gh_sequence_00421_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/lesleslie/opera-cloud-mcp/blob/978205b74f014e4fc66cb316c39f0803cb00d8d9/docs/diagrams/api-request-lifecycle.mmd",
+  "github_repo": "lesleslie/opera-cloud-mcp",
+  "github_file_path": "docs/diagrams/api-request-lifecycle.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Client as MCP Client\n    participant Tool as MCP Tool\n    participant APIClient as API Client\n    participant RateLimiter as Rate Limiter\n    participant CircuitBreaker as Circuit Breaker\n    participant BaseClient as BaseAPIClient\n    participant OAuth as OAuth2 Handler\n    participant OPERA as OPERA Cloud API\n\n    Client->>Tool: Invoke tool (IoT_Industrial_PLC_Logic)\n    activate Tool\n    Tool->>APIClient: Call API method\n    activate APIClient\n\n    APIClient->>RateLimiter: Check rate limit\n    activate RateLimiter\n\n    alt Rate limit exceeded\n        RateLimiter-->>APIClient: Throttled (IoT_Industrial_TelemetryStream)\n        APIClient->>APIClient: Calculate wait time\n        RateLimiter->>RateLimiter: Wait for token refill\n        RateLimiter-->>APIClient: Proceed\n    end\n\n    deactivate RateLimiter\n\n    APIClient->>CircuitBreaker: Check circuit state\n    activate CircuitBreaker\n\n    alt Circuit is OPEN\n        CircuitBreaker-->>APIClient: CircuitOpenException\n        APIClient-->>Tool: Error: Service temporarily unavailable\n    else Circuit is CLOSED/HALF-OPEN\n        CircuitBreaker-->>APIClient: Allow request\n    end\n\n    deactivate CircuitBreaker\n\n    APIClient->>BaseClient: Make HTTP request\n    activate BaseClient\n\n    BaseClient->>OAuth: Get access token\n    activate OAuth\n    OAuth-->>BaseClient: Bearer token\n    deactivate OAuth\n\n    BaseClient->>OPERA: GET /api/v1/reservations\n    Note over BaseClient,OPERA: Authorization: Bearer {IoT_Industrial_PLC_Logic}\n    activate OPERA\n\n    alt Success Response (IoT_Industrial_ActuatorController)\n        OPERA-->>BaseClient: 200 OK + JSON data\n        BaseClient->>CircuitBreaker: Record success\n        CircuitBreaker->>CircuitBreaker: Reset failure count\n        BaseClient->>RateLimiter: Record success\n        BaseClient->>BaseClient: Transform response\n        BaseClient-->>APIClient: Response(IoT_Industrial_PLC_Logic)\n    else Client Error (IoT_Industrial_PLC_Logic)\n        OPERA-->>BaseClient: 400/404/401 etc.\n        BaseClient->>BaseClient: Classify error\n        BaseClient->>CircuitBreaker: Record failure\n        BaseClient-->>APIClient: Response(IoT_Industrial_MQTT_Broker)\n    else Server Error (IoT_Industrial_EdgeNode)\n        OPERA-->>BaseClient: 500/502/503 etc.\n        BaseClient->>BaseClient: Check retry eligibility\n        BaseClient->>CircuitBreaker: Record failure\n\n        alt Below failure threshold\n            BaseClient->>BaseClient: Calculate backoff (IoT_Industrial_MQTT_Broker)\n            BaseClient->>BaseClient: Wait {IoT_Industrial_EdgeNode}ms\n            BaseClient->>OPERA: Retry request\n        else Exceeds failure threshold\n            CircuitBreaker->>CircuitBreaker: Trip to OPEN\n            BaseClient-->>APIClient: CircuitBreakerException\n        end\n    end\n\n    deactivate OPERA\n    deactivate BaseClient\n\n    APIClient->>APIClient: Update metrics\n    APIClient-->>Tool: Return result\n    deactivate APIClient\n\n    Tool-->>Client: Return formatted data\n    deactivate Tool\n",
+  "content_size": 2916,
+  "collected_at": "2026-02-06T01:32:05.791839",
+  "compilation_status": "success",
+  "license": "bsd-3-clause",
+  "license_name": "BSD 3-Clause \"New\" or \"Revised\" License",
+  "license_url": "https://api.github.com/licenses/bsd-3-clause",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "lesleslie",
+  "repo_name": "opera-cloud-mcp",
+  "repo_description": "Unofficial Opera Cloud API MCP Server",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2025-09-03T16:22:45Z",
+  "repo_updated_at": "2026-01-25T06:52:51Z",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gh_sequence_00421",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网场景画一个MCP工具调用OPERA Cloud API的完整时序图。核心流程是MCP Client通过MCP Tool来调用API，中间要体现熔断、限流和OAuth2认证这些 resilience 机制。",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool",
+        "OPERA Cloud API",
+        "Circuit Breaker",
+        "Rate Limiter",
+        "OAuth2 Handler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，我先确认一下参与者层级。最外层是MCP Client调用MCP Tool，然后MCP Tool内部走API Client，API Client再往下调用BaseAPIClient做实际HTTP请求，对吗？中间Rate Limiter和Circuit Breaker放在哪一层？",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool",
+        "API Client",
+        "BaseAPIClient",
+        "Rate Limiter",
+        "Circuit Breaker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，Rate Limiter和Circuit Breaker都挂在API Client这一层，API Client先检查限流，再检查熔断状态，最后才交给BaseAPIClient。BaseAPIClient负责OAuth2拿token，然后访问OPERA Cloud API。",
+      "elements_involved": [
+        "API Client",
+        "Rate Limiter",
+        "Circuit Breaker",
+        "BaseAPIClient",
+        "OAuth2 Handler",
+        "OPERA Cloud API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先画出主链路的参与者：MCP Client、MCP Tool、API Client、Rate Limiter、Circuit Breaker、BaseAPIClient、OAuth2 Handler、OPERA Cloud API。然后画第一条消息：MCP Client调用MCP Tool，激活Tool。",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Tool被激活后，调用API Client的方法，这里要带上具体的业务标识，比如IoT_Industrial_PLC_Logic，表示这次调用是针对PLC逻辑控制的。",
+      "elements_involved": [
+        "MCP Tool",
+        "API Client",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：Tool调用API Client，激活API Client。接下来画限流检查，API Client向Rate Limiter询问是否允许通过。",
+      "elements_involved": [
+        "API Client",
+        "Rate Limiter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "限流这里要分两种情况。如果Rate Limiter返回超限，API Client需要计算等待时间，然后Rate Limiter内部等待token refill，之后再放行。这个分支用alt框起来，标注为Rate limit exceeded。",
+      "elements_involved": [
+        "Rate Limiter",
+        "API Client",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了限流分支的alt框，包括Throttled返回、计算等待时间、token refill、Proceed放行。Rate Limiter已deactivate。接下来画熔断检查，API Client询问Circuit Breaker状态。",
+      "elements_involved": [
+        "API Client",
+        "Circuit Breaker",
+        "Rate Limiter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "熔断这里也要分分支。如果Circuit是OPEN状态，直接返回CircuitOpenException给API Client，API Client再返回错误给Tool。如果是CLOSED或HALF-OPEN，才允许请求继续往下走。",
+      "elements_involved": [
+        "Circuit Breaker",
+        "API Client",
+        "CircuitOpenException",
+        "Tool"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加熔断检查的alt分支：OPEN时抛异常返回，CLOSED/HALF-OPEN时放行。Circuit Breaker已deactivate。接下来API Client调用BaseAPIClient，激活BaseAPIClient。",
+      "elements_involved": [
+        "API Client",
+        "BaseAPIClient",
+        "Circuit Breaker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "BaseAPIClient这里要先做OAuth2认证，向OAuth2 Handler申请access token。拿到Bearer token后，再发请求到OPERA Cloud API。注意note上要标注Authorization头的内容，引用那个PLC Logic的标识。",
+      "elements_involved": [
+        "BaseAPIClient",
+        "OAuth2 Handler",
+        "OPERA Cloud API",
+        "IoT_Industrial_PLC_Logic",
+        "Bearer token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画：BaseAPIClient调用OAuth2 Handler，拿到Bearer token后deactivate OAuth。然后BaseAPIClient向OPERA Cloud API发送GET /api/v1/reservations，并添加note标注Authorization: Bearer {IoT_Industrial_PLC_Logic}。OPERA已激活。",
+      "elements_involved": [
+        "BaseAPIClient",
+        "OAuth2 Handler",
+        "OPERA Cloud API",
+        "Bearer token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OPERA的响应要分三类情况处理。第一类是成功响应，用IoT_Industrial_ActuatorController标识；第二类是客户端错误4xx，用IoT_Industrial_PLC_Logic标识；第三类是服务端错误5xx，用IoT_Industrial_EdgeNode标识。",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加三层alt分支。先画成功路径：OPERA返回200 OK，BaseAPIClient通知Circuit Breaker记录成功并重置失败计数，同时通知Rate Limiter记录成功，然后转换响应返回给API Client。",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "BaseAPIClient",
+        "Circuit Breaker",
+        "Rate Limiter",
+        "API Client",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "客户端错误分支：OPERA返回4xx后，BaseAPIClient内部做错误分类，通知Circuit Breaker记录失败，然后把错误包装成IoT_Industrial_MQTT_Broker的格式返回给API Client。",
+      "elements_involved": [
+        "BaseAPIClient",
+        "Circuit Breaker",
+        "API Client",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画好客户端错误分支。现在画服务端错误分支：OPERA返回5xx，BaseAPIClient检查是否可重试，通知Circuit Breaker记录失败，然后要嵌套一个alt判断失败阈值。",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "BaseAPIClient",
+        "Circuit Breaker",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "阈值判断这里：如果低于阈值，BaseAPIClient计算退避时间，用IoT_Industrial_MQTT_Broker标识，等待IoT_Industrial_EdgeNode毫秒后重试；如果超过阈值，Circuit Breaker跳转到OPEN状态，返回CircuitBreakerException。",
+      "elements_involved": [
+        "BaseAPIClient",
+        "Circuit Breaker",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_EdgeNode",
+        "CircuitBreakerException"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "稍等，我检查一下——刚才服务端错误分支里，Circuit Breaker的trip to OPEN应该是Circuit Breaker自己内部的状态变更，不是BaseAPIClient调用的。我调整一下，让Circuit Breaker自己触发状态跳转。",
+      "elements_involved": [
+        "Circuit Breaker",
+        "BaseAPIClient"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 19,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正：Circuit Breaker自己执行Trip to OPEN，然后BaseAPIClient返回CircuitBreakerException给API Client。OPERA和BaseAPIClient都已deactivate。",
+      "elements_involved": [
+        "Circuit Breaker",
+        "BaseAPIClient",
+        "API Client",
+        "CircuitBreakerException"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，这样逻辑就闭环了。最后API Client层要更新metrics，然后把结果返回给Tool，Tool再返回给MCP Client，全部deactivate。",
+      "elements_involved": [
+        "API Client",
+        "Tool",
+        "MCP Client",
+        "metrics"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。已添加：API Client更新metrics并返回结果给Tool，deactivate API Client；Tool返回格式化数据给MCP Client，deactivate Tool。整个时序图从MCP Client发起调用到最终返回，完整呈现了限流、熔断、认证、错误处理和重试机制。",
+      "elements_involved": [
+        "API Client",
+        "Tool",
+        "MCP Client"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 21,
+    "repair_count": 1,
+    "grounding_acts_count": 21,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 37452.9464,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 21
+  }
+}

@@ -1,0 +1,860 @@
+{
+  "id": "gh_ind_e41c88a029",
+  "source": "github_industrial",
+  "repo": "SolaceHarmony/Thea-Code",
+  "license": "apache-2.0",
+  "code": "flowchart TB\n    classDef inputClass fill:#FFD700,stroke:#FF8C00,stroke-width:2px,color:#000\n    classDef embeddingClass fill:#98FB98,stroke:#006400,stroke-width:2px,color:#000\n    classDef rwkvClass fill:#E6E6FA,stroke:#483D8B,stroke-width:2px,color:#000\n    classDef ffnClass fill:#FFA07A,stroke:#8B0000,stroke-width:2px,color:#000\n    classDef normClass fill:#D8BFD8,stroke:#9400D3,stroke-width:2px,color:#000\n    classDef outputClass fill:#F08080,stroke:#CD5C5C,stroke-width:2px,color:#000\n    \n    %% Input Processing\n    subgraph InputProcessing[\"Input Processing Layer\"]\n        direction TB\n        Input[/\"Input Tokens\"/]:::inputClass\n        TokenEmbed[\"Token Embeddings<br/>(d_model)\"]:::embeddingClass\n        TimeEmbed[\"Time Embeddings<br/>(d_model)\"]:::embeddingClass\n        \n        Input --> TokenEmbed\n        TokenEmbed --> InputEmbed\n        TimeEmbed --> InputEmbed\n        \n        InputEmbed[\"Input Embeddings<br/>(batch_size × seq_len × d_model)\"]:::embeddingClass\n    end\n    \n    %% Annotation for Input Processing\n    InputAnnotation[\"<b>Input Processing</b><br/>- Tokens converted to embeddings<br/>- Time embeddings instead of positional<br/>- Dimensions: batch_size × seq_len × d_model\"]\n    InputProcessing -.-> InputAnnotation\n    \n    %% First RWKV Layer\n    subgraph Layer1[\"RWKV Layer 1\"]\n        direction TB\n        \n        %% Time-mixing Block (Alternative to Attention)\n        subgraph TMB1[\"Time Mixing Block\"]\n            direction TB\n            \n            %% Time Mixing Components\n            TMNorm1[\"Layer Normalization\"]:::normClass\n            TMLinear1[\"Linear Projection\"]:::rwkvClass\n            TMWKV1[\"WKV Mechanism<br/>(Receptance & Decay)\"]:::rwkvClass\n            TMOutput1[\"Time-Mixed Output\"]:::rwkvClass\n            \n            %% Time Mixing Flow\n            TMNorm1 --> TMLinear1\n            TMLinear1 --> TMWKV1\n            TMWKV1 --> TMOutput1\n        end\n        \n        %% Channel Mixing Block (FFN alternative)\n        subgraph CMB1[\"Channel Mixing Block\"]\n            direction TB\n            CMNorm1[\"Layer Normalization\"]:::normClass\n            CMRLinear1[\"Receptance Gate\"]:::rwkvClass\n            CMKLinear1[\"Key Projection\"]:::rwkvClass\n            CMVLinear1[\"Value Projection\"]:::rwkvClass\n            CMOutput1[\"Channel-Mixed Output\"]:::rwkvClass\n            \n            %% Channel Mixing Flow\n            CMNorm1 --> CMRLinear1 & CMKLinear1 & CMVLinear1\n            CMRLinear1 & CMKLinear1 & CMVLinear1 --> CMOutput1\n        end\n        \n        %% Residual Connections\n        Add1((\"+\"))\n        Add2((\"+\"))\n    end\n    \n    %% Annotation for Time Mixing\n    TMAnnotation[\"<b>Time Mixing Block</b><br/>- Linear attention alternative<br/>- Recurrent formulation with tokens<br/>- WKV mechanism with exponential decay<br/>- O(1) complexity per token vs O(n²)\"]\n    TMB1 -.-> TMAnnotation\n    \n    %% Annotation for Channel Mixing\n    CMAnnotation[\"<b>Channel Mixing Block</b><br/>- FFN replacement with gating<br/>- Mixes information across channels<br/>- Uses receptance gating mechanism<br/>- Similar to SwiGLU in transformers\"]\n    CMB1 -.-> CMAnnotation\n    \n    %% Second RWKV Layer\n    subgraph Layer2[\"RWKV Layer 2\"]\n        direction TB\n        \n        %% Time Mixing Block\n        subgraph TMB2[\"Time Mixing Block\"]\n            direction TB\n            TMNorm2[\"Layer Normalization\"]:::normClass\n            TMLinear2[\"Linear Projection\"]:::rwkvClass\n            TMWKV2[\"WKV Mechanism<br/>(Receptance & Decay)\"]:::rwkvClass\n            TMOutput2[\"Time-Mixed Output\"]:::rwkvClass\n            \n            TMNorm2 --> TMLinear2\n            TMLinear2 --> TMWKV2\n            TMWKV2 --> TMOutput2\n        end\n        \n        %% Channel Mixing Block\n        subgraph CMB2[\"Channel Mixing Block\"]\n            direction TB\n            CMNorm2[\"Layer Normalization\"]:::normClass\n            CMRLinear2[\"Receptance Gate\"]:::rwkvClass\n            CMKLinear2[\"Key Projection\"]:::rwkvClass\n            CMVLinear2[\"Value Projection\"]:::rwkvClass\n            CMOutput2[\"Channel-Mixed Output\"]:::rwkvClass\n            \n            CMNorm2 --> CMRLinear2 & CMKLinear2 & CMVLinear2\n            CMRLinear2 & CMKLinear2 & CMVLinear2 --> CMOutput2\n        end\n        \n        %% Residual Connections\n        Add3((\"+\"))\n        Add4((\"+\"))\n    end\n    \n    %% Nth RWKV Layer (Abbreviated)\n    subgraph LayerN[\"RWKV Layer N\"]\n        direction TB\n        \n        %% Abbreviated components\n        TMBN[\"Time<br/>Mixing<br/>Block\"]:::rwkvClass\n        CMBN[\"Channel<br/>Mixing<br/>Block\"]:::rwkvClass\n        \n        %% Residual Connections\n        AddN1((\"+\"))\n        AddN2((\"+\"))\n        \n        %% Connections\n        TMBN --> AddN1\n        AddN1 --> CMBN\n        CMBN --> AddN2\n    end\n    \n    %% Output Processing\n    subgraph OutputProcessing[\"Output Processing\"]\n        direction TB\n        FinalLayerNorm[\"Final Layer Normalization\"]:::normClass\n        OutputProjection[\"Output Projection<br/>(token prediction)\"]:::outputClass\n        FinalOutput[/\"Next Token Output\"/]:::outputClass\n        \n        FinalLayerNorm --> OutputProjection\n        OutputProjection --> FinalOutput\n    end\n    \n    %% Annotation for RWKV Formula\n    RWKVFormula[\"<b>RWKV Formula</b><br/>- WKV(t) = ∑(k=1 to t) W_k × V_k × exp(-decay × (t-k))<br/>- Output = sigmoid(R) ⊙ WKV / (∑exp(-decay))<br/>- Linear time & constant memory complexity<br/>- Parallelizable in training, recursive in inference\"]\n    Layer2 -.-> RWKVFormula\n    \n    %% Annotation for Architecture Comparison\n    ComparisonAnnotation[\"<b>RWKV vs Transformer</b><br/>- Linear O(n) vs Quadratic O(n²) complexity<br/>- State-based vs All-to-all attention<br/>- Can run as CNN or RNN<br/>- Channel mixing vs FFN<br/>- Comparable quality at higher efficiency\"]\n    LayerN -.-> ComparisonAnnotation\n    \n    %% Main Flow Connections\n    InputProcessing --> Layer1\n    InputEmbed --> Add1\n    \n    %% Layer 1 Connections\n    Add1 --> TMNorm1\n    TMOutput1 --> Add1\n    Add1 --> Add2\n    Add2 --> CMNorm1\n    CMOutput1 --> Add2\n    \n    %% Between Layer 1 and Layer 2\n    Add2 --> Layer2\n    Add2 --> Add3\n    \n    %% Layer 2 Connections\n    Add3 --> TMNorm2\n    TMOutput2 --> Add3\n    Add3 --> Add4\n    Add4 --> CMNorm2\n    CMOutput2 --> Add4\n    \n    %% Between Layer 2 and Layer N\n    Add4 --> LayerN\n    Add4 --> AddN1\n    \n    %% Layer N Connections\n    AddN2 --> OutputProcessing\n    AddN2 --> FinalLayerNorm\n    \n    %% Dual Mode Annotation\n    DualModeAnnotation[\"<b>RWKV Dual Mode</b><br/>- Training: Parallel mode (CNN-like)<br/>- Inference: Recurrent mode (RNN-like)<br/>- Same parameters, two execution strategies<br/>- Enables both training efficiency and<br/>  inference performance\"]\n    OutputProcessing -.-> DualModeAnnotation",
+  "diagram_type": "flowchart size:>1500",
+  "collected_at": "2026-02-27T04:44:10.215891",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为RWKV架构画一张完整的流程图。这是线性注意力机制的一个替代方案，我想突出它和Transformer的关键区别。先从输入处理层开始吧。",
+      "elements_involved": [
+        "InputProcessing",
+        "Input",
+        "TokenEmbed",
+        "TimeEmbed",
+        "InputEmbed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。RWKV用时间嵌入代替位置编码，这个特性需要重点标注。输入层我打算用金色表示，嵌入层用浅绿色。您看Input Tokens作为起始节点，然后分叉到Token Embeddings和Time Embeddings，最后合并成Input Embeddings，这样结构清晰吗？",
+      "elements_involved": [
+        "Input",
+        "TokenEmbed",
+        "TimeEmbed",
+        "InputEmbed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，合并到Input Embeddings是对的。记得标注维度：batch_size × seq_len × d_model。另外我想加一个注释框说明这里用时间嵌入替代了位置编码。",
+      "elements_involved": [
+        "InputEmbed",
+        "InputAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，输入处理层已经画好了。Input Processing用子图包裹，包含四个节点。Input Tokens用了斜杠形状表示输入，两个嵌入层是标准矩形，最后的Input Embeddings也是矩形。注释用虚线连接到子图。现在进入核心部分——RWKV层？",
+      "elements_involved": [
+        "InputProcessing",
+        "InputAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，RWKV层是重点。每层有两个核心块：Time Mixing Block和Channel Mixing Block。前者替代注意力机制，后者替代FFN。我先详细说明Time Mixing的结构。",
+      "elements_involved": [
+        "Layer1",
+        "TMB1",
+        "CMB1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Time Mixing Block内部需要展开吗？我设想包含：Layer Normalization → Linear Projection → WKV Mechanism → Time-Mixed Output。WKV机制是核心，要标注Receptance和Decay。",
+      "elements_involved": [
+        "TMNorm1",
+        "TMLinear1",
+        "TMWKV1",
+        "TMOutput1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。WKV机制是RWKV的灵魂，线性复杂度O(1)每token，对比自注意力的O(n²)。Time Mixing Block用紫色系，归一化用浅紫色，核心计算用深紫色。",
+      "elements_involved": [
+        "TMWKV1",
+        "TMB1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Time Mixing Block画好了，四层结构垂直排列。现在画Channel Mixing Block，这是FFN的替代，我理解它包含：Layer Normalization，然后三个并行的投影——Receptance Gate、Key Projection、Value Projection，最后合并输出。",
+      "elements_involved": [
+        "CMNorm1",
+        "CMRLinear1",
+        "CMKLinear1",
+        "CMVLinear1",
+        "CMOutput1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，三个投影是并行的，从归一化层同时引出。Receptance Gate是门控机制，类似SwiGLU的思想。这个结构比标准FFN更高效。",
+      "elements_involved": [
+        "CMRLinear1",
+        "CMKLinear1",
+        "CMVLinear1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "每个RWKV层还需要两个残差连接，我用圆形加号表示，Add1在Time Mixing之后，Add2在Channel Mixing之后。这样Layer1就完整了。",
+      "elements_involved": [
+        "Add1",
+        "Add2",
+        "Layer1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "残差连接很重要，RWKV的稳定性就靠这个。Layer1作为详细示例，Layer2可以镜像同样结构，LayerN我们简化表示。另外，两个块都需要注释说明。",
+      "elements_involved": [
+        "Add1",
+        "Add2",
+        "Layer2",
+        "LayerN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Layer1完成，包含Time Mixing Block、Channel Mixing Block和两个残差连接。现在给Time Mixing加注释，说明它是线性注意力替代，WKV机制有指数衰减，O(1)复杂度。",
+      "elements_involved": [
+        "TMAnnotation",
+        "TMB1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "注释里要强调recurrent formulation，这是和Transformer最本质的区别。不是看所有token，而是递归地累积状态。",
+      "elements_involved": [
+        "TMAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Time Mixing注释已更新。现在加Channel Mixing的注释：FFN替代、跨通道混合信息、Receptance门控机制、类似SwiGLU。",
+      "elements_involved": [
+        "CMAnnotation",
+        "CMB1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。现在画Layer2，结构和Layer1完全相同，这样读者能理解是重复堆叠。组件名后缀改成2。",
+      "elements_involved": [
+        "Layer2",
+        "TMB2",
+        "CMB2",
+        "TMNorm2",
+        "CMNorm2",
+        "Add3",
+        "Add4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Layer2画好了，Time Mixing Block和Channel Mixing Block都完整展开，残差连接Add3和Add4也加上了。现在处理LayerN，您说要简化？",
+      "elements_involved": [
+        "Layer2",
+        "Add3",
+        "Add4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，LayerN表示第N层，用缩写形式。只画两个矩形：Time Mixing Block和Channel Mixing Block，写成三行文字。残差连接AddN1和AddN2保留，但内部细节省略。",
+      "elements_involved": [
+        "LayerN",
+        "TMBN",
+        "CMBN",
+        "AddN1",
+        "AddN2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "LayerN简化为：TMBN是\"Time\\nMixing\\nBlock\"三行，CMBN是\"Channel\\nMixing\\nBlock\"三行，两个残差连接AddN1和AddN2用圆形加号。连接关系是TMBN → AddN1 → CMBN → AddN2。",
+      "elements_involved": [
+        "LayerN",
+        "TMBN",
+        "CMBN",
+        "AddN1",
+        "AddN2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画输出处理层：Final Layer Normalization → Output Projection → Next Token Output。输出投影做token预测，用红色系。",
+      "elements_involved": [
+        "OutputProcessing",
+        "FinalLayerNorm",
+        "OutputProjection",
+        "FinalOutput"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "输出层完成。Final Layer Normalization用归一化紫色，Output Projection和Final Output用珊瑚红色，Final Output用斜杠形状表示输出。现在需要连接各层，我理一下数据流。",
+      "elements_involved": [
+        "OutputProcessing",
+        "FinalOutput"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "数据流关键点：InputEmbed同时连到Add1的输入端和TMNorm1的输入端。这是残差连接的标准做法。Time Mixing的输出要回到Add1，然后Add1的输出分给Add2和CMNorm1。",
+      "elements_involved": [
+        "InputEmbed",
+        "Add1",
+        "TMNorm1",
+        "TMOutput1",
+        "Add2",
+        "CMNorm1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Layer1内部连接画好了。Add2的输出要连到Layer2，同时作为Add3的输入。Layer2内部：Add3 → TMNorm2，TMOutput2 → Add3，Add3 → Add4，Add4 → CMNorm2，CMOutput2 → Add4。",
+      "elements_involved": [
+        "Add2",
+        "Layer2",
+        "Add3",
+        "TMNorm2",
+        "TMOutput2",
+        "Add4",
+        "CMNorm2",
+        "CMOutput2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Layer2的连接正确。Add4输出到LayerN，同时作为AddN1的输入。AddN2输出到OutputProcessing，也连到FinalLayerNorm。",
+      "elements_involved": [
+        "Add4",
+        "LayerN",
+        "AddN1",
+        "AddN2",
+        "OutputProcessing",
+        "FinalLayerNorm"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有层间连接完成。现在加几个关键注释：RWKV公式说明、架构对比、双模式说明。您看放在哪里合适？",
+      "elements_involved": [
+        "RWKVFormula",
+        "ComparisonAnnotation",
+        "DualModeAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RWKV公式放在Layer2旁边，用虚线连接。要写出WKV(t)的数学形式，强调线性时间和常数内存。架构对比放在LayerN旁边，对比RWKV和Transformer的复杂度。",
+      "elements_involved": [
+        "RWKVFormula",
+        "Layer2",
+        "ComparisonAnnotation",
+        "LayerN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "RWKV公式我这样写：WKV(t) = Σ(k=1 to t) W_k × V_k × exp(-decay × (t-k))，Output = sigmoid(R) ⊙ WKV / (Σexp(-decay))。然后说明并行训练、递归推理。对吗？",
+      "elements_involved": [
+        "RWKVFormula"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "公式正确。架构对比要突出：线性O(n) vs 二次O(n²)，基于状态 vs 全对全注意力，可运行CNN或RNN模式，Channel mixing vs FFN。",
+      "elements_involved": [
+        "ComparisonAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个注释已添加。双模式注释放在OutputProcessing旁边，说明训练时是并行模式(CNN-like)，推理时是递归模式(RNN-like)，相同参数两种执行策略。",
+      "elements_involved": [
+        "DualModeAnnotation",
+        "OutputProcessing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体结构差不多了，但我发现Layer1的残差连接可能有问题。让我检查一下：Add1应该接收InputEmbed和TMOutput1，输出到Add2和CMNorm1。这个逻辑对吗？",
+      "elements_involved": [
+        "Add1",
+        "InputEmbed",
+        "TMOutput1",
+        "Add2",
+        "CMNorm1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我检查一下...发现一个问题。当前Add1只连了TMOutput1，但InputEmbed也应该连到Add1。另外Add1到Add2的连接我之前漏了，直接画了Add1到CMNorm1。需要修复。",
+      "elements_involved": [
+        "Add1",
+        "InputEmbed",
+        "Add2"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Add1是Time Mixing的残差连接，输入是InputEmbed和TMOutput1，输出到Add2（作为Channel Mixing的起点）。Add2才是接收Add1输出和CMOutput1，然后输出到下一层。",
+      "elements_involved": [
+        "Add1",
+        "Add2",
+        "CMOutput1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "修复完成。现在Add1正确接收InputEmbed和TMOutput1，输出到Add2。Add2接收Add1输出和CMOutput1，输出到Layer2和Add3。Layer2的Add3和Add4也做了对应修正。",
+      "elements_involved": [
+        "Add1",
+        "Add2",
+        "Add3",
+        "Add4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再确认一下LayerN的连接：AddN1接收Add4输出，输出到CMBN。CMBN输出到AddN2，AddN2再输出到OutputProcessing和FinalLayerNorm。",
+      "elements_involved": [
+        "AddN1",
+        "AddN2",
+        "Add4",
+        "CMBN",
+        "OutputProcessing",
+        "FinalLayerNorm"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，AddN1和AddN2的连接正确。不过我发现TMBN到AddN1的连接之前画了，但Add4到AddN1的连接也需要明确。现在两者都连到AddN1吗？",
+      "elements_involved": [
+        "TMBN",
+        "AddN1",
+        "Add4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "这里需要修正。LayerN内部，TMBN的输出应该先到AddN1（残差连接），同时Add4的输出也到AddN1。然后AddN1输出到CMBN。但TMBN直接连AddN1可能不对，应该是TMBN的输出和Add4的输出在AddN1汇合。",
+      "elements_involved": [
+        "TMBN",
+        "AddN1",
+        "Add4",
+        "CMBN"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，LayerN简化了内部结构，但残差逻辑要保持。修正为：Add4 → AddN1，TMBN的输出也隐含在AddN1的残差中，AddN1 → CMBN → AddN2。这样和完整层保持一致。",
+      "elements_involved": [
+        "LayerN",
+        "AddN1",
+        "AddN2",
+        "TMBN",
+        "CMBN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "样式方面，各个class的定义要准确。输入层用#FFD700金色，嵌入层#98FB98浅绿，RWKV核心#E6E6FA淡紫，FFN替代#FFA07A浅橙，归一化#D8BFD8蓟紫，输出#F08080浅珊瑚。",
+      "elements_involved": [
+        "inputClass",
+        "embeddingClass",
+        "rwkvClass",
+        "ffnClass",
+        "normClass",
+        "outputClass"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有样式类已应用。InputProcessing子图方向TB，Layer1、Layer2、LayerN都是TB方向。各子图内部的子图如TMB1、CMB1等也是TB。注释都用虚线连接。",
+      "elements_involved": [
+        "InputProcessing",
+        "Layer1",
+        "Layer2",
+        "LayerN",
+        "TMB1",
+        "CMB1",
+        "TMB2",
+        "CMB2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下注释的HTML标签，有些用了<b标签，要确保正确闭合。InputAnnotation、TMAnnotation、CMAnnotation、RWKVFormula、ComparisonAnnotation、DualModeAnnotation都要检查。",
+      "elements_involved": [
+        "InputAnnotation",
+        "TMAnnotation",
+        "CMAnnotation",
+        "RWKVFormula",
+        "ComparisonAnnotation",
+        "DualModeAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现RWKVFormula中有个标签问题，\"<bRWKV Formula</b\"应该是\"<bRWKV Formula</b\"。另外ComparisonAnnotation里\"<bRWKV vs Transformer</b\"也需要修正。还有DualModeAnnotation的\"<bRWKV Dual Mode</b\"。",
+      "elements_involved": [
+        "RWKVFormula",
+        "ComparisonAnnotation",
+        "DualModeAnnotation"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，所有<b标签都要正确写成<b内容</b。另外检查换行<br/标签，确保都有斜杠。",
+      "elements_involved": [
+        "RWKVFormula",
+        "ComparisonAnnotation",
+        "DualModeAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有HTML标签已修复。现在RWKVFormula正确显示为\"<bRWKV Formula</b\"，其他注释同理。所有<br/都加了闭合斜杠。整体图应该完整了。",
+      "elements_involved": [
+        "RWKVFormula",
+        "ComparisonAnnotation",
+        "DualModeAnnotation",
+        "TMAnnotation",
+        "CMAnnotation",
+        "InputAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再看一下Channel Mixing Block的连接，CMNorm1到三个投影是并行连接，用&符号表示。然后三个投影的输出合并到CMOutput1。这个在Mermaid里怎么表示？",
+      "elements_involved": [
+        "CMNorm1",
+        "CMRLinear1",
+        "CMKLinear1",
+        "CMVLinear1",
+        "CMOutput1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "用CMNorm1 -- CMRLinear1 & CMKLinear1 & CMVLinear1表示并行，然后CMRLinear1 & CMKLinear1 & CMVLinear1 -- CMOutput1表示合并。Layer1和Layer2的Channel Mixing都这样画。",
+      "elements_involved": [
+        "CMB1",
+        "CMB2",
+        "CMNorm1",
+        "CMNorm2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查一下整体流向：从上到下，InputProcessing → Layer1 → Layer2 → LayerN → OutputProcessing。残差连接横向穿插。注释分布在两侧。",
+      "elements_involved": [
+        "InputProcessing",
+        "Layer1",
+        "Layer2",
+        "LayerN",
+        "OutputProcessing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "主流程确认：InputProcessing -- Layer1，然后Layer1内部通过Add2连到Layer2，Add4连到LayerN，AddN2连到OutputProcessing。注释用-.-虚线连接在相关组件旁。",
+      "elements_involved": [
+        "InputProcessing",
+        "Layer1",
+        "Layer2",
+        "LayerN",
+        "OutputProcessing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "WKV Mechanism的标注\"Receptance & Decay\"要准确，这是RWKV的两个核心参数。Receptance控制接受程度，Decay控制时间衰减。",
+      "elements_involved": [
+        "TMWKV1",
+        "TMWKV2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认，TMWKV1和TMWKV2都标注为\"WKV Mechanism<br/(Receptance & Decay)\"。现在检查所有文字中的特殊字符，确保引号和括号都正确。",
+      "elements_involved": [
+        "TMWKV1",
+        "TMWKV2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Output Projection的标注要说明是token prediction，这是语言模型的标准输出。Final Output用斜杠形状，表示这是流程的终点。",
+      "elements_involved": [
+        "OutputProjection",
+        "FinalOutput"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "OutputProjection标注为\"Output Projection<br/(token prediction)\"，FinalOutput用[/Next Token Output/]的斜杠形状。所有节点样式和形状都已最终确认。",
+      "elements_involved": [
+        "OutputProjection",
+        "FinalOutput"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再想一下，LayerN的缩写表示是否足够清晰？TMBN和CMBN只显示块名，不显示内部结构，但读者能联想到Layer1和Layer2的详细结构。",
+      "elements_involved": [
+        "LayerN",
+        "TMBN",
+        "CMBN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，LayerN作为第N层的抽象表示，配合Layer1和Layer2的详细展开，读者自然理解是重复结构。TMBN和CMBN用三行文字紧凑显示，节省空间。",
+      "elements_involved": [
+        "LayerN",
+        "TMBN",
+        "CMBN",
+        "Layer1",
+        "Layer2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "注释内容再优化一下。RWKV公式注释要强调parallelizable in training, recursive in inference，这是最大卖点。",
+      "elements_involved": [
+        "RWKVFormula"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RWKVFormula已更新，包含：公式本身、线性时间和常数内存复杂度、训练可并行、推理可递归。DualModeAnnotation也呼应这一点，强调同一参数两种执行模式。",
+      "elements_involved": [
+        "RWKVFormula",
+        "DualModeAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ComparisonAnnotation里\"Can run as CNN or RNN\"很重要，RWKV的独特优势。还有\"Comparable quality at higher efficiency\"是核心结论。",
+      "elements_involved": [
+        "ComparisonAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "ComparisonAnnotation完整包含：线性vs二次复杂度、基于状态vs全对全注意力、CNN/RNN双模式、Channel mixing vs FFN、同等质量更高效率。五点对比清晰。",
+      "elements_involved": [
+        "ComparisonAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查所有stroke颜色，要确保和fill颜色协调且有足够对比度。输入层stroke用#FF8C00深橙，嵌入层#006400深绿，RWKV#483D8B深紫，FFN#8B0000深红，归一化#9400D3深紫，输出#CD5C5C印度红。",
+      "elements_involved": [
+        "inputClass",
+        "embeddingClass",
+        "rwkvClass",
+        "ffnClass",
+        "normClass",
+        "outputClass"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有stroke颜色已核对，都是比fill更深的同色系颜色，2px宽度确保可见。文字颜色都是#000黑色，在浅色背景上清晰可读。",
+      "elements_involved": [
+        "inputClass",
+        "embeddingClass",
+        "rwkvClass",
+        "ffnClass",
+        "normClass",
+        "outputClass"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再确认一下InputProcessing内部的连接：Input -- TokenEmbed，TokenEmbed -- InputEmbed，TimeEmbed -- InputEmbed。两条路径汇入InputEmbed。",
+      "elements_involved": [
+        "Input",
+        "TokenEmbed",
+        "TimeEmbed",
+        "InputEmbed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，Input分出TokenEmbed，TokenEmbed和TimeEmbed都连到InputEmbed。InputEmbed是合并后的表示，维度标注为batch_size × seq_len × d_model。",
+      "elements_involved": [
+        "Input",
+        "TokenEmbed",
+        "TimeEmbed",
+        "InputEmbed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体检查完成。这张图完整展示了RWKV架构：输入处理、N个RWKV层（Time Mixing + Channel Mixing + 残差）、输出处理，以及关键的技术注释。可以定稿了。",
+      "elements_involved": [
+        "InputProcessing",
+        "Layer1",
+        "Layer2",
+        "LayerN",
+        "OutputProcessing",
+        "TMAnnotation",
+        "CMAnnotation",
+        "RWKVFormula",
+        "ComparisonAnnotation",
+        "DualModeAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终确认：流程图包含5个子图（InputProcessing、Layer1、Layer2、LayerN、OutputProcessing），6个样式类，6个注释框，完整的数据流和残差连接。所有标签、颜色、形状、连接都符合要求。",
+      "elements_involved": [
+        "flowchart TB",
+        "InputProcessing",
+        "Layer1",
+        "Layer2",
+        "LayerN",
+        "OutputProcessing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。这张图准确传达了RWKV的核心创新：用WKV机制替代二次复杂度的自注意力，用Channel Mixing替代FFN，实现训练并行、推理高效的线性复杂度架构。",
+      "elements_involved": [
+        "TMWKV1",
+        "CMB1",
+        "RWKVFormula",
+        "ComparisonAnnotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RWKV架构流程图已完成。从Input Tokens到Next Token Output的完整数据流，包含详细的Layer1、Layer2示例，抽象的LayerN，以及技术原理注释。图已可渲染使用。",
+      "elements_involved": [
+        "Input",
+        "FinalOutput",
+        "flowchart TB"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 3,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed",
+    "compilation_recovered_local_original"
+  ],
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 165128.65,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

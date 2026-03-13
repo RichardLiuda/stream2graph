@@ -1,0 +1,998 @@
+{
+  "id": "aug_gh_sequence_00263_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/security/authentication-flow.mmd",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "github_file_path": "docs/diagrams/security/authentication-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    %% Authentication and Authorization Flow for erlmcp\n    %% Shows: API key, JWT, OAuth2, mTLS authentication methods\n    %% Plus: RBAC permission checking with role-based access control\n\n    autonumber\n    actor Client\n    participant Transport as Transport Layer<br/>(FinTech_LedgerService)\n    participant Auth as erlmcp_auth<br/>(FinTech_PaymentGateway)\n    participant RateLimiter as erlmcp_auth_rate_limiter\n    participant JWT as jose (FinTech_PaymentGateway)\n    participant OAuth2 as OAuth2 Provider<br/>(FinTech_AuthVault)\n    participant MTLS as erlmcp_auth_mtls<br/>(FinTech_PaymentGateway)\n    participant RBAC as RBAC Engine<br/>(FinTech_FraudDetection)\n    participant Session as Session Manager<br/>(FinTech_PaymentGateway)\n\n    Note over Client,Session: Authentication Flow\n\n    %% API Key Authentication\n    Client->>Transport: authenticate(FinTech_AuthVault)\n    Transport->>Auth: authenticate(FinTech_PaymentGateway})\n\n    Auth->>RateLimiter: check_rate_limit(FinTech_AuthVault)\n    RateLimiter-->>Auth: ok (FinTech_TransactionQueue})\n\n    alt Rate Limited\n        Auth-->>Client: {FinTech_PaymentGateway}\n        Note over Auth,RateLimiter: Blocked after 5 failed attempts<br/>15-minute cooldown\n    else Rate Check Passed\n        Auth->>Auth: do_validate_api_key(FinTech_FraudDetection)\n        Note right of Auth: Lookup in ETS table<br/>auth_api_keys\n\n        alt API Key Invalid\n            Auth->>RateLimiter: record_failure(FinTech_AuthVault)\n            Auth-->>Client: {FinTech_LedgerService}\n        else API Key Valid\n            Auth->>RateLimiter: record_success(FinTech_PaymentGateway)\n            Auth->>Session: create_session(FinTech_PaymentGateway)\n\n            Session->>RBAC: get_user_roles(FinTech_FraudDetection)\n            RBAC-->>Session: [FinTech_PaymentGateway]\n\n            Session->>RBAC: Aggregate permissions from roles\n            RBAC-->>Session: [FinTech_AuthVault]\n\n            Session-->>Auth: {FinTech_FraudDetection}\n            Auth-->>Client: {FinTech_FraudDetection}\n\n            Note right of Session: Session expires in 1 hour<br/>Auto-cleanup timer\n        end\n    end\n\n    %% JWT Authentication\n    Client->>Transport: authenticate(FinTech_FraudDetection})\n    Transport->>Auth: authenticate(FinTech_LedgerService})\n\n    Auth->>RateLimiter: check_rate_limit(FinTech_FraudDetection)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_jwt(FinTech_PaymentGateway)\n\n    alt Token Revoked\n        Auth-->>Client: {FinTech_LedgerService}\n        Note right of Auth: Check ETS: auth_revoked_tokens<br/>Cleanup after 7 days\n    else Token Active\n        Auth->>JWT: jose_jws:peek_protected(FinTech_FraudDetection)\n        JWT-->>Auth: #{FinTech_AuthVault}\n\n        Auth->>Auth: Lookup public key by kid\n        Note right of Auth: ETS: auth_jwt_keys<br/>Support key rotation\n\n        Auth->>JWT: jose_jws:verify(FinTech_PaymentGateway)\n        JWT-->>Auth: {FinTech_FraudDetection}\n\n        alt Signature Invalid\n            Auth-->>Client: {FinTech_AuthVault}\n        else Signature Valid\n            Auth->>Auth: validate_jwt_claims(FinTech_TransactionQueue)\n\n            Note right of Auth: CRITICAL SECURITY CHECKS:<br/>✓ exp (FinTech_LedgerService) - Required<br/>✓ nbf (FinTech_LedgerService) - Optional<br/>✓ iss (FinTech_FraudDetection) - Configurable<br/>✓ aud (FinTech_AuthVault) - Configurable<br/>✓ sub (FinTech_AuthVault) - Required\n\n            alt Token Expired\n                Auth-->>Client: {FinTech_AuthVault}\n            else Token Not Yet Valid\n                Auth-->>Client: {FinTech_TransactionQueue}\n            else Issuer Mismatch\n                Auth-->>Client: {FinTech_FraudDetection}\n            else Audience Mismatch\n                Auth-->>Client: {FinTech_AuthVault}\n            else All Claims Valid\n                Auth->>RateLimiter: record_success(FinTech_TransactionQueue)\n                Auth->>Session: create_session(FinTech_TransactionQueue)\n                Session-->>Auth: {FinTech_AuthVault}\n                Auth-->>Client: {FinTech_LedgerService}\n            end\n        end\n    end\n\n    %% OAuth2 Authentication (FinTech_LedgerService)\n    Client->>Transport: authenticate(FinTech_AuthVault})\n    Transport->>Auth: authenticate(FinTech_LedgerService})\n\n    Auth->>RateLimiter: check_rate_limit(FinTech_TransactionQueue)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_oauth2_token(FinTech_LedgerService)\n\n    alt Cache Hit (FinTech_AuthVault)\n        Note right of Auth: ETS: auth_oauth2_cache<br/>Token -> {FinTech_LedgerService}\n        Auth-->>Client: {FinTech_FraudDetection}\n    else Cache Miss\n        Auth->>OAuth2: HTTP POST /introspect\n        Note right of Auth: RFC 7662 Introspection<br/>Basic Auth: client_id:secret<br/>Body: token + token_type_hint\n\n        OAuth2-->>Auth: 200 OK + TokenInfo\n\n        Auth->>Auth: validate_introspection_response(FinTech_LedgerService)\n\n        Note right of Auth: RFC 7662 REQUIRED fields:<br/>✓ active = true<br/>✓ exp (FinTech_TransactionQueue)<br/>✓ nbf (FinTech_TransactionQueue)<br/>✓ iss (FinTech_AuthVault)\n\n        alt Token Inactive\n            Auth-->>Client: {FinTech_AuthVault}\n        else Token Expired\n            Auth-->>Client: {FinTech_AuthVault}\n        else Token Valid\n            Auth->>Auth: cache_oauth2_token(FinTech_FraudDetection)\n            Note right of Auth: Cache for up to 5 minutes<br/>or until exp (FinTech_PaymentGateway)\n\n            Auth->>RateLimiter: record_success(FinTech_AuthVault)\n            Auth->>Session: create_session(FinTech_PaymentGateway)\n            Session-->>Auth: {FinTech_AuthVault}\n            Auth-->>Client: {FinTech_AuthVault}\n        end\n    end\n\n    %% mTLS Authentication\n    Client->>Transport: authenticate(FinTech_FraudDetection})\n    Transport->>Auth: authenticate(FinTech_PaymentGateway)\n\n    Auth->>RateLimiter: check_rate_limit(FinTech_PaymentGateway)\n    RateLimiter-->>Auth: ok\n\n    Auth->>MTLS: validate(FinTech_PaymentGateway)\n\n    Note right of MTLS: mTLS Validation Pipeline:<br/>1. Extract certificate from socket<br/>2. X.509 chain validation to trusted CAs<br/>3. Certificate expiration check<br/>4. OCSP/CRL revocation check<br/>5. Subject DN and CN pattern matching<br/>6. Certificate depth limit validation\n\n    MTLS-->>Auth: {FinTech_TransactionQueue}\n\n    alt Certificate Invalid\n        Auth->>RateLimiter: record_failure(FinTech_LedgerService)\n        Auth-->>Client: {FinTech_PaymentGateway}\n    else Certificate Valid\n        Auth->>RateLimiter: record_success(FinTech_LedgerService)\n        Auth->>Session: create_session(FinTech_AuthVault})\n        Session-->>Auth: {FinTech_AuthVault}\n        Auth-->>Client: {FinTech_PaymentGateway}\n    end\n\n    %% Authorization Flow (FinTech_AuthVault)\n    Note over Client,Session: Authorization Flow\n\n    Client->>Transport: check_permission(FinTech_LedgerService)\n    Transport->>Auth: check_permission(FinTech_AuthVault)\n\n    Auth->>Session: lookup session\n    Session-->>Auth: #session{FinTech_TransactionQueue}\n\n    alt Session Not Found\n        Auth-->>Client: {FinTech_LedgerService}\n    else Session Found\n        Auth->>RBAC: check_user_permission(FinTech_FraudDetection)\n\n        RBAC->>RBAC: Get user roles from ETS\n        Note right of RBAC: auth_user_roles:<br/>UserId -> [FinTech_FraudDetection]\n\n        RBAC->>RBAC: Get allowed roles for resource+permission\n        Note right of RBAC: auth_acls:<br/>{FinTech_TransactionQueue} -> [FinTech_LedgerService]\n\n        RBAC->>RBAC: Check intersection\n        Note right of RBAC: lists:any/2<br/>UserRole ∩ AllowedRoles ≠ ∅\n\n        alt Permission Denied\n            RBAC-->>Auth: {FinTech_LedgerService}\n            Auth-->>Client: {FinTech_LedgerService}\n        else Permission Granted\n            RBAC-->>Auth: ok\n            Auth-->>Client: ok\n        end\n    end\n\n    %% Default RBAC Roles\n    Note over RBAC: Default Roles (FinTech_FraudDetection):<br/>🔹 admin: [FinTech_PaymentGateway]<br/>🔹 user: [FinTech_PaymentGateway]<br/>🔹 guest: [FinTech_LedgerService]\n\n    %% Token Rotation\n    Note over Client,Session: Token Rotation (FinTech_TransactionQueue)\n\n    Client->>Auth: rotate_token(FinTech_PaymentGateway)\n    Auth->>Session: lookup session\n\n    Auth->>Auth: generate new SessionId\n    Note right of Auth: crypto:strong_rand_bytes(FinTech_PaymentGateway)<br/>base64 encoded\n\n    Auth->>Session: insert new session\n    Auth->>Session: delete old session\n\n    Auth-->>Client: {FinTech_LedgerService}\n    Note right of Auth: Old session invalidated immediately<br/>Prevents session hijacking\n\n    %% Token Revocation\n    Note over Client,Session: Token Revocation (FinTech_AuthVault)\n\n    Client->>Auth: revoke_token(FinTech_PaymentGateway)\n    Auth->>Auth: insert into auth_revoked_tokens\n    Note right of Auth: Store: Token -> RevokedAt<br/>Auto-cleanup after 7 days\n\n    Auth-->>Client: ok\n    Note over Auth,JWT: Revoked tokens rejected immediately<br/>Even if exp claim valid\n\n    %% Session Cleanup\n    Note over Session: Auto-cleanup every 60 seconds:<br/>• Expired sessions (FinTech_PaymentGateway)<br/>• Revoked tokens (FinTech_TransactionQueue)<br/>• OAuth2 cache (FinTech_PaymentGateway)\n",
+  "content_size": 8727,
+  "collected_at": "2026-02-06T01:29:54.533293",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gh_sequence_00263",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为erlmcp系统绘制一个完整的认证授权时序图，涵盖API Key、JWT、OAuth2和mTLS四种认证方式，以及RBAC权限检查流程。",
+      "elements_involved": [
+        "erlmcp auth",
+        "authentication",
+        "authorization",
+        "api",
+        "oauth2 provider",
+        "rbac engine",
+        "mtls",
+        "jwt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先确认一下整体结构：参与者包括Client、Transport Layer、erlmcp_auth、Rate Limiter，还有JWT模块、OAuth2 Provider、mTLS模块、RBAC Engine和Session Manager。这样覆盖全吗？",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "rbac engine",
+        "session manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，但要注意RBAC Engine实际部署在FinTech_FraudDetection服务里，Session Manager在FinTech_PaymentGateway。这些跨服务归属要在别名里标注清楚。",
+      "elements_involved": [
+        "rbac engine",
+        "session manager",
+        "fintech frauddetection",
+        "fintech paymentgateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先搭建基础框架，用autonumber自动编号。Client作为actor，Transport Layer标注为FinTech_LedgerService的别名。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "fintech ledgerservice",
+        "autonumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在从API Key认证开始。Client先调用Transport Layer的authenticate方法，参数是FinTech_AuthVault。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "fintech authvault",
+        "authenticate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Client到Transport的调用。接下来Transport转发给erlmcp_auth，参数是FinTech_PaymentGateway？",
+      "elements_involved": [
+        "Transport Layer",
+        "erlmcp auth",
+        "fintech paymentgateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，注意这里有个右花括号在PaymentGateway后面，是格式标记。然后Auth要立即调用RateLimiter做限流检查。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "fintech authvault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Auth到RateLimiter的check_rate_limit调用，参数FinTech_AuthVault。RateLimiter返回ok给Auth，附带FinTech_TransactionQueue标记。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "fintech authvault",
+        "fintech transactionqueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里要分两个分支：如果被限流了，直接返回错误；通过了才继续验证API Key。用alt块处理。",
+      "elements_involved": [
+        "erlmcp auth",
+        "rate limited",
+        "rate check passed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "创建了alt Rate Limited分支，Auth返回错误给Client，标记为FinTech_PaymentGateway。我加个Note说明5次失败尝试后15分钟冷却。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Client",
+        "fintech paymentgateway",
+        "rate limiter",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "准确。另一个分支Rate Check Passed里，Auth调用do_validate_api_key，参数FinTech_FraudDetection。",
+      "elements_involved": [
+        "erlmcp auth",
+        "fintech frauddetection",
+        "do_validate_api_key"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Note说明在ETS表auth_api_keys中查找。然后嵌套alt处理API Key无效的情况。",
+      "elements_involved": [
+        "auth",
+        "ets",
+        "auth_api_keys",
+        "note",
+        "api key invalid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "API Key无效时，要记录失败到RateLimiter，然后返回错误给Client，标记FinTech_LedgerService。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "Client",
+        "fintech ledgerservice",
+        "record_failure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。else分支API Key Valid：记录成功、创建session、获取用户角色。",
+      "elements_involved": [
+        "api key valid",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "session manager",
+        "rbac engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Session创建后，Session Manager要向RBAC Engine获取用户角色，参数是FinTech_FraudDetection。RBAC返回角色列表，标记FinTech_PaymentGateway。",
+      "elements_involved": [
+        "session manager",
+        "rbac engine",
+        "fintech frauddetection",
+        "fintech paymentgateway",
+        "get_user_roles"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Session到RBAC的调用和返回。然后Session再次调用RBAC做权限聚合？",
+      "elements_involved": [
+        "session manager",
+        "rbac engine",
+        "aggregate",
+        "permissions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Aggregate permissions from roles。RBAC返回FinTech_AuthVault标记的结果。然后Session返回给Auth，标记FinTech_FraudDetection。",
+      "elements_involved": [
+        "rbac engine",
+        "session manager",
+        "erlmcp auth",
+        "fintech authvault",
+        "fintech frauddetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成API Key流程。Auth最终返回Client，标记FinTech_FraudDetection。我加个Note说明session 1小时过期，有自动清理定时器。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Client",
+        "fintech frauddetection",
+        "session manager",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是JWT认证流程。Client同样从Transport开始authenticate，但这次参数是FinTech_FraudDetection，注意这里有右花括号。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "fintech frauddetection",
+        "authenticate",
+        "jwt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Transport转发给Auth，参数FinTech_LedgerService，也有右花括号。然后同样的限流检查流程。",
+      "elements_involved": [
+        "Transport Layer",
+        "erlmcp auth",
+        "fintech ledgerservice",
+        "erlmcp auth rate limiter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "限流通过后，Auth调用do_validate_jwt，参数FinTech_PaymentGateway。这里要先检查token是否被吊销。",
+      "elements_involved": [
+        "erlmcp auth",
+        "fintech paymentgateway",
+        "do_validate_jwt",
+        "token revoked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "创建了alt Token Revoked分支，返回FinTech_LedgerService标记的错误。加了Note说明检查ETS表auth_revoked_tokens，7天后清理。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Client",
+        "fintech ledgerservice",
+        "auth_revoked_tokens",
+        "ets"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Token有效时，Auth调用jose模块的jose_jws:peek_protected，参数FinTech_FraudDetection。jose返回header信息，标记FinTech_AuthVault。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "fintech frauddetection",
+        "fintech authvault",
+        "jose_jws:peek_protected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了jose调用。然后Auth本地查找public key，用kid索引。我加个Note说明ETS表auth_jwt_keys，支持密钥轮换。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "ets",
+        "auth_jwt_keys",
+        "kid",
+        "key rotation",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "接着Auth调用jose_jws:verify验证签名，参数FinTech_PaymentGateway。jose返回验证结果，标记FinTech_FraudDetection。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "fintech paymentgateway",
+        "fintech frauddetection",
+        "jose_jws:verify"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了验证调用。然后嵌套alt处理Signature Invalid，返回FinTech_AuthVault错误。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Client",
+        "fintech authvault",
+        "signature invalid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "签名有效后，要验证JWT claims。Auth本地调用validate_jwt_claims，参数FinTech_TransactionQueue。这里有一堆关键安全检查。",
+      "elements_involved": [
+        "erlmcp auth",
+        "fintech transactionqueue",
+        "validate_jwt_claims",
+        "exp",
+        "nbf",
+        "iss",
+        "aud",
+        "sub"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了CRITICAL SECURITY CHECKS的Note，列出exp必需、nbf可选、iss可配置、aud可配置、sub必需。然后创建多个alt分支处理各种失败情况。",
+      "elements_involved": [
+        "erlmcp auth",
+        "note",
+        "exp",
+        "nbf",
+        "iss",
+        "aud",
+        "sub",
+        "fintech ledgerservice",
+        "fintech frauddetection",
+        "fintech authvault",
+        "fintech transactionqueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Token Expired返回FinTech_AuthVault，Not Yet Valid返回FinTech_TransactionQueue，Issuer Mismatch返回FinTech_FraudDetection，Audience Mismatch返回FinTech_AuthVault。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Client",
+        "fintech authvault",
+        "fintech transactionqueue",
+        "fintech frauddetection",
+        "token expired",
+        "issuer mismatch",
+        "audience mismatch"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加所有失败分支。else All Claims Valid：记录成功、创建session，返回FinTech_LedgerService给Client。",
+      "elements_involved": [
+        "all claims valid",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "session manager",
+        "Client",
+        "fintech transactionqueue",
+        "fintech authvault",
+        "fintech ledgerservice"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在进入OAuth2认证。Client调用authenticate，参数FinTech_AuthVault，有右花括号。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "fintech authvault",
+        "authenticate",
+        "oauth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Transport转发给Auth，参数FinTech_LedgerService，也有右花括号。限流检查照旧。",
+      "elements_involved": [
+        "Transport Layer",
+        "erlmcp auth",
+        "fintech ledgerservice",
+        "erlmcp auth rate limiter",
+        "fintech transactionqueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "通过后Auth调用do_validate_oauth2_token，参数FinTech_LedgerService。这里先检查缓存。",
+      "elements_involved": [
+        "erlmcp auth",
+        "fintech ledgerservice",
+        "do_validate_oauth2_token",
+        "cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "创建了alt Cache Hit分支，加Note说明ETS表auth_oauth2_cache，token到user的映射。直接返回FinTech_FraudDetection成功。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Client",
+        "fintech authvault",
+        "fintech frauddetection",
+        "auth_oauth2_cache",
+        "ets",
+        "cache hit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Cache Miss时，Auth要向OAuth2 Provider发送HTTP POST /introspect请求。OAuth2 Provider在FinTech_AuthVault里。",
+      "elements_involved": [
+        "erlmcp auth",
+        "oauth2 provider",
+        "fintech authvault",
+        "http post",
+        "introspect",
+        "rfc 7662"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Auth到OAuth2的调用。加Note说明RFC 7662 Introspection，Basic Auth用client_id:secret，body包含token和token_type_hint。",
+      "elements_involved": [
+        "erlmcp auth",
+        "oauth2 provider",
+        "rfc 7662",
+        "basic auth",
+        "client_id",
+        "token_type_hint",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "OAuth2返回200 OK和TokenInfo。Auth本地调用validate_introspection_response，参数FinTech_LedgerService。",
+      "elements_involved": [
+        "oauth2 provider",
+        "erlmcp auth",
+        "fintech ledgerservice",
+        "validate_introspection_response",
+        "tokeninfo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了Note列出RFC 7662必需字段：active=true、exp、nbf、iss，都用FinTech标记。然后创建多个alt分支。",
+      "elements_involved": [
+        "erlmcp auth",
+        "note",
+        "rfc 7662",
+        "active",
+        "exp",
+        "nbf",
+        "iss",
+        "fintech transactionqueue",
+        "fintech authvault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Token Inactive和Token Expired都返回FinTech_AuthVault错误。Token Valid时，缓存token然后继续。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Client",
+        "fintech authvault",
+        "token inactive",
+        "token expired",
+        "token valid",
+        "cache_oauth2_token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了缓存调用，参数FinTech_FraudDetection。加Note说明缓存最多5分钟或到exp。然后记录成功、创建session、返回FinTech_AuthVault成功。",
+      "elements_involved": [
+        "erlmcp auth",
+        "fintech frauddetection",
+        "fintech authvault",
+        "fintech paymentgateway",
+        "session manager",
+        "Client",
+        "cache duration"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后是mTLS认证。Client调用authenticate，参数FinTech_FraudDetection，有右花括号。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "fintech frauddetection",
+        "authenticate",
+        "mtls",
+        "erlmcp auth mtls"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Transport转发给Auth，参数FinTech_PaymentGateway。限流检查，参数也是FinTech_PaymentGateway。",
+      "elements_involved": [
+        "Transport Layer",
+        "erlmcp auth",
+        "fintech paymentgateway",
+        "erlmcp auth rate limiter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "通过后Auth调用MTLS模块的validate，参数FinTech_PaymentGateway。MTLS在FinTech_PaymentGateway里。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth mtls",
+        "fintech paymentgateway",
+        "validate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了MTLS调用。加了个大Note详细说明mTLS验证流水线：提取证书、X.509链验证、过期检查、OCSP/CRL吊销检查、Subject DN和CN模式匹配、证书深度限制。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "erlmcp auth",
+        "fintech transactionqueue",
+        "x.509",
+        "ocsp",
+        "crl",
+        "subject dn",
+        "cn pattern",
+        "certificate depth",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "MTLS返回结果，标记FinTech_TransactionQueue。然后alt分支：证书无效时记录失败并返回错误；有效则记录成功、创建session。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "erlmcp auth",
+        "fintech transactionqueue",
+        "certificate invalid",
+        "certificate valid",
+        "record_failure",
+        "record_success",
+        "session manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成mTLS流程。证书无效返回FinTech_PaymentGateway错误，有效最终返回FinTech_PaymentGateway成功。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Client",
+        "fintech ledgerservice",
+        "fintech authvault",
+        "fintech paymentgateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在进入授权流程部分。加个大Note标注Authorization Flow。Client调用check_permission，参数FinTech_LedgerService。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "fintech ledgerservice",
+        "check_permission",
+        "authorization flow",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Note和Client调用。Transport转发给Auth，参数FinTech_AuthVault。然后Auth查询session。",
+      "elements_involved": [
+        "Transport Layer",
+        "erlmcp auth",
+        "fintech authvault",
+        "session manager",
+        "lookup session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Session返回#session记录，标记FinTech_TransactionQueue。然后alt：session没找到直接返回错误；找到了继续权限检查。",
+      "elements_involved": [
+        "session manager",
+        "erlmcp auth",
+        "fintech transactionqueue",
+        "session not found",
+        "session found",
+        "fintech ledgerservice"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了分支。Session Found时，Auth调用RBAC的check_user_permission，参数FinTech_FraudDetection。",
+      "elements_involved": [
+        "erlmcp auth",
+        "rbac engine",
+        "fintech frauddetection",
+        "check_user_permission"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RBAC内部先从ETS表auth_user_roles获取用户角色，格式是UserId到角色列表的映射。",
+      "elements_involved": [
+        "rbac engine",
+        "ets",
+        "auth_user_roles",
+        "user roles"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了Note说明auth_user_roles结构。然后RBAC从auth_acls获取资源+权限对应的允许角色，标记FinTech_TransactionQueue到FinTech_LedgerService。",
+      "elements_involved": [
+        "rbac engine",
+        "ets",
+        "auth_acls",
+        "allowedr",
+        "fintech transactionqueue",
+        "fintech ledgerservice",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "然后RBAC检查交集，用lists:any/2判断UserRole和AllowedRoles是否有交集。加Note说明。",
+      "elements_involved": [
+        "rbac engine",
+        "lists:any",
+        "intersection",
+        "userrole",
+        "allowedroles",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了交集检查Note。然后alt Permission Denied：返回FinTech_LedgerService错误给Client。",
+      "elements_involved": [
+        "rbac engine",
+        "erlmcp auth",
+        "Client",
+        "fintech ledgerservice",
+        "permission denied"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Permission Granted时逐级返回ok。然后加个大Note列出默认RBAC角色：admin、user、guest及其权限。",
+      "elements_involved": [
+        "rbac engine",
+        "erlmcp auth",
+        "Client",
+        "permission granted",
+        "ok",
+        "default roles",
+        "admin",
+        "user",
+        "guest",
+        "fintech paymentgateway",
+        "fintech ledgerservice",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加默认角色Note。接下来是Token Rotation部分？",
+      "elements_involved": [
+        "rbac engine",
+        "note",
+        "admin",
+        "user",
+        "guest",
+        "fintech paymentgateway",
+        "fintech ledgerservice",
+        "token rotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，加Note标注Token Rotation，标记FinTech_TransactionQueue。Client直接调用Auth的rotate_token，参数FinTech_PaymentGateway。",
+      "elements_involved": [
+        "Client",
+        "erlmcp auth",
+        "fintech transactionqueue",
+        "fintech paymentgateway",
+        "rotate_token",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了调用。流程是：lookup session、generate new SessionId、insert new session、delete old session。",
+      "elements_involved": [
+        "erlmcp auth",
+        "session manager",
+        "generate sessionid",
+        "insert session",
+        "delete session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "生成SessionId用crypto:strong_rand_bytes，base64编码，参数FinTech_PaymentGateway。最后返回FinTech_LedgerService给Client。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Client",
+        "fintech paymentgateway",
+        "fintech ledgerservice",
+        "crypto:strong_rand_bytes",
+        "base64"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了Note说明旧session立即失效，防止session劫持。接下来Token Revocation？",
+      "elements_involved": [
+        "erlmcp auth",
+        "note",
+        "session hijacking",
+        "token revocation",
+        "fintech authvault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "加Note标注Token Revocation，标记FinTech_AuthVault。Client调用revoke_token，参数FinTech_PaymentGateway。",
+      "elements_involved": [
+        "Client",
+        "erlmcp auth",
+        "fintech authvault",
+        "fintech paymentgateway",
+        "revoke_token",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了调用。Auth插入auth_revoked_tokens表，加Note说明存储Token到RevokedAt，7天后自动清理。",
+      "elements_involved": [
+        "erlmcp auth",
+        "ets",
+        "auth_revoked_tokens",
+        "revokedat",
+        "auto-cleanup",
+        "7 days",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "返回ok。再加Note说明吊销的token立即拒绝，即使exp有效。最后加Session Cleanup的Note。",
+      "elements_involved": [
+        "erlmcp auth",
+        "Client",
+        "ok",
+        "note",
+        "revoked tokens",
+        "exp claim",
+        "session cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。加了最后的Note：每60秒自动清理过期session、吊销token、OAuth2缓存，分别标记FinTech_PaymentGateway、FinTech_TransactionQueue、FinTech_PaymentGateway。整个时序图完成了。",
+      "elements_involved": [
+        "session manager",
+        "note",
+        "auto-cleanup",
+        "60 seconds",
+        "expired sessions",
+        "revoked tokens",
+        "oauth2 cache",
+        "fintech paymentgateway",
+        "fintech transactionqueue"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 0,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 137717.3526,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

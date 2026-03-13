@@ -1,0 +1,761 @@
+{
+  "id": "gh_sequence_00628",
+  "source": "github",
+  "source_url": "https://github.com/DiscoLucas/P8-Project/blob/b379ef87e0f2bd50d129288d5f398512846df89a/Dataprocessing%20Pipeline/pain.mmd",
+  "github_repo": "DiscoLucas/P8-Project",
+  "github_file_path": "Dataprocessing Pipeline/pain.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Notebook as Notebook Execution\n    participant MainBlock as Main Processing Block\n    participant proc_subj_data as process_subject_data()\n    participant extract_xdf as extract_bvp_and_markers_from_xdf()\n    participant pyxdf as pyxdf.load_xdf()\n    participant get_hrv as get_hrv_metrics()\n    participant filter_bvp as filter_bvp()\n    participant scipy as scipy.signal\n    participant heartpy as heartpy.process()\n    participant neurokit as neurokit2.hrv()\n    participant pd as pandas\n    participant statsmodels as statsmodels.mixedlm()\n\n    Notebook->>MainBlock: Start data processing\n    MainBlock->>MainBlock: Iterate session_folders (os.scandir)\n    loop For each session_folder\n        MainBlock->>MainBlock: Iterate subject_folders_map (os.scandir, re.search)\n        loop For each subject_id\n            MainBlock->>MainBlock: Find baseline_filepath & task_filepath (glob.glob)\n            alt baseline_filepath AND task_filepath exist\n                MainBlock->>proc_subj_data: Call(subject_id, baseline_filepath, task_filepath)\n                \n                proc_subj_data->>proc_subj_data: Determine condition\n                \n                %% Baseline Processing\n                proc_subj_data->>extract_xdf: Call(baseline_filepath)\n                extract_xdf->>pyxdf: load_xdf(baseline_filepath)\n                pyxdf-->>extract_xdf: streams, header\n                extract_xdf-->>proc_subj_data: bvp_baseline, ts_baseline, ...\n                \n                alt bvp_baseline data exists\n                    proc_subj_data->>get_hrv: Call(bvp_baseline, ts_baseline, fs)\n                    get_hrv->>filter_bvp: Call(bvp_baseline, fs)\n                    filter_bvp->>scipy: butter()\n                    scipy-->>filter_bvp: filter_coeffs (b,a)\n                    filter_bvp->>scipy: filtfilt(coeffs, bvp_baseline)\n                    scipy-->>filter_bvp: filtered_signal\n                    filter_bvp-->>get_hrv: filtered_bvp_baseline\n                    get_hrv->>heartpy: process(filtered_bvp_baseline, fs)\n                    heartpy-->>get_hrv: wd, m (peaks)\n                    get_hrv->>neurokit: hrv(ibi_ms, ...)\n                    neurokit-->>get_hrv: hrv_indices\n                    get_hrv-->>proc_subj_data: baseline_hrv_metrics\n                    proc_subj_data->>proc_subj_data: Store baseline_hrv_metrics\n                else No baseline BVP\n                    proc_subj_data->>proc_subj_data: Log warning\n                end\n\n                %% Task Processing\n                proc_subj_data->>extract_xdf: Call(task_filepath)\n                extract_xdf->>pyxdf: load_xdf(task_filepath)\n                pyxdf-->>extract_xdf: streams, header\n                extract_xdf-->>proc_subj_data: bvp_task, ts_task, ...\n\n                alt bvp_task data exists\n                    proc_subj_data->>get_hrv: Call(bvp_task, ts_task, fs)\n                    get_hrv->>filter_bvp: Call(bvp_task, fs)\n                    filter_bvp->>scipy: butter()\n                    scipy-->>filter_bvp: filter_coeffs (b,a)\n                    filter_bvp->>scipy: filtfilt(coeffs, bvp_task)\n                    scipy-->>filter_bvp: filtered_signal\n                    filter_bvp-->>get_hrv: filtered_bvp_task\n                    get_hrv->>heartpy: process(filtered_bvp_task, fs)\n                    heartpy-->>get_hrv: wd, m (peaks)\n                    get_hrv->>neurokit: hrv(ibi_ms, ...)\n                    neurokit-->>get_hrv: hrv_indices\n                    get_hrv-->>proc_subj_data: task_hrv_metrics\n                    proc_subj_data->>proc_subj_data: Store task_hrv_metrics\n                else No task BVP\n                    proc_subj_data->>proc_subj_data: Log warning\n                end\n                \n                proc_subj_data->>pd: pd.DataFrame(results_list)\n                pd-->>proc_subj_data: subject_hrv_df\n                proc_subj_data-->>MainBlock: subject_hrv_df\n                MainBlock->>MainBlock: Append subject_hrv_df to all_participant_dfs\n            else Missing files\n                MainBlock->>MainBlock: Log skipping subject\n            end\n        end\n    end\n    \n    alt all_participant_dfs is not empty\n        MainBlock->>pd: pd.concat(all_participant_dfs)\n        pd-->>MainBlock: final_df\n    else\n        MainBlock->>pd: pd.DataFrame() (empty)\n        pd-->>MainBlock: final_df (empty)\n    end\n    MainBlock-->>Notebook: final_df\n\n    %% Statistical Modeling Phase\n    Notebook->>Notebook: Check final_df for validity\n    alt final_df is valid and has HRV_RMSSD\n        Notebook->>Notebook: Prepare model_df (dropna, astype)\n        Notebook->>statsmodels: mixedlm(\"HRV_RMSSD ~ C(Phase)*C(Condition)\", model_df, groups=\"ParticipantID\")\n        statsmodels-->>Notebook: model_lmm\n        Notebook->>model_lmm: fit()\n        model_lmm-->>Notebook: result_lmm\n        Notebook->>result_lmm: summary()\n        result_lmm-->>Notebook: Print summary\n    else final_df is not valid\n        Notebook->>Notebook: Print \"Skipping statistical analysis\"\n    end",
+  "content_size": 5058,
+  "collected_at": "2026-02-06T01:34:57.597472",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的HRV数据处理流程图，从Notebook执行开始，经过主处理块，最后到统计建模。这个流程涉及多个Python库和自定义函数。",
+      "elements_involved": [
+        "Notebook Execution",
+        "Main Processing Block",
+        "statistical modeling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。主处理块内部是怎么组织的？我看到有session_folder和subject_folder的遍历结构。",
+      "elements_involved": [
+        "Main Processing Block",
+        "session_folders",
+        "subject_folders_map"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，主处理块先用os.scandir遍历session_folders，然后在每个session里用re.search匹配subject_folders_map。找到基线和任务文件路径后，调用process_subject_data函数。",
+      "elements_involved": [
+        "Main Processing Block",
+        "session_folders",
+        "subject_folders_map",
+        "baseline_filepath",
+        "task_filepath",
+        "process_subject_data()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主处理块的循环结构，包含两个嵌套loop。然后用alt分支判断文件是否存在。",
+      "elements_involved": [
+        "loop For each session_folder",
+        "loop For each subject_id",
+        "alt baseline_filepath AND task_filepath exist"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。文件存在时才进入process_subject_data，否则记录跳过日志。process_subject_data内部要先确定condition条件。",
+      "elements_involved": [
+        "process_subject_data()",
+        "condition",
+        "alt Missing files"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "基线处理和任务处理是对称的吗？我看代码里两段逻辑几乎一样。",
+      "elements_involved": [
+        "bvp_baseline",
+        "bvp_task",
+        "ts_baseline",
+        "ts_task"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，完全对称。都要先调用extract_bvp_and_markers_from_xdf，然后get_hrv_metrics。但数据源不同：基线用baseline_filepath，任务用task_filepath。",
+      "elements_involved": [
+        "extract_bvp_and_markers_from_xdf()",
+        "get_hrv_metrics()",
+        "baseline_filepath",
+        "task_filepath"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画出了基线处理分支。extract_xdf调用pyxdf.load_xdf，返回streams和header，然后提取出bvp_baseline和ts_baseline。",
+      "elements_involved": [
+        "extract_bvp_and_markers_from_xdf()",
+        "pyxdf.load_xdf()",
+        "streams",
+        "header",
+        "bvp_baseline",
+        "ts_baseline"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里需要加个alt分支：如果bvp_baseline数据存在才继续处理，否则记录警告。存在的话才调用get_hrv_metrics，传入bvp_baseline、ts_baseline和采样率fs。",
+      "elements_involved": [
+        "alt bvp_baseline data exists",
+        "get_hrv_metrics()",
+        "fs",
+        "alt No baseline BVP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "get_hrv_metrics内部是怎么工作的？我看到它调用了filter_bvp。",
+      "elements_involved": [
+        "get_hrv_metrics()",
+        "filter_bvp()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，get_hrv_metrics先调用filter_bvp进行信号滤波。filter_bvp用scipy.signal的butter设计滤波器，得到系数b,a，然后用filtfilt对bvp_baseline进行零相位滤波。",
+      "elements_involved": [
+        "filter_bvp()",
+        "scipy.signal",
+        "butter()",
+        "filter_coeffs",
+        "b,a",
+        "filtfilt",
+        "filtered_signal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了滤波部分。filter_bvp返回filtered_bvp_baseline给get_hrv_metrics。接下来是心率检测？",
+      "elements_involved": [
+        "filtered_bvp_baseline",
+        "get_hrv_metrics()",
+        "heartpy.process()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。get_hrv_metrics调用heartpy.process处理滤波后的信号，得到wd和m（峰值位置）。然后计算IBI，用neurokit2.hrv计算HRV指标。",
+      "elements_involved": [
+        "heartpy.process()",
+        "wd",
+        "m",
+        "peaks",
+        "neurokit2.hrv()",
+        "ibi_ms",
+        "hrv_indices"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "neurokit返回hrv_indices，然后get_hrv_metrics把baseline_hrv_metrics传回给process_subject_data存储。基线分支完成了。",
+      "elements_involved": [
+        "neurokit2.hrv()",
+        "hrv_indices",
+        "baseline_hrv_metrics",
+        "process_subject_data()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画任务处理分支，逻辑完全一样，只是数据换成bvp_task和ts_task。同样要有alt判断bvp_task是否存在。",
+      "elements_involved": [
+        "bvp_task",
+        "ts_task",
+        "alt bvp_task data exists",
+        "alt No task BVP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "任务分支画好了。filtered_bvp_task经过同样的heartpy和neurokit处理，返回task_hrv_metrics存储。",
+      "elements_involved": [
+        "filtered_bvp_task",
+        "task_hrv_metrics",
+        "heartpy.process()",
+        "neurokit2.hrv()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "process_subject_data最后要用pandas把结果转成DataFrame。调用pd.DataFrame(results_list)得到subject_hrv_df。",
+      "elements_involved": [
+        "pd.DataFrame",
+        "results_list",
+        "subject_hrv_df",
+        "pandas"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加pandas节点。subject_hrv_df返回给MainBlock，然后append到all_participant_dfs列表。",
+      "elements_involved": [
+        "pd",
+        "subject_hrv_df",
+        "MainBlock",
+        "all_participant_dfs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "所有subject处理完后，MainBlock要合并数据。用alt判断all_participant_dfs是否为空，不为空就用pd.concat合并，否则返回空DataFrame。",
+      "elements_involved": [
+        "alt all_participant_dfs is not empty",
+        "pd.concat",
+        "final_df",
+        "pd.DataFrame() (empty)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "合并逻辑画好了。final_df返回给Notebook，进入统计建模阶段。",
+      "elements_involved": [
+        "final_df",
+        "Notebook Execution"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "统计建模部分：Notebook先检查final_df有效性，特别是要有HRV_RMSSD列。有效的话准备model_df，做dropna和astype类型转换。",
+      "elements_involved": [
+        "HRV_RMSSD",
+        "model_df",
+        "dropna",
+        "astype"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "mixedlm的公式是\"HRV_RMSSD ~ C(Phase)*C(Condition)\"吗？groups参数是ParticipantID？",
+      "elements_involved": [
+        "statsmodels.mixedlm()",
+        "HRV_RMSSD ~ C(Phase)*C(Condition)",
+        "ParticipantID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。这是线性混合效应模型，Phase和Condition的交互效应，ParticipantID作为随机效应分组。",
+      "elements_involved": [
+        "statsmodels",
+        "mixedlm",
+        "C(Phase)",
+        "C(Condition)",
+        "groups=\"ParticipantID\""
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画出了statsmodels调用，返回model_lmm，然后fit()得到result_lmm，最后summary()输出结果。",
+      "elements_involved": [
+        "model_lmm",
+        "fit()",
+        "result_lmm",
+        "summary()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还要加个else分支：如果final_df无效，打印\"Skipping statistical analysis\"。",
+      "elements_involved": [
+        "alt final_df is not valid",
+        "Skipping statistical analysis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完整的流程图已经画好了。从Notebook启动，经过双层循环遍历，基线任务双分支处理，最后统计建模。",
+      "elements_involved": [
+        "Notebook Execution",
+        "Main Processing Block",
+        "process_subject_data()",
+        "statsmodels.mixedlm()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我再看一下，extract_xdf返回的数据里除了bvp和ts，还有markers吧？图上只写了省略号。",
+      "elements_involved": [
+        "extract_bvp_and_markers_from_xdf()",
+        "bvp_baseline",
+        "ts_baseline",
+        "..."
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "你说得对，我调整一下注释，明确标注返回的是bvp、ts和markers等数据，用省略号表示还有其他字段。",
+      "elements_involved": [
+        "extract_bvp_and_markers_from_xdf()",
+        "bvp_baseline, ts_baseline, ...",
+        "bvp_task, ts_task, ..."
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这样更准确。另外glob.glob找文件路径的部分，图上标注清楚了吗？",
+      "elements_involved": [
+        "glob.glob",
+        "baseline_filepath",
+        "task_filepath"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "标注了，MainBlock内部用glob.glob查找baseline_filepath和task_filepath。我确认一下os.scandir和re.search的遍历逻辑要体现吗？",
+      "elements_involved": [
+        "os.scandir",
+        "re.search",
+        "session_folders",
+        "subject_folders_map"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "在loop的注释里注明就行，显示使用了os.scandir和re.search进行目录遍历和模式匹配。",
+      "elements_involved": [
+        "os.scandir",
+        "re.search",
+        "loop For each session_folder",
+        "loop For each subject_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新loop注释。现在检查filter_bvp调用的细节：butter返回的是filter_coeffs (b,a)，这个标注正确吗？",
+      "elements_involved": [
+        "filter_bvp()",
+        "scipy.signal",
+        "butter()",
+        "filter_coeffs (b,a)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。butter设计滤波器返回分子分母系数b和a，filtfilt用这些系数做零相位滤波。",
+      "elements_involved": [
+        "butter()",
+        "filtfilt",
+        "coeffs",
+        "b,a",
+        "filtered_signal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "heartpy.process返回的wd和m，m代表peaks峰值位置，这个需要在图上说明吗？",
+      "elements_involved": [
+        "heartpy.process()",
+        "wd",
+        "m",
+        "peaks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "建议标注一下，写成wd, m (peaks)，这样更清晰。wd是working data，m是峰值索引。",
+      "elements_involved": [
+        "heartpy.process()",
+        "wd",
+        "m (peaks)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修改为wd, m (peaks)。再看neurokit2.hrv的调用，传入的是ibi_ms，这个需要明确吗？",
+      "elements_involved": [
+        "neurokit2.hrv()",
+        "ibi_ms",
+        "hrv_indices"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要，从heartpy的峰值计算IBI（毫秒），然后传给neurokit2算HRV。图上写成hrv(ibi_ms, ...)就行。",
+      "elements_involved": [
+        "neurokit2.hrv()",
+        "ibi_ms",
+        "..."
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "更新了。现在检查统计部分：mixedlm的公式里C(Phase)*C(Condition)是交互项，这个理解对吗？",
+      "elements_involved": [
+        "mixedlm",
+        "C(Phase)*C(Condition)",
+        "interaction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，C()表示分类变量，*表示主效应加交互效应。这是标准的R-style公式。",
+      "elements_involved": [
+        "C(Phase)",
+        "C(Condition)",
+        "C(Phase)*C(Condition)",
+        "main effects",
+        "interaction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "流程图最开始的\"Start data processing\"消息是从Notebook到MainBlock的吗？",
+      "elements_involved": [
+        "Notebook Execution",
+        "Main Processing Block",
+        "Start data processing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Notebook启动主处理块，然后MainBlock自己管理循环迭代，用自调用表示。",
+      "elements_involved": [
+        "Notebook-MainBlock",
+        "MainBlock-MainBlock",
+        "Iterate session_folders"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认无误。我再加个注释标记主处理块的位置，%% Main Processing Block。",
+      "elements_involved": [
+        "%% Main Processing Block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "基线处理和任务处理之间需要加注释分隔吗？代码里有两段%%标记。",
+      "elements_involved": [
+        "%% Baseline Processing",
+        "%% Task Processing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了%% Baseline Processing和%% Task Processing的注释，清晰分隔两段对称逻辑。还有%% Statistical Modeling Phase也要加。",
+      "elements_involved": [
+        "%% Baseline Processing",
+        "%% Task Processing",
+        "%% Statistical Modeling Phase"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查一下participant相关的变量名：all_participant_dfs存储所有subject的DataFrame，最后concat成final_df。",
+      "elements_involved": [
+        "all_participant_dfs",
+        "pd.concat",
+        "final_df"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认。alt分支处理了空列表的情况，返回空DataFrame。流程完整了。",
+      "elements_involved": [
+        "alt all_participant_dfs is not empty",
+        "pd.DataFrame() (empty)",
+        "final_df (empty)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "process_subject_data里的condition确定，是在调用extract_xdf之前对吧？",
+      "elements_involved": [
+        "process_subject_data()",
+        "Determine condition",
+        "extract_bvp_and_markers_from_xdf()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我调整一下顺序，condition确定确实在extract_xdf调用之前，属于预处理步骤。",
+      "elements_involved": [
+        "process_subject_data()",
+        "Determine condition",
+        "extract_bvp_and_markers_from_xdf()"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。另外存储baseline_hrv_metrics和task_hrv_metrics是内部操作，用自调用表示合理。",
+      "elements_involved": [
+        "proc_subj_data-proc_subj_data",
+        "Store baseline_hrv_metrics",
+        "Store task_hrv_metrics"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有自调用和存储操作都已标注。再看警告日志的部分：No baseline BVP和No task BVP两个分支。",
+      "elements_involved": [
+        "Log warning",
+        "alt No baseline BVP",
+        "alt No task BVP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，数据缺失时记录警告，但不中断流程，继续处理其他subject。Missing files的情况也是类似处理。",
+      "elements_involved": [
+        "Log warning",
+        "alt Missing files",
+        "Log skipping subject"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "采样率fs在图中多次出现，是全局参数吗？get_hrv_metrics和filter_bvp都需要。",
+      "elements_involved": [
+        "fs",
+        "get_hrv_metrics()",
+        "filter_bvp()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，fs是采样频率，从配置或数据中提取，贯穿整个信号处理流程。图上每次调用都标注fs参数。",
+      "elements_involved": [
+        "fs",
+        "get_hrv_metrics(bvp_baseline, ts_baseline, fs)",
+        "filter_bvp(bvp_baseline, fs)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "检查完毕，所有fs参数都已标注。最终的result_lmm.summary()输出到Notebook完成整个流程。",
+      "elements_involved": [
+        "result_lmm",
+        "summary()",
+        "Print summary",
+        "Notebook Execution"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "流程图完整了。再确认一下participant的命名：ParticipantID作为随机效应分组变量，groups=\"ParticipantID\"。",
+      "elements_involved": [
+        "ParticipantID",
+        "groups=\"ParticipantID\"",
+        "random effects"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。整个sequence diagram涵盖了从原始XDF数据读取、BVP信号提取、滤波、心率检测、HRV计算，到最终统计建模的完整pipeline。",
+      "elements_involved": [
+        "XDF",
+        "BVP",
+        "HRV",
+        "pipeline",
+        "sequenceDiagram"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个图能清晰展示我们的HRV数据处理流程，方便后续维护和论文方法部分的描述。",
+      "elements_involved": [
+        "HRV processing workflow",
+        "maintenance",
+        "methodology"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 57,
+    "repair_count": 3,
+    "grounding_acts_count": 57,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 105657.6977,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 57
+  }
+}

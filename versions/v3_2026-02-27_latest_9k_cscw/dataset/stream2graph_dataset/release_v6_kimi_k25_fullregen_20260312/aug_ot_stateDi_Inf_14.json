@@ -1,0 +1,143 @@
+{
+  "id": "aug_ot_stateDi_Inf_14",
+  "seed": "ot_stateDiagram_00110",
+  "domain": "Infra",
+  "code": "stateDiagram-v2\n    [Infra_Ingress] --> CLOSED\n\n    state CLOSED {Infra_Ingress] --> Normal\n        Normal --> IncrementFailures: execute_trade fails\n        IncrementFailures --> CheckThreshold: failure_count++\n        CheckThreshold --> Normal: count < 3\n        CheckThreshold --> [Infra_Worker]: count >= 3\n\n        Normal --> ResetCount: execute_trade succeeds\n        ResetCount --> Normal: failure_count = 0\n    }\n\n    CLOSED --> OPEN: Threshold Reached 3 failures\n\n    state OPEN {Infra_Worker] --> BlockCalls\n        BlockCalls --> CheckTimeout: All calls raise CircuitBreakerError\n        CheckTimeout --> BlockCalls: elapsed < 60s\n        CheckTimeout --> [Infra_Cache]: elapsed >= 60s\n    }\n\n    OPEN --> HALF_OPEN: Recovery Timeout Expired\n\n    state HALF_OPEN {Infra_Ingress] --> TestRecovery\n        TestRecovery --> EvaluateResult: Allow ONE test call\n        EvaluateResult --> [Infra_Ingress]: Success\n        EvaluateResult --> ReOpen: Failure\n\n        ReOpen --> [Infra_Cache]\n    }\n\n    HALF_OPEN --> CLOSED: Test Call Succeeds\n    HALF_OPEN --> OPEN: Test Call Fails\n\n    style CLOSED fill:#4CAF50,stroke:#2E7D32,color:#fff\n    style OPEN fill:#F44336,stroke:#C62828,color:#fff\n    style HALF_OPEN fill:#FFC107,stroke:#F57C00,color:#333",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为熔断器设计一个状态图。核心场景是：当Infra_Ingress进来的交易连续失败达到阈值，就要切换到熔断状态，避免把压力传给下游的Infra_Worker。",
+      "elements_involved": [
+        "Infra_Ingress",
+        "Infra_Worker",
+        "CLOSED",
+        "OPEN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。那CLOSED状态内部需要细化吗？比如正常处理路径和失败计数逻辑？",
+      "elements_involved": [
+        "CLOSED",
+        "Normal",
+        "IncrementFailures"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，CLOSED里面要有Normal状态。每次execute_trade失败就进入IncrementFailures，计数加一，然后CheckThreshold判断。如果不到3次就回到Normal，满3次就触发熔断，跳转到OPEN状态。成功的话走ResetCount清零。",
+      "elements_involved": [
+        "Normal",
+        "IncrementFailures",
+        "CheckThreshold",
+        "ResetCount",
+        "OPEN",
+        "execute_trade"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，CLOSED状态内部结构我画好了。现在处理OPEN状态：这时候所有调用都直接阻断，用BlockCalls节点，同时启动60秒超时检查？",
+      "elements_involved": [
+        "OPEN",
+        "BlockCalls",
+        "CheckTimeout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，CheckTimeout如果不到60秒就维持在BlockCalls，超时满60秒就进入HALF_OPEN试探恢复。对了，OPEN状态超时后要借助Infra_Cache来过渡。",
+      "elements_involved": [
+        "CheckTimeout",
+        "HALF_OPEN",
+        "Infra_Cache",
+        "elapsed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "HALF_OPEN的设计我确认一下：只允许放一次测试调用，成功就回到CLOSED，失败重新熔断？",
+      "elements_involved": [
+        "HALF_OPEN",
+        "TestRecovery",
+        "EvaluateResult"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，TestRecovery允许ONE test call，然后EvaluateResult判断。成功返回Infra_Ingress，失败走ReOpen回到熔断，这里也要经过Infra_Cache。另外三个状态用颜色区分：CLOSED绿色、OPEN红色、HALF_OPEN黄色。",
+      "elements_involved": [
+        "TestRecovery",
+        "EvaluateResult",
+        "ReOpen",
+        "Infra_Ingress",
+        "Infra_Cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "完成。状态流转都清楚了：CLOSED正常处理带失败计数，阈值到3转OPEN阻断，60秒超时转HALF_OPEN单探测试，成则闭、败则开。颜色也按你说的设了。",
+      "elements_involved": [
+        "CLOSED",
+        "OPEN",
+        "HALF_OPEN",
+        "Threshold Reached 3 failures",
+        "Recovery Timeout Expired"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "source": "augmented_real_structure",
+  "diagram_type": "stateDiagram",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:39Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 22862.2255,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

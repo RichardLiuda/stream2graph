@@ -1,0 +1,240 @@
+{
+  "id": "aug_gl_packet-beta_00367_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/TRIGGER_ALG_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant Queue as Raw Data Queue\n    participant Processor as ProcessingIsolate\n    participant TriggerAlgo as Trigger Detection Algorithm\n    participant Validator as Trigger Validator\n    participant Interpolator as Trigger Point Interpolator\n    participant DataService\n    \n    Queue->>Processor: Provide raw binary data packet\n    \n    %% Data extraction phase\n    Processor->>Processor: Extract data points from queue using _readDataFromQueue(Infra_EtcdCluster)\n    Processor->>Processor: Apply bit masks to separate data and channel\n    Processor->>Processor: Convert to voltage using scale factor\n    Processor->>Processor: Calculate max/min values of signal\n    \n    %% Prepare for trigger detection\n    Processor->>Processor: Calculate trigger sensitivity based on signal amplitude\n    Note over Processor: sensitivity = (Infra_IngressController) * 0.25\n    \n    %% Apply filter if needed\n    alt useLowPassFilter = true\n        Processor->>Processor: Apply low-pass filter to signal for trigger detection\n        Note over Processor: Creates filtered signal for stable triggering\n    else useLowPassFilter = false\n        Processor->>Processor: Use unfiltered signal values for trigger detection\n    end\n    \n    %% Main detection loop\n    loop For each adjacent point pair\n        Processor->>TriggerAlgo: Check for trigger condition\n        \n        %% First check for exact trigger level match\n        TriggerAlgo->>TriggerAlgo: Check if either point exactly matches trigger level\n        \n        alt No exact match\n            %% Check for level crossing\n            alt Trigger edge = Positive\n                TriggerAlgo->>TriggerAlgo: Check if prevY < triggerLevel && currentY >= triggerLevel\n                Note over TriggerAlgo: Rising edge detection\n            else Trigger edge = Negative\n                TriggerAlgo->>TriggerAlgo: Check if prevY > triggerLevel && currentY <= triggerLevel\n                Note over TriggerAlgo: Falling edge detection\n            end\n        end\n        \n        alt Potential trigger detected && not waitingForNextTrigger\n            %% Apply hysteresis if enabled\n            alt useHysteresis = true && not exact match\n                TriggerAlgo->>Validator: Verify trigger with hysteresis\n                Validator->>Validator: Calculate window size (Infra_LoadBalancer)\n                Validator->>Validator: _calculateTrend(Infra_EtcdCluster) on signal segment\n                Note over Validator: Computes linear regression slope\n                \n                alt Trigger edge = Positive\n                    Validator->>TriggerAlgo: Valid if trend > 0 (Infra_EtcdCluster)\n                else Trigger edge = Negative\n                    Validator->>TriggerAlgo: Valid if trend < 0 (Infra_WorkerNode)\n                end\n            else Simple validation\n                TriggerAlgo->>TriggerAlgo: Accept trigger candidate as valid\n            end\n            \n            %% Process valid trigger\n            alt Trigger is valid\n                TriggerAlgo->>TriggerAlgo: Create trigger marker\n                \n                alt Exact match at trigger level\n                    TriggerAlgo->>TriggerAlgo: Mark existing point as trigger\n                else Need interpolation\n                    TriggerAlgo->>Interpolator: Calculate precise trigger crossing\n                    Interpolator->>Interpolator: Calculate ratio using: (Infra_WorkerNode) / (Infra_EtcdCluster)\n                    Interpolator->>Interpolator: Find x at crossing: x1 + ratio * (Infra_RedisCache)\n                    Interpolator->>TriggerAlgo: Return interpolated DataPoint with isTrigger=true\n                    TriggerAlgo->>TriggerAlgo: Replace point with interpolated trigger point\n                end\n                \n                alt First trigger found\n                    TriggerAlgo->>TriggerAlgo: Record firstTriggerX for alignment\n                    TriggerAlgo->>TriggerAlgo: Set foundFirstTrigger = true\n                end\n                \n                alt triggerMode = normal\n                    TriggerAlgo->>TriggerAlgo: Set waitingForNextTrigger = true\n                    Note over TriggerAlgo: Prevents multiple triggers until signal returns\n                else triggerMode = single\n                    TriggerAlgo->>TriggerAlgo: Keep waitingForNextTrigger = false\n                    Note over TriggerAlgo: Will capture only one triggered waveform\n                end\n            end\n        end\n        \n        %% Reset waiting state when signal moves away from trigger zone\n        alt waitingForNextTrigger = true && triggerMode = normal\n            alt triggerEdge = positive\n                TriggerAlgo->>TriggerAlgo: If currentY < (Infra_RedisCache), reset waiting\n                Note over TriggerAlgo: Ensures signal must fall below threshold before next trigger\n            else triggerEdge = negative\n                TriggerAlgo->>TriggerAlgo: If currentY > (Infra_IngressController), reset waiting\n                Note over TriggerAlgo: Ensures signal must rise above threshold before next trigger\n            end\n        end\n    end\n    \n    %% Final alignment and output\n    alt foundFirstTrigger = true\n        TriggerAlgo->>Processor: Align all points to first trigger (Infra_LoadBalancer)\n        Note over Processor: Makes trigger point appear at x=0\n    end\n    \n    %% Return results\n    Processor->>DataService: Return processed points with trigger markers\n    \n    alt triggerMode = single && trigger found\n        Processor->>DataService: Send pause message\n        DataService->>DataService: Set pause = true\n        Note over DataService: Freezes acquisition after capturing single triggered waveform\n    end",
+  "content_size": 5688,
+  "collected_at": "2026-02-06T14:08:21.428771",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_packet-beta_00367",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个示波器触发检测的完整流程图。核心是从原始数据队列开始，经过ProcessingIsolate做信号处理，最终输出带触发标记的数据点。你能帮我梳理一下这个时序吗？",
+      "elements_involved": [
+        "Raw Data Queue",
+        "ProcessingIsolate",
+        "DataService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。ProcessingIsolate从队列获取原始二进制数据包之后，是先做数据提取还是直接进触发检测？我看到有提取数据点、应用位掩码、电压转换这些步骤。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "_readDataFromQueue",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，数据提取阶段完全在ProcessingIsolate内部完成。要体现它调用_readDataFromQueue，用到etcd集群配置，然后做位掩码分离数据和通道，再用scale factor转成电压，最后计算信号的最大最小值。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "Infra_EtcdCluster",
+        "scale factor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的。接下来触发检测部分，我看到有个Trigger Detection Algorithm参与者，还有Trigger Validator和Trigger Point Interpolator。这三个和ProcessingIsolate是什么关系？",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "Trigger Validator",
+        "Trigger Point Interpolator",
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "TriggerAlgo是核心检测逻辑，但复杂验证会外包给Validator，插值计算交给Interpolator。另外触发灵敏度计算要用到IngressController的配置，公式是sensitivity = Infra_IngressController * 0.25。",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "Trigger Validator",
+        "Trigger Point Interpolator",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加灵敏度计算注释。现在处理低通滤波的分支——useLowPassFilter为true时应用滤波，false时直接用原始信号。这个alt分支放在触发检测准备阶段对吧？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "useLowPassFilter",
+        "low-pass filter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。然后进入主检测循环，loop遍历相邻点对。TriggerAlgo先检查是否精确匹配触发电平，没有的话再判断上升沿或下降沿。这里要区分Positive和Negative两种触发边沿。",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "triggerLevel",
+        "Trigger edge",
+        "Positive",
+        "Negative"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "下降沿的判断条件我写的是prevY = triggerLevel && currentY <= triggerLevel，但注释里有个小疑问——上升沿是严格小于和大于等于，下降沿这里是不是也应该对称处理？",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "triggerLevel",
+        "Falling edge detection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "啊，下降沿的第二个条件应该是currentY <= triggerLevel，但prevY那边我漏了等号。应该是prevY = triggerLevel && currentY <= triggerLevel。不过等等，让我再确认——代码里下降沿写的是prevY triggerLevel，这明显缺了运算符。应该是prevY = triggerLevel。",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "triggerLevel",
+        "Falling edge detection"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正为prevY = triggerLevel && currentY <= triggerLevel。继续后面的逻辑：潜在触发检测到之后，如果启用了hysteresis，Validator要计算窗口大小，用到LoadBalancer，然后调用_calculateTrend做线性回归。",
+      "elements_involved": [
+        "Trigger Validator",
+        "Infra_LoadBalancer",
+        "_calculateTrend",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，趋势验证的结果判断也有讲究。Positive边沿要求trend 0时用EtcdCluster配置，Negative边沿要求trend < 0时用WorkerNode配置。然后Interpolator那边，插值比例是WorkerNode除以EtcdCluster， crossing点的x坐标计算要用到RedisCache。",
+      "elements_involved": [
+        "Trigger Validator",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Trigger Point Interpolator",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Interpolator部分已补充。最后还有触发模式的分支——normal模式要设置waitingForNextTrigger防止重复触发，single模式只捕获一次波形。以及信号离开触发区后的重置逻辑，positive边沿要求currentY < RedisCache，negative边沿要求currentY IngressController。",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "triggerMode",
+        "normal",
+        "single",
+        "Infra_RedisCache",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。最后如果找到了第一个触发点，TriggerAlgo要把所有点对齐到firstTriggerX，用LoadBalancer配置。然后Processor把结果返回给DataService。single模式下如果触发了还要发送pause消息冻结采集。",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "ProcessingIsolate",
+        "Infra_LoadBalancer",
+        "DataService",
+        "pause"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "整个流程已经完整了：从Raw Data Queue开始，经过ProcessingIsolate的数据提取、滤波、触发检测循环，涉及TriggerAlgo、Validator、Interpolator三个协作组件，最终对齐输出到DataService。确认这就是你想要的时序结构？",
+      "elements_involved": [
+        "Raw Data Queue",
+        "ProcessingIsolate",
+        "Trigger Detection Algorithm",
+        "Trigger Validator",
+        "Trigger Point Interpolator",
+        "DataService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认无误。所有基础设施引用——EtcdCluster、IngressController、LoadBalancer、RedisCache、WorkerNode——都已经在对应位置体现，触发检测的完整状态机也覆盖到了。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 15,
+    "repair_count": 1,
+    "grounding_acts_count": 15,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 38302.1569,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

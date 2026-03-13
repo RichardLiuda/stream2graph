@@ -1,0 +1,175 @@
+{
+  "id": "aug_ot_stateDiagram_00259_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ndv15/AutoApply/blob/2ea3ae1035325fe143673fab58677609d9e39d51/docs/diagrams/preview_approve_v0_9.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "ndv15/AutoApply",
+  "diagram_type": "stateDiagram",
+  "code": "%% AutoApply v0.9 - Preview & Approve Flow\n%% User workflow for reviewing and approving generated bullets\n\nstateDiagram-v2\n    [Infra_IngressController] --> PipelineRunning: User submits JD + Profile\n    \n    PipelineRunning --> ResultsGenerated: Pipeline completes<br/>(Infra_WorkerNode)\n    \n    ResultsGenerated --> ReviewingProposed: Load proposed bullets<br/>(Infra_IngressController)\n    ResultsGenerated --> ReviewingSuggested: Load suggested edits<br/>(Infra_RedisCache)\n    \n    ReviewingProposed --> ViewProvenance: User clicks<br/>\"View Evidence\"\n    ViewProvenance --> ReviewingProposed: Close provenance card\n    \n    ReviewingProposed --> AcceptBullet: User clicks<br/>\"Accept\"\n    AcceptBullet --> Accepted: Bullet added<br/>to resume\n    \n    ReviewingProposed --> RejectBullet: User clicks<br/>\"Reject\"\n    RejectBullet --> Rejected: Bullet discarded\n    \n    ReviewingSuggested --> EditBullet: User clicks<br/>\"Edit & Approve\"\n    EditBullet --> ManualEdit: User modifies text\n    ManualEdit --> ManualApproved: User confirms\n    ManualApproved --> Accepted\n    \n    ReviewingSuggested --> RejectSuggested: User clicks<br/>\"Reject\"\n    RejectSuggested --> Rejected\n    \n    Accepted --> ResumePreviewing: Update live preview\n    ResumePreviewing --> ExportReady: All bullets reviewed\n    \n    ExportReady --> ExportPDF: User exports<br/>to PDF\n    ExportReady --> ExportDOCX: User exports<br/>to DOCX\n    ExportReady --> ExportHTML: User exports<br/>to HTML\n    \n    ExportPDF --> [Infra_LoadBalancer]: Download complete\n    ExportDOCX --> [Infra_IngressController]: Download complete\n    ExportHTML --> [Infra_RedisCache]: Download complete\n    \n    Rejected --> CheckMoreBullets: Discard bullet\n    CheckMoreBullets --> ReviewingProposed: More to review\n    CheckMoreBullets --> ReviewingSuggested: More to review\n    CheckMoreBullets --> ResumePreviewing: All reviewed\n    \n    note right of ViewProvenance\n        Provenance Card Shows:\n        - Evidence sources (Infra_EtcdCluster)\n        - Similarity scores\n        - Job requirement matched\n        - AMOT component verification\n        - Full audit trail\n    end note\n    \n    note right of AcceptBullet\n        Proposed bullets are safe\n        to accept - already verified\n        ≥75% by the system\n    end note\n    \n    note right of EditBullet\n        Suggested edits need review\n        because <75% verified.\n        User can edit and approve\n        with full transparency.\n    end note\n",
+  "content_size": 2405,
+  "collected_at": "2026-02-06T10:39:48.627118",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00259",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为AutoApply v0.9的预览和审批流程画一个状态图。核心场景是用户提交JD和简历后，系统生成bullet points，然后用户需要审核、接受或编辑这些建议。我想区分两类内容：系统高置信度生成的proposed bullets，以及需要用户重点审核的suggested edits。",
+      "elements_involved": [
+        "PipelineRunning",
+        "ResultsGenerated",
+        "ReviewingProposed",
+        "ReviewingSuggested",
+        "Infra_IngressController",
+        "Infra_WorkerNode",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。所以起点是用户通过IngressController提交，WorkerNode跑完pipeline后分流：proposed bullets走IngressController加载，suggested edits走RedisCache加载。对于proposed bullets，用户可以直接接受或拒绝；对于suggested edits，用户需要编辑后批准。这个理解对吗？另外，ViewProvenance这个查看证据来源的功能放在哪里比较合适？",
+      "elements_involved": [
+        "ViewProvenance",
+        "Infra_EtcdCluster",
+        "AMOT",
+        "AcceptBullet",
+        "EditBullet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。ViewProvenance要从ReviewingProposed和ReviewingSuggested都能进入，但主要用在ReviewingProposed场景——用户想确认某个bullet的evidence来源、相似度分数、匹配的JD要求，还有AMOT组件的验证情况。看完可以关闭卡片回到审核状态。另外我想强调一个规则：proposed bullets系统已经验证≥75%，可以直接接受；suggested edits低于75%，必须编辑后才能批准。",
+      "elements_involved": [
+        "ViewProvenance",
+        "AcceptBullet",
+        "EditBullet",
+        "ManualEdit",
+        "ManualApproved",
+        "Accepted",
+        "Rejected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经把主流程画出来了：PipelineRunning → ResultsGenerated → 分流到ReviewingProposed和ReviewingSuggested。ViewProvenance支持双向跳转。接受路径是AcceptBullet → Accepted；编辑路径是EditBullet → ManualEdit → ManualApproved → Accepted。拒绝都走向Rejected。接下来处理导出和收尾流程？",
+      "elements_involved": [
+        "Accepted",
+        "ResumePreviewing",
+        "ExportReady",
+        "ExportPDF",
+        "ExportDOCX",
+        "ExportHTML"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的。Accepted之后要更新实时预览ResumePreviewing，全部审完进入ExportReady。导出支持三种格式：PDF、DOCX、HTML，分别走不同的基础设施——PDF走LoadBalancer，DOCX和HTML都走IngressController和RedisCache。另外拒绝的bullet不能直接结束，要有个CheckMoreBullets节点判断是否还有未审核的内容。",
+      "elements_involved": [
+        "Rejected",
+        "CheckMoreBullets",
+        "ReviewingProposed",
+        "ReviewingSuggested",
+        "ResumePreviewing",
+        "Infra_LoadBalancer",
+        "Infra_IngressController",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下CheckMoreBullets的逻辑：如果是从Rejected过来，检查还有无未审核项——有就回到ReviewingProposed或ReviewingSuggested，没有就进入ResumePreviewing。这个分支应该覆盖两种情况的对吧？还有，三个导出节点的结束状态需要特别标注基础设施组件吗？",
+      "elements_involved": [
+        "CheckMoreBullets",
+        "ExportPDF",
+        "ExportDOCX",
+        "ExportHTML",
+        "Infra_LoadBalancer",
+        "Infra_IngressController",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，CheckMoreBullets就是那个决策点。导出节点的结束状态用中括号标注基础设施：PDF到[Infra_LoadBalancer]，DOCX到[Infra_IngressController]，HTML到[Infra_RedisCache]。最后加三个note说明：ViewProvenance显示EtcdCluster里的证据来源和AMOT验证；AcceptBullet说明≥75%已验证；EditBullet说明<75%需要用户编辑。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "AMOT",
+        "ViewProvenance",
+        "AcceptBullet",
+        "EditBullet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。整个状态图现在包含：从IngressController提交到WorkerNode执行，分流审核proposed和suggested内容，支持查看provenance证据链，区分自动接受和手动编辑批准路径，CheckMoreBullets循环处理批量审核，最终ResumePreviewing后三格式导出到对应基础设施，三个note完整说明了验证规则和证据展示内容。你看看还有需要调整的吗？",
+      "elements_involved": [
+        "PipelineRunning",
+        "ResultsGenerated",
+        "ReviewingProposed",
+        "ReviewingSuggested",
+        "ViewProvenance",
+        "AcceptBullet",
+        "EditBullet",
+        "ManualEdit",
+        "ManualApproved",
+        "Accepted",
+        "Rejected",
+        "CheckMoreBullets",
+        "ResumePreviewing",
+        "ExportReady",
+        "ExportPDF",
+        "ExportDOCX"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 33399.8005,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

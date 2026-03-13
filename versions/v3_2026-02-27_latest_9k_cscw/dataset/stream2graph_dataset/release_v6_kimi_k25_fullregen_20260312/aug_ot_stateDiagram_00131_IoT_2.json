@@ -1,0 +1,161 @@
+{
+  "id": "aug_ot_stateDiagram_00131_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/dm-inbox/state-management.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [IoT_Industrial_TelemetryStream] --> Initializing: Component mounted\n\n    Initializing --> Loading: Subscribe to DMs\n    Loading --> Empty: No messages\n    Loading --> ThreadList: Messages loaded\n    Loading --> Error: Subscription failed\n\n    Empty --> ThreadList: First message received\n\n    ThreadList --> ThreadSelected: User selects thread\n    ThreadSelected --> ThreadList: Back to list\n    ThreadSelected --> Composing: User types message\n\n    Composing --> Encrypting: User sends\n    Encrypting --> Publishing: Encryption complete\n    Publishing --> ThreadSelected: Publish success\n    Publishing --> Error: Publish failed\n\n    ThreadSelected --> MarkingRead: Auto-mark as read\n    MarkingRead --> ThreadSelected: Update complete\n\n    ThreadList --> Refreshing: Pull to refresh\n    Refreshing --> ThreadList: Refresh complete\n\n    ThreadSelected --> Deleting: User deletes thread\n    Deleting --> ThreadList: Delete complete\n\n    Error --> ThreadList: Retry success\n    Error --> [IoT_Industrial_ActuatorController]: Fatal error\n\n    note right of Encrypting\n        NIP04Service encrypts\n        message using recipient's\n        public key\n    end note\n\n    note right of Publishing\n        EventPublisherService\n        publishes kind 4 event\n        to relays\n    end note",
+  "content_size": 1244,
+  "collected_at": "2026-02-06T10:38:15.797570",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00131",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网场景设计一个设备消息管理的状态机。核心是一个TelemetryStream组件，它挂载后要先初始化，然后订阅DMS服务获取消息。",
+      "elements_involved": [
+        "IoT_Industrial_TelemetryStream",
+        "Initializing",
+        "Loading",
+        "DMS",
+        "subscribe"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，初始化之后进入Loading状态。那如果订阅失败怎么办？还有，如果当前没有消息，应该有个空状态吧？",
+      "elements_involved": [
+        "Loading",
+        "Error",
+        "Empty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Loading之后分三条路：订阅失败进Error，没有消息进Empty，正常加载完成就显示ThreadList。Empty状态收到第一条消息后要能自动转到ThreadList。",
+      "elements_involved": [
+        "Loading",
+        "Error",
+        "Empty",
+        "ThreadList",
+        "First message received"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，主列表和空状态我画好了。接下来用户交互部分呢？选中消息、返回这些流程怎么设计？",
+      "elements_involved": [
+        "ThreadList",
+        "ThreadSelected",
+        "Back to list"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户选中某个thread进入ThreadSelected状态，可以返回列表。关键的发送流程是：用户输入时进入Composing，点击发送后先Encrypting加密，用的是NIP04Service和接收方公钥，然后Publishing发布到中继。",
+      "elements_involved": [
+        "ThreadSelected",
+        "Composing",
+        "Encrypting",
+        "Publishing",
+        "NIP04Service",
+        "EventPublisherService",
+        "kind 4 event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "加密和发布我加上注释说明。Publishing之后成功就回到ThreadSelected，失败呢？",
+      "elements_involved": [
+        "Publishing",
+        "ThreadSelected",
+        "Error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "发布失败也进Error状态。另外ThreadSelected还要支持自动标记已读，以及用户主动删除thread。列表页支持下拉刷新。",
+      "elements_involved": [
+        "Publishing",
+        "Error",
+        "ThreadSelected",
+        "MarkingRead",
+        "Deleting",
+        "ThreadList",
+        "Refreshing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都加上了。Error状态的处理我再确认下：普通错误可以重试成功回到ThreadList，但如果遇到致命错误要转到ActuatorController？",
+      "elements_involved": [
+        "Error",
+        "ThreadList",
+        "Retry success",
+        "IoT_Industrial_ActuatorController",
+        "Fatal error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Fatal error时把控制权交给ActuatorController做降级处理。这样整个状态流转就完整了。",
+      "elements_involved": [
+        "Error",
+        "IoT_Industrial_ActuatorController",
+        "Fatal error"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 0,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 17916.3404,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "id": "aug_ot_stateDiagram_00383_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/SaintWyss/rag-corp/blob/7acfc8a1f950c640a490e32f3ba30f64243652c3/docs/architecture/diagrams/document-state.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "SaintWyss/rag-corp",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_EtcdCluster] --> PENDING : Upload initiated\n\n    PENDING --> PROCESSING : Worker picks up job\n    \n    PROCESSING --> READY : Success<br/>(Infra_EtcdCluster)\n    PROCESSING --> FAILED : Error<br/>(Infra_LoadBalancer)\n    \n    READY --> PENDING : Reprocess requested\n    FAILED --> PENDING : Reprocess requested\n    \n    READY --> [Infra_RedisCache] : Document deleted\n    FAILED --> [Infra_LoadBalancer] : Document deleted\n    PENDING --> [Infra_EtcdCluster] : Document deleted\n\n    note right of PENDING\n        Document metadata created,\n        binary stored in S3/MinIO,\n        job enqueued in Redis\n    end note\n\n    note right of PROCESSING\n        Worker extracting text,\n        chunking, and\n        generating embeddings\n    end note\n\n    note right of READY\n        Chunks with embeddings\n        persisted in PostgreSQL,\n        available for RAG queries\n    end note\n\n    note right of FAILED\n        error_message contains\n        failure reason,\n        can be reprocessed\n    end note",
+  "content_size": 961,
+  "collected_at": "2026-02-06T10:41:29.594252",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00383",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个文档处理管道的状态图。系统里有三个基础设施组件：Etcd集群做元数据、Redis缓存做队列、还有一个负载均衡器。文档从上传开始，经过PENDING、PROCESSING，最后到READY或者FAILED。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。PENDING状态是文档刚上传的时候吗？还有，PROCESSING到READY和FAILED的触发条件分别是什么？",
+      "elements_involved": [
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，PENDING是上传初始化后，元数据存在Etcd里，二进制文件放S3/MinIO，任务进Redis队列。PROCESSING是Worker取到任务后做文本提取、分块、生成向量。成功就进READY，失败就进FAILED——失败的情况通常跟负载均衡器有关，比如Worker节点故障。",
+      "elements_involved": [
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主线画出来：从Etcd集群开始，到PENDING，Worker接手后进入PROCESSING，然后分支到READY或FAILED。我在PENDING、PROCESSING、READY、FAILED旁边加上注释说明具体在做什么。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要两个重要的回环：READY和FAILED都可以回到PENDING，这是用户触发的重新处理请求。另外，每个状态都应该能删除文档——READY的文档从Redis缓存删除，FAILED的从负载均衡器清理，PENDING的直接回Etcd集群清理。",
+      "elements_involved": [
+        "READY",
+        "FAILED",
+        "PENDING",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下删除的流向：READY指向Redis缓存，FAILED指向负载均衡器，PENDING指回Etcd集群。重新处理的请求都是回到PENDING状态，对吧？",
+      "elements_involved": [
+        "READY",
+        "FAILED",
+        "PENDING",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。还有FAILED状态的注释要特别强调：error_message字段会保存失败原因，这样用户知道为什么出错，也方便排查。",
+      "elements_involved": [
+        "FAILED",
+        "error_message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成了。四个状态都有详细注释：PENDING说明元数据和存储位置，PROCESSING说明Worker的具体操作，READY说明向量入库和RAG可用性，FAILED说明错误信息和可重试特性。所有状态转换和删除流向也都画好了。",
+      "elements_involved": [
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:22Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:22Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 25853.9841,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

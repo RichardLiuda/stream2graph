@@ -1,0 +1,153 @@
+{
+  "id": "aug_ot_stateDiagram_00134_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/us-319-error-handling/state-management.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_WorkerNode] --> Idle: Component Mounted\n\n    Idle --> OperationStarted: User Action\n    OperationStarted --> Processing: Service Call\n\n    Processing --> Success: Operation Succeeds\n    Processing --> RecoverableError: Recoverable Failure\n    Processing --> CriticalError: Critical Failure\n\n    Success --> Idle: Update UI\n\n    RecoverableError --> ShowingError: Display Error\n    ShowingError --> WaitingUserAction: Show Toast + Retry\n\n    WaitingUserAction --> Retrying: User Clicks Retry\n    WaitingUserAction --> ErrorDismissed: User Dismisses\n    WaitingUserAction --> ErrorDismissed: Auto-dismiss Timeout\n\n    Retrying --> Processing: Retry Service Call\n    ErrorDismissed --> Idle: Clear Error State\n\n    CriticalError --> ErrorBoundaryActive: Boundary Catches\n    ErrorBoundaryActive --> ShowingFallback: Display Fallback UI\n    ShowingFallback --> Recovering: User Clicks Recover\n    ShowingFallback --> [Infra_RedisCache]: User Reloads Page\n\n    Recovering --> Idle: Reset Component State\n\n    note right of RecoverableError\n        Connection timeouts\n        Network errors\n        Validation failures\n        Publish failures\n    end note\n\n    note right of CriticalError\n        Unhandled exceptions\n        Component crashes\n        Fatal service errors\n    end note\n\n    note right of ShowingError\n        Error Classification:\n        - Severity level\n        - Error code\n        - Troubleshooting hints\n        - Retry capability\n    end note\n",
+  "content_size": 1459,
+  "collected_at": "2026-02-06T10:38:17.768096",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00134",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个WorkerNode的状态流转图，核心要区分可恢复错误和致命错误两条完全不同的处理路径。从Idle开始，用户触发操作后进入Processing，这里要分出三条分支：成功、可恢复错误、关键错误。",
+      "elements_involved": [
+        "Idle",
+        "OperationStarted",
+        "Processing",
+        "Success",
+        "RecoverableError",
+        "CriticalError"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。可恢复错误这边我理解为需要给用户重试机会，那是不是应该有个中间状态让用户选择？另外CriticalError直接进ErrorBoundary的话，还需要给用户恢复的机会吗？",
+      "elements_involved": [
+        "RecoverableError",
+        "CriticalError",
+        "ErrorBoundaryActive",
+        "WaitingUserAction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，可恢复错误先到ShowingError展示错误信息，然后进入WaitingUserAction状态，这里用户可以选择Retry或者Dismiss。CriticalError那边走ErrorBoundaryActive捕获后，显示降级UI，用户可以选择Recover或者极端情况下直接Reload页面走RedisCache重置。",
+      "elements_involved": [
+        "ShowingError",
+        "WaitingUserAction",
+        "Retrying",
+        "ErrorDismissed",
+        "ErrorBoundaryActive",
+        "ShowingFallback",
+        "Recovering",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，主干已经画好了。我注意到WaitingUserAction到ErrorDismissed有两条触发条件，一个是用户主动关闭，一个是自动超时关闭，这个我标注清楚了。另外Recovering和Retrying最终都要回到Processing对吗？",
+      "elements_involved": [
+        "WaitingUserAction",
+        "ErrorDismissed",
+        "Retrying",
+        "Processing",
+        "Recovering",
+        "Idle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Retrying回Processing是对的。但Recovering不是回Processing，而是直接Reset到Idle，因为CriticalError后组件状态需要完全重置。还有Success之后也是Update UI然后回到Idle。",
+      "elements_involved": [
+        "Recovering",
+        "Idle",
+        "Success"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，已修正Recovering的流向。我在三个关键状态旁边加了注释说明：RecoverableError那边标注了连接超时、网络错误等场景；CriticalError标注了未处理异常和组件崩溃；ShowingError那边补充了错误分类的展示内容，包括严重级别、错误码这些。",
+      "elements_involved": [
+        "Recovering",
+        "Idle",
+        "RecoverableError",
+        "CriticalError",
+        "ShowingError"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "注释内容没问题。确认一下入口，WorkerNode组件挂载后直接进入Idle状态，这个起点要标注清楚。还有ErrorDismissed之后Clear Error State回到Idle，这个闭环也要完整。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Idle",
+        "ErrorDismissed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都检查过了，Infra_WorkerNode作为起始节点指向Idle，所有终止状态都正确闭环。整个状态机覆盖了正常流程、可恢复错误重试、关键错误降级三条主线，注释也补充了业务语义。可以定稿了。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Idle",
+        "ErrorDismissed",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 2,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 25678.2825,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

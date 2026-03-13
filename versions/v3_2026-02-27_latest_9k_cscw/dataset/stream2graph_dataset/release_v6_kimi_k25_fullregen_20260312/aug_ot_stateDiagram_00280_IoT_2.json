@@ -1,0 +1,177 @@
+{
+  "id": "aug_ot_stateDiagram_00280_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/jacero-io/kode-operator/blob/5d36809dc147909b7087b0e1aa1f785b7ce569a6/docs/diagrams/kode-ensure-resources.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "jacero-io/kode-operator",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [IoT_Industrial_EdgeNode] --> FetchTemplate\n    FetchTemplate --> InitializeConfig : Template Found\n    InitializeConfig --> EnsureSecret\n    \n    EnsureSecret --> EnsureService : Secret Created/Updated\n    EnsureSecret --> HandleError : Error\n\n    EnsureService --> EnsurePVC : Service Created/Updated\n    EnsureService --> HandleError : Error\n\n    EnsurePVC --> EnsureStatefulSet : PVC Created/Updated\n    EnsurePVC --> HandleError : Error\n\n    EnsureStatefulSet --> ResourcesEnsured : StatefulSet Created/Updated\n    EnsureStatefulSet --> HandleError : Error\n\n    HandleError --> [IoT_Industrial_ActuatorController] : Return Error\n\n    ResourcesEnsured --> [IoT_Industrial_PLC_Logic] : All Resources Created/Updated\n\n    state HandleError {IoT_Industrial_TelemetryStream] --> LogError\n        LogError --> UpdateFailedStatus\n        UpdateFailedStatus --> ReturnError\n        ReturnError --> [IoT_Industrial_MQTT_Broker]\n    }\n\n    note right of FetchTemplate\n        Fetches the template using TemplateManager\n    end note\n\n    note right of InitializeConfig\n        Initializes KodeResourceConfig\n    end note\n\n    note right of EnsureSecret\n        Creates or updates the Secret\n        if Credentials are specified\n    end note\n\n    note right of EnsureService\n        Creates or updates the Service\n    end note\n\n    note right of EnsurePVC\n        Creates or updates the PVC\n        if Storage is specified\n    end note\n\n    note right of EnsureStatefulSet\n        Creates or updates the StatefulSet\n    end note",
+  "content_size": 1420,
+  "collected_at": "2026-02-06T10:40:07.311690",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "jacero-io",
+  "repo_name": "kode-operator",
+  "repo_description": "Development environments, the cloud-native way",
+  "repo_language": "Go",
+  "repo_topics": [],
+  "repo_created_at": "2024-05-19T07:04:51Z",
+  "repo_updated_at": "2025-01-18T14:42:33Z",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00280",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为IoT工业边缘节点控制器设计一个状态流转图。核心场景是：从边缘节点出发，先获取模板，然后逐步初始化配置并确保各类K8s资源到位。最终目标是把PLC逻辑跑起来，错误路径要接入遥测流。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "FetchTemplate",
+        "InitializeConfig",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。资源创建这块，我理解是Secret、Service、PVC、StatefulSet这个顺序递进？每个环节如果出错都要走向同一个错误处理分支吗？",
+      "elements_involved": [
+        "EnsureSecret",
+        "EnsureService",
+        "EnsurePVC",
+        "EnsureStatefulSet",
+        "HandleError"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Secret和Service是网络层基础，PVC有存储配置才需要，最后StatefulSet承载实际负载。任何一步出错都进HandleError，但错误处理内部要细化：先记录日志，更新失败状态，最终把错误返回到MQTT Broker。",
+      "elements_involved": [
+        "HandleError",
+        "LogError",
+        "UpdateFailedStatus",
+        "ReturnError",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主线画出来：EdgeNode触发FetchTemplate，找到模板后进入InitializeConfig初始化KodeResourceConfig，然后串行经过EnsureSecret、EnsureService、EnsurePVC到EnsureStatefulSet。成功的话标记ResourcesEnsured状态，最终交付给PLC Logic。",
+      "elements_involved": [
+        "FetchTemplate",
+        "InitializeConfig",
+        "EnsureSecret",
+        "EnsureService",
+        "EnsurePVC",
+        "EnsureStatefulSet",
+        "ResourcesEnsured",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "FetchTemplate到InitializeConfig的转移条件要明确写\"Template Found\"，这样和错误路径区分。另外错误处理我需要一个复合状态，里面包含完整的遥测上报闭环。",
+      "elements_involved": [
+        "FetchTemplate",
+        "InitializeConfig",
+        "HandleError",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加转移条件。HandleError我做成一个state块，内部是TelemetryStream进入LogError，然后UpdateFailedStatus，最后ReturnError指向MQTT Broker。同时HandleError本身有一个出口返回到ActuatorController。",
+      "elements_involved": [
+        "HandleError",
+        "IoT_Industrial_TelemetryStream",
+        "LogError",
+        "UpdateFailedStatus",
+        "ReturnError",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ResourcesEnsured到PLC Logic的转移条件应该是\"All Resources Created/Updated\"，强调全部资源就绪。另外每个资源节点右侧我想加注释说明具体行为，比如EnsureSecret要注明是凭证相关时才创建。",
+      "elements_involved": [
+        "ResourcesEnsured",
+        "IoT_Industrial_PLC_Logic",
+        "EnsureSecret"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下注释内容：FetchTemplate注明使用TemplateManager获取模板，InitializeConfig是初始化KodeResourceConfig，EnsureSecret注明凭证指定时才创建，Service和PVC同理按条件，StatefulSet直接创建更新。ResourcesEnsured到PLC Logic的条件也已更新。",
+      "elements_involved": [
+        "FetchTemplate",
+        "InitializeConfig",
+        "EnsureSecret",
+        "EnsureService",
+        "EnsurePVC",
+        "EnsureStatefulSet",
+        "ResourcesEnsured"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，就是这样。整个流程覆盖了正常部署路径和完整的错误遥测上报，边缘节点到PLC逻辑的闭环清晰了。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 0,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:22Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:22Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 28036.2175,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

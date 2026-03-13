@@ -1,0 +1,265 @@
+{
+  "id": "ot_stateDiagram_00353",
+  "source": "other",
+  "source_url": "https://github.com/Ulisses37/ktor-server-sandbox/blob/82adffecc1811b5b839dbd70f410a2c2e7e214fd/docs/system_lock_state_machine.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Ulisses37/ktor-server-sandbox",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n[*] --> Idle: File Opened (Read-Only/Unlocked)\n\n    state \"User Edits File\" as UserAction\n    Idle --> UserAction: User types a character\n\n    state \"Request Lock\" as RequestLock {\n        UserAction --> CheckLocal: Plugin checks local state\n        CheckLocal --> ServerRequest: POST /lock\n        \n        state \"Server Logic\" as ServerLogic {\n            ServerRequest --> CheckDB: SELECT * FROM locks\n            CheckDB --> GrantLock: No active lock found\n            CheckDB --> DenyLock: Active lock exists (User B)\n        }\n    }\n\n    GrantLock --> LockedState: 200 OK\n    DenyLock --> ConflictState: 409 Conflict\n\n    state \"Locked (Editing Allowed)\" as LockedState {\n        [*] --> Editing\n        Editing --> Heartbeat: Every 30s\n        Heartbeat --> ServerUpdate: UPDATE locks SET timestamp\n        ServerUpdate --> Editing: 200 OK\n        \n        Editing --> Unlock: User saves/closes/stops\n    }\n\n    state \"Conflict (Read-Only)\" as ConflictState {\n        [*] --> ShowWarning: Display \"File Locked by User B\"\n        ShowWarning --> Idle: User cancels edit\n    }\n\n    Unlock --> Idle: DELETE /lock (or expiry)\n    \n    note right of Heartbeat\n        Prevents \"Stale Locks\" if\n        PC crashes or loses power.\n    end note",
+  "content_size": 1259,
+  "collected_at": "2026-02-06T10:41:06.727564",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个状态图，描述多人协作编辑时的文件锁定机制。核心问题是：用户打开文件时默认是只读未锁定状态，一旦开始打字就要申请锁。",
+      "elements_involved": [
+        "Idle",
+        "UserAction",
+        "RequestLock",
+        "locked",
+        "read only/unlocked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，所以初始状态叫Idle，触发条件是File Opened，状态标注为Read-Only/Unlocked。用户打字后进入UserAction状态，然后内部有个请求锁的流程？",
+      "elements_involved": [
+        "Idle",
+        "UserAction",
+        "File Opened",
+        "read only/unlocked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，UserAction里面要嵌套一个RequestLock子状态，包含CheckLocal和ServerRequest。ServerRequest是POST /lock到后端。",
+      "elements_involved": [
+        "UserAction",
+        "RequestLock",
+        "CheckLocal",
+        "ServerRequest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我在RequestLock里画好了CheckLocal指向ServerRequest。后端逻辑怎么体现？",
+      "elements_involved": [
+        "RequestLock",
+        "CheckLocal",
+        "ServerRequest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ServerLogic需要再嵌套一层，里面CheckDB查询锁表，分支成GrantLock和DenyLock。GrantLock是没找到活跃锁，DenyLock是User B已经锁定了。",
+      "elements_involved": [
+        "ServerLogic",
+        "CheckDB",
+        "GrantLock",
+        "DenyLock",
+        "User B",
+        "active"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "GrantLock返回200 OK进入LockedState，DenyLock返回409 Conflict进入ConflictState。这两个都是复合状态对吧？",
+      "elements_involved": [
+        "GrantLock",
+        "LockedState",
+        "DenyLock",
+        "ConflictState",
+        "200 OK",
+        "409 Conflict"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。LockedState要标注为Locked (Editing Allowed)，内部初始进入Editing状态，同时要有Heartbeat每30秒更新锁的时间戳。",
+      "elements_involved": [
+        "LockedState",
+        "editing allowed",
+        "Editing",
+        "Heartbeat",
+        "30s"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了，Heartbeat指向ServerUpdate做UPDATE locks，成功返回200 OK回到Editing。用户保存或关闭时走Unlock？",
+      "elements_involved": [
+        "Heartbeat",
+        "ServerUpdate",
+        "Editing",
+        "Unlock",
+        "UPDATE locks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Unlock之后DELETE /lock或者等expiry，回到Idle。ConflictState那边要显示警告信息。",
+      "elements_involved": [
+        "Unlock",
+        "DELETE",
+        "expiry",
+        "Idle",
+        "ConflictState"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ConflictState内部我画了ShowWarning显示File Locked by User B，然后用户可以取消编辑回到Idle。",
+      "elements_involved": [
+        "ConflictState",
+        "ShowWarning",
+        "File Locked by User B",
+        "Idle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，Heartbeat的作用需要加个注释说明，防止电脑崩溃导致死锁。",
+      "elements_involved": [
+        "Heartbeat",
+        "stale locks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已在Heartbeat右侧添加注释：Prevents Stale Locks if PC crashes or loses power。整体结构检查一遍？",
+      "elements_involved": [
+        "Heartbeat",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "有个问题，Idle到UserAction的触发条件应该是User types a character，不是File Opened。File Opened是从[*]到Idle的。",
+      "elements_involved": [
+        "Idle",
+        "UserAction",
+        "User types a character",
+        "File Opened"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，Idle -- UserAction的标注改为User types a character。还有别的调整吗？",
+      "elements_involved": [
+        "Idle",
+        "UserAction",
+        "User types a character"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ServerRequest到CheckDB的箭头应该标注为POST /lock，不是SELECT。SELECT是CheckDB内部的动作。",
+      "elements_involved": [
+        "ServerRequest",
+        "CheckDB",
+        "POST",
+        "SELECT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "明白，ServerRequest -- CheckDB标注POST /lock，CheckDB到GrantLock/DenyLock才是SELECT判断。已更新。",
+      "elements_involved": [
+        "ServerRequest",
+        "CheckDB",
+        "POST /lock",
+        "SELECT"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "现在完整了。从打开文件只读，到打字申请锁，成功进入编辑状态带心跳保活，失败进入冲突提示，最后解锁或过期回到空闲。",
+      "elements_involved": [
+        "Idle",
+        "UserAction",
+        "LockedState",
+        "ConflictState",
+        "Unlock",
+        "Heartbeat"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 17,
+    "repair_count": 2,
+    "grounding_acts_count": 17,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:44Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:28Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:28Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 43930.9738,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 17
+  }
+}

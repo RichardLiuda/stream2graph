@@ -1,0 +1,227 @@
+{
+  "id": "aug_gh_sequence_00961_Clo_6",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/KiritoMainBro88/kiritomainbro-monorepo/blob/f022137c7dc280db2b032ae9e3a88a305fa49167/docs/diagrams/payments_manual.mmd",
+  "github_repo": "KiritoMainBro88/kiritomainbro-monorepo",
+  "github_file_path": "docs/diagrams/payments_manual.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant C as Customer\n    participant W as Web Frontend\n    participant A as API Server\n    participant D as Database\n    participant S as Staff\n    participant F as File Storage\n    \n    Note over C,F: Manual Payment Flow\n    \n    %% Start Payment\n    C->>W: Click \"Pay Now\"\n    W->>A: POST /payments/manual/start\n    Note right of W: {CloudNative_ServiceMesh}\n    \n    A->>D: Create Payment record\n    Note right of A: status: PENDING\n    D-->>A: Payment created\n    A-->>W: {CloudNative_HelmChart}\n    W-->>C: Show payment instructions\n    \n    %% Upload Proof\n    C->>W: Upload payment proof\n    W->>A: POST /payments/manual/proof\n    Note right of W: multipart/form-data<br/>{CloudNative_HelmChart}\n    \n    A->>F: Store proof file\n    Note right of A: Validate file type, size\n    F-->>A: File stored\n    A->>D: Update Payment\n    Note right of A: status: UNDER_REVIEW<br/>proofUrl: file_path\n    D-->>A: Payment updated\n    A-->>W: {CloudNative_DockerImage}\n    W-->>C: \"Payment under review\"\n    \n    %% Staff Review\n    S->>W: Login to admin panel\n    W->>A: GET /admin/payments/pending\n    A->>D: Query pending payments\n    D-->>A: Pending payments\n    A-->>W: List of pending payments\n    W-->>S: Show payment details & proof\n    \n    alt Payment Approved\n        S->>W: Click \"Approve\"\n        W->>A: POST /payments/manual/review\n        Note right of W: {CloudNative_DockerImage}\n        \n        A->>D: Update Payment\n        Note right of A: status: SUCCEEDED<br/>reviewedAt: now(CloudNative_DockerImage)\n        D-->>A: Payment updated\n        \n        A->>D: Update Order\n        Note right of A: status: PAID<br/>paidAt: now(CloudNative_DockerImage)\n        D-->>A: Order updated\n        \n        A->>D: Create Delivery\n        Note right of A: Generate token hash<br/>status: PENDING\n        D-->>A: Delivery created\n        \n        A-->>W: {CloudNative_Serverless}\n        W-->>S: \"Payment approved\"\n        \n        %% Notify Customer\n        A->>D: Create Notification\n        Note right of A: type: PAYMENT_APPROVED\n        D-->>A: Notification created\n        A-->>C: SSE: payment.status\n        \n    else Payment Rejected\n        S->>W: Click \"Reject\"\n        W->>A: POST /payments/manual/review\n        Note right of W: {CloudNative_Serverless}\n        \n        A->>D: Update Payment\n        Note right of A: status: FAILED<br/>reviewedAt: now(CloudNative_Serverless)\n        D-->>A: Payment updated\n        \n        A->>D: Update Order\n        Note right of A: status: CANCELED<br/>canceledAt: now(CloudNative_ServiceMesh)\n        D-->>A: Order updated\n        \n        A-->>W: {CloudNative_ServiceMesh}\n        W-->>S: \"Payment rejected\"\n        \n        %% Notify Customer\n        A->>D: Create Notification\n        Note right of A: type: PAYMENT_REJECTED\n        D-->>A: Notification created\n        A-->>C: SSE: payment.status\n    end\n    \n    %% Customer Response\n    C->>W: Check payment status\n    W->>A: GET /orders/{CloudNative_DockerImage}\n    A->>D: Query order with payment\n    D-->>A: Order data\n    A-->>W: Order details\n    W-->>C: Show updated status\n    \n    alt Payment Approved\n        C->>W: Access delivery\n        W->>A: POST /deliveries/reveal\n        Note right of W: {CloudNative_HelmChart}\n        \n        A->>D: Verify token & update delivery\n        Note right of A: revealsLeft: 0<br/>revealedAt: now(CloudNative_DockerImage)\n        D-->>A: Delivery updated\n        \n        A-->>W: {CloudNative_Serverless}\n        W-->>C: Show delivery content\n    end\n",
+  "content_size": 3413,
+  "collected_at": "2026-02-06T01:51:16.308187",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 2,
+  "repo_forks": 0,
+  "repo_owner": "KiritoMainBro88",
+  "repo_name": "kiritomainbro-monorepo",
+  "repo_description": "KMB monorepo (web + api) with Next.js, NestJS, Prisma, Turborepo, full security hardening and CI/CD",
+  "repo_language": "TypeScript",
+  "repo_topics": [],
+  "repo_created_at": "2025-10-09T16:51:12Z",
+  "repo_updated_at": "2025-10-24T07:26:58Z",
+  "augmentation_domain": "CloudNative",
+  "seed_id": "gh_sequence_00961",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个手动付款流程的时序图，场景是客户通过银行转账付款，然后上传凭证，最后由后台人员审核。参与者包括客户、Web前端、API服务器、数据库、员工和文件存储。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Staff",
+        "File Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，这是一个异步的人工审核流程。我注意到有文件上传，所以File Storage是单独的服务对吧？还有审核结果会有两种分支？",
+      "elements_involved": [
+        "File Storage",
+        "Staff"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，文件存到对象存储。审核通过会创建发货单并通知客户，拒绝则取消订单。两种情况下都要用SSE实时推送给客户。",
+      "elements_involved": [
+        "File Storage",
+        "Staff",
+        "SSE",
+        "Delivery"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主流程：客户点击支付，前端POST到API服务器，服务器创建PENDING状态的支付记录，然后返回支付指引给客户。这里我标注一下用了ServiceMesh。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "POST /payments/manual/start",
+        "PENDING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来客户上传付款凭证，multipart/form-data格式，API要校验文件类型和大小，然后存到File Storage。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "File Storage",
+        "multipart/form-data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：前端POST到/payments/manual/proof，API存储文件后更新支付状态为UNDER_REVIEW，并保存proofUrl。这里标注用HelmChart部署。",
+      "elements_involved": [
+        "Web Frontend",
+        "API Server",
+        "File Storage",
+        "Database",
+        "UNDER_REVIEW",
+        "proofUrl"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在到员工审核环节。员工登录后台，查询待审核列表，看到支付详情和凭证图片。这里用DockerImage部署。",
+      "elements_involved": [
+        "Staff",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "GET /admin/payments/pending"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "员工流程已画。接下来是分支：通过或拒绝。我先用alt块把两种路径分开。通过的话，员工点击Approve，POST到review接口。",
+      "elements_involved": [
+        "Staff",
+        "Web Frontend",
+        "API Server",
+        "POST /payments/manual/review",
+        "alt Payment Approved"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "通过时，支付状态变SUCCEEDED，订单变PAID，同时要创建发货单，生成token哈希，状态是PENDING。然后通知客户。",
+      "elements_involved": [
+        "SUCCEEDED",
+        "PAID",
+        "Delivery",
+        "token hash",
+        "PENDING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已通过路径完成：更新支付和订单，创建Delivery，用Serverless通知客户，SSE推送payment.status。现在画拒绝分支。",
+      "elements_involved": [
+        "Database",
+        "Delivery",
+        "Serverless",
+        "SSE",
+        "Notification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "拒绝时支付状态变FAILED，订单变CANCELED，同样要发通知。两种分支的部署方式略有不同，通过用DockerImage，拒绝用ServiceMesh。",
+      "elements_involved": [
+        "FAILED",
+        "CANCELED",
+        "DockerImage",
+        "ServiceMesh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "拒绝分支已完成。最后客户查询订单状态，如果已通过，可以访问发货内容，需要验证token并更新revealsLeft为0。这里用HelmChart。",
+      "elements_involved": [
+        "Customer",
+        "GET /orders/{id}",
+        "POST /deliveries/reveal",
+        "revealsLeft",
+        "HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整体流程没问题了。确认一下所有云原生标注：ServiceMesh在支付启动和拒绝分支，HelmChart在上传和发货，DockerImage在审核和通过分支，Serverless在通知环节。",
+      "elements_involved": [
+        "CloudNative_ServiceMesh",
+        "CloudNative_HelmChart",
+        "CloudNative_DockerImage",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 13,
+    "repair_count": 0,
+    "grounding_acts_count": 13,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 30646.5852,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 13
+  }
+}

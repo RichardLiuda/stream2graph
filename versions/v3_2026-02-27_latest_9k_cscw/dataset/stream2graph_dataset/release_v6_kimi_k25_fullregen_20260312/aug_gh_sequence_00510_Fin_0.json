@@ -1,0 +1,727 @@
+{
+  "id": "aug_gh_sequence_00510_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/DREAMSCAPE-AI/dreamscape-docs/blob/24aa5a14265601b36ddbbb02c958eea524e6eb11/architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "github_repo": "DREAMSCAPE-AI/dreamscape-docs",
+  "github_file_path": "architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    autonumber\n    actor User as 👤 Utilisateur\n    participant WC as Web Client\n    participant CN as Core NGINX<br/>:80\n    participant Voyage as Voyage Service<br/>:3003\n    participant Payment as Payment Service<br/>:3005\n    participant AI as AI Service<br/>:3004\n    participant PG as PostgreSQL<br/>:5432\n    participant Redis as Redis<br/>:6379\n    participant Kafka as Kafka<br/>:9092\n    participant Stripe as 💳 Stripe API\n\n    rect rgb(FinTech_LedgerService)\n        Note over User,Voyage: Phase 1: Sélection Vol\n        User->>WC: Sélectionne vol<br/>(FinTech_PaymentGateway)\n        WC->>WC: Add to cart<br/>(FinTech_TransactionQueue)\n        User->>WC: Click \"Réserver\"\n        \n        WC->>CN: POST /api/v1/bookings<br/>{FinTech_PaymentGateway}<br/>Authorization: Bearer JWT\n        CN->>CN: Validate JWT (FinTech_FraudDetection)\n        CN->>Voyage: Forward to Voyage<br/>localhost:3003/bookings\n    end\n\n    rect rgb(FinTech_LedgerService)\n        Note over Voyage,Kafka: Phase 2: Création Réservation\n        Voyage->>Voyage: Extract userId from JWT\n        Voyage->>PG: BEGIN transaction\n        Note right of PG: 🔄 ACID transaction<br/>pour cohérence\n        \n        Voyage->>PG: INSERT booking<br/>{FinTech_LedgerService}\n        PG-->>Voyage: Booking created (FinTech_PaymentGateway)\n        \n        Voyage->>Redis: Store booking temp<br/>key: \"booking:temp:bookingId\"<br/>TTL: 15min\n        Note right of Redis: ⏱️ Timeout si paiement<br/>échoue après 15min\n        \n        Voyage->>Kafka: Publish event<br/>Topic: \"voyage.booking.created\"<br/>{FinTech_TransactionQueue}\n        Note left of Kafka: Event-Driven Architecture<br/>- Decoupling services<br/>- Async processing<br/>- Audit trail\n        \n        Voyage-->>CN: 201 Created<br/>{FinTech_AuthVault}\n        CN-->>WC: 201 Created\n    end\n\n    rect rgb(FinTech_AuthVault)\n        Note over WC,Stripe: Phase 3: Demande Paiement\n        WC->>CN: POST /api/v1/payments/intent<br/>{FinTech_LedgerService}<br/>Authorization: Bearer JWT\n        CN->>Payment: Forward to Payment<br/>localhost:3005/payments/intent\n        \n        Payment->>Payment: Extract userId from JWT\n        Payment->>PG: Verify booking exists<br/>SELECT * FROM bookings<br/>WHERE id = bookingId AND userId = userId\n        \n        alt Booking Non Trouvé ❌\n            PG-->>Payment: null\n            Payment-->>CN: 404 Not Found<br/>{FinTech_LedgerService}\n            CN-->>WC: 404 Error\n            WC->>User: ❌ Erreur réservation\n        else Booking Trouvé ✅\n            PG-->>Payment: Booking found\n            Payment->>Stripe: Create PaymentIntent<br/>POST /v1/payment_intents<br/>{FinTech_FraudDetection),<br/>currency: \"eur\",<br/>metadata: {FinTech_FraudDetection}}\n            \n            Stripe-->>Payment: PaymentIntent created<br/>{FinTech_AuthVault}\n            \n            Payment->>PG: INSERT payment<br/>{FinTech_LedgerService}\n            Payment->>Kafka: Publish event<br/>Topic: \"payment.intent.created\"<br/>{FinTech_TransactionQueue}\n            \n            Payment-->>CN: 200 OK<br/>{FinTech_AuthVault}\n            CN-->>WC: 200 OK\n        end\n    end\n\n    rect rgb(FinTech_FraudDetection)\n        Note over WC,Stripe: Phase 4: Paiement Stripe (FinTech_AuthVault)\n        WC->>WC: Initialize Stripe.js<br/>with clientSecret\n        WC->>User: Affiche formulaire carte<br/>(FinTech_TransactionQueue)\n        \n        User->>WC: Saisit infos carte<br/>(FinTech_FraudDetection)\n        WC->>Stripe: POST /v1/payment_intents/:id/confirm<br/>(FinTech_LedgerService)<br/>{FinTech_FraudDetection}\n        \n        Note right of Stripe: 🔒 Sécurité PCI-DSS<br/>- Carte jamais envoyée à notre backend<br/>- Stripe gère tout<br/>- Tokenization automatique\n        \n        alt Paiement Réussi ✅\n            Stripe-->>WC: PaymentIntent succeeded\n            WC->>WC: Display success message\n            WC->>User: ✅ Paiement accepté\n        else Paiement Échoué ❌\n            Stripe-->>WC: PaymentIntent failed<br/>(FinTech_AuthVault)\n            WC->>User: ❌ \"Paiement refusé\"<br/>(FinTech_TransactionQueue)\n        end\n    end\n\n    rect rgb(FinTech_PaymentGateway)\n        Note over Stripe,Kafka: Phase 5: Webhook Stripe (FinTech_TransactionQueue)\n        Stripe->>Payment: POST /webhooks/stripe<br/>Stripe-Signature header<br/>{FinTech_TransactionQueue}}\n        \n        Payment->>Payment: Verify signature<br/>stripe.webhooks.constructEvent(FinTech_AuthVault)\n        \n        alt Signature Invalide ❌\n            Payment-->>Stripe: 400 Bad Request\n            Note right of Payment: Protection contre<br/>webhooks forgés\n        else Signature Valide ✅\n            Payment->>PG: UPDATE payment<br/>SET status = \"SUCCEEDED\"<br/>WHERE stripePaymentIntentId = id\n            \n            Payment->>PG: UPDATE booking<br/>SET status = \"CONFIRMED\"<br/>WHERE id = bookingId\n            \n            Payment->>Redis: Delete temp booking<br/>DEL \"booking:temp:bookingId\"\n            \n            Payment->>Kafka: Publish event<br/>Topic: \"payment.succeeded\"<br/>{FinTech_TransactionQueue}\n            \n            Payment-->>Stripe: 200 OK\n        end\n    end\n\n    rect rgb(FinTech_PaymentGateway)\n        Note over Kafka,User: Phase 6: Traitement Async (FinTech_PaymentGateway)\n        Kafka->>Voyage: Consume event<br/>\"payment.succeeded\"\n        Voyage->>PG: SELECT booking details\n        Voyage->>Voyage: Generate confirmation email<br/>(FinTech_AuthVault)\n        Voyage->>User: 📧 Email confirmation<br/>+ PDF billet\n        \n        Kafka->>AI: Consume event<br/>\"voyage.booking.created\"\n        AI->>PG: Get user profile<br/>+ booking history\n        AI->>AI: Update ML model<br/>(FinTech_TransactionQueue)\n        Note right of AI: 🤖 AI learning<br/>from user behavior\n        AI->>Redis: Update recommendations<br/>key: \"reco:userId\"\n    end\n\n    rect rgb(FinTech_PaymentGateway)\n        Note over WC,User: Phase 7: Confirmation Frontend\n        loop Polling every 2s\n            WC->>CN: GET /api/v1/bookings/:bookingId\n            CN->>Voyage: Forward request\n            Voyage->>PG: SELECT booking<br/>WHERE id = bookingId\n            \n            alt Status = CONFIRMED ✅\n                PG-->>Voyage: Booking confirmed\n                Voyage-->>CN: 200 OK<br/>{FinTech_PaymentGateway}\n                CN-->>WC: 200 OK\n                WC->>WC: Stop polling\n                WC->>WC: Redirect /bookings/:id\n                WC->>User: ✅ Affiche confirmation<br/>+ détails voyage\n            else Status = PENDING ⏳\n                PG-->>Voyage: Booking still pending\n                Voyage-->>CN: 200 OK<br/>{FinTech_AuthVault}\n                CN-->>WC: 200 OK (FinTech_TransactionQueue)\n                Note right of WC: ⏱️ Après 15min<br/>réservation annulée<br/>automatiquement\n            end\n        end\n    end\n\n    Note over User,Kafka: 📊 Performance Réservation<br/>Create booking: ~100-150ms<br/>Payment intent: ~500-800ms (FinTech_TransactionQueue)<br/>Confirmation: ~1-2s (FinTech_PaymentGateway)<br/>Email: ~3-5s (FinTech_LedgerService)<br/><br/>🔒 Fiabilité<br/>- Transaction ACID (FinTech_AuthVault)<br/>- Idempotency keys (FinTech_FraudDetection)<br/>- Webhook retry (FinTech_FraudDetection)<br/>- Event sourcing (FinTech_AuthVault)",
+  "content_size": 7218,
+  "collected_at": "2026-02-06T01:33:16.963511",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gh_sequence_00510",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为新的金融科技预订系统设计一个完整的序列图，涵盖从用户选航班到最终确认的七个阶段。核心要体现我们的FinTech组件：PaymentGateway、TransactionQueue、LedgerService、AuthVault和FraudDetection。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "FinTech_PaymentGateway",
+        "FinTech_TransactionQueue",
+        "FinTech_LedgerService",
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个航空预订场景。我注意到您提到了七个阶段，能否先确认一下整体架构？我看到有Web Client、Core NGINX作为入口，后面是Voyage Service和Payment Service两个业务服务，对吗？",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，Voyage Service在3003端口处理航班相关，Payment Service在3005端口处理支付。另外还有一个AI Service在3004端口，用于后续的用户行为分析。基础设施层有PostgreSQL、Redis和Kafka。",
+      "elements_involved": [
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我建议用rect块来组织七个阶段，每个阶段用不同的FinTech组件颜色标识。第一阶段是航班选择，用户通过Web Client选航班，加入购物车，然后点击预订。这里需要体现FinTech_PaymentGateway的介入点。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "FinTech_PaymentGateway",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是的，Add to cart操作要标记为FinTech_TransactionQueue，因为这是异步的队列行为。点击Réserver后，Web Client向Core NGINX发送POST /api/v1/bookings请求，需要带上JWT Authorization。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "FinTech_PaymentGateway",
+        "Authorization",
+        "JWT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在NGINX层加了JWT验证，标记为FinTech_FraudDetection。验证通过后转发到Voyage Service的localhost:3003/bookings端点。第一阶段用FinTech_LedgerService的颜色包裹。",
+      "elements_involved": [
+        "Core NGINX",
+        "FinTech_FraudDetection",
+        "Voyage Service",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第二阶段是创建预订，这是关键的事务环节。Voyage Service要从JWT提取userId，然后开启PostgreSQL的ACID事务。这里必须强调事务的一致性，要加个注释说明。",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "ACID",
+        "userId",
+        "JWT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下，INSERT booking操作标记为FinTech_LedgerService对吗？因为这是核心的账本操作。然后需要把临时预订存到Redis，设置15分钟TTL，防止支付失败后数据残留。",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "FinTech_LedgerService",
+        "Redis",
+        "TTL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。Redis的key格式是\"booking:temp:bookingId\"，TTL 15分钟。同时要向Kafka发布voyage.booking.created事件，标记为FinTech_TransactionQueue。我需要你加个注释说明这是Event-Driven Architecture，用于解耦、异步处理和审计。",
+      "elements_involved": [
+        "Redis",
+        "Kafka",
+        "voyage.booking.created",
+        "FinTech_TransactionQueue",
+        "Event-Driven Architecture"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Voyage Service返回201 Created给NGINX，标记为FinTech_AuthVault，表示安全上下文已建立。然后NGINX返回给Web Client。第二阶段完成。",
+      "elements_involved": [
+        "Voyage Service",
+        "Core NGINX",
+        "Web Client",
+        "201 Created",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第三阶段是支付请求，用FinTech_LedgerService颜色。Web Client发送POST /api/v1/payments/intent，经过同样的NGINX转发到Payment Service。这里需要先验证预订是否存在。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Payment Service",
+        "FinTech_LedgerService",
+        "POST /api/v1/payments/intent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Payment Service查询PostgreSQL验证bookingId和userId匹配。这里我设计了一个alt分支：如果预订不存在返回404，标记为FinTech_LedgerService；如果存在则继续支付流程。这样对吗？",
+      "elements_involved": [
+        "Payment Service",
+        "PostgreSQL",
+        "bookingId",
+        "userId",
+        "404 Not Found",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，错误路径要清晰。成功路径中，Payment Service调用Stripe API创建PaymentIntent，标记为FinTech_FraudDetection，因为这里涉及风控。需要传currency: \"eur\"和metadata。",
+      "elements_involved": [
+        "Payment Service",
+        "Stripe API",
+        "PaymentIntent",
+        "FinTech_FraudDetection",
+        "currency",
+        "metadata"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Stripe返回PaymentIntent created，标记为FinTech_AuthVault。然后Payment Service向PostgreSQL INSERT payment记录，标记FinTech_LedgerService，同时向Kafka发布payment.intent.created事件。最后返回200 OK。",
+      "elements_involved": [
+        "Stripe API",
+        "Payment Service",
+        "PostgreSQL",
+        "Kafka",
+        "payment.intent.created",
+        "FinTech_AuthVault",
+        "FinTech_LedgerService",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第四阶段是Stripe支付流程，用FinTech_AuthVault颜色。Web Client用Stripe.js初始化，展示卡号输入表单，标记为FinTech_TransactionQueue。用户输入后，直接发给Stripe确认。",
+      "elements_involved": [
+        "Web Client",
+        "Stripe.js",
+        "Stripe API",
+        "FinTech_AuthVault",
+        "FinTech_TransactionQueue",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有个安全要点：卡号信息直接发给Stripe，不经过我们的后端。我需要在Stripe旁边加注释说明PCI-DSS合规、Tokenization自动处理。确认POST端点是/v1/payment_intents/:id/confirm？",
+      "elements_involved": [
+        "Web Client",
+        "Stripe API",
+        "PCI-DSS",
+        "Tokenization",
+        "POST /v1/payment_intents/:id/confirm"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认。这个请求标记为FinTech_LedgerService和FinTech_FraudDetection双重标签。然后需要alt分支处理成功和失败两种情况。成功显示确认，失败显示\"Paiement refusé\"。",
+      "elements_involved": [
+        "Stripe API",
+        "FinTech_LedgerService",
+        "FinTech_FraudDetection",
+        "Paiement réussi",
+        "Paiement refusé",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第四阶段完成。失败路径标记为FinTech_AuthVault。现在进入第五阶段Stripe Webhook，用FinTech_TransactionQueue颜色。Stripe POST到Payment Service的/webhooks/stripe端点，带Stripe-Signature头部。",
+      "elements_involved": [
+        "Stripe API",
+        "Payment Service",
+        "POST /webhooks/stripe",
+        "Stripe-Signature",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Webhook安全很重要。Payment Service要用stripe.webhooks.constructEvent验证签名，标记为FinTech_AuthVault。无效签名返回400，有效签名才更新数据库。",
+      "elements_involved": [
+        "Payment Service",
+        "stripe.webhooks.constructEvent",
+        "FinTech_AuthVault",
+        "400 Bad Request"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "验证通过后，Payment Service执行两个UPDATE：payment表状态改为SUCCEEDED，booking表状态改为CONFIRMED，都标记FinTech_LedgerService。然后删除Redis的临时key，向Kafka发布payment.succeeded事件。",
+      "elements_involved": [
+        "Payment Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "SUCCEEDED",
+        "CONFIRMED",
+        "payment.succeeded",
+        "FinTech_LedgerService",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。第五阶段完成，返回200 OK给Stripe。第六阶段是异步处理，用FinTech_PaymentGateway颜色。Voyage Service消费payment.succeeded事件，生成确认邮件和PDF机票。",
+      "elements_involved": [
+        "Payment Service",
+        "Stripe API",
+        "200 OK",
+        "Voyage Service",
+        "Kafka",
+        "payment.succeeded",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "邮件发送标记为FinTech_AuthVault。同时AI Service消费voyage.booking.created事件，获取用户画像和预订历史，更新ML模型，标记FinTech_TransactionQueue，然后把推荐结果写回Redis。",
+      "elements_involved": [
+        "Voyage Service",
+        "User",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "voyage.booking.created",
+        "FinTech_AuthVault",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我需要修正一下。voyage.booking.created事件是在第二阶段发布的，不是第六阶段。AI Service应该消费这个事件来做实时分析，而不是等到支付成功后。让我调整一下时序逻辑。",
+      "elements_involved": [
+        "AI Service",
+        "Kafka",
+        "voyage.booking.created",
+        "Phase 2",
+        "Phase 6"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，AI Service在第六阶段消费的是之前发布的事件，这是合理的异步延迟处理。我会在AI旁边加注释说明\"AI learning from user behavior\"。",
+      "elements_involved": [
+        "AI Service",
+        "AI learning",
+        "user behavior",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第七阶段是前端确认，用FinTech_PaymentGateway颜色。Web Client每2秒轮询GET /api/v1/bookings/:bookingId查询状态。这里需要loop结构。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "GET /api/v1/bookings/:bookingId",
+        "polling",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "轮询逻辑用loop every 2s。内部用alt分支：如果状态是CONFIRMED，停止轮询，重定向到详情页，标记FinTech_PaymentGateway；如果还是PENDING，继续轮询，标记FinTech_AuthVault。需要注释说明15分钟后自动取消吗？",
+      "elements_involved": [
+        "Web Client",
+        "loop",
+        "CONFIRMED",
+        "PENDING",
+        "FinTech_PaymentGateway",
+        "FinTech_AuthVault",
+        "15min timeout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要，在PENDING分支加注释说明15分钟后自动取消，标记FinTech_TransactionQueue。最后在整个图底部加性能指标注释：创建预订100-150ms，支付意图500-800ms，确认1-2秒，邮件3-5秒。",
+      "elements_involved": [
+        "PENDING",
+        "15min timeout",
+        "FinTech_TransactionQueue",
+        "performance metrics",
+        "Create booking",
+        "Payment intent",
+        "Confirmation",
+        "Email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加性能指标。同时我加了可靠性说明：ACID事务、幂等键、Webhook重试、事件溯源，分别对应FinTech_AuthVault、FinTech_FraudDetection、FinTech_FraudDetection、FinTech_AuthVault。",
+      "elements_involved": [
+        "ACID",
+        "Idempotency keys",
+        "Webhook retry",
+        "Event sourcing",
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "整体结构看起来完整了。但我注意到第四阶段的alt分支中，失败路径的标记是FinTech_AuthVault，而成功路径没有明确标记。是否应该统一？",
+      "elements_involved": [
+        "Phase 4",
+        "alt",
+        "PaymentIntent succeeded",
+        "PaymentIntent failed",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "成功路径主要是Stripe和Web Client之间的交互，用户看到成功消息，这个流程本身不涉及我们的FinTech组件标记。失败路径需要FinTech_AuthVault是因为后续需要处理错误状态。保持现状是合理的。",
+      "elements_involved": [
+        "Stripe",
+        "Web Client",
+        "User",
+        "FinTech_AuthVault",
+        "success path",
+        "failure path"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意。再检查一下第一阶段的rect颜色，FinTech_LedgerService的rgb值需要和其他阶段区分明显。另外，所有FinTech标签的括号格式要保持一致。",
+      "elements_involved": [
+        "FinTech_LedgerService",
+        "rgb",
+        "FinTech_PaymentGateway",
+        "FinTech_TransactionQueue",
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "检查了所有rect块的rgb设置，FinTech_LedgerService用于Phase 1-2，FinTech_AuthVault用于Phase 3-4，FinTech_TransactionQueue用于Phase 5，FinTech_PaymentGateway用于Phase 6-7。括号格式统一为(FinTech_XXX)。",
+      "elements_involved": [
+        "rect rgb",
+        "FinTech_LedgerService",
+        "FinTech_AuthVault",
+        "FinTech_TransactionQueue",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Kafka的注释需要再丰富一点，强调三个价值：服务解耦、异步处理、审计追踪。这在金融科技场景很关键，监管需要完整的操作记录。",
+      "elements_involved": [
+        "Kafka",
+        "Decoupling services",
+        "Async processing",
+        "Audit trail",
+        "regulatory compliance"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新Kafka注释，包含三点：Event-Driven Architecture - Decoupling services - Async processing - Audit trail。同时Redis的注释也明确了15分钟超时机制。",
+      "elements_involved": [
+        "Kafka",
+        "Redis",
+        "Event-Driven Architecture",
+        "Decoupling",
+        "Async processing",
+        "Audit trail",
+        "Timeout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "PG的ACID注释用🔄图标很好，但能否加上法语说明\"pour cohérence\"？我们的系统主要面向法语区用户。同样，Redis的超时用⏱️图标，Stripe的PCI-DSS用🔒图标。",
+      "elements_involved": [
+        "PostgreSQL",
+        "ACID",
+        "🔄",
+        "pour cohérence",
+        "Redis",
+        "⏱️",
+        "Stripe",
+        "PCI-DSS",
+        "🔒"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加所有图标和法语说明。PG: 🔄 ACID transaction pour cohérence；Redis: ⏱️ Timeout si paiement échoue après 15min；Stripe: 🔒 Sécurité PCI-DSS。AI部分加了🤖图标。",
+      "elements_involved": [
+        "🔄",
+        "⏱️",
+        "🔒",
+        "🤖",
+        "ACID",
+        "Timeout",
+        "PCI-DSS",
+        "AI learning"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下autonumber的使用，从1开始连续编号。User的图标用👤，Stripe用💳，邮件用📧，这些视觉元素有助于业务团队理解。",
+      "elements_involved": [
+        "autonumber",
+        "👤 Utilisateur",
+        "💳 Stripe API",
+        "📧 Email confirmation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有视觉元素已就位。参与者别名也设置好了：User as 👤 Utilisateur，WC as Web Client，CN as Core NGINX<br/:80，Voyage as Voyage Service<br/:3003，等等。端口信息清晰展示。",
+      "elements_involved": [
+        "actor User",
+        "participant WC",
+        "participant CN",
+        "participant Voyage",
+        "participant Payment",
+        "participant AI",
+        "participant PG",
+        "participant Redis",
+        "participant Kafka",
+        "participant Stripe"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "第三阶段和第四阶段都涉及Stripe，但第三阶段是服务端创建PaymentIntent，第四阶段是客户端确认支付。这个区分在图里够清晰吗？",
+      "elements_involved": [
+        "Phase 3",
+        "Phase 4",
+        "PaymentIntent",
+        "Stripe API",
+        "Stripe.js",
+        "client-side",
+        "server-side"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "清晰。Phase 3是Payment Service → Stripe，标记FinTech_FraudDetection，服务端行为；Phase 4是Web Client → Stripe，标记FinTech_LedgerService和FinTech_FraudDetection，客户端行为。流程方向不同，参与者也不同。",
+      "elements_involved": [
+        "Payment Service",
+        "Web Client",
+        "Stripe API",
+        "server-side",
+        "client-side",
+        "FinTech_FraudDetection",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。最后检查：所有Note over和Note right of的位置是否避免了重叠？特别是Phase 2有多个注释，Phase 4的PCI-DSS注释在右边。",
+      "elements_involved": [
+        "Note over",
+        "Note right of",
+        "Note left of",
+        "Phase 2",
+        "Phase 4",
+        "layout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "布局已优化。Phase 2: Note over User,Voyage为Phase 1标签，Note over Voyage,Kafka为Phase 2标签，Note right of PG为ACID，Note right of Redis为Timeout，Note left of Kafka为Event-Driven。Phase 4: Note right of Stripe为PCI-DSS。无重叠。",
+      "elements_involved": [
+        "Note over User,Voyage",
+        "Note over Voyage,Kafka",
+        "Note right of PG",
+        "Note right of Redis",
+        "Note left of Kafka",
+        "Note right of Stripe"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "性能注释的格式再调整一下，用📊 Performance Réservation作为标题，每项指标后标注对应的FinTech组件。这样技术团队能快速定位优化点。",
+      "elements_involved": [
+        "📊 Performance Réservation",
+        "Create booking",
+        "Payment intent",
+        "Confirmation",
+        "Email",
+        "FinTech_TransactionQueue",
+        "FinTech_PaymentGateway",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终注释：📊 Performance Réservation<br/Create booking: ~100-150ms<br/Payment intent: ~500-800ms (FinTech_TransactionQueue)<br/Confirmation: ~1-2s (FinTech_PaymentGateway)<br/Email: ~3-5s (FinTech_LedgerService)<br/<br/🔒 Fiabilité<br/- Transaction ACID (FinTech_AuthVault)<br/- Idempotency keys (FinTech_FraudDetection)<br/- Webhook retry (FinTech_FraudDetection)<br/- Event sourcing (FinTech_AuthVault)",
+      "elements_involved": [
+        "📊",
+        "🔒",
+        "Performance Réservation",
+        "Fiabilité",
+        "FinTech_TransactionQueue",
+        "FinTech_PaymentGateway",
+        "FinTech_LedgerService",
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个序列图完整展现了从航班选择到支付确认的端到端流程，七个阶段清晰，FinTech组件职责明确，安全、性能、可靠性都有体现。可以定稿了。",
+      "elements_involved": [
+        "sequenceDiagram",
+        "autonumber",
+        "seven phases",
+        "FinTech components",
+        "security",
+        "performance",
+        "reliability"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 45,
+    "repair_count": 1,
+    "grounding_acts_count": 45,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 122015.0836,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 45
+  }
+}

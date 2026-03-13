@@ -1,0 +1,178 @@
+{
+  "id": "aug_ot_stateDiagram_00081_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Avanade/approval-system/blob/1d4cbda1315be561fa4d8c70f4b2e1b104e86f8c/docs/diagrams/review-state-machine.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Avanade/approval-system",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [IoT_Industrial_ActuatorController] --> New\n    state New {IoT_Industrial_PLC_Logic] --> Incomplete\n        Incomplete --> DataComplete : FormSubmission\n    }\n    New --> InReview\n    state InReview {IoT_Industrial_PLC_Logic] --> AwaitingLegalReview\n        AwaitingLegalReview --> AwaitingResponse : LegalQuestionsRaised\n        AwaitingResponse --> AwaitingLegalReview : LegalResponsesProvided\n        AwaitingLegalReview --> OutcomeProvided : LegalOutcomeProvided\n        state legal_if_state <<choice>>\n        OutcomeProvided --> legal_if_state\n        legal_if_state --> LegalApproved: if LegalOutcome == approve\n        legal_if_state --> LegalRejected : if LegalOutcome == reject\n        LegalApproved --> [IoT_Industrial_PLC_Logic]\n        LegalRejected --> [IoT_Industrial_TelemetryStream]\n        --\n        [IoT_Industrial_TelemetryStream] --> AwaitingIPScan\n        AwaitingIPScan --> IpScanComplete\n        state ip_if_state <<choice>>\n        IpScanComplete --> ip_if_state\n        ip_if_state --> IpApproved: if ScanOutcome == no_findings\n        ip_if_state --> AwaitingIpReview: if ScanOutcome == inconclusive\n        ip_if_state --> IpRejected: if ScanOutcome == findings\n        AwaitingIpReview --> AwaitingIpResponse : LegalQuestionsRaised\n        AwaitingIpResponse --> AwaitingIpReview : LegalResponsesProvided\n        AwaitingIpReview --> IpOutcomeProvided : LegalOutcomeProvided\n        state legal_ip_if_state <<choice>>\n        IpOutcomeProvided --> legal_ip_if_state\n        legal_ip_if_state --> IpApproved: if LegalOutcome == approve\n        legal_ip_if_state --> IpRejected : if LegalOutcome == reject\n        AwaitingIpReview --> AwaitingIPScan: Dependencies modified\n        IpRejected --> AwaitingIPScan: Dependencies modified\n        IpApproved --> AwaitingIPScan: Dependencies modified\n        IpRejected --> [IoT_Industrial_PLC_Logic]\n        IpApproved --> [IoT_Industrial_MQTT_Broker]\n        --\n        [IoT_Industrial_MQTT_Broker] --> AwaitingSecurityScan\n        AwaitingSecurityScan --> SecurityScanComplete\n        state security_if_state <<choice>>\n        SecurityScanComplete --> security_if_state\n        security_if_state --> SecurityApproved: if no_findings\n        security_if_state --> SecurityRejected: if inconclusive\n        security_if_state --> SecurityRejected: if security findings\n        SecurityApproved --> AwaitingSecurityScan: Code updates identified\n        SecurityRejected --> AwaitingSecurityScan: Code updates identified\n        SecurityApproved --> [IoT_Industrial_MQTT_Broker]\n        SecurityRejected --> [IoT_Industrial_TelemetryStream]\n    }\n    state inreview_if_state <<choice>>\n    InReview --> inreview_if_state\n    inreview_if_state --> Rejected: One or more check failed\n    inreview_if_state --> Approved: All checks pass\n    Approved --> NonCompliant: Periodic IP or security scan raises noncompliance\n    NonCompliant --> Retired: Noncompliance not mitigated\n    NonCompliant --> Approved: Compliance issue resolved\n    Approved --> Retired: Repository no longer required\n    Rejected --> [IoT_Industrial_EdgeNode]\n    Retired --> [IoT_Industrial_MQTT_Broker]\n",
+  "content_size": 2852,
+  "collected_at": "2026-02-06T10:37:39.824174",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 5,
+  "repo_forks": 0,
+  "repo_owner": "Avanade",
+  "repo_name": "approval-system",
+  "repo_description": "A re-usable system for providing approvals and rejections, reusable in many projects.",
+  "repo_language": "HTML",
+  "repo_topics": [],
+  "repo_created_at": "2022-05-27T10:07:33Z",
+  "repo_updated_at": "2026-01-06T15:03:36Z",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00081",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网组件设计一个完整的状态流转图，覆盖从ActuatorController创建到最终退役的全生命周期。核心是PLC Logic、Telemetry Stream、MQTT Broker和Edge Node这四个实体之间的状态迁移。",
+      "elements_involved": [
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我理解为ActuatorController触发New状态，然后PLC Logic先经历Incomplete到DataComplete的表单提交流程，再进入InReview。但InReview内部似乎有两条并行的审查线？",
+      "elements_involved": [
+        "New",
+        "Incomplete",
+        "DataComplete",
+        "FormSubmission",
+        "InReview"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，InReview是复合状态。第一条线是针对Telemetry Stream的知识产权审查：AwaitingIPScan扫描后，根据结果可能直接IpApproved、进入AwaitingIpReview人工复核，或者IpRejected。如果Dependencies modified，还要能回到AwaitingIPScan重新扫描。",
+      "elements_involved": [
+        "InReview",
+        "IoT_Industrial_TelemetryStream",
+        "AwaitingIPScan",
+        "IpScanComplete",
+        "ip_if_state",
+        "IpApproved",
+        "AwaitingIpReview",
+        "IpRejected",
+        "Dependencies"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我画出了IP审查分支。注意到AwaitingIpReview也有法律复核环节，LegalQuestionsRaised和LegalResponsesProvided的往返，最终通过legal_ip_if_state判断。IpApproved后流向MQTT Broker，IpRejected则回到PLC Logic。",
+      "elements_involved": [
+        "AwaitingIpReview",
+        "AwaitingIpResponse",
+        "LegalQuestionsRaised",
+        "LegalResponsesProvided",
+        "IpOutcomeProvided",
+        "legal_ip_if_state",
+        "IpApproved",
+        "IpRejected",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "MQTT Broker之后还有SecurityScan环节。SecurityScanComplete之后用security_if_state判断，无论SecurityApproved还是SecurityRejected，如果Code updates identified都要能回到AwaitingSecurityScan。SecurityApproved保持在MQTT Broker，SecurityRejected则降级到Telemetry Stream。",
+      "elements_involved": [
+        "IoT_Industrial_MQTT_Broker",
+        "AwaitingSecurityScan",
+        "SecurityScanComplete",
+        "security_if_state",
+        "SecurityApproved",
+        "SecurityRejected",
+        "Code updates"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "InReview的出口我理解是用inreview_if_state做最终判断：One or more check failed走向Rejected到EdgeNode，All checks pass则Approved。但Approved之后还有NonCompliant和Retired的分支？",
+      "elements_involved": [
+        "inreview_if_state",
+        "Rejected",
+        "Approved",
+        "IoT_Industrial_EdgeNode",
+        "NonCompliant",
+        "Retired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。Approved后可能因Periodic IP or security scan raises noncompliance进入NonCompliant。NonCompliant可以 resolved 回到Approved，也可能 not mitigated 走向Retired。另外Approved也可以直接Retired如果Repository no longer required。Retired最终流向MQTT Broker。",
+      "elements_involved": [
+        "Approved",
+        "NonCompliant",
+        "Retired",
+        "Periodic IP scan",
+        "security scan",
+        "Compliance issue resolved",
+        "Repository no longer required",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。整个状态图覆盖了New到InReview的准入、IP审查与法律复核、安全扫描、最终裁决，以及Approved后的持续合规监控和退役路径。所有分支条件都对应上了。",
+      "elements_involved": [
+        "New",
+        "InReview",
+        "AwaitingLegalReview",
+        "AwaitingIPScan",
+        "AwaitingSecurityScan",
+        "Approved",
+        "Rejected",
+        "Retired"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 27272.064,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

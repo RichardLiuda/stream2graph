@@ -1,0 +1,379 @@
+{
+  "id": "gh_flowchart_00519",
+  "source": "github",
+  "source_url": "https://github.com/latamteks-cmyk/SmartEdify_V0/blob/34fdfc99a3484fc1ed44636443cac359163616ae/docs/design/diagrams/outbox-flow.mmd",
+  "github_repo": "latamteks-cmyk/SmartEdify_V0",
+  "github_file_path": "docs/design/diagrams/outbox-flow.mmd",
+  "diagram_type": "flowchart",
+  "code": "---\nid: outbox-flow\ntitle: \"SmartEdify – Outbox Flow\"\ndescription: \"Flowchart of the transactional outbox pipeline from domain commit to broker acknowledgement and metrics.\"\nupdated: 2025-02-14\ntags: [\"eventing\", \"outbox\", \"flowchart\"]\n---\nflowchart TD\n    subgraph Domain TX\n        A[Domain Aggregate Change]\n        B[Persist Aggregate]\n        C[Insert Outbox Row JSON]\n    end\n\n    A --> B --> C -->|Commit| D[TX Commit]\n    D --> E[Outbox Poller / Publisher Loader]\n    E --> F[Deserialize + Envelope Enrichment]\n    F --> G[Produce to Kafka]\n    G --> H[Broker ACK]\n    H --> I[Mark Outbox Row as SENT]\n    I --> J[Metrics: outbox_sent_total, outbox_latency_seconds]\n\n    E -->|Failure| R1[Retry w/ backoff]\n    R1 --> E\n    E -->|Poison/Max Retries| P[Mark as FAILED + dead_letter=true]\n    P --> J\n\n    classDef ok fill:#dfffdc,stroke:#2d8a2d\n    classDef risk fill:#ffe4e1,stroke:#d33\n    classDef proc fill:#e6f0ff,stroke:#1b75d1\n\n    class A,B,C,D,E,F,G,H,I,J proc\n    class P risk\n",
+  "content_size": 994,
+  "collected_at": "2026-02-06T01:44:38.343146",
+  "compilation_status": "success",
+  "compilation_error": "",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要把SmartEdify的Outbox流程可视化一下，核心是展示从领域事务提交到最终Kafka投递的完整链路。先画一个Domain TX的子图，里面包含Domain Aggregate Change、Persist Aggregate和Insert Outbox Row JSON这三个步骤。",
+      "elements_involved": [
+        "Domain TX",
+        "Domain Aggregate Change",
+        "Persist Aggregate",
+        "Insert Outbox Row JSON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这三个都在同一个事务边界内。那事务提交节点TX Commit是放在子图内部还是外部？从语义上看，Commit应该是子图的出口。",
+      "elements_involved": [
+        "TX Commit",
+        "Domain TX"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，TX Commit放在子图外面，作为整个事务的终点。然后用虚线箭头把A、B、C串起来指向D，标注Commit。",
+      "elements_involved": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "Commit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，子图和事务提交流程已画好。接下来是Outbox Poller的部分？",
+      "elements_involved": [
+        "Outbox Poller / Publisher Loader"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Poller作为独立节点E，从TX Commit之后开始。然后需要Deserialize + Envelope Enrichment，这是F节点。注意这里不是直接发Kafka，要先做数据转换。",
+      "elements_involved": [
+        "E",
+        "F",
+        "Deserialize",
+        "Envelope Enrichment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Deserialize具体指什么？是解析Outbox Row里的JSON吗？",
+      "elements_involved": [
+        "Deserialize",
+        "Outbox Row JSON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，就是把Insert Outbox Row JSON时写入的JSON反序列化成领域事件，然后加上追踪ID、时间戳等enrichment信息。",
+      "elements_involved": [
+        "Deserialize",
+        "Envelope Enrichment",
+        "Outbox Row JSON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "F节点已添加。接下来是Produce to Kafka？",
+      "elements_involved": [
+        "G",
+        "Produce to Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，G节点是Produce to Kafka，然后H是Broker ACK，这是关键的成功反馈。收到ACK后才能标记已发送。",
+      "elements_involved": [
+        "G",
+        "H",
+        "Produce to Kafka",
+        "Broker ACK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "G和H已连接。I节点应该是Mark Outbox Row as SENT？",
+      "elements_involved": [
+        "I",
+        "Mark Outbox Row as SENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，I节点。然后最后J是Metrics，要记录outbox_sent_total和outbox_latency_seconds两个指标。",
+      "elements_involved": [
+        "I",
+        "J",
+        "Metrics",
+        "outbox_sent_total",
+        "outbox_latency_seconds"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "主链路看起来是D→E→F→G→H→I→J。但异常流程呢？Poller失败怎么处理？",
+      "elements_involved": [
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "Failure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要两条异常分支。E节点出发，一条是Failure到R1，Retry w/ backoff，然后回到E重试。另一条是Poison/Max Retries到P节点，Mark as FAILED + dead_letter=true。",
+      "elements_involved": [
+        "E",
+        "R1",
+        "Retry w/ backoff",
+        "P",
+        "Poison/Max Retries",
+        "dead_letter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "异常分支已添加。P节点之后连到哪里？",
+      "elements_involved": [
+        "P"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "P也要连到J，因为即使进入死信，也要记录metrics，只是标签不同。",
+      "elements_involved": [
+        "P",
+        "J",
+        "metrics"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "样式方面需要区分吗？主流程和异常流程用不同颜色？",
+      "elements_involved": [
+        "classDef",
+        "ok",
+        "risk",
+        "proc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要三个class。ok用绿色#dfffdc，risk用红色#ffe4e1，proc用蓝色#e6f0ff。主流程A到J都用proc，P用risk。",
+      "elements_involved": [
+        "ok",
+        "risk",
+        "proc",
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "P"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "样式已应用。检查一遍：R1是Retry节点，需要class吗？",
+      "elements_involved": [
+        "R1",
+        "classDef"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "R1也应该用proc，它是正常重试机制的一部分。另外我注意到E到R1的箭头标注是Failure，E到P是Poison/Max Retries，这两个标注要清晰。",
+      "elements_involved": [
+        "R1",
+        "proc",
+        "E",
+        "Failure",
+        "Poison/Max Retries"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整，R1加入proc类。再确认一下：主链路是顺序执行，Retry是循环回E，Dead letter是单向到P再到J。",
+      "elements_involved": [
+        "R1",
+        "E",
+        "P",
+        "J"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "对的。还有，TX Commit到E的箭头，以及Commit标注的位置，要确保在D→E之间。",
+      "elements_involved": [
+        "TX Commit",
+        "D",
+        "E",
+        "Commit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "D→E已确认，Commit标注只在A-B-C-D链路上。标题用\"SmartEdify – Outbox Flow\"可以吗？",
+      "elements_involved": [
+        "title",
+        "SmartEdify – Outbox Flow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，描述写\"Flowchart of the transactional outbox pipeline from domain commit to broker acknowledgement and metrics.\"",
+      "elements_involved": [
+        "description",
+        "transactional outbox pipeline",
+        "domain commit",
+        "broker acknowledgement",
+        "metrics"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部完成。最后验证：子图Domain TX包含A、B、C；D是事务提交；E是Poller；F是Deserialize；G是Produce；H是ACK；I是标记已发送；J是Metrics；R1是Retry；P是Dead letter。样式：主流程proc，P用risk。",
+      "elements_involved": [
+        "Domain TX",
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "R1",
+        "P",
+        "proc",
+        "risk"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美，就是这个结构。突出了事务边界、投递可靠性、失败处理和可观测性四个关键点。",
+      "elements_involved": [
+        "事务边界",
+        "投递可靠性",
+        "失败处理",
+        "可观测性"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 25,
+    "repair_count": 1,
+    "grounding_acts_count": 25,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:40Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 48261.4877,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 25
+  }
+}

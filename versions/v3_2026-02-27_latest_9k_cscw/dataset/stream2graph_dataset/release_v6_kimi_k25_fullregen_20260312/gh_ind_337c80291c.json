@@ -1,0 +1,152 @@
+{
+  "id": "gh_ind_337c80291c",
+  "source": "github_industrial",
+  "repo": "ropfuscator/ropfuscator",
+  "license": "other",
+  "code": "%% Mermaid UML diagram\nsequenceDiagram\n\nparticipant LLVM as (LLVM backend)\nparticipant Pass as : X86ROPfuscator\nparticipant Core as : ROPfuscatorCore\nparticipant ROP  as : ROPEngine\nparticipant RCB  as : ROPChainBuilder\nparticipant BA   as : BinaryAutopsy\nparticipant ELF  as : ELFParser\nLLVM ->>  + Pass : runOnMachineFunction()\nPass ->>  + Core : obfuscateFunction()\nopt if BinaryAutopsy is not initialized\nCore -->> + BA   : getInstance()\nBA   -->> + ELF  : <<create>>\nELF  -->> - BA   : ELFParser\nBA   ->>    BA   : dissect()\nactivate    BA\nBA   -->    BA   : dumpSegments()\nBA   -->    BA   : dumpGadgets()\nBA   -->    BA   : buildXchgGraph()\ndeactivate  BA\nBA   -->> - Core : BinaryAutopsy\nend %% opt\nloop for each MachineBasicBlock\nloop for each MachineInstr\nCore -->> + ROP  : <<create>>\nCore ->>    ROP  : ropify()\nROP  ->>    ROP  : handleXXX()\nactivate    ROP\nROP  -->> + RCB  : <<create>>\nROP  ->>    RCB  : append()\nROP  ->>    RCB  : build()\nRCB  ->>  + BA   : findGadgetPrimitive()\nBA   -->> - RCB  : ROPChain\nRCB  ->>  + BA   : undoXchgs()\nBA   -->> - RCB  : ROPChain\nRCB  -->> - ROP  : ROPChain\ndeactivate  ROP\nROP  -->> - Core : ROPChain\nend %% for each MachineInstr\nCore ->>    Core : insertROPChain()\nactivate    Core\ndeactivate  Core\nend %% for each MachineBasicBlock\nCore -->> - Pass : .\nPass -->> - LLVM : .\n",
+  "diagram_type": "participant size:900..1500",
+  "collected_at": "2026-02-27T03:38:49.302493",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个ROPfuscator的完整工作流时序图。核心是从LLVM后端开始，经过X86ROPfuscator这个Pass，最终把机器指令转换成ROP链。最上面要有六个参与者：LLVM backend、X86ROPfuscator、ROPfuscatorCore、ROPEngine、ROPChainBuilder，还有BinaryAutopsy和ELFParser这两个工具类。",
+      "elements_involved": [
+        "LLVM backend",
+        "X86ROPfuscator",
+        "ROPfuscatorCore",
+        "ROPEngine",
+        "ROPChainBuilder",
+        "BinaryAutopsy",
+        "ELFParser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，BinaryAutopsy和ELFParser是延迟初始化的对吧？我打算用一个opt块包裹，条件是\"if BinaryAutopsy is not initialized\"。然后里面Core调用getInstance()获取单例，BA再创建ELFParser，接着BA自己执行dissect、dumpSegments、dumpGadgets、buildXchgGraph这几个内部操作。这样符合你的设计吗？",
+      "elements_involved": [
+        "BinaryAutopsy",
+        "ELFParser",
+        "opt",
+        "getInstance",
+        "dissect",
+        "dumpSegments",
+        "dumpGadgets",
+        "buildXchgGraph"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，那个activate和deactivate要标在BA的生命线上，表示它在活跃处理。初始化完成后BA把BinaryAutopsy实例返回给Core。接下来进入主循环——两层嵌套loop，外层遍历每个MachineBasicBlock，内层遍历每个MachineInstr。",
+      "elements_involved": [
+        "activate",
+        "deactivate",
+        "MachineBasicBlock",
+        "MachineInstr",
+        "loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把初始化的opt块画好。然后在内层循环里，Core创建ROPEngine，调用ropify()，ROPEngine内部handleXXX处理，同时创建ROPChainBuilder，执行append和build。这里RCB需要两次调用BA的方法：findGadgetPrimitive获取原始gadget，还有undoXchgs处理交换指令，对吗？",
+      "elements_involved": [
+        "ROPEngine",
+        "ropify",
+        "handleXXX",
+        "ROPChainBuilder",
+        "append",
+        "build",
+        "findGadgetPrimitive",
+        "undoXchgs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，两次调用BA返回的都是ROPChain。注意ROP的生命周期——activate从ropify开始，到RCB返回ROPChain之后deactivate。然后ROP把链返回给Core，内层loop结束。外层loop结束前Core要执行insertROPChain，这个也要activate/deactivate标一下。",
+      "elements_involved": [
+        "ROPChain",
+        "activate",
+        "deactivate",
+        "insertROPChain"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "稍等，我检查了一下，ROP返回ROPChain给Core之后，内层loop就结束了，但ROP的deactivate应该放在返回之前还是之后？按照规范，返回消息发出时生命期就结束，所以deactivate要放在\"ROP -- - Core : ROPChain\"之前。我调整一下顺序。",
+      "elements_involved": [
+        "ROPEngine",
+        "deactivate",
+        "ROPChain"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "调整得好。最后确认下收尾：内层loop结束后，外层loop里Core调用insertROPChain，然后外层loop结束，Core返回给Pass，Pass再返回给LLVM backend。整个流程是完整的。",
+      "elements_involved": [
+        "ROPfuscatorCore",
+        "X86ROPfuscator",
+        "LLVM backend",
+        "insertROPChain"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成了。整个时序图已经按你的要求画好：从runOnMachineFunction和obfuscateFunction开始，经过可选的BinaryAutopsy初始化，两层嵌套循环处理所有指令，最终通过ROPChainBuilder构建ROP链并插入。所有activate/deactivate和返回消息都对应正确。",
+      "elements_involved": [
+        "runOnMachineFunction",
+        "obfuscateFunction",
+        "ROPChainBuilder",
+        "activate",
+        "deactivate"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:40Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 30534.4319,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

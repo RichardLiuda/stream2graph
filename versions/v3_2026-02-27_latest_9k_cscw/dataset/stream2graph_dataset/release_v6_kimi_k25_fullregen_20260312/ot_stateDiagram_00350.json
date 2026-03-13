@@ -1,0 +1,167 @@
+{
+  "id": "ot_stateDiagram_00350",
+  "source": "other",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/jwt-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "stateDiagram",
+  "code": "%%{init: {\n  'theme': 'base',\n  'themeVariables': {\n    'primaryColor': '#9333ea',\n    'primaryTextColor': '#fff',\n    'primaryBorderColor': '#7e22ce',\n    'lineColor': '#e5e7eb',\n    'secondaryColor': '#f3f4f6',\n    'tertiaryColor': '#fbbf24',\n    'background': '#ffffff'\n  }\n}}%%\nstateDiagram-v2\n    [*] --> ChallengeRequested: User initiates login\n\n    ChallengeRequested --> ChallengeGenerated: Generate challenge\n    ChallengeGenerated --> ChallengeExpired: TTL expires (5 min)\n    ChallengeExpired --> [*]: Challenge invalid\n\n    ChallengeGenerated --> SignatureCreated: User signs challenge\n    SignatureCreated --> SignatureVerified: Backend verifies\n    SignatureCreated --> VerificationFailed: Invalid signature\n    VerificationFailed --> [*]: Authentication failed\n\n    SignatureVerified --> TokenGenerated: Create JWT\n    TokenGenerated --> SessionCreated: Create session\n    SessionCreated --> TokenActive: Token in use\n\n    TokenActive --> TokenUsed: API request\n    TokenUsed --> TokenActive: Update activity\n    TokenActive --> TokenRefreshed: Refresh request\n    TokenRefreshed --> NewTokenGenerated: Generate new token\n    NewTokenGenerated --> TokenActive: Continue session\n\n    TokenActive --> TokenExpired: 24h TTL\n    TokenExpired --> TokenRefreshed: Auto-refresh\n    TokenExpired --> SessionExpired: No refresh\n    SessionExpired --> [*]: Requires re-authentication\n\n    TokenActive --> TokenRevoked: User logout\n    TokenRevoked --> SessionTerminated: Clear session\n    SessionTerminated --> [*]: Logged out\n\n    TokenActive --> SessionRevoked: Admin action\n    SessionRevoked --> [*]: Force logout\n\n    note right of ChallengeGenerated\n        Challenge stored with:\n        - 5 minute TTL\n        - Unique nonce\n        - Pubkey binding\n    end note\n\n    note right of TokenActive\n        Token contains:\n        - NOSTR pubkey\n        - Session ID\n        - Role (creator/supporter/admin)\n        - Issue/Expiry times\n    end note\n\n    note right of TokenRefreshed\n        Refresh maintains:\n        - Same session\n        - Updated timestamps\n        - Activity tracking\n    end note",
+  "content_size": 2111,
+  "collected_at": "2026-02-06T10:41:04.795580",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的认证状态机，从用户发起登录开始。首先有个ChallengeRequested状态，用户点击登录后进入这里，然后系统生成挑战值到ChallengeGenerated。",
+      "elements_involved": [
+        "ChallengeRequested",
+        "ChallengeGenerated",
+        "User initiates login"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，挑战生成后有个5分钟的过期时间对吧？我看到有ChallengeExpired这个状态。还有用户签名之后是SignatureCreated，然后后端验证。",
+      "elements_involved": [
+        "ChallengeExpired",
+        "TTL expires (5 min)",
+        "SignatureCreated",
+        "SignatureVerified"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，验证失败走VerificationFailed直接结束，成功的话创建JWT进入TokenGenerated，然后建立会话到SessionCreated。TokenActive是核心状态，所有API请求都从这里走。",
+      "elements_involved": [
+        "VerificationFailed",
+        "Authentication failed",
+        "TokenGenerated",
+        "SessionCreated",
+        "TokenActive",
+        "TokenUsed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主线画出来。TokenActive之后有TokenUsed表示API请求，然后回到TokenActive更新活动状态。还有刷新机制，TokenRefreshed到NewTokenGenerated再回到TokenActive。",
+      "elements_involved": [
+        "TokenUsed",
+        "Update activity",
+        "TokenRefreshed",
+        "NewTokenGenerated",
+        "Continue session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要补充过期和终止的分支。TokenActive如果24小时没刷新会TokenExpired，这时候可以自动刷新回到TokenRefreshed，也可以没刷新导致SessionExpired需要重新认证。另外用户主动logout走TokenRevoked。",
+      "elements_involved": [
+        "TokenExpired",
+        "24h TTL",
+        "Auto-refresh",
+        "SessionExpired",
+        "Requires re-authentication",
+        "TokenRevoked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "TokenRevoked之后是SessionTerminated然后结束，对吗？还有管理员强制下线的分支，SessionRevoked直接终止。",
+      "elements_involved": [
+        "SessionTerminated",
+        "Logged out",
+        "SessionRevoked",
+        "Admin action",
+        "Force logout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。另外加三个注释：ChallengeGenerated那里说明5分钟TTL和nonce绑定；TokenActive注明包含NOSTR公钥、会话ID和角色信息；TokenRefreshed说明保持同一会话只更新时间戳。",
+      "elements_involved": [
+        "ChallengeGenerated note",
+        "5 minute TTL",
+        "Unique nonce",
+        "Pubkey binding",
+        "TokenActive note",
+        "NOSTR pubkey",
+        "Role (creator/supporter/admin)",
+        "TokenRefreshed note",
+        "Same session",
+        "Activity tracking"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成了，状态机涵盖了完整的登录流程、令牌生命周期、自动刷新、用户登出和管理员强制下线，三个关键节点的注释也加上了。",
+      "elements_involved": [
+        "[*]",
+        "ChallengeRequested",
+        "ChallengeGenerated",
+        "ChallengeExpired",
+        "SignatureCreated",
+        "SignatureVerified",
+        "VerificationFailed",
+        "TokenGenerated",
+        "SessionCreated",
+        "TokenActive",
+        "TokenUsed",
+        "TokenRefreshed",
+        "NewTokenGenerated",
+        "TokenExpired",
+        "SessionExpired",
+        "TokenRevoked"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:44Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:28Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:28Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 24556.8204,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

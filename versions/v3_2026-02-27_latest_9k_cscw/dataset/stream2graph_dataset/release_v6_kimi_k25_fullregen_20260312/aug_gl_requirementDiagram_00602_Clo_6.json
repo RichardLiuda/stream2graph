@@ -1,0 +1,280 @@
+{
+  "id": "aug_gl_requirementDiagram_00602_Clo_6",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ylmzunal/scalable-llm-over-kubernetes-deployment/blob/1b46a8e09526433e25151879ff4c084c2da2dd58/diagrams/deployment_sequence_diagram.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ylmzunal/scalable-llm-over-kubernetes-deployment",
+  "diagram_type": "requirementDiagram",
+  "code": "sequenceDiagram\n    participant DEV as Developer\n    participant GIT as Git Repository\n    participant DOCKER as Docker Build\n    participant AR as Artifact Registry\n    participant GKE as GKE Cluster\n    participant K8S as Kubernetes API\n    participant POD as Backend Pod\n    participant OL as Ollama Container\n    participant HPA as HPA Controller\n    \n    Note over DEV,HPA: CI/CD Deployment Pipeline\n    \n    DEV->>+GIT: git push (CloudNative_HelmChart)\n    GIT->>-DEV: Push confirmed\n    \n    DEV->>+DOCKER: ./deploy-gke.sh\n    DOCKER->>DOCKER: Validate Prerequisites\n    DOCKER->>DOCKER: Setup GCloud Auth\n    \n    Note over DOCKER,AR: Image Build Process\n    DOCKER->>+DOCKER: Build Ollama Image\n    Note over DOCKER: FROM ollama/ollama:latest<br/>RUN ollama pull tinyllama\n    DOCKER->>-DOCKER: Ollama Image Ready\n    \n    DOCKER->>+DOCKER: Build Backend Image\n    Note over DOCKER: FROM python:3.11<br/>COPY app/ requirements.txt\n    DOCKER->>-DOCKER: Backend Image Ready\n    \n    DOCKER->>+DOCKER: Build Frontend Image\n    Note over DOCKER: FROM node:18 (CloudNative_ServiceMesh)<br/>FROM nginx:alpine (CloudNative_ServiceMesh)\n    DOCKER->>-DOCKER: Frontend Image Ready\n    \n    DOCKER->>+AR: Push Images\n    AR->>AR: Store Images with Tags\n    AR->>-DOCKER: Push Complete\n    \n    Note over DOCKER,HPA: Kubernetes Deployment\n    DOCKER->>+K8S: kubectl apply -f k8s/rbac.yaml\n    K8S->>-DOCKER: RBAC Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/configmap-cloud.yaml\n    K8S->>-DOCKER: ConfigMap Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/backend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Backend Pods\n    \n    K8S->>+POD: Create Backend Pod\n    POD->>+AR: Pull Backend Image\n    AR->>-POD: Image Downloaded\n    POD->>+AR: Pull Ollama Image\n    AR->>-POD: Image Downloaded\n    \n    Note over POD,OL: Pod Startup Sequence\n    POD->>+OL: Start Ollama Container\n    OL->>OL: Initialize Ollama Server\n    OL->>OL: Load TinyLlama Model (CloudNative_Serverless)\n    OL->>-POD: Ollama Ready (CloudNative_HelmChart)\n    \n    POD->>+POD: Start FastAPI Container\n    POD->>POD: Initialize FastAPI App\n    POD->>+OL: Test Connection (CloudNative_K8sCluster)\n    OL->>-POD: Connection Successful\n    POD->>-POD: FastAPI Ready\n    \n    POD->>+K8S: Report Pod Ready\n    K8S->>-POD: Readiness Confirmed\n    K8S->>-DOCKER: Backend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/frontend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Frontend Pods\n    K8S->>-DOCKER: Frontend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/hpa-cloud.yaml\n    K8S->>+HPA: Create HPA Resources\n    HPA->>HPA: Monitor Backend Metrics\n    HPA->>-K8S: HPA Active\n    K8S->>-DOCKER: HPA Applied\n    \n    DOCKER->>+K8S: kubectl get services\n    K8S->>-DOCKER: External IP Available\n    DOCKER->>-DEV: Deployment Complete<br/>App URL: http://EXTERNAL-IP\n    \n    Note over DEV,HPA: Health Verification\n    DEV->>+GKE: curl http://EXTERNAL-IP/health\n    GKE->>+POD: Route Health Check\n    POD->>+OL: Verify Ollama Status\n    OL->>-POD: Status OK\n    POD->>-GKE: Health Check Passed\n    GKE->>-DEV: 200 OK\n    \n    Note over DEV,HPA: Auto-scaling Verification\n    HPA->>+POD: Monitor CPU/Memory\n    POD->>-HPA: Metrics: CPU 30%, Memory 40%\n    HPA->>HPA: Within Thresholds (CloudNative_Serverless)\n    \n    Note over DEV,HPA: Rolling Update Process\n    DEV->>+DOCKER: Deploy New Version\n    DOCKER->>+AR: Push Updated Images\n    AR->>-DOCKER: Images Updated\n    \n    DOCKER->>+K8S: kubectl apply (CloudNative_HelmChart)\n    K8S->>K8S: Rolling Update Strategy\n    K8S->>+POD: Create New Pod\n    POD->>POD: Start New Version\n    POD->>-K8S: New Pod Ready\n    K8S->>K8S: Terminate Old Pod\n    K8S->>-DOCKER: Rolling Update Complete\n    DOCKER->>-DEV: Update Successful",
+  "content_size": 3703,
+  "collected_at": "2026-02-06T14:13:15.259540",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "CloudNative",
+  "seed_id": "gl_requirementDiagram_00602",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的云原生部署流程图，从开发者提交代码开始，一直到GKE集群上的自动扩缩容。核心是要体现CloudNative HelmChart、K8sCluster和Serverless这几个关键概念。",
+      "elements_involved": [
+        "Developer",
+        "GKE Cluster",
+        "CloudNative_HelmChart",
+        "CloudNative_K8sCluster",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这个流程涉及CI/CD和Kubernetes部署。我想确认一下参与者的划分：开发者作为起点，Git仓库触发构建，然后Docker构建推送到Artifact Registry，最后在GKE上通过Kubernetes API调度Pod？",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "Kubernetes API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但还要加上Backend Pod和Ollama Container这两个关键组件，以及HPA Controller做自动扩缩容。另外需要体现ServiceMesh的概念，Frontend要用nginx做代理。",
+      "elements_involved": [
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller",
+        "CloudNative_ServiceMesh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先搭建主框架。顶部加一个整体说明Note，标注这是CI/CD Deployment Pipeline。然后按顺序排列参与者：Developer、Git Repository、Docker Build、Artifact Registry、GKE Cluster、Kubernetes API、Backend Pod、Ollama Container、HPA Controller。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster",
+        "Kubernetes API",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "开发者推送代码到Git Repository这一步要体现CloudNative_HelmChart的标签，因为这是我们的部署规范。然后Docker Build阶段要分三步：Ollama镜像、Backend镜像、Frontend镜像，每个都要有具体的Dockerfile说明。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：DEV到GIT的git push消息带CloudNative_HelmChart标签，GIT返回Push confirmed。然后在Docker Build内部加了验证和认证步骤，接着是Image Build Process的Note，下面分三个并行构建：Ollama用ollama/ollama:latest基础镜像并pull tinyllama，Backend用python:3.11，Frontend用node:18和nginx:alpine的双阶段构建。",
+      "elements_involved": [
+        "Docker Build",
+        "Ollama Container",
+        "Backend Pod",
+        "Frontend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Frontend的Dockerfile要标注CloudNative_ServiceMesh，因为我们要用Istio做服务网格。还有，Ollama镜像构建完成后，在Pod启动时也要体现CloudNative_HelmChart的状态标记。",
+      "elements_involved": [
+        "Frontend",
+        "CloudNative_ServiceMesh",
+        "Ollama Container",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，Frontend的FROM node:18和FROM nginx:alpine都加上了CloudNative_ServiceMesh标注。Ollama Ready的状态也加上了CloudNative_HelmChart标记。现在继续Kubernetes部署部分：Docker Build推送镜像到Artifact Registry后，开始apply RBAC、ConfigMap和各个deployment。",
+      "elements_involved": [
+        "Artifact Registry",
+        "Kubernetes API",
+        "RBAC",
+        "ConfigMap"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Backend Pod的启动序列要详细画出来：先拉取两个镜像，然后启动Ollama Container，初始化Serverless模式的TinyLlama模型，再启动FastAPI容器，最后测试与Ollama的连接。这里要标注CloudNative_K8sCluster。",
+      "elements_involved": [
+        "Backend Pod",
+        "Ollama Container",
+        "CloudNative_Serverless",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已细化Pod Startup Sequence：POD从AR拉取Backend和Ollama镜像，然后启动Ollama Container，内部初始化Server并加载TinyLlama模型（标注CloudNative_Serverless），返回Ollama Ready（标注CloudNative_HelmChart）。接着启动FastAPI，测试连接时标注CloudNative_K8sCluster，确认成功后报告Pod Ready。",
+      "elements_involved": [
+        "Backend Pod",
+        "Ollama Container",
+        "Artifact Registry",
+        "Kubernetes API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "HPA Controller的部分要体现它监控的是Backend Pod的指标，而且阈值判断也要标注CloudNative_Serverless。最后还要有一个Rolling Update的流程，展示我们如何零停机更新。",
+      "elements_involved": [
+        "HPA Controller",
+        "Backend Pod",
+        "CloudNative_Serverless",
+        "Rolling Update"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了HPA部分：DOCKER apply hpa-cloud.yaml后，K8S创建HPA Resources，HPA监控Backend Metrics，返回HPA Active。然后加了Health Verification流程：DEV通过GKE路由到POD做健康检查，POD再验证Ollama状态。最后是Auto-scaling Verification：HPA监控CPU/Memory，显示30%/40%，标注Within Thresholds (CloudNative_Serverless)。",
+      "elements_involved": [
+        "HPA Controller",
+        "GKE Cluster",
+        "Developer",
+        "Backend Pod",
+        "Ollama Container"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Rolling Update的流程要完整：开发者触发新版本部署，推送更新镜像，然后Kubernetes用HelmChart规范执行滚动更新，创建新Pod、启动新版本、就绪后终止旧Pod。这样整个生命周期就闭环了。",
+      "elements_involved": [
+        "Developer",
+        "Docker Build",
+        "Artifact Registry",
+        "Kubernetes API",
+        "Backend Pod",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Rolling Update Process已添加：DEV触发Deploy New Version，DOCKER推送Updated Images到AR，然后kubectl apply带CloudNative_HelmChart标注。K8S执行Rolling Update Strategy，创建New Pod、启动New Version、确认Ready后Terminate Old Pod，最后返回Update Successful。",
+      "elements_involved": [
+        "Developer",
+        "Docker Build",
+        "Artifact Registry",
+        "Kubernetes API",
+        "Backend Pod",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "整体结构没问题了。但我注意到最开始Docker Build推送镜像到AR之后，返回消息应该是Push Complete而不是其他表述。还有最后获取External IP的步骤也要保留。",
+      "elements_involved": [
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正：AR返回Docker的消息已改为Push Complete。最后添加了DOCKER执行kubectl get services，K8S返回External IP Available，然后DOCKER向DEV报告Deployment Complete和App URL。这样整个流程从代码提交到服务访问完全贯通。",
+      "elements_involved": [
+        "Docker Build",
+        "Artifact Registry",
+        "Kubernetes API",
+        "Developer"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个时序图完整展示了从Git提交、多镜像构建、K8s部署、Pod启动、HPA扩缩容到滚动更新的全流程，CloudNative的各个关键概念也都标注到位了。可以定稿。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster",
+        "Kubernetes API",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 17,
+    "repair_count": 1,
+    "grounding_acts_count": 17,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 48019.29,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 17
+  }
+}

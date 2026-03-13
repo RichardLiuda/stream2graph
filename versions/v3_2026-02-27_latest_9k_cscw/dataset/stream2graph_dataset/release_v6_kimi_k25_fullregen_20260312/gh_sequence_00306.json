@@ -1,0 +1,158 @@
+{
+  "id": "gh_sequence_00306",
+  "source": "github",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_FIRMWARE/blob/615cebd32230a26c23013f1c75381475e12c0b93/diagrams/ACQ_AND_TRANSMIT_EXTERNAL.mmd",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_FIRMWARE",
+  "github_file_path": "diagrams/ACQ_AND_TRANSMIT_EXTERNAL.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Client as Client\n    participant DataTrans as data_transmission.c\n    participant Acquisition as acquisition.c\n    \n    Client->>DataTrans: Connect to data socket\n    activate DataTrans\n    \n    Note over DataTrans,Acquisition: External ADC already initialized during startup\n    \n    alt mode == 0 (Continuous)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit()\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Client: non_blocking_send() buffer\n            \n            opt Socket change detected\n                DataTrans->>DataTrans: Break acquisition loop\n            end\n        end\n    else mode == 1 (Single trigger)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit()\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Acquisition: pcnt_unit_get_count()\n            Acquisition-->>DataTrans: Current counter state\n            \n            alt Edge detected (counter changed)\n                DataTrans->>Client: non_blocking_send() buffer\n            end\n        end\n    end\n    \n    Client->>DataTrans: Disconnect\n    DataTrans->>DataTrans: safe_close(client_sock)\n    deactivate DataTrans",
+  "content_size": 1551,
+  "collected_at": "2026-02-06T01:30:28.886154",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个序列图，描述客户端和data_transmission.c模块之间的数据交互流程。主要场景是客户端连接后，通过SPI从acquisition.c获取ADC数据，有两种工作模式：连续采集和单次触发。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "Continuous",
+        "Single trigger"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我注意到您提到SPI通信，那spi_mutex的获取和释放需要在图上体现吗？还有，External ADC的初始化是在什么时候完成的？",
+      "elements_involved": [
+        "spi_mutex",
+        "External ADC",
+        "Acquisition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，spi_mutex的take和release都要画出来，这是关键同步点。External ADC是在系统启动时就初始化好的，不是在这个流程里，所以加个note说明一下就行。",
+      "elements_involved": [
+        "spi_mutex",
+        "Note over DataTrans,Acquisition",
+        "External ADC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主框架：Client连接data socket，然后进入alt分支。第一种是mode==0的Continuous模式，这里有个loop循环，每次循环里DataTrans先拿spi_mutex，调用spi_device_polling_transmit，等SPI完成后再释放mutex，然后non_blocking_send给客户端。",
+      "elements_involved": [
+        "Client-DataTrans: Connect to data socket",
+        "alt mode == 0 (Continuous)",
+        "loop Until client disconnects",
+        "DataTrans-Acquisition: Take spi_mutex",
+        "DataTrans-Acquisition: spi_device_polling_transmit()",
+        "Acquisition--DataTrans: SPI transaction complete",
+        "DataTrans-Acquisition: Release spi_mutex",
+        "DataTrans-Client: non_blocking_send() buffer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，Continuous模式里还需要一个opt分支——如果检测到socket变化，要break出acquisition loop。这个安全退出机制不能漏。",
+      "elements_involved": [
+        "opt Socket change detected",
+        "DataTrans-DataTrans: Break acquisition loop"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已加上opt Socket change detected的判断和break。现在画else分支的Single trigger模式：同样是loop循环和SPI传输，但多了pcnt_unit_get_count获取计数器状态，然后alt判断counter是否变化，有边沿才发送数据。",
+      "elements_involved": [
+        "else mode == 1 (Single trigger)",
+        "DataTrans-Acquisition: pcnt_unit_get_count()",
+        "Acquisition--DataTrans: Current counter state",
+        "alt Edge detected (counter changed)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Single trigger模式的逻辑是对的——只有counter changed时才触发non_blocking_send。最后客户端断开连接时，DataTrans要执行safe_close关闭client_sock。",
+      "elements_involved": [
+        "Client-DataTrans: Disconnect",
+        "DataTrans-DataTrans: safe_close(client_sock)",
+        "deactivate DataTrans"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下整体流程：Client连接→判断mode→Continuous或Single trigger两种采集循环→客户端断开→safe_close。activate和deactivate也标记在DataTrans上。",
+      "elements_involved": [
+        "activate DataTrans",
+        "deactivate DataTrans"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，这个流程完整了。两种模式的核心区别就是Continuous无脑发数据，Single trigger要等边沿检测，其他SPI和mutex逻辑保持一致。",
+      "elements_involved": [
+        "Continuous",
+        "Single trigger",
+        "spi_mutex",
+        "Edge detected"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 1,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 24254.6995,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 9
+  }
+}

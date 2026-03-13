@@ -1,0 +1,649 @@
+{
+  "id": "aug_gl_block-beta_00226_Ret_8",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/bsbodden/barudb/blob/dc97c4d833ff103d104f2e68bfec8fba50980d8e/final_report/diagrams/block_cache_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "bsbodden/barudb",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client Code\n    participant BlockCache as Block Cache\n    participant EvictionPolicy as Eviction Policy\n    participant TTLManager as TTL Manager\n    participant Storage as Storage Layer\n    \n    %% Define participant boxes with consistent colors\n    rect rgba(Retail_CouponSystem)\n        note right of BlockCache: Cache components\n        note right of EvictionPolicy: Policy components\n        note right of TTLManager: TTL components\n    end\n    rect rgba(Retail_Inventory)\n        note right of Storage: Storage components\n    end\n    \n    %% Block cache operations\n    Client->>BlockCache: get_block(Retail_CustomerLoyalty)\n    \n    %% Check if block is in cache\n    BlockCache->>BlockCache: lookup(Retail_CustomerLoyalty)\n    \n    alt block found in cache\n        %% Update access statistics\n        BlockCache->>EvictionPolicy: record_access(Retail_CustomerLoyalty)\n        EvictionPolicy-->>BlockCache: updated_metadata\n        \n        %% Check if TTL expired\n        BlockCache->>TTLManager: is_expired(Retail_PointOfSale)\n        \n        alt block expired\n            TTLManager-->>BlockCache: true\n            BlockCache->>BlockCache: remove_from_cache(Retail_CouponSystem)\n            \n            %% Load from storage\n            BlockCache->>Storage: read_block(Retail_Inventory)\n            Storage-->>BlockCache: block_data\n            \n            %% Insert back with refreshed TTL\n            BlockCache->>TTLManager: set_expiry(Retail_Inventory)\n            BlockCache->>EvictionPolicy: add_entry(Retail_OrderManagement)\n            \n            BlockCache-->>Client: block_data\n        else block not expired\n            TTLManager-->>BlockCache: false\n            BlockCache-->>Client: cached_block_data\n        end\n    else block not found in cache\n        %% Load from storage\n        BlockCache->>Storage: read_block(Retail_CouponSystem)\n        Storage-->>BlockCache: block_data\n        \n        %% Check if cache is full\n        BlockCache->>EvictionPolicy: is_cache_full(Retail_Inventory)\n        \n        alt cache full - need eviction\n            EvictionPolicy-->>BlockCache: true\n            \n            %% Policy determines what to evict\n            BlockCache->>EvictionPolicy: select_victim(Retail_PointOfSale)\n            \n            alt using LRU policy\n                note right of EvictionPolicy: Least Recently Used block selected\n            else using LFU policy\n                note right of EvictionPolicy: Least Frequently Used block selected\n            else using TinyLFU policy\n                note right of EvictionPolicy: Frequency sketch determines victim\n            end\n            \n            EvictionPolicy-->>BlockCache: victim_block_id\n            \n            %% Evict the selected block\n            BlockCache->>BlockCache: evict_block(Retail_OrderManagement)\n            BlockCache->>TTLManager: remove_expiry(Retail_PointOfSale)\n        else cache has space\n            EvictionPolicy-->>BlockCache: false\n        end\n        \n        %% Insert new block\n        BlockCache->>BlockCache: insert_block(Retail_Inventory)\n        BlockCache->>EvictionPolicy: add_entry(Retail_Inventory)\n        EvictionPolicy-->>BlockCache: success\n        BlockCache->>TTLManager: set_expiry(Retail_Inventory)\n        TTLManager-->>BlockCache: success\n        \n        BlockCache-->>Client: block_data\n    end\n    \n    %% Periodic TTL cleanup (Retail_PointOfSale)\n    loop TTL cleanup interval\n        TTLManager->>TTLManager: check_expired_entries(Retail_CustomerLoyalty)\n        \n        loop For each expired entry\n            TTLManager->>BlockCache: notify_expired(Retail_OrderManagement)\n            BlockCache->>BlockCache: remove_from_cache(Retail_CustomerLoyalty)\n            BlockCache->>EvictionPolicy: remove_entry(Retail_OrderManagement)\n        end\n    end",
+  "content_size": 3655,
+  "collected_at": "2026-02-06T14:04:54.927677",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Retail",
+  "seed_id": "gl_block-beta_00226",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个块缓存系统的时序图，核心场景是零售业务中的客户忠诚度数据访问流程。先确定几个关键参与者：客户端代码、块缓存、淘汰策略模块、TTL管理器和存储层。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，五个参与者。我注意到您提到了零售业务，是否需要用颜色区分不同业务域？比如把缓存相关组件和存储组件分开展示？",
+      "elements_involved": [
+        "Retail_CouponSystem",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好想法。把BlockCache、EvictionPolicy、TTLManager放在Retail_CouponSystem的色块里，Storage单独放在Retail_Inventory色块中。这样视觉上能区分缓存层和持久化层。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Retail_CouponSystem",
+        "Storage Layer",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已设置好两个矩形区域。现在开始主流程：客户端要获取Retail_CustomerLoyalty这个数据块？",
+      "elements_involved": [
+        "Client Code",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，客户端发起get_block请求。第一步是BlockCache在内部做lookup检查。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "lookup",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了Client到BlockCache的get_block调用，以及BlockCache内部的lookup自循环。接下来分两种情况：缓存命中和未命中？",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "lookup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。先处理命中情况：BlockCache需要通知EvictionPolicy记录这次访问，更新元数据。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "record_access",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加BlockCache到EvictionPolicy的record_access调用，以及返回updated_metadata的虚线。接下来要检查TTL？",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "updated_metadata"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，但这里有个细节：检查TTL时用的是Retail_PointOfSale，不是CustomerLoyalty。这是为了演示不同业务数据的交叉验证场景。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "is_expired",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下：lookup查的是CustomerLoyalty，但TTL检查用PointOfSale？这看起来像是数据块之间的关联检查，还是笔误？",
+      "elements_involved": [
+        "Retail_CustomerLoyalty",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "不是笔误。实际场景中，客户忠诚度数据的有效期可能和POS交易时间窗口绑定。保留这个设计，体现业务耦合。",
+      "elements_involved": [
+        "Retail_CustomerLoyalty",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "理解了。已添加BlockCache到TTLManager的is_expired检查。TTL过期的话怎么处理？",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "is_expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "如果过期，TTLManager返回true，BlockCache要从缓存中移除这个数据块——注意这里移除的是Retail_CouponSystem，表示整个优惠券系统的缓存条目清理。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "remove_from_cache",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有点跳跃：is_expired检查的是PointOfSale，但remove_from_cache操作的是CouponSystem？这三个业务域的关系我需要理清楚。",
+      "elements_involved": [
+        "Retail_PointOfSale",
+        "Retail_CouponSystem",
+        "remove_from_cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "好问题。PointOfSale是时间基准，CouponSystem是实际存储容器，CustomerLoyalty是具体数据块。过期判断基于POS时间，但清理动作影响的是优惠券系统的缓存空间。这是多租户缓存的设计。",
+      "elements_involved": [
+        "Retail_PointOfSale",
+        "Retail_CouponSystem",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了。已添加过期分支：TTLManager返回true，BlockCache执行remove_from_cache(CouponSystem)。然后从Storage加载新数据？",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "Storage Layer",
+        "read_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，从Storage读取Retail_Inventory的数据，然后重新设置TTL，这次用Inventory作为参数——表示以库存系统的时效为准。",
+      "elements_involved": [
+        "Storage Layer",
+        "Block Cache",
+        "read_block",
+        "Retail_Inventory",
+        "TTL Manager",
+        "set_expiry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Storage返回block_data，以及BlockCache到TTLManager的set_expiry(Inventory)。还需要更新EvictionPolicy的条目？",
+      "elements_involved": [
+        "Storage Layer",
+        "Block Cache",
+        "TTL Manager",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，调用add_entry，传入Retail_OrderManagement。这个订单管理参数表示新条目的优先级分组。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "add_entry",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加add_entry调用。最后BlockCache把数据返回给Client。那如果TTL没过期呢？",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "Client Code"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "简单路径：TTLManager返回false，BlockCache直接把cached_block_data返回给Client。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "Client Code",
+        "cached_block_data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "命中分支完成。现在处理else情况：block not found in cache。从Storage读取Retail_CouponSystem？",
+      "elements_involved": [
+        "Block Cache",
+        "Storage Layer",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，这里需要修正。未命中时读的应该是Retail_Inventory，不是CouponSystem。CouponSystem是缓存层，Storage里存的是Inventory数据。",
+      "elements_involved": [
+        "Storage Layer",
+        "Retail_Inventory",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，改为read_block(Retail_Inventory)。读取后检查缓存是否已满？",
+      "elements_involved": [
+        "Storage Layer",
+        "Block Cache",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，调用is_cache_full，参数用Retail_Inventory表示检查库存数据分区的空间。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "is_cache_full",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加检查。如果满了，EvictionPolicy返回true，然后要select_victim？",
+      "elements_involved": [
+        "Eviction Policy",
+        "Block Cache",
+        "select_victim"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，select_victim用Retail_PointOfSale作为选择上下文。这里要展示三种淘汰策略的分支：LRU、LFU、TinyLFU。",
+      "elements_involved": [
+        "Eviction Policy",
+        "Retail_PointOfSale",
+        "LRU",
+        "LFU",
+        "TinyLFU"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已创建三个alt分支，分别标注了Least Recently Used、Least Frequently Used、Frequency sketch determines victim。EvictionPolicy返回victim_block_id后？",
+      "elements_involved": [
+        "Eviction Policy",
+        "Block Cache",
+        "victim_block_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "BlockCache执行evict_block，参数是Retail_OrderManagement，表示从订单管理分组中驱逐。然后通知TTLManager移除过期设置。",
+      "elements_involved": [
+        "Block Cache",
+        "evict_block",
+        "Retail_OrderManagement",
+        "TTL Manager",
+        "remove_expiry",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加evict_block和remove_expiry调用。如果缓存没满呢？",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "Retail_OrderManagement",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EvictionPolicy返回false，直接进入插入新块流程。",
+      "elements_involved": [
+        "Eviction Policy",
+        "Block Cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的。插入流程：insert_block(Retail_Inventory)，然后add_entry(Retail_Inventory)？",
+      "elements_involved": [
+        "Block Cache",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "add_entry的参数应该是Retail_Inventory，但EvictionPolicy返回success后，TTL设置也是Retail_Inventory。这里确认一下：insert和add_entry都是Inventory，但之前驱逐用的是OrderManagement。",
+      "elements_involved": [
+        "Block Cache",
+        "Retail_Inventory",
+        "Retail_OrderManagement",
+        "insert_block",
+        "add_entry"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我理解了：新插入的块按Inventory分组管理，而被驱逐的 victim 来自OrderManagement分组。这是分组的动态调整机制？",
+      "elements_involved": [
+        "Retail_Inventory",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。不同业务数据有不同的保留优先级，OrderManagement在库存压力下可以被牺牲。继续完成TTL设置和返回。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "Client Code",
+        "set_expiry",
+        "success"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加set_expiry、success返回、以及最终的block_data返回给Client。主流程完成了。还有周期性清理？",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "Client Code",
+        "TTL cleanup interval"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，加一个loop：TTL cleanup interval，由TTLManager主动执行check_expired_entries，参数是Retail_CustomerLoyalty。",
+      "elements_involved": [
+        "TTL Manager",
+        "check_expired_entries",
+        "Retail_CustomerLoyalty",
+        "TTL cleanup interval"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加外层loop。内部还要遍历每个过期条目？",
+      "elements_involved": [
+        "TTL Manager",
+        "loop",
+        "For each expired entry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，内层loop处理每个过期条目：TTLManager通知BlockCache，参数Retail_OrderManagement；BlockCache执行remove_from_cache，参数Retail_CustomerLoyalty。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "notify_expired",
+        "remove_from_cache",
+        "Retail_OrderManagement",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里参数又交叉了：notify用OrderManagement，但remove用CustomerLoyalty？和主流程的清理逻辑一致吗？",
+      "elements_involved": [
+        "Retail_OrderManagement",
+        "Retail_CustomerLoyalty",
+        "notify_expired",
+        "remove_from_cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "一致。notify_expired的OrderManagement表示通知哪个分组的管理器，remove_from_cache的CustomerLoyalty是具体要清理的数据块。分层语义。",
+      "elements_involved": [
+        "Retail_OrderManagement",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "理解了。最后还要更新EvictionPolicy：remove_entry(Retail_OrderManagement)。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "remove_entry",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完成。整个图覆盖了缓存读路径的命中、未命中、过期处理，以及后台的周期性清理。检查一下各参与者的颜色区域是否正确？",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer",
+        "Retail_CouponSystem",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认：Cache、EvictionPolicy、TTLManager在rgba(Retail_CouponSystem)区域，Storage在rgba(Retail_Inventory)区域。所有调用和返回箭头都已对齐。",
+      "elements_involved": [
+        "Retail_CouponSystem",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Retail_PointOfSale在图中出现了多次作为参数，但它本身不是独立参与者，只是业务上下文标识，这样处理没问题吧？",
+      "elements_involved": [
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "没问题，PointOfSale作为消息参数出现是合理的，不需要提升为独立参与者。图中五个参与者足够清晰。",
+      "elements_involved": [
+        "Retail_PointOfSale",
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后优化一下：在EvictionPolicy的三个策略分支里，给每个note加上更具体的描述，比如TinyLFU要强调frequency sketch的作用。",
+      "elements_involved": [
+        "Eviction Policy",
+        "TinyLFU",
+        "frequency sketch"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新三个note的文案：LRU标注\"Least Recently Used block selected\"，LFU标注\"Least Frequently Used block selected\"，TinyLFU标注\"Frequency sketch determines victim\"。图已完成。",
+      "elements_involved": [
+        "Eviction Policy",
+        "LRU",
+        "LFU",
+        "TinyLFU"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 48,
+    "repair_count": 2,
+    "grounding_acts_count": 48,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 120703.6936,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 48
+  }
+}

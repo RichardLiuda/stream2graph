@@ -1,0 +1,151 @@
+{
+  "id": "aug_ot_stateDiagram_00030_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/openbankingproject-ch/Open-API-Kundenbeziehung/blob/0117d87c5299ec17e19105263dc1fb9615d87c47/Dokumentation%20Fachliche%20Perspektive/Fachliche%20Conclusions%20Open%20API%20Kundenbeziehung/Resources/graphics/06-consent-security/consent-lifecycle-management.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "openbankingproject-ch/Open-API-Kundenbeziehung",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_WorkerNode] --> ConsentRequested: Customer service request\n    \n    ConsentRequested --> ConsentPresented: Show consent form\n    ConsentPresented --> ConsentGranted: Customer accepts\n    ConsentPresented --> ConsentRejected: Customer rejects\n    \n    ConsentGranted --> ConsentActive: Consent validated & active\n    ConsentRejected --> [Infra_EtcdCluster]: Process terminated\n    \n    ConsentActive --> DataAccess: Provider uses consent\n    DataAccess --> ConsentActive: Ongoing data access\n    \n    ConsentActive --> ConsentModified: Customer modifies scope\n    ConsentModified --> ConsentActive: Updated consent active\n    \n    ConsentActive --> ConsentExpiring: Approaching expiry\n    ConsentExpiring --> ConsentRenewed: Customer renews\n    ConsentExpiring --> ConsentExpired: Automatic expiry\n    ConsentRenewed --> ConsentActive: Renewed consent active\n    \n    ConsentActive --> ConsentRevoked: Customer revokes\n    ConsentExpired --> ConsentArchived: Archive expired consent\n    ConsentRevoked --> ConsentArchived: Archive revoked consent\n    \n    ConsentArchived --> [Infra_LoadBalancer]: End of lifecycle\n    \n    DataAccess --> AuditLog: Log every access\n    ConsentModified --> AuditLog: Log modifications\n    ConsentRevoked --> AuditLog: Log revocation\n    ConsentExpired --> AuditLog: Log expiry\n    \n    AuditLog --> ComplianceReport: Generate reports",
+  "content_size": 1344,
+  "collected_at": "2026-02-06T10:36:59.054291",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00030",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个用户同意管理的完整状态流转图。核心是从客户发起请求开始，经过同意授予、活跃使用，到最后归档的整个生命周期。",
+      "elements_involved": [
+        "ConsentRequested",
+        "ConsentGranted",
+        "ConsentActive",
+        "ConsentArchived"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。那拒绝同意的分支怎么处理？是直接结束，还是需要记录什么？另外，同意过期和主动撤销这两个场景都要覆盖吗？",
+      "elements_involved": [
+        "ConsentRejected",
+        "ConsentExpired",
+        "ConsentRevoked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "拒绝的话流程终止，直接落到etcd集群做状态清理。过期和撤销都要覆盖，而且这两种情况最终都要进入ConsentArchived归档状态。另外，客户修改同意范围也是一个关键节点，修改后要回到活跃状态。",
+      "elements_involved": [
+        "ConsentRejected",
+        "Infra_EtcdCluster",
+        "ConsentExpired",
+        "ConsentRevoked",
+        "ConsentArchived",
+        "ConsentModified"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，主干已经画出来了。从WorkerNode接收请求，到ConsentRequested，然后分支：接受走ConsentPresented→ConsentGranted→ConsentActive，拒绝直接到etcd。活跃状态下可以DataAccess循环使用，也可以走向修改、过期或撤销。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "ConsentRequested",
+        "ConsentPresented",
+        "ConsentGranted",
+        "ConsentActive",
+        "DataAccess",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "对，但过期前要有预警状态，叫ConsentExpiring。客户收到提醒后可以主动Renew回到活跃，如果没操作就Automatic过期。这个approaching的状态别漏了。",
+      "elements_involved": [
+        "ConsentExpiring",
+        "ConsentRenewed",
+        "ConsentExpired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了，ConsentActive→ConsentExpiring→两个分支。归档之后统一走到LoadBalancer结束生命周期。审计部分怎么体现？",
+      "elements_involved": [
+        "ConsentActive",
+        "ConsentExpiring",
+        "ConsentRenewed",
+        "ConsentExpired",
+        "ConsentArchived",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "审计很关键，所有关键操作都要进AuditLog——数据访问、修改、撤销、过期都要记录。然后AuditLog定期生成ComplianceReport。",
+      "elements_involved": [
+        "AuditLog",
+        "DataAccess",
+        "ConsentModified",
+        "ConsentRevoked",
+        "ConsentExpired",
+        "ComplianceReport"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "检查一遍：WorkerNode起，etcd终（拒绝分支），LoadBalancer终（归档分支），中间状态闭环，审计全覆盖，合规报告输出。结构完整，可以定稿了。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer",
+        "AuditLog",
+        "ComplianceReport"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 21222.0862,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 5
+  }
+}

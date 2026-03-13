@@ -1,0 +1,349 @@
+{
+  "id": "aug_ot_journey_01123_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/vaskomet/CapstoneProjectMetallinosE-Clean/blob/75dd266f9e5f00ca887adf8d291f36f4503fa0ee/docs/diagrams/flows/PAYMENT_FLOW.mmd",
+  "source_type": "github_search",
+  "github_repo": "vaskomet/CapstoneProjectMetallinosE-Clean",
+  "diagram_type": "journey",
+  "code": "%% Payment Flow Sequence Diagram\n%% This diagram shows the complete payment journey from bid acceptance to job confirmation\n%% View in VS Code with Mermaid extension or paste into https://mermaid.live\n\nsequenceDiagram\n    participant Client as Client Browser\n    participant Frontend as React Frontend\n    participant Backend as Django Backend\n    participant Stripe as Stripe API\n    participant WS as WebSocket Server\n    participant Cleaner as Cleaner Browser\n\n    Note over Client,Cleaner: 1. CLIENT ACCEPTS BID & INITIATES PAYMENT\n\n    Client->>Frontend: Click \"Accept & Pay\" on bid\n    Frontend->>Frontend: Open PaymentModal\n    Frontend->>Frontend: CheckoutForm renders Stripe Elements\n    \n    Note over Frontend: Check if payment already created\n    Frontend->>Frontend: Check paymentIntentCreated.current\n    \n    Frontend->>Backend: POST /api/payments/create-intent/\n    Note right of Backend: Create PaymentIntent<br/>Amount: bid amount<br/>Client: user ID<br/>Cleaner: bid owner\n    \n    Backend->>Stripe: Create PaymentIntent\n    Stripe-->>Backend: Return client_secret\n    Backend->>Backend: Save Payment record<br/>status='pending'<br/>payment_reference=UUID\n    Backend-->>Frontend: Return {Infra_WorkerNode}\n    \n    Frontend->>Frontend: Set paymentIntentCreated.current = true\n    Frontend->>Frontend: Render CardElement with client_secret\n\n    Note over Client,Cleaner: 2. CLIENT ENTERS CARD & CONFIRMS PAYMENT\n\n    Client->>Frontend: Enter card details\n    Client->>Frontend: Click \"Pay Now\"\n    \n    Frontend->>Frontend: Check payment guards<br/>(Infra_RedisCache)\n    \n    Frontend->>Stripe: confirmCardPayment(Infra_IngressController)\n    Note right of Stripe: 3D Secure if needed<br/>Card validation<br/>Charge authorization\n    \n    Stripe-->>Frontend: PaymentIntent {Infra_EtcdCluster}\n\n    Note over Frontend: Payment successful!\n    Frontend->>Frontend: Set paymentSucceeded.current = true\n\n    Note over Client,Cleaner: 3. BACKEND CONFIRMATION & JOB UPDATE\n\n    Frontend->>Backend: POST /api/payments/confirm/<br/>{Infra_WorkerNode}\n    \n    Backend->>Stripe: Retrieve PaymentIntent details\n    Stripe-->>Backend: PaymentIntent full data\n    \n    Backend->>Backend: Validate payment_intent.status === 'succeeded'\n    Backend->>Backend: Validate client_id matches job.client\n    Backend->>Backend: Validate amount matches job.final_price\n    \n    alt Payment Valid\n        Backend->>Backend: Update Payment.status = 'succeeded'\n        Backend->>Backend: Update Payment.paid_at = now(Infra_IngressController)\n        Backend->>Backend: Store payment_method details (Infra_LoadBalancer)\n        \n        Backend->>Backend: Update Job.status = 'confirmed'\n        Backend->>Backend: Update Job.final_price = payment.amount\n        Backend->>Backend: Accept JobBid (Infra_LoadBalancer)\n        \n        Note over Backend: Create 4 notifications\n        Backend->>Backend: Create Notification<br/>client: \"Payment Confirmed\"<br/>content_type → Job\n        Backend->>Backend: Create Notification<br/>cleaner: \"Payment Received\"<br/>content_type → Job\n        Backend->>Backend: Create Notification<br/>client: \"Job Confirmed\"<br/>content_type → Job\n        Backend->>Backend: Create Notification<br/>cleaner: \"Job Confirmed\"<br/>content_type → Job\n\n        Note over Client,Cleaner: 4. REAL-TIME NOTIFICATIONS\n\n        Backend->>WS: Serialize notifications<br/>Push via Channels\n        WS->>Client: notifications_{Infra_RedisCache}<br/>\"Payment Confirmed\"<br/>\"Job Confirmed\"\n        WS->>Cleaner: notifications_{Infra_LoadBalancer}<br/>\"Payment Received\"<br/>\"Job Confirmed\"\n\n        Client->>Frontend: Receive WebSocket message\n        Frontend->>Frontend: Add to notifications array\n        Frontend->>Frontend: Show toast notification\n        Frontend->>Frontend: Dispatch 'jobNotificationReceived'\n        \n        Cleaner->>Frontend: Receive WebSocket message\n        Frontend->>Frontend: Add to notifications array\n        Frontend->>Frontend: Show toast notification\n        Frontend->>Frontend: Dispatch 'jobNotificationReceived'\n        Frontend->>Frontend: Auto-refresh job data<br/>(Infra_RedisCache)\n\n        Backend-->>Frontend: 200 OK {Infra_IngressController}\n        Frontend->>Frontend: Close PaymentModal\n        Frontend->>Client: Show success toast<br/>\"Payment successful!\"\n        Frontend->>Frontend: Refresh job data (Infra_RedisCache)\n\n    else Payment Failed/Invalid\n        Backend-->>Frontend: 400 Bad Request<br/>{Infra_RedisCache}\n        Frontend->>Client: Show error toast\n    end\n\n    Note over Client,Cleaner: 5. DUPLICATE PREVENTION\n\n    alt User triggers modal re-render\n        Frontend->>Frontend: useEffect runs again\n        Frontend->>Frontend: Check paymentIntentCreated.current<br/>→ Skip payment creation\n    end\n\n    alt React StrictMode double-render\n        Frontend->>Frontend: useEffect runs twice\n        Frontend->>Frontend: isCreatingPayment.current prevents race\n    end\n\n    alt Accidental double-submit\n        Frontend->>Backend: POST /api/payments/create-intent/\n        Backend-->>Frontend: 400 \"Job already confirmed\"\n        Frontend->>Frontend: Detect isAlreadyConfirmed error\n        Frontend->>Frontend: Set paymentSucceeded.current = true\n        Frontend->>Frontend: Skip error toast (Infra_RedisCache)\n    end\n\n    Note over Client,Cleaner: RESULT: Job confirmed, payment processed, both users notified in real-time!\n",
+  "content_size": 5384,
+  "collected_at": "2026-02-06T11:05:17.371380",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_journey_01123",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的支付流程时序图，从客户接受报价到最终工作确认。核心参与者包括Client Browser、React Frontend、Django Backend、Stripe API、WebSocket Server和Cleaner Browser。",
+      "elements_involved": [
+        "Client Browser",
+        "React Frontend",
+        "Django Backend",
+        "Stripe API",
+        "WebSocket Server",
+        "Cleaner Browser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。这个流程有几个主要阶段？我看到需要覆盖支付创建、卡片确认、后端验证、实时通知这几个环节对吗？",
+      "elements_involved": [
+        "PaymentModal",
+        "CardElement",
+        "WebSocket"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，五个阶段。第一阶段是客户点击\"接受并支付\"按钮，前端打开PaymentModal，渲染Stripe的CheckoutForm。这里有个关键点：前端要检查paymentIntentCreated.current防止重复创建。",
+      "elements_involved": [
+        "PaymentModal",
+        "CheckoutForm",
+        "paymentIntentCreated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把第一阶段的框架画出来。Client Browser点击按钮到React Frontend，然后前端内部打开PaymentModal，渲染CardElement之前先检查状态，然后POST到Django Backend创建PaymentIntent。",
+      "elements_involved": [
+        "Client Browser",
+        "React Frontend",
+        "Django Backend",
+        "POST /api/payments/create-intent/"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Backend收到请求后要去Stripe API创建PaymentIntent，包含报价金额、客户ID和清洁工商ID。Stripe返回client_secret后，Backend保存Payment记录，状态设为pending，然后返回给Frontend。",
+      "elements_involved": [
+        "Django Backend",
+        "Stripe API",
+        "client_secret",
+        "Payment record"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "返回的数据结构我需要标注一下，你写的是{Infra_WorkerNode}，这是指什么？是内部的服务节点标识吗？",
+      "elements_involved": [
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "抱歉，那个是占位符。实际返回的是包含client_secret和payment_reference的标准JSON。Infra_WorkerNode是我们内部追踪用的，可以去掉或者换成实际的响应字段。",
+      "elements_involved": [
+        "client_secret",
+        "payment_reference"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整。Frontend拿到client_secret后设置paymentIntentCreated.current为true，然后渲染CardElement。进入第二阶段：客户输入卡片信息，点击\"立即支付\"。",
+      "elements_involved": [
+        "CardElement",
+        "paymentIntentCreated",
+        "Pay Now"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "支付前Frontend要检查payment guards，这里会用到Infra_RedisCache做状态校验。然后调用Stripe的confirmCardPayment，经过IngressController。Stripe可能会触发3D Secure验证。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "confirmCardPayment",
+        "Infra_IngressController",
+        "3D Secure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下，Infra_IngressController和Infra_RedisCache这些基础设施组件需要作为独立参与者出现吗？还是标注在消息上？",
+      "elements_involved": [
+        "Infra_IngressController",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "标注在消息上就行，它们不是业务参与者。Stripe返回PaymentIntent状态后，Frontend设置paymentSucceeded.current为true，然后进入第三阶段：通知Backend确认支付。",
+      "elements_involved": [
+        "paymentSucceeded",
+        "POST /api/payments/confirm/"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第三阶段画好了。Backend收到确认请求后，去Stripe检索PaymentIntent详情，然后做三重验证：支付状态必须是succeeded、client_id匹配job.client、金额匹配job.final_price。",
+      "elements_involved": [
+        "Django Backend",
+        "PaymentIntent status",
+        "client_id",
+        "job.final_price"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "验证通过后有个大的alt分支。成功路径里，Backend要更新Payment状态为succeeded，记录paid_at时间戳，存储payment_method详情到LoadBalancer，然后更新Job状态为confirmed，接受JobBid。",
+      "elements_involved": [
+        "alt Payment Valid",
+        "Infra_LoadBalancer",
+        "Job.status",
+        "JobBid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "存储payment_method到LoadBalancer？这是说负载均衡器还是缓存层？另外JobBid的接受是在哪个环节？",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "JobBid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "表述有问题。payment_method详情是持久化存储，LoadBalancer只是流量入口标注。JobBid接受和Job状态更新是同时进行的，都在验证通过后的Backend内部处理。",
+      "elements_involved": [
+        "JobBid",
+        "Job.status confirmed"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "清楚了。然后Backend要创建4条通知：客户收到\"Payment Confirmed\"和\"Job Confirmed\"，清洁工收到\"Payment Received\"和\"Job Confirmed\"，都关联到Job的content_type。",
+      "elements_involved": [
+        "Notification",
+        "Client",
+        "Cleaner",
+        "content_type"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第四阶段是实时通知。Backend通过Channels序列化通知，推送到WebSocket Server。WS分别给Client和Cleaner发消息，路径经过RedisCache和LoadBalancer。两端Frontend收到后更新通知数组，显示toast，dispatch jobNotificationReceived事件。",
+      "elements_involved": [
+        "WebSocket Server",
+        "Channels",
+        "notifications",
+        "toast",
+        "jobNotificationReceived"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到。然后Frontend自动刷新job数据，关闭PaymentModal，给客户显示成功toast。失败路径返回400，显示错误toast。这样主流程就完整了。",
+      "elements_involved": [
+        "Auto-refresh",
+        "Close PaymentModal",
+        "success toast",
+        "400 Bad Request"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有第五阶段：重复支付防护。需要三个alt分支：用户触发modal重渲染时useEffect检查paymentIntentCreated跳过；React StrictMode双渲染时用isCreatingPayment防竞态；意外双提交时Backend返回\"Job already confirmed\"。",
+      "elements_involved": [
+        "useEffect",
+        "isCreatingPayment",
+        "isAlreadyConfirmed",
+        "Duplicate Prevention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "第三个分支的处理逻辑是：Backend返回400后，Frontend检测到isAlreadyConfirmed错误，设置paymentSucceeded为true，并且跳过错误toast？这不会让用户困惑吗？",
+      "elements_involved": [
+        "isAlreadyConfirmed",
+        "paymentSucceeded",
+        "skip error toast"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这是设计意图。因为Job已经确认了，说明之前的请求成功了，只是响应丢失导致客户端重试。这时候静默处理，让用户看到成功状态，避免恐慌。Infra_RedisCache标注是内部追踪。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "幂等处理",
+        "静默成功"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部五个阶段都画好了。我检查一下：还有几个Infra_占位符需要处理——{Infra_EtcdCluster}在Stripe返回时，{Infra_IngressController}在确认请求和最终响应，{Infra_RedisCache}在多处。这些要保留还是替换？",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "Infra_EtcdCluster应该是PaymentIntent对象，写错了。其他Infra_前缀的可以保留作为基础设施标注，但EtcdCluster要改成实际的PaymentIntent {status: succeeded}。",
+      "elements_involved": [
+        "PaymentIntent",
+        "status succeeded"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。最终图结构：六个参与者，五个阶段带Note标注，一个主alt分支（Payment Valid/Failed），三个防护alt分支，完整覆盖从点击支付到实时通知的全流程。",
+      "elements_involved": [
+        "Client Browser",
+        "Cleaner Browser",
+        "React Frontend",
+        "Django Backend",
+        "Stripe API",
+        "WebSocket Server"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。最后加上结果说明：Job confirmed, payment processed, both users notified in real-time。这个时序图可以直接用于技术评审和开发参考了。",
+      "elements_involved": [
+        "RESULT"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 25,
+    "repair_count": 3,
+    "grounding_acts_count": 25,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 61691.5178,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 24
+  }
+}

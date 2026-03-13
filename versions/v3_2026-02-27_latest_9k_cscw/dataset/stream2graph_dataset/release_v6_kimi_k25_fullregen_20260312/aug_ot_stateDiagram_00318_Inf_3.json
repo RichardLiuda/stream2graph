@@ -1,0 +1,514 @@
+{
+  "id": "aug_ot_stateDiagram_00318_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/coherosphere/architecture/blob/598bb65467787da38ac4029e35bdead27e7799ee/docs.coherosphere.io/static/assets/diagrams/C3_states/SM-02.02_Decay_Recompute_Cycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "coherosphere/architecture",
+  "diagram_type": "stateDiagram",
+  "code": "%%{Infra_EtcdCluster}}}%%\nstateDiagram-v2\ntitle: SM-02.02 — Decay & Recompute Cycle (Infra_LoadBalancer)\n\n[Infra_RedisCache] --> TRIGGER : CronTick / RecomputeRequested / ParamsVersioned\nnote right of TRIGGER\n  Entry conditions:\n  • Scheduled batch tick (Infra_LoadBalancer)\n  • Manual backfill (Infra_RedisCache)\n  • Parameters changed (Infra_RedisCache)\nend note\n\nTRIGGER --> LOAD_SNAPSHOT : Select ledger window\nnote right of LOAD_SNAPSHOT\n  Load CPᵢ(Infra_IngressController) snapshots and pending deltas\n  Resolve idempotent ranges and gaps\nend note\n\nLOAD_SNAPSHOT --> CHECK_PARAMS : Bind constants (Infra_IngressController)\nnote right of CHECK_PARAMS\n  λ = ln(Infra_LoadBalancer)/T  (Infra_RedisCache)\n  α ∈ (Infra_RedisCache)    (Infra_RedisCache)\n  If new version → tag run with ParamVersionID\nend note\n\nCHECK_PARAMS --> APPLY_DECAY : InputBound\nnote right of APPLY_DECAY\n  Apply time decay to each CPᵢ since t₀:\n  CPᵢ(Infra_WorkerNode) = CPᵢ(Infra_WorkerNode) · e^(Infra_WorkerNode) + Σ(Infra_EtcdCluster)\nend note\n\nAPPLY_DECAY --> RECOMPUTE_W : DecayApplied (Infra_LoadBalancer)\nnote right of RECOMPUTE_W\n  Recompute voting weights:\n  Wᵢ = (Infra_WorkerNode)^α\n  Prepare diffs for persistence & metrics\nend note\n\nRECOMPUTE_W --> WRITE_BACK : WeightsComputed\nnote right of WRITE_BACK\n  Persist CP/W snapshots + audit trail\n  Mark run as deterministic (Infra_IngressController)\nend note\n\nWRITE_BACK --> EMIT_EVENTS : LedgerCommitted\nnote right of EMIT_EVENTS\n  Emit CPUpdated / WeightsUpdated for Metrics (Infra_WorkerNode)\n  Optionally trigger Resonance recompute (Infra_WorkerNode)\nend note\n\nEMIT_EVENTS --> [Infra_EtcdCluster] : RecomputeFinished (Infra_RedisCache)\n\n%% ---- Exceptional & maintenance paths ----\nLOAD_SNAPSHOT --> RECONCILE : GapDetected / CorrectionInput\nnote right of RECONCILE\n  Backfill missing windows, reconcile oracles\n  (Infra_WorkerNode)\nend note\nRECONCILE --> APPLY_DECAY : Reconciled\n\nAPPLY_DECAY --> ABORT : InvariantBreach / AnomalyDetected\nRECOMPUTE_W --> ABORT : InvariantBreach\nABORT --> [Infra_LoadBalancer] : RecomputeAborted\n\n%% =========== Styling ===========\nclassDef core fill:#ff8b00,stroke:#333,color:#fff,font-weight:bold;\nclass TRIGGER,LOAD_SNAPSHOT,CHECK_PARAMS,APPLY_DECAY,RECOMPUTE_W,WRITE_BACK,EMIT_EVENTS,RECONCILE,ABORT core;",
+  "content_size": 2180,
+  "collected_at": "2026-02-06T10:40:36.748897",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "license_url": null,
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "coherosphere",
+  "repo_name": "architecture",
+  "repo_description": "The cohersphere architecture — structural blueprint of the resonance network. Defines the modular layers connecting app, API, and governance protocols. Outlines data flows for Proof-of-Contribution, c",
+  "repo_language": "Mermaid",
+  "repo_topics": [
+    "architecture",
+    "c4",
+    "distributed-systems",
+    "modular-architecture",
+    "system-design"
+  ],
+  "repo_created_at": "2025-10-29T09:30:02Z",
+  "repo_updated_at": "2026-02-06T04:58:50Z",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00318",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为负载均衡器的衰减重算周期画一个状态图。核心场景是SM-02.02，涉及Redis缓存、Ingress控制器和Worker节点之间的协作。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Infra_RedisCache",
+        "Infra_IngressController",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。这个周期是由什么触发的？是定时任务还是外部事件？",
+      "elements_involved": [
+        "TRIGGER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "触发条件有三种：定时批处理Tick、Redis缓存的手动回填，以及参数变更。这三种情况都会进入同一个入口状态。",
+      "elements_involved": [
+        "TRIGGER",
+        "CronTick",
+        "Backfill",
+        "ParamsVersioned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把触发节点画出来，标注这三种入口条件。接下来是加载快照吗？",
+      "elements_involved": [
+        "TRIGGER",
+        "LOAD_SNAPSHOT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，触发后进入LOAD_SNAPSHOT。这里需要加载Ingress控制器的检查点快照和待处理的增量数据，还要解决幂等区间和间隙问题。",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "Infra_IngressController",
+        "CPᵢ",
+        "deltas"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "\"解决幂等区间和间隙\"具体指什么？是数据对齐还是去重？",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "idempotent ranges",
+        "gaps"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "主要是对齐。比如Worker节点上报的数据可能有时间窗口重叠或缺失，我们需要确定一个一致的账本窗口，确保重算基础是完整的。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "ledger window"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "清楚了，我在LOAD_SNAPSHOT右侧加了个注释说明这一点。下一步是参数检查？",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "CHECK_PARAMS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，CHECK_PARAMS阶段要绑定Ingress控制器的常量。衰减系数λ取决于负载均衡器的当前负载除以周期T，还有一个弹性系数α来自Redis缓存的配置。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "λ",
+        "α",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "如果参数版本有变化，需要特殊处理吗？",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "ParamVersionID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要。如果检测到新版本，要用ParamVersionID标记这次运行，方便后续审计和回溯。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "ParamVersionID",
+        "tag run"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。参数检查完成后进入APPLY_DECAY，这里应该是核心的衰减计算？",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "InputBound"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。APPLY_DECAY阶段对每个Worker节点的检查点CPᵢ应用时间衰减，公式是CPᵢ乘以e的负λt次方，再加上Etcd集群的聚合增量。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "CPᵢ",
+        "Infra_WorkerNode",
+        "Infra_EtcdCluster",
+        "decay formula"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "衰减完成后状态标记为DecayApplied，然后进入RECOMPUTE_W重新计算投票权重？",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "DecayApplied"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，RECOMPUTE_W是负载均衡器的核心逻辑。权重Wᵢ等于衰减后的CPᵢ的α次幂，同时准备持久化和监控所需的差异数据。",
+      "elements_involved": [
+        "RECOMPUTE_W",
+        "Wᵢ",
+        "Infra_LoadBalancer",
+        "diffs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "权重计算完成后进入WRITE_BACK持久化？",
+      "elements_involved": [
+        "RECOMPUTE_W",
+        "WRITE_BACK",
+        "WeightsComputed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "WRITE_BACK要持久化CP和W的快照，加上审计日志，并且标记这次运行为确定性的——这个标记是给Ingress控制器用的，保证可重现。",
+      "elements_involved": [
+        "WRITE_BACK",
+        "CP/W snapshots",
+        "audit trail",
+        "deterministic",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "\"确定性\"在这里具体指什么？是幂等性保证吗？",
+      "elements_involved": [
+        "WRITE_BACK",
+        "deterministic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是的，给定相同的输入参数和账本窗口，输出必须完全一致。这样如果出问题可以精确复现。",
+      "elements_involved": [
+        "WRITE_BACK",
+        "deterministic",
+        "reproducibility"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "理解了。持久化完成后进入EMIT_EVENTS发送事件？",
+      "elements_involved": [
+        "WRITE_BACK",
+        "EMIT_EVENTS",
+        "LedgerCommitted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EMIT_EVENTS阶段要发送CPUpdated和WeightsUpdated事件给Worker节点的监控模块，还可以选择性触发共振重算。",
+      "elements_involved": [
+        "EMIT_EVENTS",
+        "CPUpdated",
+        "WeightsUpdated",
+        "Metrics",
+        "Resonance",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "最后回到Etcd集群标记完成？",
+      "elements_involved": [
+        "EMIT_EVENTS",
+        "Infra_EtcdCluster",
+        "RecomputeFinished"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，正常流程到这里结束。但我们还需要处理异常路径——比如数据间隙和不变量违反。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "RecomputeFinished",
+        "exceptional paths"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我注意到LOAD_SNAPSHOT之后如果检测到间隙，应该有个分支。需要加RECONCILE状态吗？",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "GapDetected",
+        "RECONCILE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要。GapDetected或收到CorrectionInput时进入RECONCILE，由Worker节点执行缺失窗口的回填和预言机数据的对齐。",
+      "elements_involved": [
+        "RECONCILE",
+        "backfill",
+        "oracles",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RECONCILE完成后可以回到APPLY_DECAY继续正常流程？",
+      "elements_involved": [
+        "RECONCILE",
+        "APPLY_DECAY",
+        "Reconciled"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对。另外APPLY_DECAY和RECOMPUTE_W两个阶段都可能遇到不变量违反或异常检测，需要统一的ABORT出口。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "ABORT",
+        "InvariantBreach",
+        "AnomalyDetected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ABORT之后直接回到负载均衡器吗？不需要重试或告警？",
+      "elements_involved": [
+        "ABORT",
+        "Infra_LoadBalancer",
+        "RecomputeAborted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "当前设计是先标记为RecomputeAborted返回，具体的告警和重试策略由负载均衡器的上层调度器决定，不在这个状态图里。",
+      "elements_involved": [
+        "ABORT",
+        "RecomputeAborted",
+        "Infra_LoadBalancer",
+        "scheduler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，异常路径都画好了。需要给核心状态加样式区分吗？",
+      "elements_involved": [
+        "core states",
+        "styling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要。TRIGGER、LOAD_SNAPSHOT、CHECK_PARAMS、APPLY_DECAY、RECOMPUTE_W、WRITE_BACK、EMIT_EVENTS这些主流程状态，加上RECONCILE和ABORT，都用橙色填充加粗显示。",
+      "elements_involved": [
+        "core",
+        "TRIGGER",
+        "LOAD_SNAPSHOT",
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "WRITE_BACK",
+        "EMIT_EVENTS",
+        "RECONCILE",
+        "ABORT",
+        "fill:#ff8b00"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "样式已应用。我检查一下整体结构：从Redis缓存或负载均衡器触发，经过快照加载、参数绑定、衰减应用、权重重算、持久化、事件发送，最终回到Etcd集群；间隙走回填分支，异常走中止分支。对吗？",
+      "elements_involved": [
+        "full flow",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster",
+        "RECONCILE",
+        "ABORT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。再确认一下注释里的公式和标记都准确：λ = ln(LoadBalancer)/T，α来自Redis，衰减公式是CPᵢ·e^(-λt)加上Etcd的Σ增量。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "λ",
+        "α",
+        "decay formula",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "公式已核对，和注释一致。Worker节点在衰减计算和事件发送都出现了，Etcd在增量聚合和最终状态都出现了，Ingress控制器在快照加载和确定性标记都出现了，结构是完整的。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "cross-references"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后一点：RECOMPUTE_W的注释里\"Prepare diffs for persistence & metrics\"——这里的diffs是指权重变化量还是CP的变化量？",
+      "elements_involved": [
+        "RECOMPUTE_W",
+        "diffs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "应该是两者都有——CP经过衰减后的变化，以及由此推导出的W权重变化，一起作为审计和监控的输入。",
+      "elements_involved": [
+        "RECOMPUTE_W",
+        "diffs",
+        "CP changes",
+        "W changes"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 36,
+    "repair_count": 0,
+    "grounding_acts_count": 36,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:22Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:22Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 60613.3759,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 36
+  }
+}

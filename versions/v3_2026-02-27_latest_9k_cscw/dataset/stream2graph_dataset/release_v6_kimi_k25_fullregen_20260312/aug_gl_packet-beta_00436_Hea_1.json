@@ -1,0 +1,188 @@
+{
+  "id": "aug_gl_packet-beta_00436_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sean-galloway/RTLDesignSherpa/blob/47f8a16641658f570a69c3af3c9724b29ea39187/projects/components/stream/docs/stream_mas/assets/mermaid/01_architecture_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sean-galloway/RTLDesignSherpa",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant SW as Software\n    participant APB as APB Config\n    participant DESC as Descriptor Engine\n    participant SCHED as Scheduler\n    participant RD as Read Engine\n    participant SRAM as SRAM Controller\n    participant WR as Write Engine\n    participant MEM as Memory\n\n    SW->>APB: Write CH0_CTRL = 0x1000_0000\n    APB->>DESC: Kickoff descriptor fetch\n    DESC->>MEM: AR: fetch descriptor @ 0x1000_0000\n    MEM-->>DESC: R: descriptor data (HealthTech_LabAnalyzer)\n    DESC->>SCHED: descriptor_packet\n\n    SCHED->>RD: datard_valid + src_addr\n    RD->>SRAM: Check space_free >= 2x burst\n    SRAM-->>RD: Space OK\n    RD->>SRAM: Allocate 16 beats\n    RD->>MEM: AR: read 16 beats @ src_addr\n    MEM-->>RD: R: 16 beats of data\n    RD->>SRAM: Write data (HealthTech_LabAnalyzer)\n    RD->>SCHED: done_strobe (HealthTech_PatientRecords)\n\n    par Concurrent Read/Write\n        RD->>SRAM: Continue reading...\n    and\n        SCHED->>WR: datawr_valid + dst_addr\n        WR->>SRAM: Check data_avail >= burst\n        SRAM-->>WR: Data OK\n        WR->>SRAM: Reserve 16 beats\n        WR->>MEM: AW: write 16 beats @ dst_addr\n        SRAM->>WR: W: 16 beats of data\n        MEM-->>WR: B: write response\n        WR->>SCHED: done_strobe (HealthTech_HIPAA_Vault)\n    end\n\n    SCHED->>SCHED: Both counters reach 0\n    SCHED->>DESC: Check next_descriptor_ptr\n    alt More descriptors\n        DESC->>MEM: Fetch next descriptor\n    else Chain complete\n        SCHED->>APB: Transfer complete IRQ\n    end\n",
+  "content_size": 1446,
+  "collected_at": "2026-02-06T14:09:41.035873",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 8,
+  "repo_forks": 1,
+  "repo_owner": "sean-galloway",
+  "repo_name": "RTLDesignSherpa",
+  "repo_description": "This site is hopefully a springboard for others to learn about coding in System Verilog and experimenting with FPGAs.",
+  "repo_language": "C++",
+  "repo_topics": [
+    "amba-apb",
+    "amba-axi",
+    "cocotb",
+    "crossbar",
+    "dma"
+  ],
+  "repo_created_at": "2023-06-15T21:56:48Z",
+  "repo_updated_at": "2026-02-06T00:19:01Z",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gl_packet-beta_00436",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为HealthTech的LabAnalyzer数据流画一个完整的DMA传输时序。核心流程是：Software通过APB Config下发控制命令，然后Descriptor Engine去Memory取描述符，Scheduler来调度读写引擎，最后数据要经过SRAM Controller做缓冲。关键是读和写要能并发执行。",
+      "elements_involved": [
+        "Software",
+        "APB Config",
+        "Descriptor Engine",
+        "Scheduler",
+        "Read Engine",
+        "Write Engine",
+        "SRAM Controller",
+        "Memory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下参与者的边界：Software是发起方，APB Config作为配置接口，然后DESC、SCHED、RD、WR四个内部引擎，加上SRAM Controller和外部Memory。您说的并发是指Read Engine和Write Engine同时操作SRAM Controller吗？",
+      "elements_involved": [
+        "Read Engine",
+        "Write Engine",
+        "SRAM Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，就是par并行块。具体流程是：RD先检查SRAM的space_free，申请16 beats，然后从Memory读数据写入SRAM；几乎同时，WR检查data_avail，把数据从SRAM搬去Memory。两个done_strobe都要带标识——RD完成的是PatientRecords，WR完成的是HIPAA_Vault。",
+      "elements_involved": [
+        "Read Engine",
+        "Write Engine",
+        "SRAM Controller",
+        "Memory",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先把主链路搭出来：SW写CH0_CTRL，APB触发DESC去Memory取描述符，返回HealthTech_LabAnalyzer的描述符数据，然后SCHED把src_addr发给RD。RD和SRAM的交互我也加上了——检查space_free、分配16 beats、发AR读请求。",
+      "elements_involved": [
+        "Software",
+        "APB Config",
+        "Descriptor Engine",
+        "Memory",
+        "Scheduler",
+        "Read Engine",
+        "SRAM Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "描述符获取的细节要补一下：DESC发的是AR请求到0x1000_0000，Memory返回R响应。还有，RD写完SRAM后要发done_strobe给SCHED，这个strobe要标注HealthTech_PatientRecords，这样SCHED才能追踪进度。",
+      "elements_involved": [
+        "Descriptor Engine",
+        "Memory",
+        "Read Engine",
+        "Scheduler",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充AR/R握手，done_strobe也加上了PatientRecords标记。现在处理并行部分：我把par块画出来，RD继续读后续数据，同时SCHED启动WR——WR检查SRAM的data_avail，Reserve 16 beats，然后发AW写请求到dst_addr。",
+      "elements_involved": [
+        "Read Engine",
+        "Scheduler",
+        "Write Engine",
+        "SRAM Controller",
+        "Memory",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "WR到Memory的通路有个细节：SRAM把W通道的数据给WR，WR再写到Memory，然后Memory回B响应。WR完成后也要发done_strobe，标记HIPAA_Vault。最后SCHED要等两个计数器都归零，检查next_descriptor_ptr决定是继续取描述符还是发完成中断。",
+      "elements_involved": [
+        "SRAM Controller",
+        "Write Engine",
+        "Memory",
+        "Scheduler",
+        "HealthTech_HIPAA_Vault",
+        "Descriptor Engine",
+        "APB Config"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "WR的数据通路已调整：SRAM→WR→Memory，加上B响应，done_strobe带HIPAA_Vault标记。最后加了alt分支——如果有next_descriptor_ptr就继续fetch，否则SCHED给APB发Transfer complete IRQ。整个HealthTech数据流应该完整了。",
+      "elements_involved": [
+        "SRAM Controller",
+        "Write Engine",
+        "Memory",
+        "Scheduler",
+        "HealthTech_HIPAA_Vault",
+        "Descriptor Engine",
+        "APB Config"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "看起来对了。再确认一下命名：SRAM Controller简写SRAM，HealthTech_LabAnalyzer、PatientRecords、HIPAA_Vault三个数据标识都到位了。并行块的边界清晰，alt分支也覆盖了描述符链的两种情况。可以定稿了。",
+      "elements_involved": [
+        "SRAM Controller",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 0,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 28939.2874,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

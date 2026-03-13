@@ -1,0 +1,714 @@
+{
+  "id": "aug_gl_packet-_Hea_27",
+  "seed": "gl_packet-beta_00467",
+  "domain": "Health",
+  "code": "graph TB\n    subgraph \"monbus_axil_group\"\n        subgraph \"Monitor Bus Input\"\n            MON_IN[Health_Vault] --> PARSE[Health_Vault]\n        end\n\n        subgraph \"Per-Protocol Filtering\"\n            PARSE --> FILTER[Health_Record]\n            AXI_MASK[Health_Scan] --> FILTER\n            AXIS_MASK[Health_Sync] --> FILTER\n            CORE_MASK[Health_Sync] --> FILTER\n        end\n\n        subgraph \"Routing Decision\"\n            FILTER --> DROP{Health_Scan}\n            DROP --> |No| ERR_CHK{Health_Record}\n            DROP --> |Yes| DISCARD[Health_Sync]\n            ERR_CHK --> |Yes| ERR_PATH[Health_Sync]\n            ERR_CHK --> |No| WR_PATH[Health_Sync]\n        end\n\n        subgraph \"Error/Interrupt Path\"\n            ERR_PATH --> ERR_FIFO[Health_Vault]\n            ERR_FIFO --> AXIL_S[Health_Scan]\n            ERR_FIFO --> IRQ[Health_Agent]\n        end\n\n        subgraph \"Master Write Path\"\n            WR_PATH --> WR_FIFO[Health_Record]\n            WR_FIFO --> ADDR_GEN[Health_Vault]\n            CFG_BASE[Health_Vault] --> ADDR_GEN\n            ADDR_GEN --> AXIL_M[Health_Sync]\n        end\n    end\n\n    AXIL_S --> S_AR[Health_Record]\n    AXIL_S --> S_R[Health_Agent]\n    AXIL_M --> M_AW[Health_Agent]\n    AXIL_M --> M_W[Health_Agent]\n    AXIL_M --> M_B[Health_Sync]\n\n    style FILTER fill:#bbf,stroke:#333,stroke-width:2px\n    style ERR_FIFO fill:#fbb,stroke:#333,stroke-width:3px\n    style WR_FIFO fill:#bfb,stroke:#333,stroke-width:3px\n    style ADDR_GEN fill:#ffb,stroke:#333,stroke-width:2px\n    style IRQ fill:#f9f,stroke:#333,stroke-width:3px\n",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为这个监控总线模块画一个完整的流程图。核心是从Health_Vault进来的监控数据流，先经过解析，然后按协议类型过滤，最后分发给不同的处理路径。",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE",
+        "FILTER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，入口是Health_Vault。过滤环节需要支持哪些协议类型？我看到有AXI、AXIS和Core三种掩码。",
+      "elements_involved": [
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，AXI_MASK对应Health_Scan，AXIS_MASK和CORE_MASK都是Health_Sync。这三种掩码共同决定FILTER的行为。",
+      "elements_involved": [
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK",
+        "FILTER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把Monitor Bus Input和Per-Protocol Filtering两个子图画好了。PARSE节点从Health_Vault接收数据，然后流向FILTER，同时三个掩码节点都指向FILTER。",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE",
+        "FILTER",
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "过滤之后需要路由决策。FILTER的输出先到DROP判断，如果满足丢弃条件就直接进DISCARD；否则进入错误检查ERR_CHK。",
+      "elements_involved": [
+        "FILTER",
+        "DROP",
+        "DISCARD",
+        "ERR_CHK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "DROP和ERR_CHK都是菱形判断节点吧？DROP的Yes分支到DISCARD，No分支到ERR_CHK。那ERR_CHK的两个分支呢？",
+      "elements_involved": [
+        "DROP",
+        "ERR_CHK",
+        "DISCARD"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。ERR_CHK如果检测到错误，走Yes分支到ERR_PATH；正常的话走No分支到WR_PATH，也就是写路径。",
+      "elements_involved": [
+        "ERR_CHK",
+        "ERR_PATH",
+        "WR_PATH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Routing Decision子图完成了。DROP是Health_Scan，DISCARD是Health_Sync；ERR_CHK是Health_Record，两个路径终点都是Health_Sync。",
+      "elements_involved": [
+        "DROP",
+        "DISCARD",
+        "ERR_CHK",
+        "ERR_PATH",
+        "WR_PATH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在处理错误路径。ERR_PATH后面要接一个ERR_FIFO做缓冲，然后从ERR_FIFO分出两路：一路到AXIL_S接口，另一路触发IRQ中断。",
+      "elements_involved": [
+        "ERR_PATH",
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到。ERR_FIFO是Health_Vault，AXIL_S是Health_Scan，IRQ是Health_Agent。这个子图叫Error/Interrupt Path对吗？",
+      "elements_involved": [
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。另外AXIL_S作为从接口，还需要画出S_AR和S_R两个通道，都是Health_Record和Health_Agent。",
+      "elements_involved": [
+        "AXIL_S",
+        "S_AR",
+        "S_R"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Error/Interrupt Path子图画好了，AXIL_S对外的S_AR和S_R也连上了。现在处理Master Write Path？",
+      "elements_involved": [
+        "ERR_PATH",
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ",
+        "S_AR",
+        "S_R"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的。WR_PATH先到WR_FIFO缓冲，然后到ADDR_GEN生成地址。ADDR_GEN需要CFG_BASE提供基地址配置，最后输出到AXIL_M主接口。",
+      "elements_involved": [
+        "WR_PATH",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "CFG_BASE",
+        "AXIL_M"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下节点类型：WR_FIFO和ADDR_GEN是矩形处理节点，CFG_BASE是配置输入，AXIL_M是主接口。WR_PATH到WR_FIFO，WR_FIFO到ADDR_GEN，CFG_BASE也指向ADDR_GEN，然后ADDR_GEN到AXIL_M。",
+      "elements_involved": [
+        "WR_FIFO",
+        "ADDR_GEN",
+        "CFG_BASE",
+        "AXIL_M"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。AXIL_M作为主机，要画出M_AW、M_W、M_B三个通道，分别是写地址、写数据和写响应。",
+      "elements_involved": [
+        "AXIL_M",
+        "M_AW",
+        "M_W",
+        "M_B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Master Write Path完成了。M_AW和M_W是Health_Agent，M_B是Health_Sync。整个monbus_axil_group的五个子图都画好了。",
+      "elements_involved": [
+        "WR_PATH",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "CFG_BASE",
+        "AXIL_M",
+        "M_AW",
+        "M_W",
+        "M_B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在需要加样式区分关键节点。FILTER用蓝色填充，线宽2px；ERR_FIFO和WR_FIFO分别用红色和绿色，线宽3px；ADDR_GEN用黄色，线宽2px；IRQ用粉色，线宽3px。",
+      "elements_involved": [
+        "FILTER",
+        "ERR_FIFO",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "样式已应用。FILTER是#bbf蓝色，ERR_FIFO是#fbb红色，WR_FIFO是#bfb绿色，ADDR_GEN是#ffb黄色，IRQ是#f9f粉色。边框都是#333。",
+      "elements_involved": [
+        "FILTER",
+        "ERR_FIFO",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我再看一下整体结构。PARSE节点应该在Monitor Bus Input子图内部，但它同时也属于过滤逻辑的入口，这个层级关系对吗？",
+      "elements_involved": [
+        "PARSE",
+        "MON_IN",
+        "FILTER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对的，PARSE在Monitor Bus Input里，同时有边连到Per-Protocol Filtering里的FILTER。这是跨子图的连接，Mermaid支持这种表示。",
+      "elements_involved": [
+        "PARSE",
+        "MON_IN",
+        "FILTER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我发现ERR_FIFO到AXIL_S的连线有问题。ERR_FIFO应该只连到AXIL_S，但AXIL_S还要对外输出S_AR和S_R，这个我确认没错。不过IRQ的样式线宽应该是3px不是2px。",
+      "elements_involved": [
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，IRQ的stroke-width改为3px。再确认一下ERR_FIFO的出线：一条到AXIL_S，一条到IRQ，对吗？",
+      "elements_involved": [
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。另外ADDR_GEN的输入除了WR_FIFO，还有CFG_BASE提供配置基址，这个双线输入没问题吧？",
+      "elements_involved": [
+        "ADDR_GEN",
+        "WR_FIFO",
+        "CFG_BASE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "没问题，Mermaid支持多输入。WR_FIFO和CFG_BASE都指向ADDR_GEN。CFG_BASE也是Health_Vault类型，和MON_IN、ERR_FIFO一致。",
+      "elements_involved": [
+        "ADDR_GEN",
+        "WR_FIFO",
+        "CFG_BASE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们检查一下协议掩码的命名。AXI_MASK是Health_Scan，AXIS_MASK和CORE_MASK都是Health_Sync，这个区分是因为AXI需要扫描而AXIS和Core只需要同步？",
+      "elements_involved": [
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "是的，从命名看AXI_MASK有Scan行为，AXIS_MASK和CORE_MASK是Sync行为。三种掩码都汇入FILTER，FILTER是Health_Record类型，负责记录决策。",
+      "elements_involved": [
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK",
+        "FILTER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "DROP判断是Health_Scan类型，和AXI_MASK一致，这可能意味着丢弃决策也需要扫描检测。DISCARD是Health_Sync，表示同步执行丢弃。",
+      "elements_involved": [
+        "DROP",
+        "DISCARD",
+        "AXI_MASK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解。DROP的Yes分支到DISCARD，No分支继续到ERR_CHK。ERR_CHK是Health_Record，和FILTER同类型，都是记录类节点。",
+      "elements_involved": [
+        "DROP",
+        "DISCARD",
+        "ERR_CHK",
+        "FILTER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ERR_PATH和WR_PATH都是Health_Sync，表示两条路径都是同步处理。但ERR_PATH后面接的ERR_FIFO是Health_Vault，变成缓冲存储了。",
+      "elements_involved": [
+        "ERR_PATH",
+        "WR_PATH",
+        "ERR_FIFO"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，错误路径需要缓冲，正常写路径也有WR_FIFO缓冲。两个FIFO分别是红色和绿色样式，很容易区分。",
+      "elements_involved": [
+        "ERR_PATH",
+        "WR_PATH",
+        "ERR_FIFO",
+        "WR_FIFO"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "AXIL_S作为从接口，类型是Health_Scan，而AXIL_M是Health_Sync。这可能表示从接口需要扫描解析，主接口只需同步传输。",
+      "elements_involved": [
+        "AXIL_S",
+        "AXIL_M"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "有意思的设计。AXIL_S对外有S_AR和S_R，分别是Health_Record和Health_Agent；AXIL_M对外有M_AW、M_W、M_B，其中M_AW和M_W是Health_Agent，M_B是Health_Sync。",
+      "elements_involved": [
+        "AXIL_S",
+        "S_AR",
+        "S_R",
+        "AXIL_M",
+        "M_AW",
+        "M_W",
+        "M_B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "M_B是响应通道，所以是Sync类型。这个分类很合理。现在确认所有Health_Agent类型的节点：IRQ、S_R、M_AW、M_W。",
+      "elements_involved": [
+        "IRQ",
+        "S_R",
+        "M_AW",
+        "M_W",
+        "M_B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已核对。Health_Agent有4个：IRQ、S_R、M_AW、M_W。Health_Vault有4个：MON_IN、PARSE、ERR_FIFO、CFG_BASE。Health_Record有4个：FILTER、ERR_CHK、S_AR、WR_FIFO。",
+      "elements_involved": [
+        "IRQ",
+        "S_R",
+        "M_AW",
+        "M_W",
+        "MON_IN",
+        "PARSE",
+        "ERR_FIFO",
+        "CFG_BASE",
+        "FILTER",
+        "ERR_CHK",
+        "S_AR",
+        "WR_FIFO"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Health_Scan有3个：AXI_MASK、DROP、AXIL_S。Health_Sync有7个：AXIS_MASK、CORE_MASK、DISCARD、ERR_PATH、WR_PATH、ADDR_GEN、M_B。",
+      "elements_involved": [
+        "AXI_MASK",
+        "DROP",
+        "AXIL_S",
+        "AXIS_MASK",
+        "CORE_MASK",
+        "DISCARD",
+        "ERR_PATH",
+        "WR_PATH",
+        "ADDR_GEN",
+        "M_B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "总共18个节点，分类正确。子图结构是：Monitor Bus Input、Per-Protocol Filtering、Routing Decision、Error/Interrupt Path、Master Write Path，都在monbus_axil_group内。",
+      "elements_involved": [
+        "monbus_axil_group"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下边的连接。MON_IN到PARSE，PARSE到FILTER，三个MASK到FILTER，FILTER到DROP，DROP分支到DISCARD和ERR_CHK，ERR_CHK分支到ERR_PATH和WR_PATH。",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE",
+        "FILTER",
+        "AXI_MASK",
+        "AXIS_MASK",
+        "CORE_MASK",
+        "DROP",
+        "DISCARD",
+        "ERR_CHK",
+        "ERR_PATH",
+        "WR_PATH"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "前半部分正确。ERR_PATH到ERR_FIFO，ERR_FIFO到AXIL_S和IRQ；WR_PATH到WR_FIFO，WR_FIFO到ADDR_GEN，CFG_BASE到ADDR_GEN，ADDR_GEN到AXIL_M。",
+      "elements_involved": [
+        "ERR_PATH",
+        "ERR_FIFO",
+        "AXIL_S",
+        "IRQ",
+        "WR_PATH",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "CFG_BASE",
+        "AXIL_M"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对外接口：AXIL_S到S_AR和S_R；AXIL_M到M_AW、M_W、M_B。所有连接都覆盖到了。",
+      "elements_involved": [
+        "AXIL_S",
+        "S_AR",
+        "S_R",
+        "AXIL_M",
+        "M_AW",
+        "M_W",
+        "M_B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完整图已生成。我数一下总边数：MON_IN-PARSE, PARSE-FILTER, 3条MASK-FILTER, FILTER-DROP, DROP-DISCARD, DROP-ERR_CHK, ERR_CHK-ERR_PATH, ERR_CHK-WR_PATH, ERR_PATH-ERR_FIFO, ERR_FIFO-AXIL_S, ERR_FIFO-IRQ, WR_PATH-WR_FIFO, WR_FIFO-ADDR_GEN, CFG_BASE-ADDR_GEN, ADDR_GEN-AXIL_M, AXIL_S-S_AR, AXIL_S-S_R, AXIL_M-M_AW, AXIL_M-M_W, AXIL_M-M_B。共20条边。",
+      "elements_involved": [
+        "monbus_axil_group"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "样式节点5个：FILTER蓝色，ERR_FIFO红色，WR_FIFO绿色，ADDR_GEN黄色，IRQ粉色。线宽有2px和3px两种规格。",
+      "elements_involved": [
+        "FILTER",
+        "ERR_FIFO",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认。FILTER和ADDR_GEN是2px，ERR_FIFO、WR_FIFO、IRQ是3px。边框统一#333。",
+      "elements_involved": [
+        "FILTER",
+        "ERR_FIFO",
+        "WR_FIFO",
+        "ADDR_GEN",
+        "IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "我再看一眼，PARSE节点的标签应该是Health_Vault，但它同时是解析功能。MON_IN到PARSE的边上标签也是PARSE，这个表示解析动作，对吗？",
+      "elements_involved": [
+        "PARSE",
+        "MON_IN"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对的，MON_IN[Health_Vault] -- PARSE[Health_Vault] 表示带PARSE标签的边，指向PARSE节点。这是Mermaid的语法，边标签和节点名相同。",
+      "elements_involved": [
+        "MON_IN",
+        "PARSE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体结构没问题了。这个图清晰展示了监控总线的数据流：从Health_Vault进入，经协议过滤，路由决策，分错误路径和写路径，最终通过AXI-Lite主从接口与外部交互。",
+      "elements_involved": [
+        "monbus_axil_group",
+        "MON_IN",
+        "FILTER",
+        "DROP",
+        "ERR_PATH",
+        "WR_PATH",
+        "AXIL_S",
+        "AXIL_M"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "总结得很准确。五个子图层次分明，18个节点类型语义清晰，20条边完整描述数据流向，5个样式节点突出关键组件。",
+      "elements_involved": [
+        "monbus_axil_group"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后一个小调整：确保所有子图的命名用引号包裹，特别是Per-Protocol Filtering和Routing Decision这种带空格的名称。",
+      "elements_involved": [
+        "Per-Protocol Filtering",
+        "Routing Decision"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已检查，所有子图名称都用双引号包裹：\"monbus_axil_group\", \"Monitor Bus Input\", \"Per-Protocol Filtering\", \"Routing Decision\", \"Error/Interrupt Path\", \"Master Write Path\"。",
+      "elements_involved": [
+        "monbus_axil_group",
+        "Monitor Bus Input",
+        "Per-Protocol Filtering",
+        "Routing Decision",
+        "Error/Interrupt Path",
+        "Master Write Path"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "方向是TB（Top-Bottom），从上到下布局，符合数据流的自然方向。",
+      "elements_involved": [
+        "monbus_axil_group"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，graph TB确保层次结构清晰：输入在最上，过滤次之，路由居中，两条路径并行在下，接口在最底部。",
+      "elements_involved": [
+        "monbus_axil_group"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个流程图可以定稿了，完整描述了监控总线AXI-Lite模块的健康检查数据通路。",
+      "elements_involved": [
+        "monbus_axil_group"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 51,
+    "repair_count": 2,
+    "grounding_acts_count": 51,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "source": "augmented_real_structure",
+  "diagram_type": "flowchart",
+  "repair_log": [
+    "diagram_type_defaulted_flowchart",
+    "compilation_recovered_local_original"
+  ],
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 102196.1737,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 51
+  }
+}

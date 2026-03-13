@@ -1,0 +1,260 @@
+{
+  "id": "ot_stateDiagram_00206",
+  "source": "other",
+  "source_url": "https://github.com/stevendos1/analisis/blob/ebafb85c113efedcd9e64d8dcab8dc98cfb2a02a/docs/meta-ahorro-state-diagram.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "stevendos1/analisis",
+  "diagram_type": "stateDiagram",
+  "code": "%%{init: {'theme':'base','themeVariables': {'primaryColor':'#5d5fef','primaryBorderColor':'#5d5fef','primaryTextColor':'#222','lineColor':'#111','noteBkgColor':'#fff8c5','noteBorderColor':'#d4b106','fontSize':'14px','fontFamily':'Segoe UI'}}}%%\nstateDiagram-v2\n    direction LR\n    classDef lifecycle fill:#ffffff,stroke:#5d5fef,stroke-width:2px,color:#222\n\n    state \"En Progreso\\nEstaCompletada = false\\nMontoActual < MontoObjetivo\" as EnProgreso\n    state \"Completada\\nEstaCompletada = true\\nMontoActual ≥ MontoObjetivo\" as Completada\n    state \"Eliminada\\nRegistro físico borrado\" as Eliminada\n\n    class EnProgreso,Completada,Eliminada lifecycle\n\n    [*] --> EnProgreso : CrearMeta() / inicializarMeta()\n    [*] --> Completada : CrearMeta() [payload.EstaCompletada] / inicializarMeta()\n\n    %% Ciclo natural de ahorro\n    EnProgreso --> EnProgreso : RegistrarTransaccion|Contribuir\\n[MontoActual+aporte < MontoObjetivo]\\n/ ActualizarMontos()\n    EnProgreso --> Completada : RegistrarTransaccion|Contribuir\\n[MontoActual+aporte ≥ MontoObjetivo]\\n/ ActualizarMontos()\n\n    Completada --> Completada : RegistrarTransaccion|Contribuir\\n[MontoActual+aporte ≥ MontoObjetivo]\\n/ MantenerCierre()\n    Completada --> EnProgreso : RegistrarTransaccion|Contribuir\\n[MontoActual+aporte < MontoObjetivo]\\n/ AjustarMontos()\n\n    %% Actualizaciones manuales vía PUT\n    EnProgreso --> Completada : ActualizarMeta()\\n[EstaCompletada || MontoActual ≥ objetivo]\\n/ PersistirCambios()\n    Completada --> EnProgreso : ActualizarMeta()\\n[!EstaCompletada]\\n/ PersistirCambios()\n\n    %% Borrado definitivo\n    EnProgreso --> Eliminada : EliminarMeta() / BorrarRegistro()\n    Completada --> Eliminada : EliminarMeta() / BorrarRegistro()\n    Eliminada --> [*]\n\n    note right of EnProgreso\n        Estado operacional por defecto.\n        Las contribuciones suman al monto y\n        recalculan el progreso.\n    end note\n\n    note right of Completada\n        Se marca cuando MontoActual\n        alcanza o supera el objetivo.\n        Puede reabrirse con ajustes manuales.\n    end note\n",
+  "content_size": 2062,
+  "collected_at": "2026-02-06T10:39:09.939790",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为储蓄目标模块画一个状态图。核心概念是：一个目标从创建开始，会经历「进行中」和「已完成」两种状态，还能被彻底删除。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。那创建时的入口怎么设计？是所有新目标都先进「进行中」，还是允许直接创建时就标记为已完成？",
+      "elements_involved": [
+        "[*]",
+        "EnProgreso",
+        "Completada",
+        "CrearMeta"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "两种情况都要支持。默认走「进行中」，但如果payload里带了已完成标记，就直接进「已完成」状态。后者适合导入历史数据或测试场景。",
+      "elements_involved": [
+        "[*]",
+        "EnProgreso",
+        "Completada",
+        "CrearMeta",
+        "payload.EstaCompletada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，所以起点有两个分支。那「进行中」的内部逻辑是什么？用户存钱的时候怎么流转？",
+      "elements_involved": [
+        "EnProgreso",
+        "RegistrarTransaccion",
+        "Contribuir"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "存钱是最核心的循环。在「进行中」时，每次存入一笔金额，如果累计后仍小于目标金额，就保持「进行中」并更新当前金额；如果达到或超过目标，就迁移到「已完成」。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "RegistrarTransaccion",
+        "Contribuir",
+        "MontoActual",
+        "MontoObjetivo",
+        "ActualizarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "「已完成」之后还能继续存钱吗？比如超额储蓄的情况。",
+      "elements_involved": [
+        "Completada",
+        "RegistrarTransaccion",
+        "Contribuir"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "可以，而且有两种情况。如果继续存，金额仍然大于等于目标，就保持在「已完成」，我们叫这个「保持关闭」；但如果因为某种调整导致金额回落到目标以下，就要能退回「进行中」。",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "MantenerCierre",
+        "AjustarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解，超额储蓄很常见，退回机制也合理。那除了存钱，还有别的操作能改变状态吗？",
+      "elements_involved": [
+        "ActualizarMeta",
+        "PersistirCambios"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "有，手动更新。用户可能通过PUT接口直接修改目标金额或完成标记。如果从「进行中」标记为完成，或者当前金额已经够目标了，就进到「已完成」；反过来，如果把完成标记取消，就退回「进行中」。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "ActualizarMeta",
+        "PersistirCambios",
+        "EstaCompletada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画一下：「进行中」和「已完成」之间有两条双向的手动更新边，都触发持久化操作。另外，删除功能怎么设计？",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada",
+        "EliminarMeta",
+        "BorrarRegistro"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "删除是物理删除，不是软删。无论「进行中」还是「已完成」，执行删除后都进入「已删除」状态，然后终结。注意这是不可逆的，记录会从数据库里抹掉。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada",
+        "EliminarMeta",
+        "BorrarRegistro",
+        "[*]"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，「已删除」是个终态。我在「进行中」和「已完成」旁边加注释说明业务含义可以吗？",
+      "elements_involved": [
+        "note right of EnProgreso",
+        "note right of Completada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好。「进行中」的注释写：默认运营状态，存款会累加金额并重新计算进度。「已完成」的注释写：当前金额达到或超过目标时标记，支持手动重新打开。",
+      "elements_involved": [
+        "note right of EnProgreso",
+        "note right of Completada",
+        "Las contribuciones suman al monto y",
+        "Puede reabrirse con ajustes manuales"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "图已经画好了，方向从左到右。三个主要状态用了统一的生命周期样式，起点和终点的星号也标清楚了。您看看还有要调整的吗？",
+      "elements_involved": [
+        "direction LR",
+        "classDef lifecycle",
+        "[*]",
+        "Eliminada -- [*]"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "「已完成」退回「进行中」的那条边，触发条件写错了。不是「MontoActual+aporte < MontoObjetivo」，应该是直接判断「MontoActual < MontoObjetivo」，因为这里是手动调整后的校验，不是新存入一笔。",
+      "elements_involved": [
+        "Completada -- EnProgreso",
+        "AjustarMontos",
+        "MontoActual",
+        "MontoObjetivo"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，把条件改成了「MontoActual < MontoObjetivo」，动作保持「AjustarMontos」不变。现在逻辑一致了。",
+      "elements_involved": [
+        "Completada -- EnProgreso",
+        "AjustarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题了，这个状态图完整覆盖了储蓄目标的生命周期：创建、存款循环、手动调整、物理删除。可以定稿。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada",
+        "Ciclo"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 17,
+    "repair_count": 1,
+    "grounding_acts_count": 17,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:44Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:28Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:28Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 30538.6527,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 16
+  }
+}

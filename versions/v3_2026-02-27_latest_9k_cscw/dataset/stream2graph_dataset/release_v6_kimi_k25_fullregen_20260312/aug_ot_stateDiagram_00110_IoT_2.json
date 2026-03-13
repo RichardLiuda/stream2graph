@@ -1,0 +1,167 @@
+{
+  "id": "aug_ot_stateDiagram_00110_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Three-Rivers-Tech/finance_feedback_engine/blob/414c209b886adbac796e1d4ceea68c4cf81baebc/docs/diagrams/circuit_breaker_state.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Three-Rivers-Tech/finance_feedback_engine",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [IoT_Industrial_ActuatorController] --> CLOSED\n\n    state CLOSED {IoT_Industrial_PLC_Logic] --> Normal\n        Normal --> IncrementFailures: execute_trade fails\n        IncrementFailures --> CheckThreshold: failure_count++\n        CheckThreshold --> Normal: count < 3\n        CheckThreshold --> [IoT_Industrial_EdgeNode]: count >= 3\n\n        Normal --> ResetCount: execute_trade succeeds\n        ResetCount --> Normal: failure_count = 0\n    }\n\n    CLOSED --> OPEN: Threshold Reached 3 failures\n\n    state OPEN {IoT_Industrial_TelemetryStream] --> BlockCalls\n        BlockCalls --> CheckTimeout: All calls raise CircuitBreakerError\n        CheckTimeout --> BlockCalls: elapsed < 60s\n        CheckTimeout --> [IoT_Industrial_PLC_Logic]: elapsed >= 60s\n    }\n\n    OPEN --> HALF_OPEN: Recovery Timeout Expired\n\n    state HALF_OPEN {IoT_Industrial_MQTT_Broker] --> TestRecovery\n        TestRecovery --> EvaluateResult: Allow ONE test call\n        EvaluateResult --> [IoT_Industrial_EdgeNode]: Success\n        EvaluateResult --> ReOpen: Failure\n\n        ReOpen --> [IoT_Industrial_PLC_Logic]\n    }\n\n    HALF_OPEN --> CLOSED: Test Call Succeeds\n    HALF_OPEN --> OPEN: Test Call Fails\n\n    style CLOSED fill:#4CAF50,stroke:#2E7D32,color:#fff\n    style OPEN fill:#F44336,stroke:#C62828,color:#fff\n    style HALF_OPEN fill:#FFC107,stroke:#F57C00,color:#333",
+  "content_size": 1199,
+  "collected_at": "2026-02-06T10:38:00.530796",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 1,
+  "repo_owner": "Three-Rivers-Tech",
+  "repo_name": "finance_feedback_engine",
+  "repo_description": "Finance feedback engine is an automated portfolio simulation tool using the LLM models of your choice.",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2025-11-19T00:29:36Z",
+  "repo_updated_at": "2026-01-22T19:46:09Z",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00110",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业IoT场景设计一个断路器状态机。核心设备是ActuatorController，它依赖PLC Logic执行交易。当连续失败达到3次时，应该进入熔断状态。",
+      "elements_involved": [
+        "IoT_Industrial_ActuatorController",
+        "CLOSED",
+        "IoT_Industrial_PLC_Logic",
+        "Normal",
+        "IncrementFailures",
+        "CheckThreshold"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。CLOSED状态下Normal和IncrementFailures之间的流转我理解：execute_trade失败时计数增加。那CheckThreshold判断后，如果未满3次是直接回到Normal吗？还有成功路径怎么处理？",
+      "elements_involved": [
+        "CheckThreshold",
+        "Normal",
+        "ResetCount"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，count小于3就回到Normal继续服务。成功时走ResetCount清零。当count等于3时，要触发到EdgeNode的上报，同时整个CLOSED状态退出，进入OPEN熔断。",
+      "elements_involved": [
+        "CheckThreshold",
+        "IoT_Industrial_EdgeNode",
+        "CLOSED",
+        "OPEN",
+        "Threshold Reached 3 failures"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "OPEN状态我画好了，里面包含TelemetryStream和BlockCalls。所有调用都被拒绝并抛出CircuitBreakerError，同时检查60秒超时。未满60秒保持阻断，到了60秒需要通知PLC Logic准备恢复。",
+      "elements_involved": [
+        "OPEN",
+        "IoT_Industrial_TelemetryStream",
+        "BlockCalls",
+        "CheckTimeout",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "超时后进入HALF_OPEN半开状态，这是关键设计。通过MQTT Broker来协调TestRecovery，只允许一个测试调用。这里需要EvaluateResult来判断测试结果。",
+      "elements_involved": [
+        "HALF_OPEN",
+        "OPEN",
+        "Recovery Timeout Expired",
+        "IoT_Industrial_MQTT_Broker",
+        "TestRecovery",
+        "EvaluateResult"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "EvaluateResult的分支我理一下：成功的话通知EdgeNode并回到CLOSED；失败的话走ReOpen再回到PLC Logic所在的OPEN状态。HALF_OPEN本身也有两条退出线指向CLOSED和OPEN，对吗？",
+      "elements_involved": [
+        "EvaluateResult",
+        "IoT_Industrial_EdgeNode",
+        "ReOpen",
+        "IoT_Industrial_PLC_Logic",
+        "CLOSED",
+        "OPEN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。另外视觉区分很重要：CLOSED用绿色表示正常，OPEN用红色警示熔断，HALF_OPEN用黄色提醒谨慎。这样运维人员一眼就能识别系统健康状态。",
+      "elements_involved": [
+        "CLOSED",
+        "OPEN",
+        "HALF_OPEN",
+        "style CLOSED fill:#4CAF50",
+        "style OPEN fill:#F44336",
+        "style HALF_OPEN fill:#FFC107"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部完成。状态机涵盖了ActuatorController的完整熔断生命周期：CLOSED内的故障累积与清零、OPEN的60秒阻断与超时恢复、HALF_OPEN的单测试验证与双向流转，三种状态的颜色标识也已应用。",
+      "elements_involved": [
+        "IoT_Industrial_ActuatorController",
+        "CLOSED",
+        "OPEN",
+        "HALF_OPEN",
+        "IncrementFailures",
+        "ResetCount",
+        "CheckTimeout",
+        "TestRecovery",
+        "EvaluateResult"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 30024.2512,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

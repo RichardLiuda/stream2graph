@@ -21,4 +21,3 @@
 - intent_accuracy_ok: PASS
 - latency_p95_ok: PASS
 - mental_map_ok: FAIL
-

@@ -1,0 +1,234 @@
+{
+  "id": "aug_ot_stateDiagram_00104_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/musel25/lab_software_eng/blob/abe7b632a47ca8035f732e0dc34d75fc4b0d8b1b/code/diagram7_2.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "musel25/lab_software_eng",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    %% ───────── Top-level flow ─────────\n    [IoT_Industrial_EdgeNode] --> WaitForEntryRequest\n\n    WaitForEntryRequest --> ProcSecCard : reqReadSecurityCard\n    ProcSecCard --> WaitForEntryRequest : flagSecurityCardFailure\n    ProcSecCard --> ProcBioData        : CardStatus==Valid\n    ProcBioData  --> UnlockLockAP      : Authenticated\n    UnlockLockAP --> WaitForEntryRequest : evAccessPointLocked\n\n    %% ───────── Composite ① ─────────\n    state \"ProcessingSecurityCardData\" as ProcSecCard {IoT_Industrial_TelemetryStream] --> ValidatingCard\n        ValidatingCard --> WaitForEntryRequest : SecCardFailure / ScFailCount&lt;3\n        ValidatingCard --> Fail3Card           : SecCardFailure / ScFailCount&gt;=3\n        ValidatingCard --> exit                : CardStatus==Valid\n\n        state Fail3Card {IoT_Industrial_ActuatorController] --> DisableAccount\n            DisableAccount --> exit : done\n        }\n        exit --> [IoT_Industrial_ActuatorController]\n    }\n\n    %% ───────── Composite ② ─────────\n    state \"ProcessingBiometricData\" as ProcBioData {IoT_Industrial_MQTT_Broker] --> AuthenticatingBio\n        AuthenticatingBio --> WaitForEntryRequest : BsTimeout\n        AuthenticatingBio --> Fail3Bio           : BioScanFailure / BFailCount&gt;=3\n        AuthenticatingBio --> exit               : Authenticated\n\n        state Fail3Bio {IoT_Industrial_MQTT_Broker] --> DisableAccountB\n            DisableAccountB --> exit : done\n        }\n        exit --> [IoT_Industrial_PLC_Logic]\n    }\n\n    %% ───────── Composite ③ ─────────\n    state \"UnlockingAndLockingAccessPoint\" as UnlockLockAP {IoT_Industrial_MQTT_Broker] --> Locked\n        Locked --> Unlocking : reqUnlockAccessPoint\n        Unlocking --> Unlocked : evAccessPointUnlocked\n        Unlocked --> Locked : reqLockAccessPoint\n    }",
+  "content_size": 1667,
+  "collected_at": "2026-02-06T10:37:56.625984",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00104",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业边缘节点的门禁系统设计一个状态图。核心流程是：边缘节点等待入场请求，然后依次处理安全卡验证和生物识别，最后控制门禁的开关。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "WaitForEntryRequest",
+        "ProcSecCard",
+        "ProcBioData",
+        "UnlockLockAP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。安全卡验证失败的话是直接返回等待状态，还是有重试机制？另外，生物识别部分需要超时处理吗？",
+      "elements_involved": [
+        "ProcSecCard",
+        "WaitForEntryRequest",
+        "ProcBioData"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "安全卡验证要有三次机会，失败少于三次返回等待状态，三次及以上要禁用账户。生物识别同样需要三次容错，并且要有超时机制——BsTimeout直接返回等待。",
+      "elements_involved": [
+        "SecCardFailure",
+        "ScFailCount",
+        "Fail3Card",
+        "DisableAccount",
+        "BsTimeout",
+        "Fail3Bio",
+        "DisableAccountB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把顶层流程搭建出来：边缘节点进入等待状态，收到reqReadSecurityCard后进入安全卡处理，验证通过后进入生物识别，认证成功则进入门禁控制。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "WaitForEntryRequest",
+        "ProcSecCard",
+        "CardStatus",
+        "ProcBioData",
+        "Authenticated",
+        "UnlockLockAP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "安全卡处理内部需要细化：用TelemetryStream做数据流入口，先验证卡片，验证通过就退出到生物识别阶段。失败的话要判断计数器。",
+      "elements_involved": [
+        "ProcSecCard",
+        "IoT_Industrial_TelemetryStream",
+        "ValidatingCard",
+        "exit",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "安全卡复合状态已添加。ValidatingCard在失败且计数小于3时返回等待状态，大于等于3时进入Fail3Card子状态，由ActuatorController执行账户禁用。",
+      "elements_involved": [
+        "ValidatingCard",
+        "WaitForEntryRequest",
+        "SecCardFailure",
+        "ScFailCount",
+        "Fail3Card",
+        "IoT_Industrial_ActuatorController",
+        "DisableAccount"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "生物识别部分用MQTT Broker做消息入口，认证中状态如果扫描失败三次也要禁用账户，但这里的禁用操作标记为DisableAccountB，和前面的区分开。",
+      "elements_involved": [
+        "ProcBioData",
+        "IoT_Industrial_MQTT_Broker",
+        "AuthenticatingBio",
+        "BioScanFailure",
+        "BFailCount",
+        "Fail3Bio",
+        "DisableAccountB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "生物识别复合状态完成。AuthenticatingBio处理超时返回等待，三次生物扫描失败进入Fail3Bio子状态禁用账户，认证成功则退出到PLC逻辑层。",
+      "elements_involved": [
+        "AuthenticatingBio",
+        "BsTimeout",
+        "WaitForEntryRequest",
+        "Fail3Bio",
+        "DisableAccountB",
+        "exit",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后是门禁控制复合状态，需要三个子状态：Locked锁定、Unlocking解锁中、Unlocked已解锁。解锁请求和锁定请求都要能响应。",
+      "elements_involved": [
+        "UnlockLockAP",
+        "Locked",
+        "Unlocking",
+        "Unlocked",
+        "reqUnlockAccessPoint",
+        "reqLockAccessPoint"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "门禁控制状态已添加。Locked状态收到解锁请求进入Unlocking，解锁完成事件evAccessPointUnlocked后变为Unlocked，收到锁定请求则回到Locked。",
+      "elements_involved": [
+        "UnlockLockAP",
+        "Locked",
+        "Unlocking",
+        "Unlocked",
+        "reqUnlockAccessPoint",
+        "evAccessPointUnlocked",
+        "reqLockAccessPoint"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整体结构对了，但门禁锁定后应该返回到最开始的等待状态，用evAccessPointLocked事件触发。另外安全卡验证失败也要能直接返回等待。",
+      "elements_involved": [
+        "UnlockLockAP",
+        "WaitForEntryRequest",
+        "evAccessPointLocked",
+        "ProcSecCard",
+        "flagSecurityCardFailure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正两处：添加UnlockLockAP到WaitForEntryRequest的evAccessPointLocked转换，以及ProcSecCard到WaitForEntryRequest的flagSecurityCardFailure转换。",
+      "elements_involved": [
+        "UnlockLockAP",
+        "WaitForEntryRequest",
+        "evAccessPointLocked",
+        "ProcSecCard",
+        "flagSecurityCardFailure"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认，这样整个工业门禁的状态流转就完整了：边缘节点→安全卡→生物识别→门禁控制，各环节的失败处理和账户禁用机制都覆盖到了。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "WaitForEntryRequest",
+        "ProcSecCard",
+        "ProcBioData",
+        "UnlockLockAP",
+        "Fail3Card",
+        "Fail3Bio"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 13,
+    "repair_count": 1,
+    "grounding_acts_count": 13,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 42865.2551,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 13
+  }
+}

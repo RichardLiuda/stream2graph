@@ -1,0 +1,324 @@
+{
+  "id": "gh_ind_3f253a173b",
+  "source": "github_industrial",
+  "repo": "JayceeB1/Klipper-Auto-Power-Off",
+  "license": "gpl-3.0",
+  "code": "sequenceDiagram\n    participant U as User\n    participant K as Klipper\n    participant APO as Auto Power Off\n    participant T as Timer (Reactor)\n    participant P as Power Device\n\n    Note over APO,T: Timer initiation\n    alt Print completed\n        K->>APO: _handle_print_complete()\n    else START command\n        U->>K: AUTO_POWEROFF START\n        K->>APO: cmd_AUTO_POWEROFF(option=\"start\")\n    end\n    \n    APO->>T: reactor.register_timer(_check_conditions, waketime)\n    APO->>APO: Record countdown_end\n    \n    loop Until shutdown or cancellation\n        T-->>APO: _check_conditions(eventtime)\n        \n        alt Conditions not met\n            APO->>T: Return new delay (+60s)\n        else Conditions met\n            APO->>APO: _power_off()\n            APO->>P: Actual device shutdown\n            APO->>T: Return NEVER (end timer)\n        end\n    end\n    \n    opt Manual cancellation\n        U->>K: AUTO_POWEROFF CANCEL\n        K->>APO: cmd_AUTO_POWEROFF(option=\"cancel\")\n        APO->>T: reactor.unregister_timer(shutdown_timer)\n        APO->>APO: shutdown_timer = None\n    end\n    \n    opt Cancellation by print detection\n        Note over K,APO: Print started\n        APO->>APO: Print detection in _check_conditions\n        APO->>T: Return NEVER (end timer)\n    end\n",
+  "diagram_type": "actor size:900..1500",
+  "collected_at": "2026-02-27T04:27:30.383253",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为Klipper的自动关机功能画一个时序图，核心是Auto Power Off模块怎么和Timer、Power Device交互。",
+      "elements_involved": [
+        "Auto Power Off",
+        "Timer",
+        "Power Device",
+        "Klipper"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，参与者我列一下：User、Klipper、Auto Power Off、Timer（用Reactor实现）、还有Power Device。Timer initiation那段需要加个Note标注吗？",
+      "elements_involved": [
+        "User",
+        "Klipper",
+        "Auto Power Off",
+        "Timer",
+        "Power Device",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，在APO和T之间加Note，写Timer initiation。启动条件有两个分支：打印完成自动触发，或者用户手动发START命令。",
+      "elements_involved": [
+        "Note",
+        "Auto Power Off",
+        "Timer",
+        "alt",
+        "Print completed",
+        "START command"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，alt分支我画上了：一边是Klipper调用APO的_handle_print_complete()，另一边是User发AUTO_POWEROFF START，Klipper转给cmd_AUTO_POWEROFF(option=\"start\")。",
+      "elements_involved": [
+        "Klipper",
+        "Auto Power Off",
+        "User",
+        "_handle_print_complete",
+        "cmd_AUTO_POWEROFF",
+        "option=\"start\""
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "启动后APO要向Timer注册回调，用reactor.register_timer，回调函数是_check_conditions，还要传waketime。然后APO内部要记录countdown_end。",
+      "elements_involved": [
+        "Auto Power Off",
+        "Timer",
+        "reactor.register_timer",
+        "_check_conditions",
+        "waketime",
+        "countdown_end"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了，APO到T的箭头标了reactor.register_timer(_check_conditions, waketime)，APO自己还有个自环记录countdown_end。接下来是循环检查条件对吧？",
+      "elements_involved": [
+        "Auto Power Off",
+        "Timer",
+        "reactor.register_timer",
+        "_check_conditions",
+        "waketime",
+        "countdown_end"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，loop Until shutdown or cancellation，Timer每隔一段时间回调_check_conditions，传eventtime进来。",
+      "elements_involved": [
+        "loop",
+        "Timer",
+        "Auto Power Off",
+        "_check_conditions",
+        "eventtime",
+        "shutdown",
+        "cancellation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "条件检查的结果有两个分支：条件不满足时返回新的延迟，满足时才真正关机。这里用alt区分对吗？",
+      "elements_involved": [
+        "alt",
+        "Conditions not met",
+        "Conditions met",
+        "new delay",
+        "power_off"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。不满足时APO告诉Timer再延后60秒，用Return new delay (+60s)；满足时走_power_off()，然后给Power Device发关机指令，最后Timer返回NEVER结束。",
+      "elements_involved": [
+        "Auto Power Off",
+        "Timer",
+        "+60s",
+        "_power_off",
+        "Power Device",
+        "NEVER",
+        "end timer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "循环分支画完了。现在需要处理取消逻辑，用户手动取消和打印检测取消都要支持。",
+      "elements_involved": [
+        "Manual cancellation",
+        "Cancellation by print detection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "手动取消用opt，User发AUTO_POWEROFF CANCEL，Klipper转cmd_AUTO_POWEROFF(option=\"cancel\")，然后APO要unregister_timer，并把shutdown_timer置None。",
+      "elements_involved": [
+        "opt",
+        "User",
+        "Klipper",
+        "Auto Power Off",
+        "Timer",
+        "AUTO_POWEROFF CANCEL",
+        "cmd_AUTO_POWEROFF",
+        "option=\"cancel\"",
+        "reactor.unregister_timer",
+        "shutdown_timer",
+        "None"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "手动取消画好了。另一个opt是打印检测取消，这个是在_check_conditions里检测到打印开始了？",
+      "elements_involved": [
+        "opt",
+        "Cancellation by print detection",
+        "_check_conditions",
+        "Print started"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Klipper和APO之间加个Note写Print started，APO在_check_conditions里检测到打印后，直接让Timer返回NEVER结束计时。",
+      "elements_involved": [
+        "Note",
+        "Klipper",
+        "Auto Power Off",
+        "Print started",
+        "_check_conditions",
+        "Timer",
+        "NEVER",
+        "end timer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。我检查一下：启动分支、注册定时器、循环检查条件、两种取消方式都齐了。",
+      "elements_involved": [
+        "Timer initiation",
+        "alt",
+        "loop",
+        "opt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，循环里条件满足时的关机流程，APO到Power Device的箭头应该标清楚是实际设备关机，不要和_power_off()混淆。",
+      "elements_involved": [
+        "Auto Power Off",
+        "Power Device",
+        "_power_off",
+        "Actual device shutdown"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正了，APO自环是_power_off()，到P的箭头标了Actual device shutdown。还有别的要调整吗？",
+      "elements_involved": [
+        "Auto Power Off",
+        "Power Device",
+        "_power_off",
+        "Actual device shutdown"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以了。对了，Timer的返回NEVER在两种结束场景都要明确标出来，一个是正常关机后，一个是打印检测取消后。",
+      "elements_involved": [
+        "Timer",
+        "NEVER",
+        "end timer",
+        "Conditions met",
+        "Cancellation by print detection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两处NEVER都补上了，标注Return NEVER (end timer)。整个流程现在完整了。",
+      "elements_involved": [
+        "Timer",
+        "NEVER",
+        "end timer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再确认下alt和opt的嵌套关系没错吧？特别是循环里的alt和后面两个opt是平级的。",
+      "elements_involved": [
+        "loop",
+        "alt",
+        "opt",
+        "Manual cancellation",
+        "Cancellation by print detection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "结构正确：loop包含一个alt，然后两个opt和loop平级，分别处理手动取消和打印检测取消。没有嵌套混乱。",
+      "elements_involved": [
+        "loop",
+        "alt",
+        "opt",
+        "Manual cancellation",
+        "Cancellation by print detection"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 20,
+    "repair_count": 1,
+    "grounding_acts_count": 20,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:40Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 52995.0988,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 20
+  }
+}

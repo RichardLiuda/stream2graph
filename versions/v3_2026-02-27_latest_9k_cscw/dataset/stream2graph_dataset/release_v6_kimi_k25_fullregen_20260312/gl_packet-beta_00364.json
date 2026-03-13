@@ -1,0 +1,496 @@
+{
+  "id": "gl_packet-beta_00364",
+  "source": "gitlab",
+  "source_url": "https://github.com/chris-arsenault/the-glass-frontier/blob/c0f4b7e7c333793aa3c28dc25e3bac325a56605c/docs/design/diagrams/DES-EDGE-01-contested-move-flow.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "chris-arsenault/the-glass-frontier",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant PlayerA as Player A\n    participant PlayerB as Player B / Rival\n    participant NarrativeEngine as Narrative Engine (LangGraph)\n    participant ContestCoordinator as Contest Coordinator\n    participant Temporal as Temporal Check Runner\n    participant CompQueue as Shared Complication Queue\n    participant NarrativeWeaver as Narrative Weaver\n    participant WebUI as Web UI Shell\n    participant Admin as Admin Console\n\n    PlayerA->>NarrativeEngine: Utterance + context (intent A)\n    PlayerB->>NarrativeEngine: Utterance + context (intent B)\n    NarrativeEngine->>NarrativeEngine: Detect collision hints (target, stakes, timing)\n    NarrativeEngine->>ContestCoordinator: intent.checkRequest (A, collisionHints)\n    NarrativeEngine->>ContestCoordinator: intent.checkRequest (B, collisionHints)\n    ContestCoordinator->>ContestCoordinator: Wait 8s/2 turns for matching hints\n    ContestCoordinator->>ContestCoordinator: Create contestId + contestSeed\n    ContestCoordinator->>Temporal: contest.bundle (A,B metadata, shared seeds)\n\n    loop For each participant\n        Temporal->>Temporal: Spawn contest.check child workflow\n        Temporal->>Temporal: Derive dice seed hash(contestSeed + participantId)\n        Temporal->>Temporal: Resolve roll + modifiers\n        Temporal-->>ContestCoordinator: contest.checkResult (tier, total, complications)\n    end\n\n    ContestCoordinator->>ContestCoordinator: Rank results (tier > total > momentum > stat)\n    ContestCoordinator->>CompQueue: Upsert shared complications\n    ContestCoordinator->>NarrativeWeaver: contest.resolution (ordered outcomes + queue refs)\n    ContestCoordinator->>Admin: telemetry.contest.start/resolved (auditRef)\n\n    NarrativeWeaver->>WebUI: Contested turn packet (per participant outcomes, complications)\n    NarrativeWeaver->>Admin: contest.override hooks + safety flags\n    WebUI->>PlayerA: Display contested badge + breakdown\n    WebUI->>PlayerB: Display contested badge + breakdown\n\n    Admin-->>NarrativeWeaver: moderation.decision (optional override)\n    NarrativeWeaver-->>WebUI: Updated contest narration (if override triggered)\n",
+  "content_size": 2140,
+  "collected_at": "2026-02-06T14:08:18.772733",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的对抗流程图，核心场景是：Player A和Player B同时向Narrative Engine提交意图，系统检测到冲突后启动Contest Coordinator来处理。先从两个玩家的输入开始吧。",
+      "elements_involved": [
+        "Player A",
+        "Player B / Rival",
+        "Narrative Engine (LangGraph)",
+        "intent A",
+        "intent B"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，Player A和Player B都向Narrative Engine发送utterance加context。那Narrative Engine内部需要做什么处理？是立即转发还是先做碰撞检测？",
+      "elements_involved": [
+        "Narrative Engine (LangGraph)",
+        "collision hints",
+        "target",
+        "stakes",
+        "timing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Narrative Engine要先内部检测collision hints，提取target、stakes、timing这三个关键维度。只有这三个维度都匹配上，才认为是真正的冲突，然后向Contest Coordinator发送checkRequest。",
+      "elements_involved": [
+        "Narrative Engine (LangGraph)",
+        "collision hints",
+        "target",
+        "stakes",
+        "timing",
+        "Contest Coordinator",
+        "intent.checkRequest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我画上了Narrative Engine自循环检测collision hints，然后分别向Contest Coordinator发送两个intent.checkRequest，带上A和B的collisionHints。接下来Coordinator的行为是什么？",
+      "elements_involved": [
+        "Narrative Engine (LangGraph)",
+        "Contest Coordinator",
+        "intent.checkRequest",
+        "collisionHints"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Contest Coordinator需要等待匹配，我们设定8秒或2个回合的窗口期。匹配成功后生成contestId和contestSeed，这两个是后续所有计算的根种子。",
+      "elements_involved": [
+        "Contest Coordinator",
+        "contestId",
+        "contestSeed",
+        "Wait 8s/2 turns for matching hints"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "等待逻辑是Coordinator内部的自循环对吧？然后它要把bundle发给Temporal Check Runner。这里A,B metadata和shared seeds都要传过去吗？",
+      "elements_involved": [
+        "Contest Coordinator",
+        "Temporal Check Runner",
+        "A,B metadata",
+        "shared seeds",
+        "contest.bundle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，contest.bundle包含A,B metadata和shared seeds。Temporal收到后开始为每个参与者生成独立的检查工作流。这里要用contestSeed加participantId做哈希派生dice seed，保证可复现但又不提前泄露。",
+      "elements_involved": [
+        "Temporal Check Runner",
+        "contest.bundle",
+        "contestSeed",
+        "participantId",
+        "dice seed",
+        "contest.check child workflow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在Temporal内部画了循环结构，每个participant spawn一个child workflow，做哈希派生然后resolve roll加modifiers。结果返回给Coordinator的格式是tier、total、complications三项对吧？",
+      "elements_involved": [
+        "Temporal Check Runner",
+        "contest.checkResult",
+        "tier",
+        "total",
+        "complications",
+        "Contest Coordinator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，contest.checkResult包含tier、total、complications。Coordinator拿到所有结果后要做排名，排序依据是tier优先，然后是total，再是momentum stat。",
+      "elements_involved": [
+        "Contest Coordinator",
+        "Rank results",
+        "tier",
+        "total",
+        "momentum",
+        "stat"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "排名之后Coordinator要把complications写入Shared Complication Queue？这个队列是全局共享的吗，还是按contest隔离？",
+      "elements_involved": [
+        "Contest Coordinator",
+        "Shared Complication Queue",
+        "Upsert shared complications"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是全局共享的队列，所以用upsert操作。这些complications会影响后续所有相关玩家的回合。然后Coordinator要把resolution发给Narrative Weaver，包含ordered outcomes和queue refs。",
+      "elements_involved": [
+        "Shared Complication Queue",
+        "upsert",
+        "Narrative Weaver",
+        "contest.resolution",
+        "ordered outcomes",
+        "queue refs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了。同时Coordinator还要向Admin Console发送telemetry，带auditRef用于审计追溯。这个telemetry是start和resolved两个阶段都要发吗？",
+      "elements_involved": [
+        "Contest Coordinator",
+        "Admin Console",
+        "telemetry.contest.start/resolved",
+        "auditRef"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，start和resolved两个事件，共用同一个auditRef。现在看Narrative Weaver这边，它收到resolution后要组装contested turn packet，发给Web UI Shell。",
+      "elements_involved": [
+        "Narrative Weaver",
+        "Web UI Shell",
+        "contested turn packet",
+        "per participant outcomes",
+        "complications"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "packet里包含per participant outcomes和complications，Web UI再分别展示给Player A和Player B。这里要显示contested badge和breakdown，让玩家清楚看到对抗结果。",
+      "elements_involved": [
+        "Narrative Weaver",
+        "Web UI Shell",
+        "Player A",
+        "Player B",
+        "contested badge",
+        "breakdown"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "正确。另外Narrative Weaver还要向Admin Console注册contest.override hooks和safety flags，方便运营介入。Admin可以主动下发moderation.decision触发覆盖。",
+      "elements_involved": [
+        "Narrative Weaver",
+        "Admin Console",
+        "contest.override hooks",
+        "safety flags",
+        "moderation.decision"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我加上了Narrative Weaver到Admin的虚线返回，表示override是可选的。如果Admin触发了override，Narrative Weaver要更新 narration再推给Web UI对吧？",
+      "elements_involved": [
+        "Admin Console",
+        "Narrative Weaver",
+        "Web UI Shell",
+        "optional override",
+        "Updated contest narration"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，虚线表示条件触发。整个流程闭环了。让我检查一下——Temporal那边的loop结构需要明确标注是for each participant。",
+      "elements_involved": [
+        "Temporal Check Runner",
+        "loop For each participant",
+        "contest.check child workflow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现一个问题：我之前把Temporal返回Contest Coordinator画成了实线箭头，但按规范异步结果应该用虚线。我修正一下，contest.checkResult用虚线返回。",
+      "elements_involved": [
+        "Temporal Check Runner",
+        "Contest Coordinator",
+        "contest.checkResult",
+        "--"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好的，异步回调用虚线。还有Admin到Narrative Weaver的moderation.decision也是虚线，因为是可选触发。",
+      "elements_involved": [
+        "Admin Console",
+        "Narrative Weaver",
+        "moderation.decision",
+        "--"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下Narrative Engine检测collision hints的细节：target、stakes、timing三个维度都要匹配才算冲突，还是满足部分即可？",
+      "elements_involved": [
+        "Narrative Engine (LangGraph)",
+        "collision hints",
+        "target",
+        "stakes",
+        "timing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "三个维度都要匹配。target是作用对象重合，stakes是风险等级相当，timing是时间窗口重叠。只有三者同时满足才会生成collisionHints并进入后续流程。",
+      "elements_involved": [
+        "collision hints",
+        "target",
+        "stakes",
+        "timing",
+        "Detect collision hints"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，我在Narrative Engine的自循环上标注了三个检测维度。再想确认下Contest Coordinator等待窗口的逻辑：8秒和2回合是或关系还是与关系？",
+      "elements_involved": [
+        "Contest Coordinator",
+        "Wait 8s/2 turns for matching hints"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是或关系，先到先触发。如果8秒内没有第二个匹配意图，或者已经走了2回合，就关闭窗口。这样可以防止无限等待。",
+      "elements_involved": [
+        "Contest Coordinator",
+        "Wait 8s/2 turns for matching hints",
+        "contestId",
+        "contestSeed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "关于dice seed的派生方式，hash(contestSeed + participantId)这个设计是为了让每个参与者的随机序列独立但可验证对吧？那modifier是从哪里取的？",
+      "elements_involved": [
+        "Temporal Check Runner",
+        "dice seed",
+        "contestSeed",
+        "participantId",
+        "roll + modifiers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，可验证且不可预测。modifiers来自玩家当前的状态和装备，Temporal在resolve roll时会查询外部状态服务。这个细节在图里不用展开，保持抽象层一致。",
+      "elements_involved": [
+        "Temporal Check Runner",
+        "Resolve roll + modifiers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Shared Complication Queue的upsert操作，如果同一个player在同一个contest里有多个complication，是覆盖还是追加？",
+      "elements_involved": [
+        "Contest Coordinator",
+        "Shared Complication Queue",
+        "Upsert shared complications"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "追加，按时间戳排序。queue refs里会带索引，Narrative Weaver在组装packet时会按顺序引用。complications会影响后续的narrative分支。",
+      "elements_involved": [
+        "Shared Complication Queue",
+        "queue refs",
+        "Narrative Weaver",
+        "per participant outcomes",
+        "complications"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的。现在检查整个图的参与者列表：Player A、Player B / Rival、Narrative Engine、Contest Coordinator、Temporal Check Runner、Shared Complication Queue、Narrative Weaver、Web UI Shell、Admin Console，共9个，对吗？",
+      "elements_involved": [
+        "Player A",
+        "Player B / Rival",
+        "Narrative Engine (LangGraph)",
+        "Contest Coordinator",
+        "Temporal Check Runner",
+        "Shared Complication Queue",
+        "Narrative Weaver",
+        "Web UI Shell",
+        "Admin Console"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，9个参与者完整了。最后确认一下Web UI到两个Player的展示：contested badge是视觉标识，breakdown要展示tier、total和complications的详细计算过程。",
+      "elements_involved": [
+        "Web UI Shell",
+        "Player A",
+        "Player B",
+        "contested badge",
+        "breakdown"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我觉得可以在Narrative Engine到Contest Coordinator的两条checkRequest线上标注一下，虽然都是intent.checkRequest，但分别对应A和B的collisionHints，避免看图时混淆。",
+      "elements_involved": [
+        "Narrative Engine (LangGraph)",
+        "Contest Coordinator",
+        "intent.checkRequest",
+        "A",
+        "B",
+        "collisionHints"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，标注清楚。另外Contest Coordinator内部的排名逻辑，tier total momentum stat这个优先级也要在注释里体现吗？",
+      "elements_involved": [
+        "Contest Coordinator",
+        "Rank results",
+        "tier",
+        "total",
+        "momentum",
+        "stat"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在Coordinator的自循环上加了排名注释。整个图现在应该完整了，从玩家输入、冲突检测、Contest协调、Temporal执行、结果排名、并发症队列、叙事组装、UI展示到Admin覆盖，全链路覆盖。",
+      "elements_involved": [
+        "sequenceDiagram",
+        "all participants",
+        "all message flows"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个设计支持高并发对抗场景，Temporal的child workflow保证了隔离性，Shared Complication Queue实现了状态共享，Admin覆盖提供了运营安全网。可以定稿了。",
+      "elements_involved": [
+        "Temporal Check Runner",
+        "Shared Complication Queue",
+        "Admin Console",
+        "contest.override hooks",
+        "safety flags"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 33,
+    "repair_count": 1,
+    "grounding_acts_count": 33,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 76061.4865,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 33
+  }
+}

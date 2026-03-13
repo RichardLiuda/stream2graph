@@ -1,0 +1,1094 @@
+{
+  "id": "gh_sequence_00922",
+  "source": "github",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/security/authentication-flow.mmd",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "github_file_path": "docs/diagrams/security/authentication-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    %% Authentication and Authorization Flow for erlmcp\n    %% Shows: API key, JWT, OAuth2, mTLS authentication methods\n    %% Plus: RBAC permission checking with role-based access control\n\n    autonumber\n    actor Client\n    participant Transport as Transport Layer<br/>(STDIO/TCP/HTTP/WS)\n    participant Auth as erlmcp_auth<br/>(gen_server)\n    participant RateLimiter as erlmcp_auth_rate_limiter\n    participant JWT as jose (JWT lib)\n    participant OAuth2 as OAuth2 Provider<br/>(RFC 7662)\n    participant MTLS as erlmcp_auth_mtls<br/>(Certificate validator)\n    participant RBAC as RBAC Engine<br/>(ETS-based)\n    participant Session as Session Manager<br/>(1 hour TTL)\n\n    Note over Client,Session: Authentication Flow\n\n    %% API Key Authentication\n    Client->>Transport: authenticate(api_key, Credentials)\n    Transport->>Auth: authenticate(api_key, #{api_key => Key})\n\n    Auth->>RateLimiter: check_rate_limit(ClientId, IPAddress)\n    RateLimiter-->>Auth: ok (or {error, rate_limited})\n\n    alt Rate Limited\n        Auth-->>Client: {error, rate_limited}\n        Note over Auth,RateLimiter: Blocked after 5 failed attempts<br/>15-minute cooldown\n    else Rate Check Passed\n        Auth->>Auth: do_validate_api_key(Key)\n        Note right of Auth: Lookup in ETS table<br/>auth_api_keys\n\n        alt API Key Invalid\n            Auth->>RateLimiter: record_failure(ClientId, IPAddress)\n            Auth-->>Client: {error, invalid_api_key}\n        else API Key Valid\n            Auth->>RateLimiter: record_success(ClientId, IPAddress)\n            Auth->>Session: create_session(UserId, Metadata)\n\n            Session->>RBAC: get_user_roles(UserId)\n            RBAC-->>Session: [<<\"admin\">>, <<\"user\">>]\n\n            Session->>RBAC: Aggregate permissions from roles\n            RBAC-->>Session: [<<\"read\">>, <<\"write\">>, <<\"execute\">>]\n\n            Session-->>Auth: {ok, SessionId}\n            Auth-->>Client: {ok, SessionId}\n\n            Note right of Session: Session expires in 1 hour<br/>Auto-cleanup timer\n        end\n    end\n\n    %% JWT Authentication\n    Client->>Transport: authenticate(jwt, #{token => JWT})\n    Transport->>Auth: authenticate(jwt, #{token => Token})\n\n    Auth->>RateLimiter: check_rate_limit(ClientId, IPAddress)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_jwt(Token)\n\n    alt Token Revoked\n        Auth-->>Client: {error, token_revoked}\n        Note right of Auth: Check ETS: auth_revoked_tokens<br/>Cleanup after 7 days\n    else Token Active\n        Auth->>JWT: jose_jws:peek_protected(Token)\n        JWT-->>Auth: #{<<\"kid\">> => KeyId}\n\n        Auth->>Auth: Lookup public key by kid\n        Note right of Auth: ETS: auth_jwt_keys<br/>Support key rotation\n\n        Auth->>JWT: jose_jws:verify(PublicKeyPem, Token)\n        JWT-->>Auth: {true, Payload, JWS}\n\n        alt Signature Invalid\n            Auth-->>Client: {error, invalid_signature}\n        else Signature Valid\n            Auth->>Auth: validate_jwt_claims(Claims)\n\n            Note right of Auth: CRITICAL SECURITY CHECKS:<br/>✓ exp (expiration) - Required<br/>✓ nbf (not before) - Optional<br/>✓ iss (issuer) - Configurable<br/>✓ aud (audience) - Configurable<br/>✓ sub (subject) - Required\n\n            alt Token Expired\n                Auth-->>Client: {error, token_expired}\n            else Token Not Yet Valid\n                Auth-->>Client: {error, token_not_yet_valid}\n            else Issuer Mismatch\n                Auth-->>Client: {error, invalid_issuer}\n            else Audience Mismatch\n                Auth-->>Client: {error, invalid_audience}\n            else All Claims Valid\n                Auth->>RateLimiter: record_success(ClientId, IPAddress)\n                Auth->>Session: create_session(UserId, Metadata)\n                Session-->>Auth: {ok, SessionId}\n                Auth-->>Client: {ok, SessionId}\n            end\n        end\n    end\n\n    %% OAuth2 Authentication (RFC 7662 Introspection)\n    Client->>Transport: authenticate(oauth2, #{token => AccessToken})\n    Transport->>Auth: authenticate(oauth2, #{token => Token})\n\n    Auth->>RateLimiter: check_rate_limit(ClientId, IPAddress)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_oauth2_token(Token)\n\n    alt Cache Hit (TTL not expired)\n        Note right of Auth: ETS: auth_oauth2_cache<br/>Token -> {TokenInfo, ExpiresAt}\n        Auth-->>Client: {ok, TokenInfo}\n    else Cache Miss\n        Auth->>OAuth2: HTTP POST /introspect\n        Note right of Auth: RFC 7662 Introspection<br/>Basic Auth: client_id:secret<br/>Body: token + token_type_hint\n\n        OAuth2-->>Auth: 200 OK + TokenInfo\n\n        Auth->>Auth: validate_introspection_response(TokenInfo)\n\n        Note right of Auth: RFC 7662 REQUIRED fields:<br/>✓ active = true<br/>✓ exp (expiration)<br/>✓ nbf (not before)<br/>✓ iss (issuer)\n\n        alt Token Inactive\n            Auth-->>Client: {error, token_invalid}\n        else Token Expired\n            Auth-->>Client: {error, token_expired}\n        else Token Valid\n            Auth->>Auth: cache_oauth2_token(Token, TokenInfo, TTL)\n            Note right of Auth: Cache for up to 5 minutes<br/>or until exp (whichever is less)\n\n            Auth->>RateLimiter: record_success(ClientId, IPAddress)\n            Auth->>Session: create_session(UserId, TokenInfo)\n            Session-->>Auth: {ok, SessionId}\n            Auth-->>Client: {ok, SessionId}\n        end\n    end\n\n    %% mTLS Authentication\n    Client->>Transport: authenticate(mtls, #{certificate => CertInfo})\n    Transport->>Auth: authenticate(mtls, CertInfo)\n\n    Auth->>RateLimiter: check_rate_limit(ClientId, IPAddress)\n    RateLimiter-->>Auth: ok\n\n    Auth->>MTLS: validate(CertInfo, Config)\n\n    Note right of MTLS: mTLS Validation Pipeline:<br/>1. Extract certificate from socket<br/>2. X.509 chain validation to trusted CAs<br/>3. Certificate expiration check<br/>4. OCSP/CRL revocation check<br/>5. Subject DN and CN pattern matching<br/>6. Certificate depth limit validation\n\n    MTLS-->>Auth: {ok, UserId}\n\n    alt Certificate Invalid\n        Auth->>RateLimiter: record_failure(ClientId, IPAddress)\n        Auth-->>Client: {error, invalid_certificate}\n    else Certificate Valid\n        Auth->>RateLimiter: record_success(ClientId, IPAddress)\n        Auth->>Session: create_session(UserId, #{auth_method => mtls})\n        Session-->>Auth: {ok, SessionId}\n        Auth-->>Client: {ok, SessionId}\n    end\n\n    %% Authorization Flow (RBAC)\n    Note over Client,Session: Authorization Flow\n\n    Client->>Transport: check_permission(SessionId, Resource, Permission)\n    Transport->>Auth: check_permission(SessionId, Resource, Permission)\n\n    Auth->>Session: lookup session\n    Session-->>Auth: #session{user_id => UserId, roles => Roles}\n\n    alt Session Not Found\n        Auth-->>Client: {error, invalid_session}\n    else Session Found\n        Auth->>RBAC: check_user_permission(UserId, Resource, Permission)\n\n        RBAC->>RBAC: Get user roles from ETS\n        Note right of RBAC: auth_user_roles:<br/>UserId -> [Role1, Role2, ...]\n\n        RBAC->>RBAC: Get allowed roles for resource+permission\n        Note right of RBAC: auth_acls:<br/>{Resource, Permission} -> [Role1, ...]\n\n        RBAC->>RBAC: Check intersection\n        Note right of RBAC: lists:any/2<br/>UserRole ∩ AllowedRoles ≠ ∅\n\n        alt Permission Denied\n            RBAC-->>Auth: {error, forbidden}\n            Auth-->>Client: {error, forbidden}\n        else Permission Granted\n            RBAC-->>Auth: ok\n            Auth-->>Client: ok\n        end\n    end\n\n    %% Default RBAC Roles\n    Note over RBAC: Default Roles (configured in init/1):<br/>🔹 admin: [read, write, execute, delete]<br/>🔹 user: [read, write]<br/>🔹 guest: [read]\n\n    %% Token Rotation\n    Note over Client,Session: Token Rotation (Security Best Practice)\n\n    Client->>Auth: rotate_token(SessionId)\n    Auth->>Session: lookup session\n\n    Auth->>Auth: generate new SessionId\n    Note right of Auth: crypto:strong_rand_bytes(32)<br/>base64 encoded\n\n    Auth->>Session: insert new session\n    Auth->>Session: delete old session\n\n    Auth-->>Client: {ok, NewSessionId}\n    Note right of Auth: Old session invalidated immediately<br/>Prevents session hijacking\n\n    %% Token Revocation\n    Note over Client,Session: Token Revocation (Emergency)\n\n    Client->>Auth: revoke_token(Token)\n    Auth->>Auth: insert into auth_revoked_tokens\n    Note right of Auth: Store: Token -> RevokedAt<br/>Auto-cleanup after 7 days\n\n    Auth-->>Client: ok\n    Note over Auth,JWT: Revoked tokens rejected immediately<br/>Even if exp claim valid\n\n    %% Session Cleanup\n    Note over Session: Auto-cleanup every 60 seconds:<br/>• Expired sessions (1 hour TTL)<br/>• Revoked tokens (7 days)<br/>• OAuth2 cache (TTL-based)\n",
+  "content_size": 8727,
+  "collected_at": "2026-02-06T01:50:47.821294",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 JWT lib 和 api_key, Credentials 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'JWT lib 和 api_key, Credentials'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "jose",
+        "authenticate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 api_key, #{api_key => Key 和 ClientId, IPAddress 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'api_key, #{api_key => Key 和 ClientId, IPAddress'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "authenticate",
+        "check_rate_limit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 or {error, rate_limited 和 Key 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'or {error, rate_limited 和 Key'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "ok",
+        "do_validate_api_key"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 ClientId, IPAddress 和 ClientId, IPAddress 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'ClientId, IPAddress 和 ClientId, IPAddress'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "record_failure",
+        "record_success"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 UserId, Metadata 和 UserId 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'UserId, Metadata 和 UserId'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "create_session",
+        "get_user_roles"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 jwt, #{token => JWT 和 jwt, #{token => Token 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我重新想了一下，应该是 jwt, #{token => JWT处理 才对。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 23,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'jwt, #{token => JWT处理'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "authenticate",
+        "authenticate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 ClientId, IPAddress 和 Token。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'ClientId, IPAddress 和 Token'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "check_rate_limit",
+        "do_validate_jwt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 Token 和 PublicKeyPem, Token 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'Token 和 PublicKeyPem, Token'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "peek_protected",
+        "verify"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 Claims 和 expiration 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'Claims 和 expiration'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "validate_jwt_claims",
+        "exp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 not before 和 issuer 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'not before 和 issuer'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "nbf",
+        "iss"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 audience 和 subject 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'audience 和 subject'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "aud",
+        "sub"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 ClientId, IPAddress 和 UserId, Metadata 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不，其实叫 ClientId, IPAddress处理 会更准确一点。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'ClientId, IPAddress处理'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "record_success",
+        "create_session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 RFC 7662 Introspection 和 oauth2, #{token => AccessToken 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'RFC 7662 Introspection 和 oauth2, #{token => AccessToken'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Authentication",
+        "authenticate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 oauth2, #{token => Token 和 ClientId, IPAddress 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'oauth2, #{token => Token 和 ClientId, IPAddress'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "authenticate",
+        "check_rate_limit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 Token 和 TTL not expired 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "抱歉，稍微改一下，把刚才那个改成 Token处理。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 61,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'Token处理'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "do_validate_oauth2_token",
+        "Hit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 TokenInfo 和 expiration 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 65,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'TokenInfo 和 expiration'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 66,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 67,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "validate_introspection_response",
+        "exp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 68,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 not before 和 issuer 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 69,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'not before 和 issuer'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 70,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 71,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "nbf",
+        "iss"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 72,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 Token, TokenInfo, TTL 和 whichever is less 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 73,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'Token, TokenInfo, TTL 和 whichever is less'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 74,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 75,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "cache_oauth2_token",
+        "exp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 76,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 ClientId, IPAddress 和 UserId, TokenInfo。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 77,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'ClientId, IPAddress 和 UserId, TokenInfo'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 78,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 79,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "record_success",
+        "create_session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 80,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里必须包含 mtls, #{certificate => CertInfo 和 mtls, CertInfo 这一块。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 81,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不，其实叫 mtls, #{certificate => CertInfo处理 会更准确一点。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 82,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我把它画成一个矩形框，名字叫 'mtls, #{certificate => CertInfo处理'，对吧？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 83,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 84,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "authenticate",
+        "authenticate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 85,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 ClientId, IPAddress 和 CertInfo, Config 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 86,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'ClientId, IPAddress 和 CertInfo, Config'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 87,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 88,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "check_rate_limit",
+        "validate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 89,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 ClientId, IPAddress 和 ClientId, IPAddress 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 90,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'ClientId, IPAddress 和 ClientId, IPAddress'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 91,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 92,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "record_failure",
+        "record_success"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 93,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关于 UserId, #{auth_method => mtls 和 RBAC 的逻辑。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 94,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'UserId, #{auth_method => mtls 和 RBAC'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 95,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 96,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "create_session",
+        "Flow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 97,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 SessionId, Resource, Permission 和 SessionId, Resource, Permission 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 98,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'SessionId, Resource, Permission 和 SessionId, Resource, Permission'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 99,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 100,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "check_permission",
+        "check_permission"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 101,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 user_id => UserId, roles => Roles 和 UserId, Resource, Permission 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 102,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不，其实叫 user_id => UserId, roles => Roles处理 会更准确一点。",
+      "elements_involved": [],
+      "is_repair": true
+    },
+    {
+      "turn_id": 103,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 'user_id => UserId, roles => Roles处理'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 104,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，继续吧。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 105,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "session",
+        "check_user_permission"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 106,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在这里会遇到 configured in init/1 和 Security Best Practice 的分支。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 107,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'configured in init/1 和 Security Best Practice'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 108,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 109,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Roles",
+        "Rotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 110,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后，流程会走到 SessionId 和 32。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 111,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以它是承接上一步的，内容是 'SessionId 和 32'？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 112,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "嗯，这样看起来很清晰。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 113,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "rotate_token",
+        "strong_rand_bytes"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 114,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 Emergency 和 Token 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 115,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我把它加进去了，标签显示为 'Emergency 和 Token'，你看看合适吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 116,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 117,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "[系统日志: Editor 更新了图表代码以反映上述结构]",
+      "elements_involved": [
+        "Revocation",
+        "revoke_token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 118,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要加一个处理 1 hour TTL 和 7 days 的环节。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 119,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。这是不是一个判断条件？我暂时写成 '1 hour TTL 和 7 days'。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 120,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就这样。",
+      "elements_involved": [],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 120,
+    "repair_count": 5,
+    "grounding_acts_count": 60,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 165982.9786,
+    "parse_valid": false,
+    "fallback_used": true,
+    "error": "json_decode_error: Expecting ',' delimiter: line 121 column 49 (char 4726)",
+    "reference_dialogue_turns": 120
+  }
+}

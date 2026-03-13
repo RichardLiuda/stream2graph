@@ -1,0 +1,169 @@
+{
+  "id": "gh_sequence_00965",
+  "source": "github",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_FIRMWARE/blob/615cebd32230a26c23013f1c75381475e12c0b93/diagrams/ACQ_AND_TRANSMIT_EXTERNAL.mmd",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_FIRMWARE",
+  "github_file_path": "diagrams/ACQ_AND_TRANSMIT_EXTERNAL.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Client as Client\n    participant DataTrans as data_transmission.c\n    participant Acquisition as acquisition.c\n    \n    Client->>DataTrans: Connect to data socket\n    activate DataTrans\n    \n    Note over DataTrans,Acquisition: External ADC already initialized during startup\n    \n    alt mode == 0 (Continuous)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit()\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Client: non_blocking_send() buffer\n            \n            opt Socket change detected\n                DataTrans->>DataTrans: Break acquisition loop\n            end\n        end\n    else mode == 1 (Single trigger)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit()\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Acquisition: pcnt_unit_get_count()\n            Acquisition-->>DataTrans: Current counter state\n            \n            alt Edge detected (counter changed)\n                DataTrans->>Client: non_blocking_send() buffer\n            end\n        end\n    end\n    \n    Client->>DataTrans: Disconnect\n    DataTrans->>DataTrans: safe_close(client_sock)\n    deactivate DataTrans",
+  "content_size": 1551,
+  "collected_at": "2026-02-06T01:51:18.794370",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个时序图，展示客户端和数据采集模块的交互流程。核心是两个参与者：Client 和 acquisition.c，中间通过 data_transmission.c 做中转。整体分两种工作模式——连续采集和单次触发。",
+      "elements_involved": [
+        "Client",
+        "Acquisition",
+        "DataTrans",
+        "Continuous",
+        "Single trigger"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我注意到您提到了两个模式，但流程里都有 SPI 传输和 socket 发送。主要区别是不是在于：连续模式里数据一旦拿到就立即发送，而单次触发模式需要检测计数器变化才决定是否发送？",
+      "elements_involved": [
+        "mode == 0",
+        "mode == 1",
+        "pcnt_unit_get_count",
+        "Edge detected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，就是这个逻辑。另外注意连续模式下还有个细节：如果检测到 socket 变化，要立刻跳出采集循环，这个用 opt 块表示。单次触发模式没有这条退出路径，它只依赖客户端断开。",
+      "elements_involved": [
+        "Socket change detected",
+        "Break acquisition loop",
+        "Until client disconnects"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主框架：Client 连接 socket，激活 DataTrans，然后进入 alt 分支区分 mode 0 和 mode 1。两个分支都用 loop 包裹，循环条件是直到客户端断开。SPI 部分我画成 DataTrans 向 Acquisition 请求 mutex、执行 polling_transmit、然后释放 mutex。",
+      "elements_involved": [
+        "Connect to data socket",
+        "activate DataTrans",
+        "alt mode == 0",
+        "loop Until client disconnects",
+        "spi_mutex",
+        "spi_device_polling_transmit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SPI 传输完成的那条返回线别忘了，是虚线箭头，从 Acquisition 指回 DataTrans。还有，单次触发模式里在释放 mutex 之后，DataTrans 要调用 pcnt_unit_get_count 获取当前计数器状态，根据返回值判断有没有边沿触发。",
+      "elements_involved": [
+        "SPI transaction complete",
+        "pcnt_unit_get_count",
+        "Current counter state",
+        "Edge detected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充。单次触发分支里，我在获取计数器后加了一个嵌套 alt：当 counter changed 时才执行 non_blocking_send。连续模式那边，non_blocking_send 直接放在 loop 里，不套条件。",
+      "elements_involved": [
+        "non_blocking_send",
+        "alt Edge detected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，连续模式里的 non_blocking_send 方向画反了。应该是 DataTrans 指向 Client，不是 Acquisition 指向 Client。数据是从 SPI 拿到之后，由 DataTrans 直接发给客户端的。",
+      "elements_involved": [
+        "DataTrans-Client",
+        "non_blocking_send"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "修正了，箭头现在从 DataTrans 指向 Client。最后收尾部分：Client 主动 Disconnect，DataTrans 执行 safe_close 关闭 client_sock，然后 deactivate。还需要加什么注释吗？",
+      "elements_involved": [
+        "Disconnect",
+        "safe_close",
+        "deactivate DataTrans"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "在 DataTrans 和 Acquisition 之间加一条 note，说明外部 ADC 在启动时已经初始化完成，这样看的人不会误以为 SPI 初始化是这里做的。",
+      "elements_involved": [
+        "Note over DataTrans,Acquisition",
+        "External ADC already initialized during startup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已添加。整个流程现在完整了：连接 → 模式分支 → 各自循环采集 → 条件发送或中断 → 断开清理。您看还有要调整的吗？",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "mode == 0",
+        "mode == 1"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 27198.7426,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

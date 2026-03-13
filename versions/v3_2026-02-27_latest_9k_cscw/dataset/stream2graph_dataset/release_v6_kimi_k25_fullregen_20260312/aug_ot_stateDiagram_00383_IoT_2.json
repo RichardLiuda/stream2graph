@@ -1,0 +1,156 @@
+{
+  "id": "aug_ot_stateDiagram_00383_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/SaintWyss/rag-corp/blob/7acfc8a1f950c640a490e32f3ba30f64243652c3/docs/architecture/diagrams/document-state.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "SaintWyss/rag-corp",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [IoT_Industrial_TelemetryStream] --> PENDING : Upload initiated\n\n    PENDING --> PROCESSING : Worker picks up job\n    \n    PROCESSING --> READY : Success<br/>(IoT_Industrial_ActuatorController)\n    PROCESSING --> FAILED : Error<br/>(IoT_Industrial_EdgeNode)\n    \n    READY --> PENDING : Reprocess requested\n    FAILED --> PENDING : Reprocess requested\n    \n    READY --> [IoT_Industrial_TelemetryStream] : Document deleted\n    FAILED --> [IoT_Industrial_PLC_Logic] : Document deleted\n    PENDING --> [IoT_Industrial_EdgeNode] : Document deleted\n\n    note right of PENDING\n        Document metadata created,\n        binary stored in S3/MinIO,\n        job enqueued in Redis\n    end note\n\n    note right of PROCESSING\n        Worker extracting text,\n        chunking, and\n        generating embeddings\n    end note\n\n    note right of READY\n        Chunks with embeddings\n        persisted in PostgreSQL,\n        available for RAG queries\n    end note\n\n    note right of FAILED\n        error_message contains\n        failure reason,\n        can be reprocessed\n    end note",
+  "content_size": 961,
+  "collected_at": "2026-02-06T10:41:29.594252",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00383",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个工业物联网场景下的文档处理状态机。核心流程是：IoT设备上传遥测数据文档，经过PENDING、PROCESSING，最终到READY或者FAILED。",
+      "elements_involved": [
+        "IoT_Industrial_TelemetryStream",
+        "PENDING",
+        "PROCESSING",
+        "READY",
+        "FAILED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。那PROCESSING到READY的转移，成功条件是关联到IoT_Industrial_ActuatorController吗？还有失败路径是落到EdgeNode？",
+      "elements_involved": [
+        "PROCESSING",
+        "READY",
+        "IoT_Industrial_ActuatorController",
+        "FAILED",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，成功时由ActuatorController确认处理完成；失败时EdgeNode会捕获错误。另外两条路径都要有重试机制——READY和FAILED都可以回到PENDING。",
+      "elements_involved": [
+        "READY",
+        "FAILED",
+        "PENDING",
+        "Reprocess requested"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把状态转移画好了。现在补充删除文档的终态：PENDING和READY回到TelemetryStream，FAILED落到PLC_Logic，这样区分清楚。",
+      "elements_involved": [
+        "PENDING",
+        "READY",
+        "FAILED",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_PLC_Logic",
+        "Document deleted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "每个状态加详细注释吧。PENDING阶段要说明元数据创建、二进制存S3、任务入Redis队列；PROCESSING是Worker做文本提取、分块、生成向量。",
+      "elements_involved": [
+        "PENDING",
+        "PROCESSING",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到。READY的注释我写：分块和向量持久化到PostgreSQL，支持RAG查询。FAILED的注释需要包含error_message可以重试，对吗？",
+      "elements_involved": [
+        "READY",
+        "FAILED",
+        "note",
+        "PostgreSQL",
+        "error_message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。不过你刚才说PENDING删除回到TelemetryStream，我确认一下——PENDING删除应该是直接到EdgeNode，不是TelemetryStream。",
+      "elements_involved": [
+        "PENDING",
+        "IoT_Industrial_EdgeNode",
+        "Document deleted"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "抱歉搞混了，已修正：PENDING删除指向EdgeNode，READY删除才是回到TelemetryStream。现在所有注释和转移都对应上了。",
+      "elements_involved": [
+        "PENDING",
+        "IoT_Industrial_EdgeNode",
+        "READY",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美，这个状态机完整覆盖了工业IoT文档从上传到可用的全生命周期，异常和删除路径也都考虑到了。",
+      "elements_involved": [
+        "stateDiagram-v2"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 2,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:22Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:22Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 24136.95,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

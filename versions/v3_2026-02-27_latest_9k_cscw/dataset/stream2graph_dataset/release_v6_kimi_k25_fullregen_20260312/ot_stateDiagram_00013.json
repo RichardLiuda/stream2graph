@@ -1,0 +1,153 @@
+{
+  "id": "ot_stateDiagram_00013",
+  "source": "other",
+  "source_url": "https://github.com/ubuntu/adsys/blob/5d1baaca274504377b7f77f3be1c0ebe6737e6fc/docs/diagrams/arch-state.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "ubuntu/adsys",
+  "diagram_type": "stateDiagram",
+  "code": "%%{init: {\"theme\": \"base\", \"themeVariables\": {\n      'background': '#DDC9D4',\n      'primaryColor': '#FFF',\n      'primaryTextColor': '#E95420',\n      'primaryBorderColor': '#7C0000',\n      'lineColor': '#E95420',\n      'secondaryColor': '#CECAC5'\n}}}%%\nstateDiagram-v2\n    um: Ubuntu machine\n    client: client.domain.com enrolled\n    user: user authenticated\n    fetch: fetch GPOs\n    parse: parse GPOs\n    update: update cached GPOs\n    GPOs: check GPOs are up-to-date\n    GPOs_applied_check: check GPOs are applied\n    GPOs_enforced_check: check GPOs are enforced\n    GPOs_apply: authenticate user and apply GPOs\n    auth_deny: don't authenticate user\n\n    state SSSD {\n        \n        um --> client: enroll to domain.com\n        client --> um: unenroll from domain.com\n        client --> user: authenticate user\n    }\n\n    SSSD --> ADSys: if ADSys installed\n    SSSD --> End : if ADSys not installed\n\n    state ADSys{\n        start --> GPOs\n        GPOs --> fetch: if no\n        GPOs --> parse : if yes\n        fetch --> update\n        update --> GPOs\n        parse --> GPOs_applied_check\n        GPOs_applied_check --> GPOs_enforced_check: if no\n        GPOs_applied_check --> GPOs_apply: if yes\n        GPOs_enforced_check --> GPOs_apply: if no\n        GPOs_enforced_check --> auth_deny: if yes\n\n    }\n",
+  "content_size": 1310,
+  "collected_at": "2026-02-06T10:36:45.878676",
+  "compilation_status": "success",
+  "license": "gpl-3.0",
+  "license_name": "GNU General Public License v3.0",
+  "license_url": "https://api.github.com/licenses/gpl-3.0",
+  "repo_stars": 234,
+  "repo_forks": 57,
+  "repo_owner": "ubuntu",
+  "repo_name": "adsys",
+  "repo_description": "Active Directory bridging tool suite",
+  "repo_language": "Go",
+  "repo_topics": [
+    "active-directory",
+    "group-policy",
+    "ubuntu",
+    "ubuntu-desktop"
+  ],
+  "repo_created_at": "2020-10-02T10:33:20Z",
+  "repo_updated_at": "2026-02-06T11:52:22Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个状态图，展示Ubuntu机器通过SSSD加入域之后，ADSys怎么处理GPO的完整流程。最外层是SSSD的状态，里面嵌套ADSys的子状态机。",
+      "elements_involved": [
+        "SSSD",
+        "ADSys",
+        "Ubuntu machine",
+        "client.domain.com enrolled"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。SSSD这边我画三个状态：um（Ubuntu机器本身）、client（已加入域的客户端）、user（用户已认证）。SSSD到ADSys有个分支条件——只有装了ADSys才走下面，没装就直接结束。这样对吗？",
+      "elements_involved": [
+        "um",
+        "client",
+        "user",
+        "SSSD -- ADSys",
+        "SSSD -- End"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，条件判断要写清楚。ADSys内部从start开始，先检查GPOs are up-to-date，如果过期了就fetch GPOs，然后update cached GPOs，更新完再循环回去检查。这个循环要画出来。",
+      "elements_involved": [
+        "start",
+        "GPOs",
+        "fetch",
+        "update"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，ADSys内部的循环我画好了：start到GPOs检查，分支no走fetch→update→回到GPOs。那如果GPOs是最新的，下一步是parse GPOs吗？",
+      "elements_involved": [
+        "parse",
+        "GPOs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "parse之后要检查GPOs are applied。如果没应用，走GPOs_enforced_check；如果已经应用了，直接GPOs_apply去认证用户并应用策略。这里还有个强制检查的分支——如果策略被强制拒绝，就要auth_deny。",
+      "elements_involved": [
+        "GPOs_applied_check",
+        "GPOs_enforced_check",
+        "GPOs_apply",
+        "auth_deny"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我理一下：GPOs_applied_check为no时到GPOs_enforced_check，这个检查如果为no还能继续GPOs_apply，只有为yes才auth_deny。那GPOs_applied_check为yes时直接GPOs_apply，对吗？",
+      "elements_involved": [
+        "GPOs_applied_check",
+        "GPOs_enforced_check",
+        "GPOs_apply"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。SSSD那边还有个细节：um和client之间是双向的，enroll to domain.com和unenroll from domain.com都要标清楚。client到user是authenticate user。",
+      "elements_involved": [
+        "um -- client",
+        "client -- user",
+        "enroll to domain.com",
+        "unenroll from domain.com"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都画好了。SSSD包含um、client、user三个状态，内部转换关系完整；ADSys嵌套在内部，从start经过GPOs检查、fetch/update循环、parse，再到applied和enforced的双重检查分支，最终到apply或deny。整个流程符合ADSys的实际工作逻辑。",
+      "elements_involved": [
+        "SSSD",
+        "ADSys",
+        "start",
+        "End"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:43Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:27Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:27Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 26934.6237,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

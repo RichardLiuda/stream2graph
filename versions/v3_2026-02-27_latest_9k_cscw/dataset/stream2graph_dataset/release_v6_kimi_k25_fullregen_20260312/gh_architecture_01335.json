@@ -1,0 +1,840 @@
+{
+  "id": "gh_architecture_01335",
+  "source": "github",
+  "source_url": "https://github.com/Isskar/Isschat/blob/72d26f4ee472ccc2a90d935cc65e0fca478b1dc2/data_flow.mmd",
+  "github_repo": "Isskar/Isschat",
+  "github_file_path": "data_flow.mmd",
+  "diagram_type": "architecture",
+  "code": "graph TD\n    %% Users and Interface\n    User([User]) -->|Accesses| WebApp[Streamlit Web App]\n    User -->|CLI Commands| CLI[CLI Interface]\n    \n    %% Authentication Flow\n    WebApp -->|Authentication| AzureAuth[Azure AD Authentication]\n    AzureAuth -->|Valid credentials| ChatInterface[Chat Interface]\n    AzureAuth -->|Admin access| AdminInterface[Admin Interface]\n    \n    %% Main Chat Flow\n    User -->|Asks question| ChatInterface\n    ChatInterface -->|Query| SemanticPipeline[Semantic RAG Pipeline]\n    \n    %% Semantic Processing Pipeline\n    SemanticPipeline -->|Reformulate query| ReformulationService[Service]\n    ReformulationService -->|LLM call| LLM\n    LLM -->|Reformulated query| ReformulationService\n    ReformulationService -->|Resolved query| SemanticRetrieval[Vector Retrieval Tool]\n    SemanticRetrieval -->|Vector search| WeaviateDB[(Weaviate Vector DB<br>Collection: isschat_docs)]\n    WeaviateDB -->|Relevant documents| SemanticRetrieval\n    SemanticRetrieval -->|Ranked results| GenerationTool[Generation Tool]\n    GenerationTool -->|Context + prompt| LLM[Gemini 2.5 Flash Lite]\n    LLM -->|Generated response| GenerationTool\n    GenerationTool -->|Final answer + sources| ChatInterface\n    \n    %% Data Storage & Management\n    GenerationTool -->|Save conversation| DataManager[Data Manager]\n    DataManager -->|Store data| StorageSystem{Storage System}\n    StorageSystem -->|Local| LocalStorage[(Local File Storage)]\n    StorageSystem -->|Cloud| AzureStorage[(Azure Blob Storage)]\n    \n    %% Features & History\n    ChatInterface -->|User feedback| FeaturesManager[Features Manager]\n    ChatInterface -->|Conversation history| HistoryManager[History Manager]\n    FeaturesManager -->|Feedback data| DataManager\n    HistoryManager -->|Load/save history| DataManager\n    \n    %% CLI Operations\n    CLI -->|Ingest command| IngestionPipeline[Confluence Ingestion Pipeline]\n    CLI -->|Status command| StatusCheck[System Status Check]\n    CLI -->|Query command| SemanticPipeline\n    CLI -->|Chat command| InteractiveCLI[Interactive CLI Chat]\n    \n    %% Data Ingestion Flow\n    IngestionPipeline -->|Extract| ConfluenceConnector[Confluence Connector]\n    ConfluenceConnector -->|Fetch pages| ConfluenceAPI[Confluence API]\n    ConfluenceConnector -->|Raw documents| DocumentProcessor[Document Processor]\n    DocumentProcessor -->|Clean & structure| DocumentChunker[Document Chunker]\n    DocumentChunker -->|Text chunks| EmbeddingService[Embedding Service<br>multilingual-e5-small]\n    EmbeddingService -->|Vector embeddings| WeaviateDB\n    \n    %% Configuration & Secrets\n    SemanticPipeline -.->|Config| ConfigManager[Configuration Manager]\n    ConfigManager -.->|Secrets| KeyVault[Azure Key Vault]\n    ConfigManager -.->|Settings| EnvFile[Environment Variables]\n    \n    %% Performance & Monitoring\n    AdminInterface -->|View metrics| PerformanceDashboard[Performance Dashboard]\n    PerformanceDashboard -->|Query stats| DataManager\n    \n    %% Subgraphs for organization\n    subgraph \"User Interface Layer\"\n        User\n        WebApp\n        CLI\n        ChatInterface\n        AdminInterface\n        InteractiveCLI\n    end\n    \n    subgraph \"Authentication & Authorization\"\n        AzureAuth\n        KeyVault\n    end\n    \n    subgraph \"RAG Processing Engine\"\n        SemanticPipeline\n        ReformulationService\n        SemanticRetrieval\n        GenerationTool\n        LLM\n    end\n    \n    subgraph \"Data Storage Layer\"\n        WeaviateDB\n        DataManager\n        StorageSystem\n        LocalStorage\n        AzureStorage\n    end\n    \n    subgraph \"Application Components\"\n        FeaturesManager\n        HistoryManager\n        PerformanceDashboard\n        ConfigManager\n    end\n    \n    subgraph \"Data Ingestion Pipeline\"\n        IngestionPipeline\n        ConfluenceConnector\n        ConfluenceAPI\n        DocumentProcessor\n        DocumentChunker\n        EmbeddingService\n    end\n    \n    subgraph \"Configuration & Environment\"\n        ConfigManager\n        KeyVault\n        EnvFile\n    end\n    \n    %% Styling\n    classDef interface fill:#e1f5fe,stroke:#0277bd,stroke-width:2px\n    classDef auth fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px\n    classDef processing fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px\n    classDef storage fill:#fff3e0,stroke:#ef6c00,stroke-width:2px\n    classDef components fill:#fce4ec,stroke:#c2185b,stroke-width:2px\n    classDef ingestion fill:#f1f8e9,stroke:#558b2f,stroke-width:2px\n    classDef config fill:#f5f5f5,stroke:#616161,stroke-width:2px\n    \n    class User,WebApp,CLI,ChatInterface,AdminInterface,InteractiveCLI interface\n    class AzureAuth,KeyVault auth\n    class SemanticPipeline,ReformulationService,SemanticRetrieval,GenerationTool,LLM processing\n    class WeaviateDB,DataManager,StorageSystem,LocalStorage,AzureStorage storage\n    class FeaturesManager,HistoryManager,PerformanceDashboard components\n    class IngestionPipeline,ConfluenceConnector,ConfluenceAPI,DocumentProcessor,DocumentChunker,EmbeddingService ingestion\n    class ConfigManager,EnvFile config",
+  "content_size": 5038,
+  "collected_at": "2026-02-06T01:44:56.099204",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "Isskar",
+  "repo_name": "Isschat",
+  "compilation_status": "success",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为ISS Chat系统绘制一个完整的架构图。这个系统是一个基于RAG的Confluence智能问答平台。我先从用户接入层开始梳理。",
+      "elements_involved": [
+        "User",
+        "WebApp",
+        "CLI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。用户是通过哪些具体方式访问系统的？Web界面和命令行工具都要包含吗？",
+      "elements_involved": [
+        "WebApp",
+        "CLI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，用户可以通过Streamlit Web App访问，也可以通过CLI Interface执行命令。这两个入口都要画出来。",
+      "elements_involved": [
+        "User",
+        "WebApp",
+        "CLI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把User节点放在左侧，然后引出两条线：一条到Streamlit Web App，标注\"Accesses\"；另一条到CLI Interface，标注\"CLI Commands\"。",
+      "elements_involved": [
+        "User",
+        "WebApp",
+        "CLI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是认证层。Web App需要对接Azure AD Authentication，这是企业级部署的硬性要求。",
+      "elements_involved": [
+        "WebApp",
+        "AzureAuth"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加AzureAuth节点，从WebApp画一条\"Authentication\"的连线过去。认证通过后用户能进入哪些界面？",
+      "elements_involved": [
+        "WebApp",
+        "AzureAuth"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "认证通过后分两条路径：普通用户进入Chat Interface，管理员可以进入Admin Interface。AzureAuth要分别指向这两个节点。",
+      "elements_involved": [
+        "AzureAuth",
+        "ChatInterface",
+        "AdminInterface"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。AzureAuth到ChatInterface标注\"Valid credentials\"，到AdminInterface标注\"Admin access\"。现在Chat Interface的交互流程怎么画？",
+      "elements_involved": [
+        "AzureAuth",
+        "ChatInterface",
+        "AdminInterface"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户直接在Chat Interface提问，然后查询进入Semantic RAG Pipeline。这里需要体现用户提问的动作。",
+      "elements_involved": [
+        "User",
+        "ChatInterface",
+        "SemanticPipeline"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加从User到ChatInterface的\"Asks question\"连线，以及ChatInterface到SemanticPipeline的\"Query\"连线。RAG Pipeline内部结构比较复杂，请详细说明。",
+      "elements_involved": [
+        "User",
+        "ChatInterface",
+        "SemanticPipeline"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Semantic Pipeline内部有四个关键组件：Reformulation Service负责查询改写，Semantic Retrieval做向量检索，Generation Tool生成答案，底层调用Gemini 2.5 Flash Lite这个LLM。",
+      "elements_involved": [
+        "SemanticPipeline",
+        "ReformulationService",
+        "SemanticRetrieval",
+        "GenerationTool",
+        "LLM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "查询改写的具体流程是怎样的？Reformulation Service和LLM之间如何交互？",
+      "elements_involved": [
+        "ReformulationService",
+        "LLM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Reformulation Service调用LLM进行查询改写，然后LLM返回改写后的查询给Reformulation Service，再由它传递给Semantic Retrieval。这是一个双向交互。",
+      "elements_involved": [
+        "ReformulationService",
+        "LLM",
+        "SemanticRetrieval"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画出ReformulationService到LLM的\"LLM call\"连线，以及LLM返回的\"Reformulated query\"连线。然后ReformulationService输出\"Resolved query\"到SemanticRetrieval。",
+      "elements_involved": [
+        "ReformulationService",
+        "LLM",
+        "SemanticRetrieval"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Semantic Retrieval需要连接Weaviate Vector DB，集合名称是isschat_docs。检索结果返回后传递给Generation Tool。",
+      "elements_involved": [
+        "SemanticRetrieval",
+        "WeaviateDB",
+        "GenerationTool"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加WeaviateDB节点，标注集合信息。SemanticRetrieval到WeaviateDB是\"Vector search\"，返回\"Relevant documents\"，然后SemanticRetrieval输出\"Ranked results\"到GenerationTool。",
+      "elements_involved": [
+        "SemanticRetrieval",
+        "WeaviateDB",
+        "GenerationTool"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Generation Tool再次调用LLM生成答案，这次要带上检索到的上下文。最终答案和来源一起返回给Chat Interface。",
+      "elements_involved": [
+        "GenerationTool",
+        "LLM",
+        "ChatInterface"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成GenerationTool到LLM的\"Context + prompt\"连线，LLM返回\"Generated response\"，最后GenerationTool输出\"Final answer + sources\"到ChatInterface。",
+      "elements_involved": [
+        "GenerationTool",
+        "LLM",
+        "ChatInterface"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对话数据需要持久化。Generation Tool要把对话保存到Data Manager，然后Data Manager对接Storage System，支持本地和Azure Blob两种存储。",
+      "elements_involved": [
+        "GenerationTool",
+        "DataManager",
+        "StorageSystem",
+        "LocalStorage",
+        "AzureStorage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加DataManager和StorageSystem节点，以及LocalStorage和AzureStorage两个子节点。连线标注分别是\"Save conversation\"、\"Store data\"、\"Local\"和\"Cloud\"。",
+      "elements_involved": [
+        "GenerationTool",
+        "DataManager",
+        "StorageSystem",
+        "LocalStorage",
+        "AzureStorage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Chat Interface还有两个辅助功能：用户反馈走Features Manager，对话历史走History Manager，它们最终都把数据交给Data Manager。",
+      "elements_involved": [
+        "ChatInterface",
+        "FeaturesManager",
+        "HistoryManager",
+        "DataManager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加FeaturesManager和HistoryManager。ChatInterface分别输出\"User feedback\"和\"Conversation history\"，然后两者都连接到DataManager。",
+      "elements_involved": [
+        "ChatInterface",
+        "FeaturesManager",
+        "HistoryManager",
+        "DataManager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CLI Interface的功能也需要展开。它支持四种命令：ingest走Confluence Ingestion Pipeline，status走System Status Check，query直接进Semantic Pipeline，chat走Interactive CLI Chat。",
+      "elements_involved": [
+        "CLI",
+        "IngestionPipeline",
+        "StatusCheck",
+        "SemanticPipeline",
+        "InteractiveCLI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已扩展CLI的四个分支：\"Ingest command\"到IngestionPipeline，\"Status command\"到StatusCheck，\"Query command\"到SemanticPipeline，\"Chat command\"到InteractiveCLI。",
+      "elements_involved": [
+        "CLI",
+        "IngestionPipeline",
+        "StatusCheck",
+        "SemanticPipeline",
+        "InteractiveCLI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据摄取流程是重点。Ingestion Pipeline先调用Confluence Connector，Connector再访问Confluence API获取页面，同时把原始文档传给Document Processor。",
+      "elements_involved": [
+        "IngestionPipeline",
+        "ConfluenceConnector",
+        "ConfluenceAPI",
+        "DocumentProcessor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画出IngestionPipeline到ConfluenceConnector的\"Extract\"连线。ConfluenceConnector分出两条：\"Fetch pages\"到ConfluenceAPI，\"Raw documents\"到DocumentProcessor。",
+      "elements_involved": [
+        "IngestionPipeline",
+        "ConfluenceConnector",
+        "ConfluenceAPI",
+        "DocumentProcessor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Document Processor清洗和结构化文档后，传给Document Chunker做分块，然后Embedding Service用multilingual-e5-small模型生成向量，最后存入WeaviateDB。",
+      "elements_involved": [
+        "DocumentProcessor",
+        "DocumentChunker",
+        "EmbeddingService",
+        "WeaviateDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加DocumentChunker和EmbeddingService节点。流程是\"Clean & structure\"、\"Text chunks\"、\"Vector embeddings\"，最终进入WeaviateDB。",
+      "elements_involved": [
+        "DocumentProcessor",
+        "DocumentChunker",
+        "EmbeddingService",
+        "WeaviateDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "配置管理需要单独体现。Semantic Pipeline依赖Configuration Manager获取配置，Config Manager又从Azure Key Vault获取密钥，从Environment Variables读取设置。",
+      "elements_involved": [
+        "SemanticPipeline",
+        "ConfigManager",
+        "KeyVault",
+        "EnvFile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Config Manager和其他组件的关系是强依赖还是可选配置？用虚线还是实线？",
+      "elements_involved": [
+        "ConfigManager",
+        "SemanticPipeline",
+        "KeyVault",
+        "EnvFile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "用虚线表示配置关系，不是核心数据流。Semantic Pipeline到Config Manager标注\"Config\"，Config Manager到Key Vault标注\"Secrets\"，到Env File标注\"Settings\"。",
+      "elements_involved": [
+        "SemanticPipeline",
+        "ConfigManager",
+        "KeyVault",
+        "EnvFile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已用虚线连接这三个关系。Admin Interface还有一个功能：查看Performance Dashboard，这个需要补充吗？",
+      "elements_involved": [
+        "ConfigManager",
+        "KeyVault",
+        "EnvFile",
+        "AdminInterface",
+        "PerformanceDashboard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要。Admin Interface可以查看Performance Dashboard，Dashboard又从Data Manager获取查询统计数据。",
+      "elements_involved": [
+        "AdminInterface",
+        "PerformanceDashboard",
+        "DataManager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加PerformanceDashboard节点。AdminInterface到Dashboard是\"View metrics\"，Dashboard到DataManager是\"Query stats\"。",
+      "elements_involved": [
+        "AdminInterface",
+        "PerformanceDashboard",
+        "DataManager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在需要组织子图结构。我建议分六个子图：用户界面层、认证授权层、RAG处理引擎、数据存储层、应用组件、数据摄取管道、配置环境。",
+      "elements_involved": [
+        "User",
+        "WebApp",
+        "CLI",
+        "ChatInterface",
+        "AdminInterface",
+        "InteractiveCLI",
+        "AzureAuth",
+        "KeyVault",
+        "SemanticPipeline",
+        "ReformulationService",
+        "SemanticRetrieval",
+        "GenerationTool",
+        "LLM",
+        "WeaviateDB",
+        "DataManager",
+        "StorageSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "正在创建子图。第一个\"User Interface Layer\"包含User、WebApp、CLI、ChatInterface、AdminInterface、InteractiveCLI。",
+      "elements_involved": [
+        "User",
+        "WebApp",
+        "CLI",
+        "ChatInterface",
+        "AdminInterface",
+        "InteractiveCLI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第二个\"Authentication & Authorization\"包含AzureAuth和KeyVault。",
+      "elements_involved": [
+        "AzureAuth",
+        "KeyVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第三个\"RAG Processing Engine\"包含SemanticPipeline、ReformulationService、SemanticRetrieval、GenerationTool、LLM。",
+      "elements_involved": [
+        "SemanticPipeline",
+        "ReformulationService",
+        "SemanticRetrieval",
+        "GenerationTool",
+        "LLM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第四个\"Data Storage Layer\"包含WeaviateDB、DataManager、StorageSystem、LocalStorage、AzureStorage。",
+      "elements_involved": [
+        "WeaviateDB",
+        "DataManager",
+        "StorageSystem",
+        "LocalStorage",
+        "AzureStorage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第五个\"Application Components\"包含FeaturesManager、HistoryManager、PerformanceDashboard、ConfigManager。",
+      "elements_involved": [
+        "FeaturesManager",
+        "HistoryManager",
+        "PerformanceDashboard",
+        "ConfigManager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第六个\"Data Ingestion Pipeline\"包含IngestionPipeline、ConfluenceConnector、ConfluenceAPI、DocumentProcessor、DocumentChunker、EmbeddingService。",
+      "elements_involved": [
+        "IngestionPipeline",
+        "ConfluenceConnector",
+        "ConfluenceAPI",
+        "DocumentProcessor",
+        "DocumentChunker",
+        "EmbeddingService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第七个\"Configuration & Environment\"包含ConfigManager、KeyVault、EnvFile。注意ConfigManager和KeyVault在两个子图中都出现了。",
+      "elements_involved": [
+        "ConfigManager",
+        "KeyVault",
+        "EnvFile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后需要添加样式定义，让不同类型的组件有视觉区分。接口层用蓝色，认证用紫色，处理用绿色，存储用橙色，应用组件用粉色，摄取用浅绿，配置用灰色。",
+      "elements_involved": [
+        "User",
+        "WebApp",
+        "CLI",
+        "ChatInterface",
+        "AdminInterface",
+        "InteractiveCLI",
+        "AzureAuth",
+        "KeyVault",
+        "SemanticPipeline",
+        "ReformulationService",
+        "SemanticRetrieval",
+        "GenerationTool",
+        "LLM",
+        "WeaviateDB",
+        "DataManager",
+        "StorageSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已定义七种classDef样式：interface(#e1f5fe/#0277bd)、auth(#f3e5f5/#7b1fa2)、processing(#e8f5e8/#2e7d32)、storage(#fff3e0/#ef6c00)、components(#fce4ec/#c2185b)、ingestion(#f1f8e9/#558b2f)、config(#f5f5f5/#616161)。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "应用样式：User、WebApp、CLI、ChatInterface、AdminInterface、InteractiveCLI使用interface样式。",
+      "elements_involved": [
+        "User",
+        "WebApp",
+        "CLI",
+        "ChatInterface",
+        "AdminInterface",
+        "InteractiveCLI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "AzureAuth、KeyVault使用auth样式。",
+      "elements_involved": [
+        "AzureAuth",
+        "KeyVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SemanticPipeline、ReformulationService、SemanticRetrieval、GenerationTool、LLM使用processing样式。",
+      "elements_involved": [
+        "SemanticPipeline",
+        "ReformulationService",
+        "SemanticRetrieval",
+        "GenerationTool",
+        "LLM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "WeaviateDB、DataManager、StorageSystem、LocalStorage、AzureStorage使用storage样式。",
+      "elements_involved": [
+        "WeaviateDB",
+        "DataManager",
+        "StorageSystem",
+        "LocalStorage",
+        "AzureStorage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "FeaturesManager、HistoryManager、PerformanceDashboard使用components样式。",
+      "elements_involved": [
+        "FeaturesManager",
+        "HistoryManager",
+        "PerformanceDashboard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "IngestionPipeline、ConfluenceConnector、ConfluenceAPI、DocumentProcessor、DocumentChunker、EmbeddingService使用ingestion样式。",
+      "elements_involved": [
+        "IngestionPipeline",
+        "ConfluenceConnector",
+        "ConfluenceAPI",
+        "DocumentProcessor",
+        "DocumentChunker",
+        "EmbeddingService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ConfigManager、EnvFile使用config样式。ConfigManager同时属于Application Components和Configuration & Environment两个子图。",
+      "elements_involved": [
+        "ConfigManager",
+        "EnvFile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "整体结构看起来完整了。但我注意到ConfigManager和KeyVault在两个子图中都出现，这样会不会重复？",
+      "elements_involved": [
+        "ConfigManager",
+        "KeyVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Mermaid允许节点在多个子图中引用，实际渲染时只会显示一个节点。这种设计能清晰展示组件的多重归属关系，是合理的。",
+      "elements_involved": [
+        "ConfigManager",
+        "KeyVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：LLM节点在RAG流程中出现了两次标签，应该统一为\"Gemini 2.5 Flash Lite\"。",
+      "elements_involved": [
+        "LLM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正。LLM节点统一标注为\"Gemini 2.5 Flash Lite\"，确保Reformulation Service和Generation Tool调用的是同一个模型实例。",
+      "elements_involved": [
+        "LLM"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 56,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "WeaviateDB的集合名称标注正确吗？需要明确显示isschat_docs。",
+      "elements_involved": [
+        "WeaviateDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认已标注为\"Weaviate Vector DB<brCollection: isschat_docs\"，换行显示保证可读性。",
+      "elements_involved": [
+        "WeaviateDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Embedding Service的模型名称也需要明确，应该是\"multilingual-e5-small\"。",
+      "elements_involved": [
+        "EmbeddingService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已更新Embedding Service节点为\"Embedding Service<brmultilingual-e5-small\"，与代码保持一致。",
+      "elements_involved": [
+        "EmbeddingService"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 60,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "现在整个架构图应该完整了。从用户接入、认证授权、RAG处理、数据存储、摄取管道到配置管理，所有关键组件和交互都覆盖到了。",
+      "elements_involved": [
+        "User",
+        "WebApp",
+        "CLI",
+        "AzureAuth",
+        "ChatInterface",
+        "SemanticPipeline",
+        "WeaviateDB",
+        "IngestionPipeline",
+        "ConfigManager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认架构完整。包含7个子图、35+个节点、完整的认证流、RAG处理流、数据摄取流，以及样式区分。需要我导出最终版本吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "可以导出了。这个架构图能清晰地向团队展示ISS Chat系统的全貌，包括企业级Azure AD集成、完整的RAG管道、灵活的CLI工具链，以及可扩展的存储方案。",
+      "elements_involved": [
+        "AzureAuth",
+        "SemanticPipeline",
+        "CLI",
+        "AzureStorage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终Mermaid架构图已生成，包含完整的节点定义、关系连线、子图组织和样式配置。可以直接用于技术文档和团队评审。",
+      "elements_involved": [],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 63,
+    "repair_count": 2,
+    "grounding_acts_count": 60,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:39Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:23Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:23Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 94045.5875,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 63
+  }
+}

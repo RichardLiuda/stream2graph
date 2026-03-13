@@ -1,0 +1,595 @@
+{
+  "id": "aug_ot_stateDiagram_00025_Clo_6",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/protocol/session-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [CloudNative_DockerImage] --> Initializing: start_link(CloudNative_Serverless)\n\n    state Initializing {CloudNative_K8sCluster] --> LoadConfig\n        LoadConfig --> InitTransport\n        InitTransport --> EstablishConnection\n        EstablishConnection --> SendInitialize\n        SendInitialize --> WaitForInitialized\n        WaitForInitialized --> [CloudNative_ServiceMesh]\n    }\n\n    Initializing --> Connected: initialized received\n\n    state Connected {CloudNative_ServiceMesh] --> Active\n\n        Active --> ResourceOperations: list/read/subscribe\n        Active --> ToolOperations: call_tool\n        Active --> PromptOperations: list/get\n\n        ResourceOperations --> Active\n        ToolOperations --> Active\n        PromptOperations --> Active\n\n        Active --> Subscribing: subscribe_resource\n        Subscribing --> Active: subscription_confirmed\n    }\n\n    Connected --> Paused: pause_requested\n    Paused --> Connected: resume_requested\n\n    Connected --> Reconnecting: transport_error\n    Reconnecting --> Connected: reconnect_success\n    Reconnecting --> Failed: reconnect_failed(CloudNative_Serverless)\n\n    Connected --> GracefulShutdown: shutdown notification\n    GracefulShutdown --> [CloudNative_K8sCluster]: cleanup_complete\n\n    Connected --> AbnormalShutdown: critical_error\n    AbnormalShutdown --> [CloudNative_K8sCluster]: cleanup_complete\n\n    %% Session Backend Transitions\n    note right of Connected\n        Session Persistence:\n        - ETS: In-memory\n        - DETS: Disk-based\n        - Mnesia: Cluster\n    end note\n\n    %% Reconnection Strategy\n    state Reconnecting {CloudNative_K8sCluster] --> Backoff\n        Backoff --> ReconnectAttempt\n        ReconnectAttempt --> Success\n        ReconnectAttempt --> Failure\n\n        Success --> [CloudNative_Serverless]\n        Failure --> IncrementRetryCount\n        IncrementRetryCount --> CheckMaxRetries\n\n        CheckMaxRetries --> Backoff: below_max\n        CheckMaxRetries --> [CloudNative_Serverless]: exceeded_max\n    }\n\n    %% State Transition Details\n    Connected --> SessionValidation: periodic_health_check\n    SessionValidation --> Connected: healthy\n    SessionValidation --> Failed: unhealthy(CloudNative_HelmChart)\n\n    %% Session Restoration (CloudNative_Serverless)\n    note right of Reconnecting\n        Failover Modes:\n        - Local: Restart process\n        - Remote: Mnesia replica\n        - Recovery: Load from DETS\n    end note\n\n    %% Subscription Management\n    state Subscribing {CloudNative_ServiceMesh] --> RegisterSubscription\n        RegisterSubscription --> SetupWatcher\n        SetupWatcher --> ConfirmSubscription\n        ConfirmSubscription --> [CloudNative_ServiceMesh]\n    }\n\n    %% Cleanup on Shutdown\n    state GracefulShutdown {CloudNative_Serverless] --> UnsubscribeResources\n        UnsubscribeResources --> DrainPendingRequests\n        DrainPendingRequests --> CloseTransport\n        CloseTransport --> PersistSession\n        PersistSession --> TerminateProcess\n        TerminateProcess --> [CloudNative_DockerImage]\n    }\n\n    %% Error States\n    state AbnormalShutdown {CloudNative_DockerImage] --> LogError\n        LogError --> PersistCrashDump\n        PersistCrashDump --> NotifyDependents\n        NotifyDependents --> TerminateProcess\n        TerminateProcess --> [CloudNative_K8sCluster]\n    }\n\n    %% Session State Fields\n    note right of Connected\n        Session State:\n        - session_id: UUID\n        - transport_pid: PID\n        - pending_requests: map(CloudNative_HelmChart)\n        - subscriptions: map(CloudNative_HelmChart)\n        - capabilities: #capabilities{CloudNative_K8sCluster}\n        - last_activity: timestamp(CloudNative_HelmChart)\n        - backend: ets | dets | mnesia\n    end note\n\n    %% Activity Monitoring\n    Connected --> IdleTimeout: no_activity(CloudNative_HelmChart)\n    IdleTimeout --> [CloudNative_DockerImage]: session_expired\n\n    %% Rate Limiting\n    Connected --> RateLimited: request_rate_exceeded\n    RateLimited --> Connected: backoff_complete\n    RateLimited --> Failed: rate_limit_persistent\n\n    %% Resource Watcher Lifecycle\n    state ResourceOperations {CloudNative_Serverless] --> Watching\n        Watching --> NotificationReceived: resource_changed\n        NotificationReceived --> DeliverNotification\n        DeliverNotification --> Watching\n    }\n\n    %% Tool Execution Lifecycle\n    state ToolOperations {CloudNative_HelmChart] --> Executing\n        Executing --> InProgress: long_running_op\n        InProgress --> ProgressUpdate: send_progress\n        ProgressUpdate --> InProgress\n        InProgress --> Complete: finished\n        Complete --> [CloudNative_Serverless]\n    }\n\n    %% Session Backend Selection\n    note left of Initializing\n        Backend Selection:\n        {CloudNative_ServiceMesh}\n        - Fastest: O(CloudNative_Serverless) access\n        - Volatile: Lost on crash\n\n        {CloudNative_HelmChart}\n        - Durable: Disk persistence\n        - Slower: I/O overhead\n\n        {CloudNative_HelmChart}\n        - Distributed: Cluster sync\n        - CAP: Consistency trade-offs\n    end note\n\n    %% Health Check States\n    Connected --> HealthCheck: periodic_timer\n    HealthCheck --> Connected: all_systems_go\n    HealthCheck --> Degraded: subsystem_failure\n    Degraded --> Connected: recovery_complete\n    Degraded --> Failed: recovery_failed\n\n    %% Session Restoration Flow\n    note right of Reconnecting\n        Restoration Priority:\n        1. Restore subscriptions\n        2. Replay pending requests\n        3. Restore capabilities\n        4. Resume monitoring\n    end note",
+  "content_size": 5160,
+  "collected_at": "2026-02-06T10:36:55.656398",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "CloudNative",
+  "seed_id": "ot_stateDiagram_00025",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为云原生MCP会话管理设计一个完整的状态机。核心是从Docker镜像启动，经过初始化最终到达Connected状态，然后处理各种运行时场景。",
+      "elements_involved": [
+        "CloudNative_DockerImage",
+        "Initializing",
+        "Connected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。初始化阶段需要包含哪些具体步骤？我看到有K8s集群配置加载、传输层初始化这些环节。",
+      "elements_involved": [
+        "CloudNative_K8sCluster",
+        "LoadConfig",
+        "InitTransport"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，初始化是个复合状态。从K8s集群加载配置，初始化传输层，建立连接，发送初始化消息，等待服务网格确认。完成后才进入Connected。",
+      "elements_involved": [
+        "EstablishConnection",
+        "SendInitialize",
+        "WaitForInitialized",
+        "CloudNative_ServiceMesh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Initializing复合状态已画出，包含LoadConfig到InitTransport到EstablishConnection到SendInitialize到WaitForInitialized的链条，最终连到ServiceMesh。",
+      "elements_involved": [
+        "Initializing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认。初始化完成后收到initialized消息就进入Connected状态。Connected也是复合状态，包含Active和三个操作子状态。",
+      "elements_involved": [
+        "Connected",
+        "Active",
+        "ResourceOperations",
+        "ToolOperations",
+        "PromptOperations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "三个操作子状态都连回Active，这是说操作完成后回到活跃状态？另外Subscribing也是Connected的一部分吗？",
+      "elements_involved": [
+        "ResourceOperations",
+        "ToolOperations",
+        "PromptOperations",
+        "Subscribing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，操作完成后返回Active。Subscribing是独立流程——从Active发起订阅，进入Subscribing复合状态，确认后返回Active。",
+      "elements_involved": [
+        "subscribe_resource",
+        "subscription_confirmed",
+        "Subscribing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Connected复合状态已完善，包含Active以及ResourceOperations、ToolOperations、PromptOperations的循环，还有Subscribing分支。",
+      "elements_involved": [
+        "Connected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在需要处理连接生命周期。Connected可以暂停、重连或关闭。暂停和恢复是双向的。",
+      "elements_involved": [
+        "Paused",
+        "pause_requested",
+        "resume_requested"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Connected到Paused的双向转换已添加。重连场景呢？",
+      "elements_involved": [
+        "Paused"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "传输错误触发Reconnecting，成功则回Connected，失败则进入Failed状态。Reconnecting本身也是复合状态，包含退避重试逻辑。",
+      "elements_involved": [
+        "Reconnecting",
+        "transport_error",
+        "reconnect_success",
+        "reconnect_failed",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "重试逻辑具体怎么设计？有最大重试次数检查吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Reconnecting内部：从K8s集群开始，进入Backoff，然后ReconnectAttempt。成功到Success连回Serverless，失败则IncrementRetryCount，检查上限，未超限回Backoff，超限则失败。",
+      "elements_involved": [
+        "ReconnectAttempt",
+        "Success",
+        "Failure",
+        "IncrementRetryCount",
+        "below_max",
+        "exceeded_max"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Reconnecting复合状态已完成，包含完整的退避重试循环和最大重试检查。",
+      "elements_involved": [
+        "Reconnecting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "两种关闭方式：GracefulShutdown是正常通知，AbnormalShutdown是严重错误。都需要清理回K8s集群或Docker镜像。",
+      "elements_involved": [
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "shutdown notification",
+        "critical_error",
+        "cleanup_complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "GracefulShutdown的具体流程是？需要持久化会话吗？",
+      "elements_involved": [
+        "GracefulShutdown",
+        "PersistSession"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "GracefulShutdown是复合状态：从Serverless开始，先UnsubscribeResources，DrainPendingRequests，CloseTransport，然后PersistSession，最后TerminateProcess回到Docker镜像。",
+      "elements_involved": [
+        "UnsubscribeResources",
+        "DrainPendingRequests",
+        "CloseTransport",
+        "TerminateProcess",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "GracefulShutdown复合状态已添加，包含完整的优雅关闭流程。AbnormalShutdown呢？",
+      "elements_involved": [
+        "GracefulShutdown"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "AbnormalShutdown从Docker镜像开始：LogError，PersistCrashDump，NotifyDependents，TerminateProcess，最后回到K8s集群。这是异常终止的清理路径。",
+      "elements_involved": [
+        "LogError",
+        "PersistCrashDump",
+        "NotifyDependents",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "AbnormalShutdown复合状态已完成。现在补充Subscribing的内部细节？",
+      "elements_involved": [
+        "AbnormalShutdown"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Subscribing从ServiceMesh开始：RegisterSubscription，SetupWatcher，ConfirmSubscription，然后回到ServiceMesh。这是订阅确认的标准流程。",
+      "elements_involved": [
+        "RegisterSubscription",
+        "SetupWatcher",
+        "ConfirmSubscription",
+        "CloudNative_ServiceMesh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Subscribing复合状态已完善。需要添加会话持久化的注释说明吗？",
+      "elements_involved": [
+        "Subscribing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "在Connected右侧加注释，说明三种后端：ETS内存型、DETS磁盘型、Mnesia集群型。这影响会话恢复策略。",
+      "elements_involved": [
+        "ETS",
+        "DETS",
+        "Mnesia"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Connected右侧的Session Persistence注释已添加。还需要其他注释吗？",
+      "elements_involved": [
+        "Connected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "在Reconnecting右侧加Failover Modes注释：本地重启、Mnesia副本、DETS恢复。还有Restoration Priority注释。",
+      "elements_involved": [
+        "Reconnecting",
+        "Local",
+        "Remote",
+        "Recovery"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Reconnecting右侧的两条注释已添加：Failover Modes和Restoration Priority。",
+      "elements_involved": [
+        "Reconnecting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "添加会话验证流程。Connected可以进入SessionValidation进行健康检查，健康则保持，不健康则失败到HelmChart。",
+      "elements_involved": [
+        "SessionValidation",
+        "periodic_health_check",
+        "healthy",
+        "unhealthy",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SessionValidation转换已添加：Connected双向healthy，或到Failed(unhealthy)。",
+      "elements_involved": [
+        "SessionValidation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要IdleTimeout机制。长时间无活动从Connected进入IdleTimeout，会话过期后回到Docker镜像。",
+      "elements_involved": [
+        "IdleTimeout",
+        "no_activity",
+        "session_expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "IdleTimeout转换已添加。速率限制也需要吗？",
+      "elements_involved": [
+        "IdleTimeout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，RateLimited状态。请求速率超限进入，退避完成回Connected，持续超限则失败。",
+      "elements_involved": [
+        "RateLimited",
+        "request_rate_exceeded",
+        "backoff_complete",
+        "rate_limit_persistent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RateLimited状态及转换已添加。ResourceOperations的内部需要细化吗？",
+      "elements_involved": [
+        "RateLimited"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ResourceOperations是复合状态：从Serverless开始Watching，资源变化时NotificationReceived，然后DeliverNotification，循环回Watching。",
+      "elements_involved": [
+        "Watching",
+        "NotificationReceived",
+        "resource_changed",
+        "DeliverNotification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ResourceOperations复合状态已完成，包含资源监听生命周期。ToolOperations呢？",
+      "elements_involved": [
+        "ResourceOperations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ToolOperations从HelmChart开始：Executing，长操作进入InProgress，可发送ProgressUpdate，完成后到Complete回到Serverless。",
+      "elements_involved": [
+        "Executing",
+        "InProgress",
+        "long_running_op",
+        "ProgressUpdate",
+        "send_progress",
+        "Complete",
+        "finished"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ToolOperations复合状态已添加，包含工具执行和进度更新循环。",
+      "elements_involved": [
+        "ToolOperations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "在Initializing左侧加Backend Selection注释，对比ServiceMesh、HelmChart、HelmChart三种选择的特性。",
+      "elements_involved": [
+        "Initializing",
+        "Backend Selection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Initializing左侧的Backend Selection注释已添加，对比了速度、持久性和CAP权衡。",
+      "elements_involved": [
+        "Initializing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "补充健康检查状态。Connected进入HealthCheck，全部正常保持，子系统失败进入Degraded，恢复完成回Connected，恢复失败则失败。",
+      "elements_involved": [
+        "HealthCheck",
+        "periodic_timer",
+        "all_systems_go",
+        "Degraded",
+        "subsystem_failure",
+        "recovery_complete",
+        "recovery_failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "HealthCheck和Degraded状态及转换已添加。Connected右侧还需要会话状态字段的详细注释吗？",
+      "elements_involved": [
+        "HealthCheck",
+        "Degraded"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，在Connected右侧下方加Session State注释，列出session_id、transport_pid、pending_requests、subscriptions、capabilities、last_activity、backend等字段及其类型。",
+      "elements_involved": [
+        "session_id",
+        "transport_pid",
+        "pending_requests",
+        "subscriptions",
+        "capabilities",
+        "last_activity",
+        "backend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Connected右侧下方的Session State详细注释已添加，包含所有字段类型信息。",
+      "elements_involved": [
+        "Connected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下，Initializing的起始应该是从DockerImage通过start_link到Serverless触发的，这个转换有吗？",
+      "elements_involved": [
+        "CloudNative_DockerImage",
+        "start_link",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确认，DockerImage到Initializing的转换已标注为start_link(Serverless)。整个状态机结构完整了。",
+      "elements_involved": [
+        "CloudNative_DockerImage",
+        "Initializing",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认。这个状态机覆盖了云原生MCP会话的完整生命周期：初始化、活跃操作、暂停、重连、优雅关闭、异常处理，以及会话持久化和健康监控。",
+      "elements_involved": [
+        "Initializing",
+        "Connected",
+        "Paused",
+        "Reconnecting",
+        "GracefulShutdown",
+        "AbnormalShutdown"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "状态图已完成，包含5个主复合状态、多个子状态复合体、7条注释说明，完整实现了云原生Serverless会话管理的状态机设计。",
+      "elements_involved": [
+        "stateDiagram-v2"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 46,
+    "repair_count": 1,
+    "grounding_acts_count": 45,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 75727.5631,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 46
+  }
+}

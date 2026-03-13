@@ -9,7 +9,7 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from tools.eval.common import append_jsonl, read_jsonl, resolve_path, utc_iso, write_json
+from tools.eval.common import append_jsonl, inject_api_key, read_jsonl, resolve_path, utc_iso, write_json
 from tools.eval.dataset import DEFAULT_SOURCE_DIR, DEFAULT_SPLIT_DIR, load_evaluation_samples
 from tools.eval.predictors import build_predictor
 
@@ -77,6 +77,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--static-rows-path", type=str, default="")
     parser.add_argument("--endpoint", type=str, default="")
     parser.add_argument("--api-key-env", type=str, default="")
+    parser.add_argument("--api-key", type=str, default="")
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--do-sample", action="store_true")
@@ -99,6 +100,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    inject_api_key(args.api_key_env, args.api_key)
     raw_config = json.loads(resolve_path(args.config).read_text(encoding="utf-8")) if args.config else {}
     output_jsonl = resolve_path(args.output_jsonl)
     manifest_output = (

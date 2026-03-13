@@ -1,0 +1,372 @@
+{
+  "id": "gh_ind_fe55153009",
+  "source": "github_industrial",
+  "repo": "mermaid-js/mermaid",
+  "license": "mit",
+  "code": "---\nreferences:\n  - \"File: /packages/mermaid/src/diagrams/mindmap/mindmap-definition.ts\"\n  - \"File: /packages/mermaid/src/diagrams/mindmap/mindmapDb.ts\"\n  - \"File: /packages/mermaid/src/diagrams/mindmap/detector.ts\"\n  - \"File: /packages/mermaid/src/diagrams/mindmap/mindmapTypes.ts\"\n  - \"File: /packages/mermaid/src/diagrams/mindmap/mindmapRenderer.ts\"\n  - \"File: /packages/mermaid/src/diagrams/mindmap/styles.ts\"\n  - \"File: /packages/mermaid/src/diagrams/mindmap/svgDraw.ts\"\ngenerationTime: 2025-01-28T16:00:00.000Z\n---\nsequenceDiagram\n    participant User as User Input Text\n    participant Detector as detector.ts\n    participant Loader as DiagramLoader\n    participant Definition as mindmap-definition.ts\n    participant Parser as parser/mindmap.jison\n    participant DB as MindmapDB\n    participant Renderer as mindmapRenderer.ts\n    participant Cytoscape as cytoscape.js\n    participant SVGDraw as svgDraw.ts\n    participant Styles as styles.ts\n    participant Output as Final SVG\n\n    Note over User, Output: Mindmap Implementation Flow\n\n    %% Detection Phase\n    User->>Detector: /^\\s*mindmap/ text input\n    activate Detector\n    Detector->>Detector: detector(txt) validates pattern\n    Detector->>Loader: loader() function called\n    deactivate Detector\n    \n    activate Loader\n    Loader->>Definition: import mindmap-definition.js\n    deactivate Loader\n\n    %% Core Structure Setup\n    activate Definition\n    Definition->>DB: get db() → new MindmapDB()\n    Definition->>Renderer: setup renderer\n    Definition->>Parser: setup parser\n    Definition->>Styles: setup styles\n    deactivate Definition\n\n    %% Database Initialization\n    activate DB\n    Note over DB: MindmapDB Constructor\n    DB->>DB: initialize nodes array\n    DB->>DB: setup nodeType constants\n    DB->>DB: bind methods\n    DB->>DB: clear() state\n    \n    %% Parsing Phase\n    activate Parser\n    User->>Parser: mindmap syntax text\n    \n    loop For each node in hierarchy\n        Parser->>DB: addNode(level, id, descr, type)\n        activate DB\n        DB->>DB: sanitizeText(id, descr)\n        DB->>DB: getType(startStr, endStr)\n        Note right of DB: Shape Detection:<br/>[ → RECT<br/>( → ROUNDED_RECT<br/>(( → CIRCLE<br/>)) → BANG<br/>{{ → HEXAGON\n        DB->>DB: getParent(level)\n        DB->>DB: create MindmapNode\n        DB->>DB: add to hierarchy\n        deactivate DB\n    end\n\n    opt Icon/Class Decoration\n        Parser->>DB: decorateNode(decoration)\n        DB->>DB: set icon/class properties\n    end\n    deactivate Parser\n\n    %% Data Preparation\n    Renderer->>DB: getData() for layout\n    activate DB\n    DB->>DB: collect all nodes\n    DB->>DB: build parent-child relationships\n    DB-->>Renderer: return node hierarchy\n    deactivate DB\n\n    %% Rendering Pipeline\n    activate Renderer\n    Note over Renderer: Rendering Phase\n    \n    Renderer->>Cytoscape: initialize cytoscape\n    activate Cytoscape\n    \n    loop For each node in mindmap\n        Renderer->>Cytoscape: addNodes(mindmap, cy, conf, level)\n        Cytoscape->>Cytoscape: create node data\n        Cytoscape->>Cytoscape: set position (x, y)\n    end\n\n    loop For parent-child relationships\n        Renderer->>Cytoscape: add edges\n        Cytoscape->>Cytoscape: create edge data\n    end\n\n    Renderer->>Cytoscape: configure cose-bilkent layout\n    Cytoscape->>Cytoscape: calculate optimal positions\n    Cytoscape-->>Renderer: return positioned graph\n    deactivate Cytoscape\n\n    %% SVG Generation\n    Renderer->>SVGDraw: drawNodes(db, svg, mindmap, section, conf)\n    activate SVGDraw\n    \n    loop For each node recursively\n        SVGDraw->>SVGDraw: select shape function\n        \n        alt Default Shape\n            SVGDraw->>SVGDraw: defaultBkg() - rounded rectangle\n        else Rectangle Shape\n            SVGDraw->>SVGDraw: rectBkg() - sharp corners\n        else Circle Shape\n            SVGDraw->>SVGDraw: circleBkg() - perfect circle\n        else Cloud Shape\n            SVGDraw->>SVGDraw: cloudBkg() - organic curves\n        else Bang Shape\n            SVGDraw->>SVGDraw: bangBkg() - explosion style\n        else Hexagon Shape\n            SVGDraw->>SVGDraw: hexagonBkg() - six sides\n        end\n        \n        SVGDraw->>SVGDraw: create SVG elements\n        SVGDraw->>SVGDraw: add text labels\n        SVGDraw->>SVGDraw: position node\n        \n        opt Node has children\n            SVGDraw->>SVGDraw: drawNodes() recursive call\n        end\n    end\n    deactivate SVGDraw\n\n    %% Edge Rendering\n    Renderer->>Renderer: drawEdges(edgesEl, cy)\n    loop For each edge\n        Renderer->>Renderer: extract edge bounds\n        Renderer->>Renderer: draw SVG path\n    end\n\n    %% Styling Application\n    Renderer->>Styles: getStyles(options)\n    activate Styles\n    \n    Styles->>Styles: genSections(options)\n    loop For THEME_COLOR_LIMIT sections\n        Styles->>Styles: generate color scale\n        Styles->>Styles: create CSS rules\n        Note right of Styles: .section-X fills<br/>.edge-depth-X widths<br/>.node-icon-X colors\n    end\n    \n    Styles->>Styles: apply theme integration\n    Styles-->>Renderer: return compiled CSS\n    deactivate Styles\n\n    %% Final Assembly\n    Renderer->>Output: selectSvgElement()\n    Renderer->>Output: setupGraphViewbox()\n    Renderer->>Output: apply styles\n    Renderer->>Output: add interactive elements\n    deactivate Renderer\n\n    activate Output\n    Note over Output: Final Mindmap Features\n    Output->>Output: responsive layout\n    Output->>Output: accessibility attributes\n    Output->>Output: hover effects\n    Output->>Output: click handling\n    Output-->>User: rendered mindmap\n    deactivate Output\n\n    %% Configuration Details\n    Note over DB, Styles: Configuration Options\n    Note right of DB: Padding Calculations:<br/>Base padding from config<br/>RECT: ×2 padding<br/>ROUNDED_RECT: ×2 padding<br/>HEXAGON: ×2 padding\n    Note right of Styles: Section Management:<br/>MAX_SECTIONS = 12<br/>Dynamic color generation<br/>Git theme integration\n    Note right of Renderer: Layout Parameters:<br/>Cytoscape configuration<br/>coseBilkent settings<br/>Node spacing rules ",
+  "diagram_type": "mindmap",
+  "collected_at": "2026-02-27T03:10:59.495034",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个思维导图渲染流程的序列图，从用户输入文本开始，一直到最终生成SVG。核心是让团队理解Mindmap模块内部的数据流转。",
+      "elements_involved": [
+        "User Input Text",
+        "Final SVG",
+        "mindmap definition",
+        "sequence diagram"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先把主要参与者列出来：用户输入、detector检测器、DiagramLoader加载器，还有核心的mindmap-definition.ts。这样分层可以吗？",
+      "elements_involved": [
+        "detector.ts",
+        "DiagramLoader",
+        "mindmap-definition.ts",
+        "User Input Text"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，但别忘了MindmapDB和mindmapRenderer.ts，这两个是数据存储和渲染的关键。还有cytoscape.js作为布局引擎。",
+      "elements_involved": [
+        "MindmapDB",
+        "mindmapRenderer.ts",
+        "cytoscape.js"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，参与者已添加。现在画检测阶段：User Input Text发送文本到Detector，Detector用正则/^\\s*mindmap/验证，验证通过后调用loader()。",
+      "elements_involved": [
+        "User Input Text",
+        "Detector",
+        "detector",
+        "loader()",
+        "/^\\s*mindmap/"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "检测之后，DiagramLoader要动态导入mindmap-definition.js。这里用虚线箭头还是实线？我觉得实线更体现同步加载的语义。",
+      "elements_involved": [
+        "DiagramLoader",
+        "mindmap-definition.js",
+        "import"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "同意用实线。接下来Definition阶段需要同时初始化DB、Renderer、Parser和Styles，这四个是并行的初始化调用。",
+      "elements_involved": [
+        "Definition",
+        "MindmapDB",
+        "Renderer",
+        "Parser",
+        "Styles",
+        "setup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "DB初始化那里要详细一点，包括nodes数组初始化、nodeType常量设置，还有clear()状态清理。这些对理解后续数据操作很重要。",
+      "elements_involved": [
+        "MindmapDB",
+        "nodes array",
+        "nodeType constants",
+        "clear()",
+        "bind methods"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加DB构造细节。现在处理解析阶段：Parser循环处理每个层级节点，调用addNode(level, id, descr, type)。",
+      "elements_involved": [
+        "Parser",
+        "addNode",
+        "level",
+        "id",
+        "descr",
+        "type",
+        "hierarchy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "addNode内部要有形状检测逻辑，这个很关键。方括号[是RECT，圆括号(是ROUNDED_RECT，双圆括号((是CIRCLE。需要在Note里标注清楚。",
+      "elements_involved": [
+        "addNode",
+        "shape detection",
+        "[ → RECT",
+        "( → ROUNDED_RECT",
+        "(( → CIRCLE",
+        ")) → BANG",
+        "{{ → HEXAGON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "形状检测Note已加。还有可选的装饰节点步骤decorateNode(decoration)，用于设置icon和class属性。",
+      "elements_involved": [
+        "decorateNode",
+        "decoration",
+        "icon",
+        "class properties"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，装饰是可选的，用opt块包裹。接下来Renderer要从DB获取数据，调用getData()构建父子关系。",
+      "elements_involved": [
+        "Renderer",
+        "getData",
+        "parent-child relationships",
+        "node hierarchy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "数据准备完成。进入渲染阶段：Renderer初始化cytoscape，循环调用addNodes(mindmap, cy, conf, level)设置每个节点的(x, y)坐标。",
+      "elements_involved": [
+        "cytoscape",
+        "addNodes",
+        "mindmap",
+        "cy",
+        "conf",
+        "position",
+        "x",
+        "y"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "addNodes之后还要add edges处理父子关系，然后配置cose-bilkent布局算法计算最优位置。这个布局是思维导图自动排版的核心。",
+      "elements_involved": [
+        "add edges",
+        "cose-bilkent",
+        "layout",
+        "optimal positions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "布局计算完成。接下来是SVG生成阶段：Renderer调用svgDraw.ts的drawNodes(db, svg, mindmap, section, conf)。",
+      "elements_involved": [
+        "svgDraw.ts",
+        "drawNodes",
+        "svg",
+        "section"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "drawNodes内部要有递归逻辑，每个节点根据类型选择不同的shape函数。我需要六种形状的alt分支：defaultBkg、rectBkg、circleBkg、cloudBkg、bangBkg、hexagonBkg。",
+      "elements_involved": [
+        "drawNodes",
+        "recursive",
+        "defaultBkg",
+        "rectBkg",
+        "circleBkg",
+        "cloudBkg",
+        "bangBkg",
+        "hexagonBkg",
+        "children"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "六种形状分支已添加，包含递归调用drawNodes处理子节点。现在补充边渲染：Renderer的drawEdges(edgesEl, cy)循环绘制SVG路径。",
+      "elements_involved": [
+        "drawEdges",
+        "edgesEl",
+        "edge bounds",
+        "SVG path"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "边渲染之后是样式应用。Styles模块的getStyles(options)要生成12个section的颜色渐变，还有edge-depth和node-icon的CSS规则。",
+      "elements_involved": [
+        "Styles",
+        "getStyles",
+        "genSections",
+        "THEME_COLOR_LIMIT",
+        ".section-X",
+        ".edge-depth-X",
+        ".node-icon-X"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "样式系统已标注。最后组装阶段：Renderer调用selectSvgElement()、setupGraphViewbox()，应用样式并添加交互元素。",
+      "elements_involved": [
+        "selectSvgElement",
+        "setupGraphViewbox",
+        "interactive elements"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Final SVG输出要注明特性：响应式布局、无障碍属性、hover效果和点击处理。这些是和用户直接相关的功能点。",
+      "elements_involved": [
+        "Final SVG",
+        "responsive layout",
+        "accessibility attributes",
+        "hover effects",
+        "click handling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "输出特性已补充。我注意到还需要一些配置细节的Note，比如DB的padding计算：RECT、ROUNDED_RECT、HEXAGON都是×2 padding。",
+      "elements_involved": [
+        "padding calculations",
+        "RECT padding",
+        "ROUNDED_RECT padding",
+        "HEXAGON padding"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，还有Styles的MAX_SECTIONS=12和Git主题集成，以及Renderer的coseBilkent参数配置。这些放在底部的Note里。",
+      "elements_involved": [
+        "MAX_SECTIONS",
+        "Git theme integration",
+        "coseBilkent settings",
+        "Node spacing rules"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有配置Note已添加。整体流程检查一遍：检测→加载→定义初始化→解析→数据准备→Cytoscape布局→SVG绘制→边渲染→样式应用→最终输出。",
+      "elements_involved": [
+        "Detection Phase",
+        "Core Structure Setup",
+        "Parsing Phase",
+        "Rendering Pipeline",
+        "SVG Generation",
+        "Final Assembly"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，Parser和DB的交互里，sanitizeText和getType的调用顺序需要调整。应该是先getType根据startStr/endStr判断形状，再sanitizeText清理文本。另外getParent要在create MindmapNode之前调用。",
+      "elements_involved": [
+        "sanitizeText",
+        "getType",
+        "getParent",
+        "create MindmapNode",
+        "call order"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正调用顺序：getType先检测形状，然后sanitizeText清理，接着getParent获取父节点，最后create MindmapNode并add to hierarchy。流程图现在逻辑正确了。",
+      "elements_involved": [
+        "getType",
+        "sanitizeText",
+        "getParent",
+        "create MindmapNode",
+        "hierarchy"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 24,
+    "repair_count": 1,
+    "grounding_acts_count": 24,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 45819.6278,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 24
+  }
+}

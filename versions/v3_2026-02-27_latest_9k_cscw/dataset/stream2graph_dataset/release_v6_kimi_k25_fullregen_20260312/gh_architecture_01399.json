@@ -1,0 +1,830 @@
+{
+  "id": "gh_architecture_01399",
+  "source": "github",
+  "source_url": "https://github.com/timothywarner/az305/blob/f1dac63440bdff4359294c400acb349c6f12671c/images/private-link-topology.mmd",
+  "github_repo": "timothywarner/az305",
+  "github_file_path": "images/private-link-topology.mmd",
+  "diagram_type": "architecture",
+  "code": "%% AZ-305 Domain 4: Private Link/Private Endpoint Connectivity Patterns\n%% Reference: Azure Private Link architecture, network isolation\n%% Exam Focus: Private endpoints, DNS resolution, cross-region patterns\n\nflowchart TB\n    subgraph ONPREM[\"On-Premises Network\"]\n        direction TB\n        ONPREM_DNS[\"On-Premises DNS<br/>Conditional Forwarder\"]\n        ONPREM_CLIENT[\"On-Premises Client<br/>10.100.1.10\"]\n        ONPREM_APP[\"Legacy Application\"]\n    end\n\n    subgraph HUB_VNET[\"Hub Virtual Network (10.0.0.0/16)\"]\n        direction TB\n\n        subgraph CONNECTIVITY[\"Connectivity Services\"]\n            ER_GW[\"ExpressRoute Gateway\"]\n            VPN_GW[\"VPN Gateway\"]\n            FIREWALL[\"Azure Firewall\"]\n        end\n\n        subgraph DNS_INFRA[\"DNS Infrastructure\"]\n            DNS_RESOLVER[\"Private DNS Resolver\"]\n            DNS_INBOUND[\"Inbound Endpoint<br/>10.0.5.4\"]\n            DNS_OUTBOUND[\"Outbound Endpoint<br/>Forwarding Rules\"]\n        end\n\n        PRIVATE_DNS_ZONES[\"Private DNS Zones<br/>Linked to VNets\"]\n    end\n\n    subgraph SPOKE1[\"Spoke VNet - Application (10.1.0.0/16)\"]\n        direction TB\n\n        APP_SUBNET[\"Application Subnet<br/>10.1.1.0/24\"]\n        APP_VM[\"Application VM<br/>10.1.1.10\"]\n\n        PE_SUBNET[\"Private Endpoint Subnet<br/>10.1.2.0/24<br/>Disable Network Policies\"]\n\n        subgraph PES_APP[\"Private Endpoints\"]\n            PE_STORAGE[\"PE: Storage Account<br/>10.1.2.10<br/>blob.core.windows.net\"]\n            PE_SQL[\"PE: Azure SQL<br/>10.1.2.11<br/>database.windows.net\"]\n            PE_KV[\"PE: Key Vault<br/>10.1.2.12<br/>vault.azure.net\"]\n        end\n    end\n\n    subgraph SPOKE2[\"Spoke VNet - Data Platform (10.2.0.0/16)\"]\n        direction TB\n\n        DATA_SUBNET[\"Data Subnet<br/>10.2.1.0/24\"]\n        SYNAPSE_VM[\"Synapse Integration<br/>Runtime VM\"]\n\n        PE_SUBNET2[\"Private Endpoint Subnet<br/>10.2.2.0/24\"]\n\n        subgraph PES_DATA[\"Private Endpoints\"]\n            PE_ADLS[\"PE: ADLS Gen2<br/>10.2.2.10<br/>dfs.core.windows.net\"]\n            PE_SYNAPSE[\"PE: Synapse Analytics<br/>10.2.2.11<br/>sql.azuresynapse.net\"]\n            PE_COSMOS[\"PE: Cosmos DB<br/>10.2.2.12<br/>documents.azure.com\"]\n        end\n    end\n\n    subgraph AZURE_SERVICES[\"Azure PaaS Services (Public)\"]\n        direction TB\n\n        STORAGE[\"Storage Account<br/>mystorageacct<br/>Public endpoint disabled\"]\n        SQL_DB[\"Azure SQL Database<br/>mysqlserver<br/>Public access denied\"]\n        KEY_VAULT[\"Key Vault<br/>mykeyvault<br/>Network ACLs applied\"]\n        ADLS[\"ADLS Gen2<br/>mydatalake<br/>Private access only\"]\n        SYNAPSE[\"Synapse Workspace<br/>Managed VNet enabled\"]\n        COSMOS_DB[\"Cosmos DB<br/>Global distribution<br/>Private endpoints per region\"]\n    end\n\n    subgraph DNS_RESOLUTION[\"DNS Resolution Flow\"]\n        direction LR\n\n        DNS_QUERY[\"1. DNS Query:<br/>mystorageacct.blob.core.windows.net\"]\n        DNS_CNAME[\"2. CNAME to:<br/>mystorageacct.privatelink.blob.core.windows.net\"]\n        DNS_PRIVATE[\"3. Private DNS Zone<br/>resolves to: 10.1.2.10\"]\n        DNS_CONNECT[\"4. Traffic flows to<br/>Private Endpoint IP\"]\n    end\n\n    subgraph PATTERNS[\"Common Connectivity Patterns\"]\n        direction TB\n\n        PATTERN1[\"**Hub-Spoke Pattern**<br/>- PEs in spokes<br/>- DNS zones in hub<br/>- Cross-spoke via firewall\"]\n\n        PATTERN2[\"**Centralized PE Pattern**<br/>- All PEs in hub<br/>- Shared by all spokes<br/>- Simplified DNS\"]\n\n        PATTERN3[\"**Regional Pattern**<br/>- PE per region<br/>- Local DNS resolution<br/>- Latency optimization\"]\n\n        PATTERN4[\"**Service Endpoint vs PE**<br/>- SE: Traffic stays on MS backbone<br/>- PE: Private IP in your VNet<br/>- PE: Required for on-prem access\"]\n    end\n\n    subgraph PRIVATE_DNS_CONFIG[\"Private DNS Zone Configuration\"]\n        direction TB\n\n        BLOB_ZONE[\"privatelink.blob.core.windows.net<br/>A record: mystorageacct -> 10.1.2.10\"]\n        SQL_ZONE[\"privatelink.database.windows.net<br/>A record: mysqlserver -> 10.1.2.11\"]\n        KV_ZONE[\"privatelink.vaultcore.azure.net<br/>A record: mykeyvault -> 10.1.2.12\"]\n        DFS_ZONE[\"privatelink.dfs.core.windows.net<br/>A record: mydatalake -> 10.2.2.10\"]\n\n        VNET_LINK[\"VNet Links<br/>Hub + All Spokes<br/>Auto-registration disabled\"]\n    end\n\n    %% On-premises connectivity\n    ONPREM_DNS -->|Conditional Forward| DNS_INBOUND\n    ONPREM_CLIENT --> ER_GW\n    ER_GW --> FIREWALL\n\n    %% Hub DNS resolution\n    DNS_RESOLVER --> DNS_INBOUND\n    DNS_RESOLVER --> DNS_OUTBOUND\n    DNS_OUTBOUND --> PRIVATE_DNS_ZONES\n\n    %% VNet peering\n    HUB_VNET <-->|VNet Peering| SPOKE1\n    HUB_VNET <-->|VNet Peering| SPOKE2\n\n    %% Private endpoint connections\n    PE_STORAGE --> STORAGE\n    PE_SQL --> SQL_DB\n    PE_KV --> KEY_VAULT\n    PE_ADLS --> ADLS\n    PE_SYNAPSE --> SYNAPSE\n    PE_COSMOS --> COSMOS_DB\n\n    %% Application to PE\n    APP_VM --> PE_STORAGE\n    APP_VM --> PE_SQL\n    APP_VM --> PE_KV\n    SYNAPSE_VM --> PE_ADLS\n    SYNAPSE_VM --> PE_SYNAPSE\n\n    %% DNS resolution flow\n    DNS_QUERY --> DNS_CNAME\n    DNS_CNAME --> DNS_PRIVATE\n    DNS_PRIVATE --> DNS_CONNECT\n\n    %% DNS zone links\n    BLOB_ZONE --> VNET_LINK\n    SQL_ZONE --> VNET_LINK\n    KV_ZONE --> VNET_LINK\n    DFS_ZONE --> VNET_LINK\n\n    %% Exam notes\n    NOTE1[\"**EXAM TIP**: Private Endpoints<br/>require dedicated subnet with<br/>network policies disabled\"]\n    NOTE2[\"**EXAM TIP**: DNS resolution is critical<br/>Private DNS zones must be<br/>linked to all consuming VNets\"]\n    NOTE3[\"**EXAM TIP**: On-prem access requires<br/>conditional DNS forwarding<br/>to Azure DNS resolver\"]\n    NOTE4[\"**EXAM TIP**: Disable public access<br/>on PaaS services after<br/>configuring private endpoints\"]\n\n    %% Styling\n    classDef onpremStyle fill:#78909c,stroke:#455a64,color:#fff\n    classDef hubStyle fill:#1565c0,stroke:#0d47a1,color:#fff\n    classDef dnsStyle fill:#7e57c2,stroke:#512da8,color:#fff\n    classDef spokeStyle fill:#66bb6a,stroke:#388e3c,color:#fff\n    classDef peStyle fill:#ff7043,stroke:#e64a19,color:#fff\n    classDef paasStyle fill:#42a5f5,stroke:#1976d2,color:#fff\n    classDef flowStyle fill:#ffca28,stroke:#ff8f00,color:#000\n    classDef patternStyle fill:#26c6da,stroke:#00838f,color:#000\n    classDef zoneStyle fill:#f06292,stroke:#c2185b,color:#fff\n    classDef noteStyle fill:#fff9c4,stroke:#fbc02d,color:#000,stroke-dasharray: 5 5\n\n    class ONPREM_DNS,ONPREM_CLIENT,ONPREM_APP onpremStyle\n    class ER_GW,VPN_GW,FIREWALL hubStyle\n    class DNS_RESOLVER,DNS_INBOUND,DNS_OUTBOUND,PRIVATE_DNS_ZONES dnsStyle\n    class APP_SUBNET,APP_VM,PE_SUBNET,DATA_SUBNET,SYNAPSE_VM,PE_SUBNET2 spokeStyle\n    class PE_STORAGE,PE_SQL,PE_KV,PE_ADLS,PE_SYNAPSE,PE_COSMOS peStyle\n    class STORAGE,SQL_DB,KEY_VAULT,ADLS,SYNAPSE,COSMOS_DB paasStyle\n    class DNS_QUERY,DNS_CNAME,DNS_PRIVATE,DNS_CONNECT flowStyle\n    class PATTERN1,PATTERN2,PATTERN3,PATTERN4 patternStyle\n    class BLOB_ZONE,SQL_ZONE,KV_ZONE,DFS_ZONE,VNET_LINK zoneStyle\n    class NOTE1,NOTE2,NOTE3,NOTE4 noteStyle\n",
+  "content_size": 6947,
+  "collected_at": "2026-02-06T01:45:44.590303",
+  "license": "mit",
+  "license_name": "MIT License",
+  "compilation_status": "success",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 90,
+  "repo_forks": 81,
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为AZ-305考试准备一张关于Private Link架构的图，重点展示Hub-Spoke网络中的Private Endpoint连接模式。先确定整体结构：要有本地网络、Hub VNet、两个Spoke VNet，以及Azure PaaS服务。",
+      "elements_involved": [
+        "ONPREM",
+        "HUB_VNET",
+        "SPOKE1",
+        "SPOKE2",
+        "AZURE_SERVICES"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，Hub-Spoke架构是核心。我先画Hub VNet，地址空间用10.0.0.0/16，里面放ExpressRoute Gateway、VPN Gateway和Azure Firewall，组成Connectivity Services子图。",
+      "elements_involved": [
+        "HUB_VNET",
+        "ER_GW",
+        "VPN_GW",
+        "FIREWALL",
+        "CONNECTIVITY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Connectivity Services放上面。Hub里还要有个DNS Infrastructure子图，包含Private DNS Resolver，以及Inbound Endpoint和Outbound Endpoint。Inbound用10.0.5.4这个IP。",
+      "elements_involved": [
+        "DNS_INFRA",
+        "DNS_RESOLVER",
+        "DNS_INBOUND",
+        "DNS_OUTBOUND"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，DNS Infrastructure子图已添加，DNS_INBOUND标注为10.0.5.4，DNS_OUTBOUND标注转发规则。Hub里还需要Private DNS Zones，要链接到各个VNet。",
+      "elements_involved": [
+        "PRIVATE_DNS_ZONES",
+        "DNS_INBOUND",
+        "DNS_OUTBOUND"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画第一个Spoke，叫Application Spoke，地址空间10.1.0.0/16。里面分Application Subnet和Private Endpoint Subnet。Application Subnet是10.1.1.0/24，放一台Application VM用10.1.1.10。",
+      "elements_involved": [
+        "SPOKE1",
+        "APP_SUBNET",
+        "APP_VM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SPOKE1已创建，APP_SUBNET和APP_VM都加上了。Private Endpoint Subnet用10.1.2.0/24对吧？需要标注Disable Network Policies，这是考试重点。",
+      "elements_involved": [
+        "PE_SUBNET",
+        "APP_VM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Private Endpoint Subnet必须禁用网络策略。这个子图里放三个Private Endpoint：Storage Account用10.1.2.10，对应blob.core.windows.net；Azure SQL用10.1.2.11；Key Vault用10.1.2.12。",
+      "elements_involved": [
+        "PE_SUBNET",
+        "PE_STORAGE",
+        "PE_SQL",
+        "PE_KV"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "PES_APP子图完成，三个PE都加上了IP和对应的DNS后缀。现在画第二个Spoke？",
+      "elements_involved": [
+        "PE_STORAGE",
+        "PE_SQL",
+        "PE_KV",
+        "PES_APP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，SPOKE2是Data Platform，地址空间10.2.0.0/16。包含Data Subnet 10.2.1.0/24，里面放Synapse Integration Runtime VM。另一个Private Endpoint Subnet是10.2.2.0/24。",
+      "elements_involved": [
+        "SPOKE2",
+        "DATA_SUBNET",
+        "SYNAPSE_VM",
+        "PE_SUBNET2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SPOKE2框架好了。Data Platform的三个Private Endpoint：ADLS Gen2用10.2.2.10对应dfs.core.windows.net，Synapse Analytics用10.2.2.11，Cosmos DB用10.2.2.12。",
+      "elements_involved": [
+        "PE_ADLS",
+        "PE_SYNAPSE",
+        "PE_COSMOS",
+        "PES_DATA"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画Azure PaaS Services区域，这些是公网服务但配置了Private Endpoint。包括Storage Account、Azure SQL、Key Vault、ADLS Gen2、Synapse Workspace、Cosmos DB，都要标注Public access disabled或Private access only。",
+      "elements_involved": [
+        "AZURE_SERVICES",
+        "STORAGE",
+        "SQL_DB",
+        "KEY_VAULT",
+        "ADLS",
+        "SYNAPSE",
+        "COSMOS_DB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "PaaS服务区域完成，每个都加了网络隔离说明。现在需要把Private Endpoint和对应的服务连起来，还有应用VM到PE的连接。",
+      "elements_involved": [
+        "PE_STORAGE",
+        "STORAGE",
+        "APP_VM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "连接关系很重要。APP_VM要连到PE_STORAGE、PE_SQL、PE_KV。SYNAPSE_VM连到PE_ADLS和PE_SYNAPSE。另外每个PE都要连到对应的PaaS服务，比如PE_STORAGE连STORAGE。",
+      "elements_involved": [
+        "APP_VM",
+        "PE_STORAGE",
+        "PE_SQL",
+        "PE_KV",
+        "SYNAPSE_VM",
+        "PE_ADLS",
+        "PE_SYNAPSE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "应用层到PE的连接画好了。现在画本地网络部分？需要On-Premises DNS做Conditional Forwarder，还有客户端10.100.1.10。",
+      "elements_involved": [
+        "ONPREM",
+        "ONPREM_DNS",
+        "ONPREM_CLIENT",
+        "ONPREM_APP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，本地网络要有DNS服务器配置Conditional Forwarder，指向Azure的DNS Inbound Endpoint。客户端通过ExpressRoute Gateway连接。ONPREM_DNS要连到DNS_INBOUND。",
+      "elements_involved": [
+        "ONPREM_DNS",
+        "DNS_INBOUND",
+        "ONPREM_CLIENT",
+        "ER_GW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "本地到Hub的连接画好了，ONPREM_CLIENT经过ER_GW再到FIREWALL。Hub内部的DNS Resolver要连Inbound和Outbound Endpoint。",
+      "elements_involved": [
+        "DNS_RESOLVER",
+        "DNS_INBOUND",
+        "DNS_OUTBOUND",
+        "FIREWALL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "DNS Outbound Endpoint要连到Private DNS Zones，这是关键路径。还有VNet Peering，Hub要双向连接到两个Spoke。",
+      "elements_involved": [
+        "DNS_OUTBOUND",
+        "PRIVATE_DNS_ZONES",
+        "HUB_VNET",
+        "SPOKE1",
+        "SPOKE2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "VNet Peering关系加上了。现在需要展示DNS解析流程，这是考试必考内容。我画一个DNS Resolution Flow子图？",
+      "elements_involved": [
+        "DNS_RESOLUTION",
+        "DNS_QUERY",
+        "DNS_CNAME",
+        "DNS_PRIVATE",
+        "DNS_CONNECT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "非常需要。四步流程：第一步DNS查询mystorageacct.blob.core.windows.net，第二步CNAME到privatelink域名，第三步Private DNS Zone解析到10.1.2.10，第四步流量到Private Endpoint IP。",
+      "elements_involved": [
+        "DNS_QUERY",
+        "DNS_CNAME",
+        "DNS_PRIVATE",
+        "DNS_CONNECT",
+        "PE_STORAGE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "DNS解析流程完成。还需要Common Connectivity Patterns子图吗？展示几种部署模式。",
+      "elements_involved": [
+        "PATTERNS",
+        "PATTERN1",
+        "PATTERN2",
+        "PATTERN3",
+        "PATTERN4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "要，四种模式：Hub-Spoke Pattern（PE在Spoke，DNS在Hub，跨Spoke走Firewall）、Centralized PE Pattern（所有PE在Hub共享）、Regional Pattern（每区域一个PE优化延迟）、Service Endpoint vs PE对比。",
+      "elements_involved": [
+        "PATTERN1",
+        "PATTERN2",
+        "PATTERN3",
+        "PATTERN4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "四种模式都加上了，Service Endpoint和Private Endpoint的区别说得很清楚。现在画Private DNS Zone Configuration子图，展示具体的DNS记录。",
+      "elements_involved": [
+        "PRIVATE_DNS_CONFIG",
+        "BLOB_ZONE",
+        "SQL_ZONE",
+        "KV_ZONE",
+        "DFS_ZONE",
+        "VNET_LINK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "对，要展示具体的A记录：blob是privatelink.blob.core.windows.net，记录mystorageacct指向10.1.2.10；SQL是privatelink.database.windows.net；Key Vault注意是vaultcore.azure.net不是vault.azure.net；ADLS是dfs.core.windows.net。VNet Links要链接Hub和所有Spoke，禁用自动注册。",
+      "elements_involved": [
+        "BLOB_ZONE",
+        "SQL_ZONE",
+        "KV_ZONE",
+        "DFS_ZONE",
+        "VNET_LINK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "DNS配置完成，vaultcore.azure.net这个细节我注意到了。现在加考试提示框？",
+      "elements_involved": [
+        "NOTE1",
+        "NOTE2",
+        "NOTE3",
+        "NOTE4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "四个考试要点：1）Private Endpoints需要专用子网且禁用网络策略；2）DNS解析是关键，Private DNS Zones必须链接到所有消费VNet；3）本地访问需要条件DNS转发到Azure DNS Resolver；4）配置完Private Endpoint后要禁用PaaS服务的公网访问。",
+      "elements_involved": [
+        "NOTE1",
+        "NOTE2",
+        "NOTE3",
+        "NOTE4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有考试提示都加上了。现在检查样式，需要给不同区域用不同颜色：本地网络灰色、Hub蓝色、DNS紫色、Spoke绿色、PE橙色、PaaS浅蓝、流程黄色、模式青色、DNS Zone粉色、提示框黄色虚线。",
+      "elements_involved": [
+        "onpremStyle",
+        "hubStyle",
+        "dnsStyle",
+        "spokeStyle",
+        "peStyle",
+        "paasStyle",
+        "flowStyle",
+        "patternStyle",
+        "zoneStyle",
+        "noteStyle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "颜色区分很好。再确认一下PE_COSMOS的连接，Synapse VM应该也能访问Cosmos DB的Private Endpoint吧？",
+      "elements_involved": [
+        "SYNAPSE_VM",
+        "PE_COSMOS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我检查一下...目前SYNAPSE_VM只连了PE_ADLS和PE_SYNAPSE，确实漏了PE_COSMOS。加上这条连接。",
+      "elements_involved": [
+        "SYNAPSE_VM",
+        "PE_COSMOS"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好。再确认DNS Zone之间的连接，BLOB_ZONE、SQL_ZONE、KV_ZONE、DFS_ZONE都要连到VNET_LINK表示链接关系。",
+      "elements_involved": [
+        "BLOB_ZONE",
+        "SQL_ZONE",
+        "KV_ZONE",
+        "DFS_ZONE",
+        "VNET_LINK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "DNS Zone到VNET_LINK的连接都补上了。检查整体布局，DNS Resolution Flow放在右侧，PATTERNS放在下方，PRIVATE_DNS_CONFIG放在右下，这样比较平衡。",
+      "elements_involved": [
+        "DNS_RESOLUTION",
+        "PATTERNS",
+        "PRIVATE_DNS_CONFIG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "布局可以。ONPREM_APP这个Legacy Application需要明确和谁的连接关系吗？还是只是表示存在本地遗留应用？",
+      "elements_involved": [
+        "ONPREM_APP",
+        "ONPREM_CLIENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "目前ONPREM_APP是独立的，表示本地还有遗留应用。如果需要可以画一条虚线表示它通过某种方式和Azure交互，但当前设计是突出Private Link连接，保持独立可能更清晰。您的意见？",
+      "elements_involved": [
+        "ONPREM_APP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持独立吧，重点在Private Link。再确认一下ExpressRoute Gateway和VPN Gateway的冗余设计，这两个是并列放在Connectivity Services里？",
+      "elements_involved": [
+        "ER_GW",
+        "VPN_GW",
+        "CONNECTIVITY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，ER_GW和VPN_GW并列，表示混合连接选项。实际部署可能只用一种，但架构图展示两种可能性。Azure Firewall在它们后面做流量检查。",
+      "elements_involved": [
+        "ER_GW",
+        "VPN_GW",
+        "FIREWALL",
+        "CONNECTIVITY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Cosmos DB的说明要强调Global distribution和每区域Private Endpoint，这是它和别的服务不同的地方。",
+      "elements_involved": [
+        "COSMOS_DB",
+        "PE_COSMOS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Cosmos DB的标注已更新为\"Global distribution, Private endpoints per region\"。Synapse Workspace要强调Managed VNet enabled，这是Private Link兼容的前提。",
+      "elements_involved": [
+        "COSMOS_DB",
+        "SYNAPSE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Managed VNet是Synapse网络隔离的关键。现在检查所有IP地址有没有冲突：Hub 10.0.x.x，Spoke1 10.1.x.x，Spoke2 10.2.x.x，On-prem 10.100.x.x，都是独立的。",
+      "elements_involved": [
+        "HUB_VNET",
+        "SPOKE1",
+        "SPOKE2",
+        "ONPREM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "IP规划没问题，符合RFC 1918且层次分明。Private Endpoint的IP在各自子网内：10.1.2.10-12和10.2.2.10-12，没有重叠。DNS Inbound 10.0.5.4在Hub的DNS子网里。",
+      "elements_involved": [
+        "DNS_INBOUND",
+        "PE_STORAGE",
+        "PE_ADLS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "DNS Outbound Endpoint的说明是\"Forwarding Rules\"，需要更具体吗？比如提到转发到Private DNS Zones？",
+      "elements_involved": [
+        "DNS_OUTBOUND",
+        "PRIVATE_DNS_ZONES"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "当前设计是Outbound Endpoint通过规则集转发查询，连接关系用实线表示到PRIVATE_DNS_ZONES。如果写太多字会拥挤，保持简洁可能更好？或者改为\"Ruleset to Private DNS Zones\"？",
+      "elements_involved": [
+        "DNS_OUTBOUND"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持简洁，\"Forwarding Rules\"可以了。现在检查所有子图的方向：ONPREM、HUB_VNET、SPOKE1、SPOKE2、AZURE_SERVICES都是TB（Top-Bottom），DNS_RESOLUTION是LR（Left-Right），对吗？",
+      "elements_involved": [
+        "ONPREM",
+        "HUB_VNET",
+        "SPOKE1",
+        "SPOKE2",
+        "DNS_RESOLUTION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "方向设置正确。DNS_RESOLUTION用LR展示四步流程的水平流向，其他用TB展示网络分层。PATTERNS和PRIVATE_DNS_CONFIG也是TB。",
+      "elements_involved": [
+        "PATTERNS",
+        "PRIVATE_DNS_CONFIG",
+        "DNS_RESOLUTION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "PATTERN4的Service Endpoint vs PE对比，文字有点长，确认一下：SE是流量留在MS骨干网，PE是私有IP在你的VNet，PE是本地访问必需的。这个对比很重要。",
+      "elements_involved": [
+        "PATTERN4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "PATTERN4的文字我确认过，三点对比清晰。Service Endpoint虽然不走公网但没有私有IP，所以本地网络无法直接访问，这是关键区别。",
+      "elements_involved": [
+        "PATTERN4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ADLS Gen2的Private Endpoint用的是dfs.core.windows.net，但Storage Account用的是blob.core.windows.net，这两个DNS后缀不同，要注意区分。",
+      "elements_involved": [
+        "PE_ADLS",
+        "PE_STORAGE",
+        "ADLS",
+        "STORAGE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "区分正确：PE_STORAGE对应blob.core.windows.net，PE_ADLS对应dfs.core.windows.net。Private DNS Zone也是分开的：privatelink.blob.core.windows.net和privatelink.dfs.core.windows.net。",
+      "elements_involved": [
+        "BLOB_ZONE",
+        "DFS_ZONE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查所有连接线的含义：实线箭头表示数据流，双向箭头表示VNet Peering，带文字的线表示特定关系如Conditional Forward。需要统一吗？",
+      "elements_involved": [
+        "ONPREM_DNS",
+        "HUB_VNET",
+        "SPOKE1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "连接风格已经区分：普通实线是数据连接，<--|VNet Peering|--是双向对等连接，--|Conditional Forward|是带说明的连接。这种区分有助于理解架构。",
+      "elements_involved": [
+        "HUB_VNET",
+        "SPOKE1",
+        "ONPREM_DNS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "图基本完成了。再确认一下APP_VM到三个PE的连接有没有遗漏：Storage、SQL、Key Vault都应该有。",
+      "elements_involved": [
+        "APP_VM",
+        "PE_STORAGE",
+        "PE_SQL",
+        "PE_KV"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "三条连接都存在：APP_VM -- PE_STORAGE，APP_VM -- PE_SQL，APP_VM -- PE_KV。SYNAPSE_VM也有三条：PE_ADLS、PE_SYNAPSE、PE_COSMOS。",
+      "elements_involved": [
+        "APP_VM",
+        "SYNAPSE_VM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ONPREM_CLIENT到ER_GW的连接，表示通过ExpressRoute，但VPN_GW也是并列的，是否需要表示客户端也可以选择VPN？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "当前只画了ER_GW的连接。如果要表示VPN选项，可以画两条线或一条线标注ER/VPN，但可能显得杂乱。考试图通常突出一种主要连接方式，保持现状？",
+      "elements_involved": [
+        "ONPREM_CLIENT",
+        "ER_GW",
+        "VPN_GW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持现状，ExpressRoute是企业主要场景。最后检查所有样式类是否都应用了：ONPREM_DNS等用onpremStyle，ER_GW等用hubStyle，DNS相关用dnsStyle，等等。",
+      "elements_involved": [
+        "onpremStyle",
+        "hubStyle",
+        "dnsStyle",
+        "spokeStyle",
+        "peStyle",
+        "paasStyle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有样式类已应用：ONPREM_DNS/CLIENT/APP灰色，ER_GW/VPN_GW/FIREWALL蓝色，DNS_RESOLVER等紫色，APP_SUBNET等绿色，PE_STORAGE等橙色，STORAGE等浅蓝，DNS_QUERY等黄色，PATTERN1等青色，BLOB_ZONE等粉色，NOTE1等黄色虚线。",
+      "elements_involved": [
+        "classDef applications"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "图完成了。最后确认标题和说明：要标注AZ-305 Domain 4，Private Link/Private Endpoint Connectivity Patterns，参考Azure Private Link架构，考试重点是Private endpoints、DNS resolution、cross-region patterns。",
+      "elements_involved": [
+        "title",
+        "description"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "标题和说明已添加在Mermaid注释中。整体结构检查：6个主要子图（ONPREM、HUB_VNET、SPOKE1、SPOKE2、AZURE_SERVICES、DNS_RESOLUTION），加上3个辅助子图（CONNECTIVITY、DNS_INFRA、PES_APP、PES_DATA）和3个信息子图（PATTERNS、PRIVATE_DNS_CONFIG、4个NOTE）。",
+      "elements_involved": [
+        "subgraph count"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "PES_APP和PES_DATA是Private Endpoints的集合子图，放在各自Spoke内部。确认一下PES_DATA里的PE_COSMOS的IP是10.2.2.12，和文档一致。",
+      "elements_involved": [
+        "PE_COSMOS",
+        "PES_DATA"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "PE_COSMOS确认是10.2.2.12，对应documents.azure.com。所有PE的IP和DNS后缀都核对过了。",
+      "elements_involved": [
+        "PE_COSMOS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好的，图可以定稿了。这个架构图完整展示了Hub-Spoke网络中Private Endpoint的部署模式、DNS解析流程、以及四种常见的连接模式，非常适合AZ-305考试复习。",
+      "elements_involved": [
+        "final review"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "定稿确认。Mermaid代码已生成，包含完整的节点定义、子图结构、连接关系、样式类和考试提示。可以直接用于文档或演示。",
+      "elements_involved": [
+        "final output"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，再检查一下VNET_LINK的说明：\"Hub + All Spokes, Auto-registration disabled\"，这个自动注册禁用是针对Private DNS Zone的VNet链接设置，对吗？",
+      "elements_involved": [
+        "VNET_LINK",
+        "PRIVATE_DNS_ZONES"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，Private DNS Zone链接到VNet时，可以启用自动注册让VM自动注册DNS记录，但这里禁用了，因为是用Private Endpoint的手动A记录。这个细节考试会考。",
+      "elements_involved": [
+        "VNET_LINK",
+        "auto-registration"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美，所有细节都到位了。Private Endpoint子网的\"Disable Network Policies\"、DNS的自动注册禁用、PaaS服务的公网访问禁用，这三个配置点是考试高频考点，都在图里体现了。",
+      "elements_involved": [
+        "PE_SUBNET",
+        "VNET_LINK",
+        "STORAGE",
+        "SQL_DB",
+        "KEY_VAULT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终版本确认，所有考试要点均已覆盖。Mermaid图可直接渲染，结构清晰、配色合理、信息完整。",
+      "elements_involved": [
+        "complete diagram"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 1,
+    "grounding_acts_count": 63,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:39Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:23Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:23Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 145669.9855,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

@@ -1,0 +1,780 @@
+{
+  "id": "gh_sequence_00981",
+  "source": "github",
+  "source_url": "https://github.com/AdasRakieta/Site_proj/blob/94c158d0e04d4807cd0a144d3e2468f2a17c7473/Inzynierka/In%C5%BCynierka_01/12_ZALACZNIKI/diagramy/sekwencje_automation.mmd",
+  "github_repo": "AdasRakieta/Site_proj",
+  "github_file_path": "Inzynierka/Inżynierka_01/12_ZALACZNIKI/diagramy/sekwencje_automation.mmd",
+  "diagram_type": "sequence",
+  "code": "﻿---\nconfig:\n  theme: dark\n---\nsequenceDiagram\n    actor User\n    participant UI as Browser UI\n    participant Flask as Flask App\n    participant Socket as Socket.IO Server\n    participant Routes as RoutesManager\n    participant Executor as AutomationExecutor\n    participant MultiDB as MultiHomeDBManager\n    participant PG as PostgreSQL\n    participant Redis as Redis Cache\n    \n    Note over User,Redis: Użytkownik zmienia stan urządzenia (wyzwalacz automatyzacji)\n    \n    User->>UI: Click device toggle/button\n    UI->>Socket: emit('toggle_button', device_data)\n    Socket->>Routes: handle_toggle_button()\n    Routes->>MultiDB: update_device(device_id, state)\n    MultiDB->>PG: UPDATE devices SET state=...\n    PG-->>MultiDB: rows affected\n    MultiDB-->>Routes: success\n    \n    Note over Routes,Redis: Invalidacja cache dla zmienionego urządzenia\n    Routes->>Redis: delete cache_key(home_id, devices)\n    \n    Note over Routes,Executor: Sprawdzenie automatyzacji dla tego urządzenia\n    Routes->>Executor: process_device_trigger(device_id, room, name, state, home_id, user_id)\n    \n    Executor->>MultiDB: get_home_automations(home_id, user_id)\n    MultiDB->>PG: SELECT * FROM home_automations WHERE home_id=... AND enabled=true\n    PG-->>MultiDB: automations list\n    MultiDB-->>Executor: automations[]\n    \n    Note over Executor: Filtrowanie automatyzacji według triggera\n    loop Each automation\n        Executor->>Executor: Check if trigger.type=='device'\n        Executor->>Executor: Check if trigger.device matches device_key\n        Executor->>Executor: Check if trigger.state matches new_state\n    end\n    \n    alt Automation matched\n        Note over Executor: Wykonanie automatyzacji\n        Executor->>Executor: _execute_automation(automation, home_id, user_id, trigger_data)\n        \n        loop Each action in actions_config\n            alt action.type == 'device'\n                Executor->>MultiDB: get_home_devices(home_id, user_id, 'button')\n                MultiDB->>PG: SELECT devices WHERE device_type='button'\n                PG-->>MultiDB: devices[]\n                MultiDB-->>Executor: target_device\n                \n                Executor->>Executor: Calculate new_state (on/off/toggle)\n                Executor->>MultiDB: update_device(target_device_id, user_id, state=new_state)\n                MultiDB->>PG: UPDATE devices SET state=...\n                PG-->>MultiDB: rows affected\n                \n                Executor->>Socket: emit('update_button', {room, name, state, device_id})\n                Socket-->>UI: Update button UI\n                Executor->>Socket: emit('sync_button_states', state_map)\n                Socket-->>UI: Sync all buttons\n                \n            else action.type == 'thermostat_control'\n                Executor->>MultiDB: get_home_devices(home_id, user_id, 'temperature_control')\n                MultiDB->>PG: SELECT devices WHERE device_type='temperature_control'\n                PG-->>MultiDB: devices[]\n                MultiDB-->>Executor: thermostat_device\n                \n                Executor->>MultiDB: update_device(thermostat_id, user_id, state=new_state)\n                MultiDB->>PG: UPDATE devices SET state=...\n                Executor->>Socket: emit('update_temperature', {room, name, state, temp})\n                Socket-->>UI: Update thermostat UI\n                \n            else action.type == 'set_temperature'\n                Executor->>MultiDB: get_home_devices(home_id, user_id, 'temperature_control')\n                Executor->>MultiDB: update_device(thermostat_id, user_id, temperature=target_temp)\n                MultiDB->>PG: UPDATE devices SET temperature=...\n                Executor->>Socket: emit('update_temperature', data)\n                Socket-->>UI: Update temperature display\n                \n            else action.type == 'notification'\n                Note over Executor: Email notification (future)\n                Executor->>Executor: _execute_notification_action()\n            end\n        end\n        \n        Note over Executor: Logowanie wykonania automatyzacji\n        Executor->>Executor: Calculate execution_time_ms\n        Executor->>Executor: _log_execution(automation_id, status, trigger_data, actions_executed)\n        Executor->>MultiDB: log_automation_execution(...)\n        MultiDB->>PG: INSERT INTO automation_executions (...)\n        PG-->>MultiDB: execution_id\n        \n        Executor->>MultiDB: update_automation_stats(automation_id, execution_count++)\n        MultiDB->>PG: UPDATE home_automations SET execution_count=execution_count+1, last_executed=NOW()\n        \n        Executor-->>Routes: execution_result{status, actions_executed, errors, execution_time_ms}\n    end\n    \n    Note over Routes,Socket: Broadcast zaktualizowanego stanu do wszystkich klientów\n    Routes->>Socket: emit('update_button', device_state)\n    Socket-->>UI: Real-time update for all connected clients\n    Routes->>Socket: emit('sync_button_states', all_states)\n    Socket-->>UI: Synchronize all device states\n    \n    Routes-->>Socket: success response\n    Socket-->>UI: Confirm toggle\n    UI-->>User: Visual feedback (updated state)\n    \n    Note over User,Redis: Automatyzacja zakończona - urządzenia zaktualizowane w czasie rzeczywistym\n",
+  "content_size": 5265,
+  "collected_at": "2026-02-06T01:51:29.067240",
+  "compilation_status": "success",
+  "compilation_error": "",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个智能家居自动化系统的完整时序图，核心场景是用户点击设备按钮触发自动化流程。先从用户操作开始吧。",
+      "elements_involved": [
+        "User",
+        "Browser UI",
+        "device toggle/button"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，用户通过Browser UI操作。那UI层是用Socket.IO和Flask后端通信吗？我看到emit('toggle_button', device_data)这个事件。",
+      "elements_involved": [
+        "Browser UI",
+        "Socket.IO Server",
+        "toggle_button",
+        "device_data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，UI通过Socket emit 'toggle_button'事件，携带device_data。然后Socket层调用RoutesManager的handle_toggle_button()方法。",
+      "elements_involved": [
+        "Socket.IO Server",
+        "RoutesManager",
+        "handle_toggle_button"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把用户点击到RoutesManager这一段画出来。User到UI是点击toggle button，UI到Socket是emit事件，Socket再到Routes。",
+      "elements_involved": [
+        "User",
+        "Browser UI",
+        "Socket.IO Server",
+        "RoutesManager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是数据持久化层。RoutesManager需要调用MultiHomeDBManager来update_device，这里要更新device_id和state。",
+      "elements_involved": [
+        "RoutesManager",
+        "MultiHomeDBManager",
+        "update_device",
+        "device_id",
+        "state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "MultiHomeDBManager直接操作PostgreSQL吗？UPDATE devices SET state这个SQL语句需要画出来吗？",
+      "elements_involved": [
+        "MultiHomeDBManager",
+        "PostgreSQL",
+        "UPDATE devices"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，MultiHomeDBManager到PostgreSQL是UPDATE操作，然后PostgreSQL返回rows affected。MultiHomeDB再返回success给RoutesManager。",
+      "elements_involved": [
+        "MultiHomeDBManager",
+        "PostgreSQL",
+        "rows affected",
+        "success"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加数据库更新流程。现在有个问题：更新完数据库后，Redis缓存怎么处理？",
+      "elements_involved": [
+        "Redis Cache",
+        "home_id",
+        "devices"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要加一条Note说明缓存失效。RoutesManager要调用Redis删除cache_key(home_id, devices)，确保后续读取是最新数据。",
+      "elements_involved": [
+        "RoutesManager",
+        "Redis Cache",
+        "cache_key",
+        "home_id",
+        "devices"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "缓存失效Note已添加。接下来是自动化触发逻辑？",
+      "elements_involved": [
+        "RoutesManager",
+        "AutomationExecutor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，RoutesManager调用AutomationExecutor的process_device_trigger方法，传入device_id、room、name、state、home_id、user_id这些参数。",
+      "elements_involved": [
+        "RoutesManager",
+        "AutomationExecutor",
+        "process_device_trigger",
+        "device_id",
+        "room",
+        "name",
+        "state",
+        "home_id",
+        "user_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "AutomationExecutor需要查询该家庭的所有自动化规则吧？通过MultiHomeDBManager获取？",
+      "elements_involved": [
+        "AutomationExecutor",
+        "MultiHomeDBManager",
+        "get_home_automations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Executor调用get_home_automations(home_id, user_id)，MultiHomeDBManager去PostgreSQL查询SELECT * FROM home_automations WHERE home_id AND enabled=true。",
+      "elements_involved": [
+        "AutomationExecutor",
+        "MultiHomeDBManager",
+        "PostgreSQL",
+        "home_automations",
+        "enabled"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "查询流程已画。返回的是automations列表。接下来是过滤匹配触发条件的自动化？",
+      "elements_involved": [
+        "automations list",
+        "automation",
+        "trigger"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，加一个loop循环，Executor内部检查每个automation：trigger.type是否为'device'，trigger.device是否匹配device_key，trigger.state是否匹配new_state。",
+      "elements_involved": [
+        "Executor",
+        "loop",
+        "trigger.type",
+        "device",
+        "device_key",
+        "trigger.state",
+        "new_state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "循环和三个检查条件已添加。用alt分支表示Automation matched的情况？",
+      "elements_involved": [
+        "alt",
+        "Automation matched"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，匹配成功后Executor调用_execute_automation，传入automation、home_id、user_id、trigger_data。",
+      "elements_involved": [
+        "Executor",
+        "_execute_automation",
+        "automation",
+        "trigger_data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "自动化执行部分比较复杂，有多个action类型。我看到的包括device、thermostat_control、set_temperature、notification？",
+      "elements_involved": [
+        "action",
+        "device",
+        "thermostat_control",
+        "set_temperature",
+        "notification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，用loop遍历actions_config，里面用alt分支处理四种action类型。第一种是device类型，控制按钮类设备。",
+      "elements_involved": [
+        "loop",
+        "actions_config",
+        "alt",
+        "action.type",
+        "device"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "device类型的action：Executor先get_home_devices查询'button'类型设备，MultiHomeDBManager去PostgreSQL SELECT WHERE device_type='button'？",
+      "elements_involved": [
+        "Executor",
+        "MultiHomeDBManager",
+        "get_home_devices",
+        "button",
+        "device_type"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，返回target_device后，Executor计算new_state（on/off/toggle），然后update_device更新状态，再emit 'update_button'事件给Socket。",
+      "elements_involved": [
+        "target_device",
+        "new_state",
+        "on/off/toggle",
+        "update_device",
+        "update_button"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "update_button的数据结构是{room, name, state, device_id}？然后Socket转发给UI更新界面？",
+      "elements_involved": [
+        "update_button",
+        "room",
+        "name",
+        "state",
+        "device_id",
+        "Socket",
+        "UI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的。另外还要emit 'sync_button_states'，携带state_map，同步所有按钮状态。",
+      "elements_involved": [
+        "sync_button_states",
+        "state_map",
+        "all buttons"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "device类型的action流程已画。接下来是thermostat_control类型？",
+      "elements_involved": [
+        "thermostat_control"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，thermostat_control也是查询'temperature_control'类型设备，更新状态后发'update_temperature'事件，数据是{room, name, state, temp}。",
+      "elements_involved": [
+        "temperature_control",
+        "thermostat_device",
+        "update_temperature",
+        "temp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。set_temperature类型有什么不同吗？",
+      "elements_involved": [
+        "set_temperature"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "set_temperature是直接设置目标温度，update_device时传入temperature=target_temp，SQL是UPDATE devices SET temperature，然后emit update_temperature。",
+      "elements_involved": [
+        "target_temp",
+        "temperature",
+        "UPDATE devices",
+        "data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。notification类型是发邮件？",
+      "elements_involved": [
+        "notification",
+        "Email notification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，加Note说明是Email notification (future)，调用_execute_notification_action()，目前只是预留。",
+      "elements_involved": [
+        "Note",
+        "Email notification",
+        "future",
+        "_execute_notification_action"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "四种action类型都画完了。接下来是执行日志记录？",
+      "elements_involved": [
+        "Logowanie wykonania automatyzacji"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，加一个Note说明日志记录。Executor计算execution_time_ms，调用_log_execution传入automation_id、status、trigger_data、actions_executed。",
+      "elements_involved": [
+        "Executor",
+        "execution_time_ms",
+        "_log_execution",
+        "automation_id",
+        "status",
+        "actions_executed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "log_automation_execution也是通过MultiHomeDBManager操作PostgreSQL？INSERT INTO automation_executions？",
+      "elements_involved": [
+        "MultiHomeDBManager",
+        "log_automation_execution",
+        "PostgreSQL",
+        "INSERT",
+        "automation_executions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，返回execution_id。然后还要update_automation_stats，把execution_count加1，更新last_executed时间。",
+      "elements_involved": [
+        "execution_id",
+        "update_automation_stats",
+        "execution_count++",
+        "last_executed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "日志和统计更新已添加。最后Executor返回execution_result给RoutesManager？",
+      "elements_involved": [
+        "Executor",
+        "Routes",
+        "execution_result"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，execution_result包含status、actions_executed、errors、execution_time_ms。然后alt分支结束。",
+      "elements_involved": [
+        "execution_result",
+        "status",
+        "actions_executed",
+        "errors",
+        "execution_time_ms"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "最后一步是广播更新状态给所有客户端？RoutesManager通过Socket.IO广播？",
+      "elements_involved": [
+        "Routes",
+        "Socket",
+        "Broadcast"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，加Note说明Broadcast。Routes emit 'update_button'携带device_state，Socket推送给所有连接的客户端做实时更新。",
+      "elements_involved": [
+        "Routes",
+        "Socket",
+        "update_button",
+        "device_state",
+        "Real-time update",
+        "connected clients"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "还要再emit一次'sync_button_states'吗？之前自动化执行里已经发过一次了。",
+      "elements_involved": [
+        "sync_button_states",
+        "all_states"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "这里需要区分一下。自动化执行里的sync_button_states是特定action触发的，这里的sync_button_states是RoutesManager在流程最后统一发的，确保所有客户端状态一致。两个都要保留。",
+      "elements_involved": [
+        "sync_button_states",
+        "all_states",
+        "Synchronize all device states"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，两个sync_button_states场景不同，都保留。然后Routes返回success给Socket，Socket确认给UI，UI给用户视觉反馈？",
+      "elements_involved": [
+        "Routes",
+        "Socket",
+        "success response",
+        "Socket",
+        "UI",
+        "Confirm toggle",
+        "UI",
+        "User",
+        "Visual feedback"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，最后加一个总Note：自动化完成，设备实时更新。整个流程结束。",
+      "elements_involved": [
+        "Note",
+        "Automatyzacja zakończona",
+        "urządzenia zaktualizowane w czasie rzeczywistym"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "整个时序图已经画完。我检查一下参与者是否齐全：User、Browser UI、Flask App、Socket.IO Server、RoutesManager、AutomationExecutor、MultiHomeDBManager、PostgreSQL、Redis Cache。",
+      "elements_involved": [
+        "User",
+        "Browser UI",
+        "Flask App",
+        "Socket.IO Server",
+        "RoutesManager",
+        "AutomationExecutor",
+        "MultiHomeDBManager",
+        "PostgreSQL",
+        "Redis Cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Flask App在图里出现了吗？我看流程主要是Socket.IO Server在处理。",
+      "elements_involved": [
+        "Flask App"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确实，Flask App作为容器存在，但实际消息流转是Socket.IO Server直接处理。我调整一下，Flask App作为参与者标注，但主要交互还是Socket.IO Server。",
+      "elements_involved": [
+        "Flask App",
+        "Socket.IO Server"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "另外，开头的Note需要明确说明场景：Użytkownik zmienia stan urządzenia (wyzwalacz automatyzacji)。用波兰语保持和代码一致。",
+      "elements_involved": [
+        "Note",
+        "Użytkownik zmienia stan urządzenia",
+        "wyzwalacz automatyzacji"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加波兰语Note。还有中间的Note：Invalidacja cache dla zmienionego urządzenia，以及Sprawdzenie automatyzacji dla tego urządzenia。",
+      "elements_involved": [
+        "Note",
+        "Invalidacja cache",
+        "Sprawdzenie automatyzacji"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，还有Filtrowanie automatyzacji według triggera和Wykonanie automatyzacji这两个Note也要加上。",
+      "elements_involved": [
+        "Note",
+        "Filtrowanie automatyzacji według triggera",
+        "Wykonanie automatyzacji"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有波兰语Note已添加。最后检查一下：loop Each automation和loop Each action in actions_config这两个循环层级正确吗？",
+      "elements_involved": [
+        "loop Each automation",
+        "loop Each action in actions_config"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确，外层循环遍历自动化规则，内层循环遍历每个自动化的动作列表。alt Automation matched包含整个执行逻辑。",
+      "elements_involved": [
+        "loop",
+        "alt",
+        "Automation matched"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "内层loop里的alt有四个分支：device、thermostat_control、set_temperature、notification，都用else连接？",
+      "elements_involved": [
+        "alt",
+        "else",
+        "device",
+        "thermostat_control",
+        "set_temperature",
+        "notification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，四个互斥分支用else连接。注意set_temperature和thermostat_control都操作temperature_control设备，但逻辑不同。",
+      "elements_involved": [
+        "else",
+        "temperature_control",
+        "thermostat_control",
+        "set_temperature"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "分支结构已确认。最后检查：所有虚线返回箭头都正确标注了吗？比如PG--MultiDB的rows affected。",
+      "elements_involved": [
+        "--",
+        "rows affected",
+        "success",
+        "automations list",
+        "execution_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有几个：Socket--UI的Update button UI、Sync all buttons、Update thermostat UI、Update temperature display、Real-time update for all connected clients、Synchronize all device states、Confirm toggle。",
+      "elements_involved": [
+        "Socket--UI",
+        "Update button UI",
+        "Sync all buttons",
+        "Update thermostat UI",
+        "Update temperature display",
+        "Real-time update",
+        "Synchronize all device states",
+        "Confirm toggle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有虚线返回和UI更新标注已检查完成。图的结构应该完整了。",
+      "elements_involved": [
+        "UI--User",
+        "Visual feedback"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再确认一个细节：Executor内部调用自己的方法，比如_check_trigger、_execute_automation，这些用Executor-Executor表示？",
+      "elements_involved": [
+        "Executor-Executor",
+        "_execute_automation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，自检调用用参与者自身指向自身的箭头。还有Calculate new_state、Calculate execution_time_ms这些内部处理也是。",
+      "elements_involved": [
+        "Executor-Executor",
+        "Calculate new_state",
+        "Calculate execution_time_ms"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。整个时序图完整呈现了从用户点击设备到自动化执行、状态同步的全流程。可以定稿了。",
+      "elements_involved": [
+        "User",
+        "Redis",
+        "complete flow"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 57,
+    "repair_count": 2,
+    "grounding_acts_count": 57,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 127515.7535,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 57
+  }
+}

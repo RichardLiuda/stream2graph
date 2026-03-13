@@ -1,0 +1,624 @@
+{
+  "id": "ot_stateDiagram_00025",
+  "source": "other",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/protocol/session-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [*] --> Initializing: start_link(Options)\n\n    state Initializing {\n        [*] --> LoadConfig\n        LoadConfig --> InitTransport\n        InitTransport --> EstablishConnection\n        EstablishConnection --> SendInitialize\n        SendInitialize --> WaitForInitialized\n        WaitForInitialized --> [*]\n    }\n\n    Initializing --> Connected: initialized received\n\n    state Connected {\n        [*] --> Active\n\n        Active --> ResourceOperations: list/read/subscribe\n        Active --> ToolOperations: call_tool\n        Active --> PromptOperations: list/get\n\n        ResourceOperations --> Active\n        ToolOperations --> Active\n        PromptOperations --> Active\n\n        Active --> Subscribing: subscribe_resource\n        Subscribing --> Active: subscription_confirmed\n    }\n\n    Connected --> Paused: pause_requested\n    Paused --> Connected: resume_requested\n\n    Connected --> Reconnecting: transport_error\n    Reconnecting --> Connected: reconnect_success\n    Reconnecting --> Failed: reconnect_failed(max_retries)\n\n    Connected --> GracefulShutdown: shutdown notification\n    GracefulShutdown --> [*]: cleanup_complete\n\n    Connected --> AbnormalShutdown: critical_error\n    AbnormalShutdown --> [*]: cleanup_complete\n\n    %% Session Backend Transitions\n    note right of Connected\n        Session Persistence:\n        - ETS: In-memory\n        - DETS: Disk-based\n        - Mnesia: Cluster\n    end note\n\n    %% Reconnection Strategy\n    state Reconnecting {\n        [*] --> Backoff\n        Backoff --> ReconnectAttempt\n        ReconnectAttempt --> Success\n        ReconnectAttempt --> Failure\n\n        Success --> [*]\n        Failure --> IncrementRetryCount\n        IncrementRetryCount --> CheckMaxRetries\n\n        CheckMaxRetries --> Backoff: below_max\n        CheckMaxRetries --> [*]: exceeded_max\n    }\n\n    %% State Transition Details\n    Connected --> SessionValidation: periodic_health_check\n    SessionValidation --> Connected: healthy\n    SessionValidation --> Failed: unhealthy(timeout)\n\n    %% Session Restoration (Failover)\n    note right of Reconnecting\n        Failover Modes:\n        - Local: Restart process\n        - Remote: Mnesia replica\n        - Recovery: Load from DETS\n    end note\n\n    %% Subscription Management\n    state Subscribing {\n        [*] --> RegisterSubscription\n        RegisterSubscription --> SetupWatcher\n        SetupWatcher --> ConfirmSubscription\n        ConfirmSubscription --> [*]\n    }\n\n    %% Cleanup on Shutdown\n    state GracefulShutdown {\n        [*] --> UnsubscribeResources\n        UnsubscribeResources --> DrainPendingRequests\n        DrainPendingRequests --> CloseTransport\n        CloseTransport --> PersistSession\n        PersistSession --> TerminateProcess\n        TerminateProcess --> [*]\n    }\n\n    %% Error States\n    state AbnormalShutdown {\n        [*] --> LogError\n        LogError --> PersistCrashDump\n        PersistCrashDump --> NotifyDependents\n        NotifyDependents --> TerminateProcess\n        TerminateProcess --> [*]\n    }\n\n    %% Session State Fields\n    note right of Connected\n        Session State:\n        - session_id: UUID\n        - transport_pid: PID\n        - pending_requests: map(UUID -> Request)\n        - subscriptions: map(URI -> Subscription)\n        - capabilities: #capabilities{}\n        - last_activity: timestamp()\n        - backend: ets | dets | mnesia\n    end note\n\n    %% Activity Monitoring\n    Connected --> IdleTimeout: no_activity(timeout)\n    IdleTimeout --> [*]: session_expired\n\n    %% Rate Limiting\n    Connected --> RateLimited: request_rate_exceeded\n    RateLimited --> Connected: backoff_complete\n    RateLimited --> Failed: rate_limit_persistent\n\n    %% Resource Watcher Lifecycle\n    state ResourceOperations {\n        [*] --> Watching\n        Watching --> NotificationReceived: resource_changed\n        NotificationReceived --> DeliverNotification\n        DeliverNotification --> Watching\n    }\n\n    %% Tool Execution Lifecycle\n    state ToolOperations {\n        [*] --> Executing\n        Executing --> InProgress: long_running_op\n        InProgress --> ProgressUpdate: send_progress\n        ProgressUpdate --> InProgress\n        InProgress --> Complete: finished\n        Complete --> [*]\n    }\n\n    %% Session Backend Selection\n    note left of Initializing\n        Backend Selection:\n        {backend, erlmcp_session_ets}\n        - Fastest: O(1) access\n        - Volatile: Lost on crash\n\n        {backend, erlmcp_session_dets}\n        - Durable: Disk persistence\n        - Slower: I/O overhead\n\n        {backend, erlmcp_session_mnesia}\n        - Distributed: Cluster sync\n        - CAP: Consistency trade-offs\n    end note\n\n    %% Health Check States\n    Connected --> HealthCheck: periodic_timer\n    HealthCheck --> Connected: all_systems_go\n    HealthCheck --> Degraded: subsystem_failure\n    Degraded --> Connected: recovery_complete\n    Degraded --> Failed: recovery_failed\n\n    %% Session Restoration Flow\n    note right of Reconnecting\n        Restoration Priority:\n        1. Restore subscriptions\n        2. Replay pending requests\n        3. Restore capabilities\n        4. Resume monitoring\n    end note",
+  "content_size": 5160,
+  "collected_at": "2026-02-06T10:36:55.656398",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为MCP会话管理器设计一个完整的状态机。核心场景是从启动到正常运行的生命周期，还要处理网络抖动和优雅关闭。",
+      "elements_involved": [
+        "Initializing",
+        "Connected",
+        "start_link",
+        "Options"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。启动阶段需要包含哪些关键步骤？是直接跳到连接状态，还是要有配置加载和传输层初始化的中间状态？",
+      "elements_involved": [
+        "LoadConfig",
+        "InitTransport",
+        "EstablishConnection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "启动要分阶段：先LoadConfig加载配置，然后InitTransport初始化传输层，接着EstablishConnection建立连接，最后SendInitialize发送初始化消息等对方确认。这些都应该封装在Initializing复合状态里。",
+      "elements_involved": [
+        "Initializing",
+        "LoadConfig",
+        "InitTransport",
+        "EstablishConnection",
+        "SendInitialize",
+        "WaitForInitialized"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，Initializing内部有五个顺序状态，收到initialized消息后进入Connected。Connected作为主运行态，内部应该支持哪些操作？",
+      "elements_involved": [
+        "Initializing",
+        "Connected",
+        "initialized received"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Connected内部核心是Active状态，从Active可以分叉到三类操作：ResourceOperations处理资源的list/read/subscribe，ToolOperations执行call_tool，PromptOperations管理prompt的list/get。做完都要回到Active。",
+      "elements_involved": [
+        "Connected",
+        "Active",
+        "ResourceOperations",
+        "ToolOperations",
+        "PromptOperations",
+        "list/read/subscribe",
+        "call_tool",
+        "list/get"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "资源订阅是个异步过程，需要单独状态吗？还是直接在ResourceOperations里处理？",
+      "elements_involved": [
+        "ResourceOperations",
+        "Subscribing",
+        "subscribe_resource"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "订阅需要独立状态。从Active触发subscribe_resource进入Subscribing，内部要有RegisterSubscription注册、SetupWatcher设置监听、ConfirmSubscription确认，完成后回到Active。",
+      "elements_involved": [
+        "Active",
+        "Subscribing",
+        "RegisterSubscription",
+        "SetupWatcher",
+        "ConfirmSubscription",
+        "subscription_confirmed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Subscribing复合状态。现在处理暂停和恢复需求？",
+      "elements_involved": [
+        "Paused",
+        "pause_requested",
+        "resume_requested"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Connected可以收到pause_requested进入Paused，resume_requested后回到Connected。这是运维手动介入的场景。",
+      "elements_involved": [
+        "Connected",
+        "Paused",
+        "pause_requested",
+        "resume_requested"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "网络异常处理我设想这样：transport_error触发Reconnecting，成功则回Connected，失败且超max_retries则进入Failed。Reconnecting内部需要backoff和重试计数逻辑。",
+      "elements_involved": [
+        "Reconnecting",
+        "transport_error",
+        "reconnect_success",
+        "reconnect_failed",
+        "max_retries",
+        "Failed",
+        "Backoff",
+        "CheckMaxRetries"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Reconnecting内部结构再细化一下？重试策略要可配置。",
+      "elements_involved": [
+        "Reconnecting",
+        "Backoff",
+        "ReconnectAttempt",
+        "IncrementRetryCount",
+        "CheckMaxRetries"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "Reconnecting内部：入口到Backoff，然后ReconnectAttempt，成功走Success出口，失败走Failure到IncrementRetryCount，再到CheckMaxRetries判断，below_max回Backoff继续，exceeded_max则退出到Failed。",
+      "elements_involved": [
+        "Reconnecting",
+        "Backoff",
+        "ReconnectAttempt",
+        "Success",
+        "Failure",
+        "IncrementRetryCount",
+        "CheckMaxRetries",
+        "below_max",
+        "exceeded_max"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。另外需要两种关闭路径：GracefulShutdown是收到shutdown通知后的优雅关闭，AbnormalShutdown是critical_error触发的紧急关闭。",
+      "elements_involved": [
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "shutdown notification",
+        "critical_error",
+        "cleanup_complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "GracefulShutdown内部流程：UnsubscribeResources取消订阅，DrainPendingRequests排空待处理请求，CloseTransport关闭传输，PersistSession持久化会话，最后TerminateProcess。",
+      "elements_involved": [
+        "GracefulShutdown",
+        "UnsubscribeResources",
+        "DrainPendingRequests",
+        "CloseTransport",
+        "PersistSession",
+        "TerminateProcess"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "AbnormalShutdown不同：先LogError记录，PersistCrashDump保存崩溃现场，NotifyDependents通知依赖方，然后TerminateProcess。",
+      "elements_involved": [
+        "AbnormalShutdown",
+        "LogError",
+        "PersistCrashDump",
+        "NotifyDependents",
+        "TerminateProcess"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "会话存储后端怎么设计？需要支持不同场景。",
+      "elements_involved": [
+        "ETS",
+        "DETS",
+        "Mnesia",
+        "backend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "三种后端：ETS纯内存最快但易失，DETS磁盘持久化有I/O开销，Mnesia支持集群但有CAP权衡。用note标注在Connected右侧。",
+      "elements_involved": [
+        "ETS",
+        "DETS",
+        "Mnesia",
+        "Session Persistence",
+        "In-memory",
+        "Disk-based",
+        "Cluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加会话持久化说明。Initializing左侧也加了个note说明后端选择策略和各自的O(1)访问、易失性等特性。",
+      "elements_involved": [
+        "Initializing",
+        "Backend Selection",
+        "erlmcp_session_ets",
+        "erlmcp_session_dets",
+        "erlmcp_session_mnesia",
+        "CAP",
+        "Consistency trade-offs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要健康检查机制。Connected触发periodic_health_check进入SessionValidation，healthy回Connected，unhealthy且timeout则进Failed。",
+      "elements_involved": [
+        "Connected",
+        "SessionValidation",
+        "periodic_health_check",
+        "healthy",
+        "unhealthy",
+        "timeout",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "SessionValidation和HealthCheck是同一个东西吗？我看到后面还有个HealthCheck状态。",
+      "elements_involved": [
+        "SessionValidation",
+        "HealthCheck",
+        "periodic_timer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不对，我搞混了。periodic_health_check应该触发HealthCheck状态，不是SessionValidation。HealthCheck检查all_systems_go回Connected，subsystem_failure则进入Degraded降级状态。",
+      "elements_involved": [
+        "HealthCheck",
+        "all_systems_go",
+        "Degraded",
+        "subsystem_failure"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "修正了，HealthCheck替代SessionValidation。Degraded之后呢？",
+      "elements_involved": [
+        "Degraded",
+        "recovery_complete",
+        "recovery_failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Degraded可以recovery_complete回到Connected，或者recovery_failed进入Failed。",
+      "elements_involved": [
+        "Degraded",
+        "recovery_complete",
+        "recovery_failed",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "空闲超时也需要处理吧？长时间无活动应该清理资源。",
+      "elements_involved": [
+        "IdleTimeout",
+        "no_activity",
+        "session_expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Connected检测到no_activity且timeout进入IdleTimeout，直接session_expired结束。",
+      "elements_involved": [
+        "Connected",
+        "IdleTimeout",
+        "no_activity",
+        "timeout",
+        "session_expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "限流场景：request_rate_exceeded进入RateLimited，backoff_complete回Connected，如果rate_limit_persistent则进Failed。",
+      "elements_involved": [
+        "RateLimited",
+        "request_rate_exceeded",
+        "backoff_complete",
+        "rate_limit_persistent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "合理。现在细化ResourceOperations内部：Watching状态等待resource_changed，触发NotificationReceived，然后DeliverNotification，回到Watching。",
+      "elements_involved": [
+        "ResourceOperations",
+        "Watching",
+        "NotificationReceived",
+        "resource_changed",
+        "DeliverNotification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "ToolOperations也要细化：Executing开始，long_running_op进入InProgress，可以send_progress到ProgressUpdate再回InProgress，finished到Complete结束。",
+      "elements_involved": [
+        "ToolOperations",
+        "Executing",
+        "InProgress",
+        "long_running_op",
+        "ProgressUpdate",
+        "send_progress",
+        "Complete",
+        "finished"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Reconnecting右侧需要加个note说明Failover模式：Local重启进程、Remote用Mnesia副本、Recovery从DETS加载。",
+      "elements_involved": [
+        "Reconnecting",
+        "Failover Modes",
+        "Local",
+        "Remote",
+        "Mnesia replica",
+        "Recovery",
+        "DETS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Failover说明。会话状态字段也需要文档化吧？",
+      "elements_involved": [
+        "session_id",
+        "transport_pid",
+        "pending_requests",
+        "subscriptions",
+        "capabilities",
+        "last_activity"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "在Connected右侧加note：session_id是UUID，transport_pid是PID，pending_requests是UUID到Request的映射，subscriptions是URI到Subscription的映射，capabilities是记录，last_activity是时间戳，backend标记存储类型。",
+      "elements_involved": [
+        "Session State",
+        "UUID",
+        "PID",
+        "map(UUID - Request)",
+        "map(URI - Subscription)",
+        "capabilities",
+        "timestamp",
+        "backend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已添加。Restoration Priority的note放在Reconnecting右侧？",
+      "elements_involved": [
+        "Restoration Priority",
+        "Restore subscriptions",
+        "Replay pending requests",
+        "Restore capabilities",
+        "Resume monitoring"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，优先级：先恢复subscriptions，再replay pending requests，然后restore capabilities，最后resume monitoring。",
+      "elements_involved": [
+        "Reconnecting",
+        "Restoration Priority"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "GracefulShutdown和AbnormalShutdown最后都是TerminateProcess到[*]，这个设计确认吗？",
+      "elements_involved": [
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "TerminateProcess",
+        "[*]"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认，两种关闭最终都清理完毕进入终止。但AbnormalShutdown多了一步PersistCrashDump，方便事后分析。",
+      "elements_involved": [
+        "PersistCrashDump",
+        "NotifyDependents"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "检查下整体结构：Initializing复合状态有正确入口和出口，Connected内部Active分叉清晰，所有异常路径都有归宿，三个主要note位置合理。",
+      "elements_involved": [
+        "Initializing",
+        "Connected",
+        "Active",
+        "Reconnecting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "WaitForInitialized到[*]的转换是正常完成Initializing吗？然后才触发initialized received到Connected？",
+      "elements_involved": [
+        "WaitForInitialized",
+        "[*]",
+        "initialized received"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，Initializing内部完成后，外部转换initialized received进入Connected。语义是内部子状态机完成，外部事件触发状态迁移。",
+      "elements_involved": [
+        "Initializing",
+        "Connected",
+        "initialized received"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认Activity Monitoring：Connected检测到no_activity且timeout进入IdleTimeout，session_expired直接结束，没有恢复路径。",
+      "elements_involved": [
+        "Activity Monitoring",
+        "IdleTimeout",
+        "no_activity",
+        "timeout",
+        "session_expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部确认。状态机涵盖：启动初始化、正常运行、资源/工具/提示操作、订阅管理、暂停恢复、重连退避、健康检查、优雅/异常关闭、空闲超时、限流控制、后端选择策略。",
+      "elements_involved": [
+        "stateDiagram-v2",
+        "Initializing",
+        "Connected",
+        "Reconnecting",
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "HealthCheck",
+        "Degraded",
+        "RateLimited",
+        "IdleTimeout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完整了。这个状态机能覆盖MCP会话从start_link到各种异常场景的全生命周期，各复合状态的内部分解也足够指导代码实现。",
+      "elements_involved": [
+        "start_link",
+        "Options",
+        "failover",
+        "max retries",
+        "timeout",
+        "uri subscription",
+        "uuid request"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 41,
+    "repair_count": 1,
+    "grounding_acts_count": 41,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:43Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:27Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:27Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 77723.3052,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 41
+  }
+}

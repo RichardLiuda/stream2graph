@@ -1,0 +1,519 @@
+{
+  "id": "aug_gl_packet-beta_00360_Ret_8",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/llai-harmonicinc/cDS-Session-Management/blob/034fa5d6ac3372256af047d7e02f454dd09526d5/cDS%20Session%20Routing.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "llai-harmonicinc/cDS-Session-Management",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\nparticipant P as Player\nparticipant Boot as Bootstrap\nparticipant LD as DNS resolver\nparticipant AD as Authoritative DNS server\n\nparticipant SM as cDS::Session Management\nparticipant sNA as cDS::Node-A\nparticipant sNB as cDS::Node-B\nparticipant TC as cDS::TC\nparticipant NA as cDS::Node-C\nparticipant CS as cDS::Content Steering Servers\nparticipant TE as cDS::Telemetry\n\nautonumber\n    P->>Boot: get session bootstrap\n    Boot->>P: Bootstrap details e.g. endpoint, ad serving parameters, etc\n\n    %% resolve Session Management server domain name\n    P->>LD: query cDS::Session Management domain name\n    LD->>AD: query cDS::Session Management domain name\n    AD->>LD:  cDS::Session Management Server IP for that DNS resolver\n    LD->>P: cDS::Session Mangement Server IP\n\n    %% request master manifest from Session Management server\n    Note over P, SM: request master manifest from cDS::Session Management\n    P->>SM: GET /master manifest\n    Note over P, SM: #35;EXTM3U<br/> #35;EXT-X-VERSION:3<br>#35;EXT-X-CONTENT-STEERING:SERVER-URI=\"https://cs.harmonic.com/\"<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::Node-A\"<br>https://nodeA.harmonic.com/01.m3u8<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::Node-B\"<br>http://nodeB.harmonic.com/01.m3u8<br>#35;EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2297761,RESOLUTION=960x540,FRAME-RATE=30.000,PATHWAY-ID=\"cDS::TC\"<br>https://tc.harmonic.com/01.m3u8.....\n    SM->>P: 200 OK\\n(Retail_CustomerLoyalty) \n    \n    %% request steering manifest from Content Steering server\n    Note over P, CS: request steering manifest from cDS: Content Steering\n    P->>LD: query cDS::Content Steering domain name\n    LD->>AD: query cDS::Content Steering domain name\n    AD->>LD:  cDS::Content Steering Server IP for that DNS resolver\n    LD->>P: cDS::Content Steering Server IP\n\n    P->>CS: GET /steering manifest\n    Note over CS, P: {Retail_PointOfSale]<br>}\n    CS->>P: 200 OK\\n(Retail_Inventory)\n    \n    Note over P, sNA: request variant manifest from cDS::Node A\n    P->>LD: query cDS::Node A domain name\n    LD->>AD: query cDS::Node A domain name\n    AD->>LD:  cDS::Node A IP for that DNS resolver\n    LD->>P: cDS::Node A IP\n    P->>sNA: TCP SYN\n    Note over P, sNA: cDS::Node A is down<br>TCP retransmission timer timeout<br>Player fail over to cDS::Node B\n    Note over TE: cDS::Telemetry detect cDS::Node A is down\n    par \n        TE->>CS: update routing decision (Retail_CustomerLoyalty)\n    and \n        TE->>SM: update routing decision (Retail_CustomerLoyalty)\n    end\n\n    Note over P, sNB: Player fail over to cDS::Node B\n    P->>LD: query cDS::Node B domain name\n    LD->>AD: query cDS::Node B domain name\n    AD->>LD:  cDS::Node B IP for that DNS resolver\n    LD->>P: cDS::Node B IP\n    Note over P, sNB: GET /variant manifest \n    P->>sNB: TCP SYN\n    sNB->>P: ACK, SYN\n    P->>sNB: SYN\n    Note over P, sNB: #35;EXTM3U<br>#35;EXT-X-TARGETDURATION:4<br>#35;EXT-X-MEDIA-SEQUENCE:432137172<br>#35;EXT-X-VERSION:3<br>#35;EXT-X-PROGRAM-DATE-TIME:2024-10-10T08:24:48.831Z<br>#35;EXTINF:3,<br>20240927T075714-01-432137172.ts<br>#35;EXT-X-PROGRAM-DATE-TIME:2024-10-10T08:24:52.031Z<br>EXTINF:5,<br>20240927T075714-01-432137173.ts<br>#35;.........\n    sNB->>P: 200 OK\\n(Retail_CouponSystem)\n\n    %% establish TCP connection, 3 way handshake\n    Note over P, sNB: request video segments\n    P->>sNB: GET /20240927T075714-01-432137172.ts\n\n    %% cDS:: Node start to push video segment\n    Note over sNB, P: server start pushing video segments\n    sNB->>P: TCP segment (Retail_CouponSystem)\n    sNB->>P: TCP segment (Retail_OrderManagement)\n    P->>sNB: ACK (Retail_OrderManagement)\n\n    %% packet start missing and player request retransmission\n    sNB->>P: TCP segment(Retail_Inventory)\n    sNB->>P: TCP segment(Retail_CouponSystem)\n    Note over sNB, P: packet loss, retransmission timer timeout, send duplicate ACK to request retransmission\n    P->>sNB: ACK (Retail_Inventory)\n    sNB->>P: reset connection\n    \n    sNB->>TE: report packet loss\n    par\n        TE->>CS: update routing decision (Retail_CouponSystem)\n    and \n        TE->>SM: update routing decision (Retail_CouponSystem)\n    end\n\n    %% player fail over to cDS::TC\n    Note over P, TC: Player fail over to cDS::TC\n    P->>LD: query cDS::TC domain name\n    LD->>AD: query cDS::TC  domain name\n    AD->>LD:  cDS::TC IP for that DNS resolver\n    LD->>P: cDS::TC IP\n\n    P->> TC: GET /variant manifest\n    TC->>P: 302 Found\\nLocation: cDS::Node C\n   \n    P->>LD: query cDS::Node C domain name\n    LD->>AD: query cDS::Node C domain name\n    AD->>LD:  cDS::Node C IP for that DNS resolver\n    LD->>P: cDS::Node C IP\n\n    P->>NA: GET /variant manifest\n    NA->>P: 200 OK\\n(Retail_CouponSystem)\n\n    loop\n        P->>NA: GET video/audio segments\n        NA->>P: 200 OK\\n(Retail_Inventory)\n    end\n    \n    Note over P, CS: steering manifest expire, request an updated steering manifest\n    P->>CS: GET /steering manifest\n    Note over CS, P: cDS::Node A and cDS::Node B are removed from the list<br>{Retail_OrderManagement]<br>}\n    CS->>P: 200 OK\\n(Retail_CustomerLoyalty)\n",
+  "content_size": 5274,
+  "collected_at": "2026-02-06T14:08:15.440859",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Retail",
+  "seed_id": "gl_packet-beta_00360",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要绘制一个cDS内容分发系统的完整时序图，展示从播放器启动到最终内容传输的完整流程，包括故障转移和动态路由决策。",
+      "elements_involved": [
+        "Player",
+        "cDS::Session Management",
+        "cDS::Content Steering Servers",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C",
+        "cDS::Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我注意到系统涉及多个组件层级：Bootstrap引导服务、DNS解析链、会话管理、内容调度、边缘节点和遥测模块。是否需要先定义所有参与者？",
+      "elements_involved": [
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，参与者包括：Player播放器、Bootstrap引导服务、DNS resolver解析器、Authoritative DNS server权威服务器，以及cDS内部的SM会话管理、sNA节点A、sNB节点B、TC传输控制器、NA节点C、CS内容调度服务器和TE遥测模块。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Session Management",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C",
+        "cDS::Content Steering Servers",
+        "cDS::Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已创建所有参与者。现在开始绘制第一阶段：播放器启动流程。Player向Bootstrap发送get session bootstrap请求，获取端点地址和广告服务参数。",
+      "elements_involved": [
+        "Player",
+        "Bootstrap"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是DNS解析链。播放器需要解析cDS::Session Management的域名，经过LD和AD两级查询获取IP地址。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加DNS解析流程。现在绘制主清单请求：Player向SM发送GET /master manifest，返回的响应需要包含EXT-X-CONTENT-STEERING标签指向内容调度服务器。",
+      "elements_involved": [
+        "Player",
+        "cDS::Session Management"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "主清单中要列出三个PATHWAY-ID：cDS::Node-A、cDS::Node-B和cDS::TC，每个都带有BANDWIDTH、RESOLUTION和FRAME-RATE参数。响应状态用200 OK，标注Retail_CustomerLoyalty。",
+      "elements_involved": [
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加主清单响应内容。现在进入第二阶段：请求调度清单。Player需要再次经过DNS解析链查询cDS::Content Steering的域名。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Content Steering Servers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "调度清单响应用200 OK，标注Retail_Inventory。然后播放器尝试连接cDS::Node A获取变体清单。",
+      "elements_involved": [
+        "cDS::Content Steering Servers",
+        "Retail_Inventory",
+        "cDS::Node-A"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加调度清单流程。现在开始Node A连接流程：DNS解析后发送TCP SYN，但这里需要标注Node A宕机的故障场景。",
+      "elements_involved": [
+        "Player",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "cDS::Node-A",
+        "TCP SYN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，这是关键故障转移场景。TCP重传定时器超时后，播放器故障转移到cDS::Node B。同时cDS::Telemetry需要检测到Node A宕机。",
+      "elements_involved": [
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::Telemetry",
+        "TCP retransmission"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "遥测模块检测到故障后，需要并行更新CS和SM的路由决策，都用Retail_CustomerLoyalty标注。这里用par区块表示并行操作对吗？",
+      "elements_involved": [
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确，par区块表示两个并行的路由决策更新。然后播放器通过DNS解析连接到Node B，完成TCP三次握手。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "DNS resolver",
+        "Authoritative DNS server",
+        "TCP SYN",
+        "ACK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Node B连接流程。变体清单响应包含EXTM3U、EXT-X-TARGETDURATION、EXT-X-MEDIA-SEQUENCE等标签，以及具体的ts片段URL，标注Retail_CouponSystem。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "Retail_CouponSystem",
+        "EXTM3U",
+        "EXT-X-TARGETDURATION",
+        "EXT-X-MEDIA-SEQUENCE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在进入视频段传输阶段。播放器请求20240927T075714-01-432137172.ts，服务器开始推送TCP段。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "video segments",
+        "TCP segment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加视频段请求。服务器推送的TCP段分别标注Retail_CouponSystem和Retail_OrderManagement，播放器返回ACK确认。",
+      "elements_involved": [
+        "cDS::Node-B",
+        "Player",
+        "TCP segment",
+        "ACK",
+        "Retail_CouponSystem",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里需要引入第二个故障场景：数据包丢失。Node B继续推送标注Retail_Inventory和Retail_CouponSystem的TCP段，但发生丢包。",
+      "elements_involved": [
+        "cDS::Node-B",
+        "Player",
+        "packet loss",
+        "Retail_Inventory",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "丢包后重传定时器超时，播放器发送重复ACK请求重传。但这里Node B直接重置连接并向遥测报告丢包，对吗？",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-B",
+        "cDS::Telemetry",
+        "retransmission",
+        "duplicate ACK",
+        "reset connection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，连接重置后遥测再次并行更新CS和SM的路由决策，这次标注Retail_CouponSystem。然后播放器故障转移到cDS::TC。",
+      "elements_involved": [
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "Retail_CouponSystem",
+        "cDS::TC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加第二次故障转移流程。TC返回302 Found重定向到cDS::Node C，播放器需要再次解析Node C的域名。",
+      "elements_involved": [
+        "Player",
+        "cDS::TC",
+        "cDS::Node-C",
+        "302 Found",
+        "DNS resolver",
+        "Authoritative DNS server"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Node C连接成功后返回200 OK标注Retail_CouponSystem，然后进入循环传输视频/音频段，响应标注Retail_Inventory。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-C",
+        "200 OK",
+        "Retail_CouponSystem",
+        "Retail_Inventory",
+        "loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Node C循环传输流程。现在需要处理调度清单过期场景：播放器重新请求更新的调度清单。",
+      "elements_involved": [
+        "Player",
+        "cDS::Content Steering Servers",
+        "steering manifest expire"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "更新的调度清单中，Node A和Node B应该从可用列表中移除，响应标注Retail_OrderManagement和Retail_CustomerLoyalty。",
+      "elements_involved": [
+        "cDS::Content Steering Servers",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "Retail_OrderManagement",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认。整个流程已绘制完成：从Bootstrap启动，经过两次DNS解析链，两次故障转移（Node A宕机和Node B丢包），最终通过TC重定向到Node C稳定传输，并以调度清单更新结束。",
+      "elements_involved": [
+        "Bootstrap",
+        "DNS resolver",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C",
+        "cDS::Content Steering Servers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "检查一下，主清单中的EXT-X-STREAM-INF标签需要确保三个节点的BANDWIDTH都是2297761，RESOLUTION都是960x540，FRAME-RATE都是30.000。",
+      "elements_involved": [
+        "cDS::Session Management",
+        "EXT-X-STREAM-INF",
+        "BANDWIDTH",
+        "RESOLUTION",
+        "FRAME-RATE",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现一处需要修正：主清单中Node B的URL写的是http://nodeB.harmonic.com/01.m3u8，而其他两个节点是https。根据安全规范，应该统一为https吗？",
+      "elements_involved": [
+        "cDS::Node-B",
+        "http",
+        "https"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持现状，Node B用http是设计意图，用于展示混合协议场景。继续检查变体清单中的时间戳格式。",
+      "elements_involved": [
+        "cDS::Node-B",
+        "http",
+        "EXT-X-PROGRAM-DATE-TIME"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "变体清单中的PROGRAM-DATE-TIME是2024-10-10T08:24:48.831Z格式，MEDIA-SEQUENCE是432137172，TARGETDURATION是4秒。需要调整任何参数吗？",
+      "elements_involved": [
+        "cDS::Node-B",
+        "EXT-X-PROGRAM-DATE-TIME",
+        "EXT-X-MEDIA-SEQUENCE",
+        "EXT-X-TARGETDURATION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "参数正确。再确认一下遥测模块的两次路由更新：第一次是Node A宕机时更新CS和SM，第二次是Node B丢包时再次更新，两次的标注数据不同。",
+      "elements_involved": [
+        "cDS::Telemetry",
+        "cDS::Content Steering Servers",
+        "cDS::Session Management",
+        "Retail_CustomerLoyalty",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认两次遥测更新的标注差异。另外，TC的302重定向响应中Location头指向cDS::Node C，这个重定向机制是HTTP标准行为。",
+      "elements_involved": [
+        "cDS::TC",
+        "cDS::Node-C",
+        "302 Found",
+        "Location"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后的循环区块中，播放器持续从Node C获取音视频段，这个循环没有明确的终止条件，表示持续传输状态。",
+      "elements_involved": [
+        "Player",
+        "cDS::Node-C",
+        "loop",
+        "video/audio segments"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解，loop表示持续传输的抽象。整个时序图已完整覆盖：启动引导、DNS解析、主清单获取、调度清单获取、两次故障转移、TCP传输细节、丢包重传、HTTP重定向和动态路由更新。",
+      "elements_involved": [
+        "Bootstrap",
+        "DNS resolver",
+        "cDS::Session Management",
+        "cDS::Content Steering Servers",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "cDS::Node-C",
+        "cDS::Telemetry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查：所有Note注释是否清晰标注了关键状态转换？特别是Node A宕机、Node B丢包、TC重定向这三个关键决策点。",
+      "elements_involved": [
+        "Note over",
+        "cDS::Node-A",
+        "cDS::Node-B",
+        "cDS::TC",
+        "fail over",
+        "packet loss"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有关键状态转换已用Note标注清晰。时序图已完成，包含完整的autonumber自动编号，所有参与者、消息流、注释和并行区块均已正确绘制。",
+      "elements_involved": [
+        "autonumber",
+        "sequenceDiagram",
+        "par",
+        "loop",
+        "Note over"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 34,
+    "repair_count": 1,
+    "grounding_acts_count": 34,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:33Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 77077.6072,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 34
+  }
+}

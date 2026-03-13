@@ -1,0 +1,198 @@
+{
+  "id": "gh_sequence_00672",
+  "source": "github",
+  "source_url": "https://github.com/Youknow2509/cio_verify_face/blob/64dd1b1eb75e62b25244067fb046f81672585bbe/doc/sequence_diagrams/identity_org/create_employee.mmd",
+  "github_repo": "Youknow2509/cio_verify_face",
+  "github_file_path": "doc/sequence_diagrams/identity_org/create_employee.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Admin as Company Admin\n    participant LB as Load Balancer\n    participant Gateway as API Gateway\n    participant Auth as Auth Service\n    participant Identity as Identity Service\n    participant Cache as Redis Cache\n    participant DB as PostgreSQL\n    participant Queue as Message Queue\n    participant Notification as Notification Service\n\n    Admin->>+LB: POST /api/v1/users\n    Note over Admin,LB: {name, email, employee_id, department, position, phone}\n    \n    LB->>+Gateway: Forward request\n    Gateway->>+Auth: Validate admin token\n    Auth->>Auth: Extract company_id from token\n    Auth-->>-Gateway: Admin authorized for company\n    \n    Gateway->>+Identity: POST /api/v1/users\n    Note over Gateway,Identity: Include company_id in request context\n    \n    Identity->>Identity: Validate employee data\n    Note over Identity: Email format, employee_id uniqueness within company\n    \n    Identity->>+DB: Check email & employee_id uniqueness\n    Note over Identity,DB: Scoped to company for employee_id uniqueness\n    DB-->>-Identity: Uniqueness validation result\n    \n    alt Email or employee_id already exists\n        Identity-->>Gateway: 409 Conflict - Duplicate email/employee_id\n    else Data is unique\n        Identity->>+DB: BEGIN TRANSACTION\n        DB-->>-Identity: Transaction started\n        \n        par Create user record\n            Identity->>+DB: INSERT INTO users\n            Note over Identity,DB: Generate user_id, link to company\n            DB-->>-Identity: User created\n        and Create employee profile\n            Identity->>+DB: INSERT INTO employee_profiles\n            Note over Identity,DB: Department, position, hire date\n            DB-->>-Identity: Profile created\n        and Initialize permissions\n            Identity->>+DB: INSERT INTO user_permissions\n            Note over Identity,DB: Default employee permissions\n            DB-->>-Identity: Permissions set\n        end\n        \n        Identity->>+DB: COMMIT TRANSACTION\n        DB-->>-Identity: Transaction committed\n        \n        par Cache new employee data\n            Identity->>+Cache: Set user_profile:{user_id}\n            Note over Identity,Cache: TTL: 1 hour\n            Cache-->>-Identity: Profile cached\n        and Clear company user lists\n            Identity->>+Cache: DELETE company_users:{company_id}:*\n            Note over Identity,Cache: Invalidate cached user listings\n            Cache-->>-Identity: Cache cleared\n        and Queue onboarding workflow\n            Identity->>+Queue: Publish EmployeeCreated event\n            Note over Identity,Queue: Trigger onboarding process\n            Queue-->>-Identity: Event published\n        and Send welcome notification\n            Identity->>+Notification: Send welcome email\n            Note over Identity,Notification: Include setup instructions\n            Notification-->>-Identity: Email queued\n        end\n        \n        Identity-->>-Gateway: 201 Created - Employee added successfully\n    end\n    \n    Gateway-->>-LB: Response\n    LB-->>-Admin: Employee creation result\n    \n    Note over Admin,DB: Employee management optimizations:\n    Note over Admin,DB: 1. Bulk employee import capabilities\n    Note over Admin,DB: 2. Active Directory/LDAP integration\n    Note over Admin,DB: 3. Automated onboarding workflows\n    Note over Admin,DB: 4. Employee lifecycle management\n    Note over Admin,DB: 5. Self-service employee registration",
+  "content_size": 3441,
+  "collected_at": "2026-02-06T01:35:29.454399",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 2,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个企业员工添加的完整流程，从公司管理员发起请求，经过负载均衡和API网关，最终完成员工创建并触发一系列后续操作。核心是要体现数据一致性，比如员工ID和邮箱在公司范围内的唯一性校验。",
+      "elements_involved": [
+        "Company Admin",
+        "Load Balancer",
+        "API Gateway",
+        "Auth Service",
+        "Identity Service",
+        "employee_id",
+        "email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，我梳理一下：管理员请求先到LB，然后Gateway做Token校验，Auth Service提取company_id。这里我想确认一下，唯一性校验是在Identity Service里做，还是直接查PostgreSQL？另外，创建成功后需要哪些并行操作？",
+      "elements_involved": [
+        "Load Balancer",
+        "API Gateway",
+        "Auth Service",
+        "Identity Service",
+        "PostgreSQL",
+        "Redis Cache",
+        "Message Queue",
+        "Notification Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，唯一性校验让Identity Service来做，它去查PostgreSQL，而且要明确限定在company_id范围内——同一个公司内员工ID不能重复，但不同公司可以重复。创建成功后需要四个并行操作：缓存新用户数据、清除公司用户列表缓存、发消息队列触发入职流程、发欢迎邮件。",
+      "elements_involved": [
+        "Identity Service",
+        "PostgreSQL",
+        "company_id",
+        "employee_id",
+        "Redis Cache",
+        "Message Queue",
+        "Notification Service",
+        "EmployeeCreated event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主流程画出来：管理员→LB→Gateway→Auth（提取company_id）→Identity。然后在Identity里加数据校验节点，再去DB查唯一性。这里我用alt分支处理冲突情况，409返回重复错误。",
+      "elements_involved": [
+        "Company Admin",
+        "Load Balancer",
+        "API Gateway",
+        "Auth Service",
+        "Identity Service",
+        "PostgreSQL",
+        "409 Conflict"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据创建部分要用事务保证一致性，par并行块里做三件事：插入users表生成user_id、插入employee_profiles存部门职位、插入user_permissions给默认权限。这三个都成功再提交事务。",
+      "elements_involved": [
+        "Identity Service",
+        "PostgreSQL",
+        "users",
+        "employee_profiles",
+        "user_permissions",
+        "BEGIN TRANSACTION",
+        "COMMIT TRANSACTION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "事务部分我画好了。接下来的并行操作我有点疑问：缓存用户数据时TTL设多久？还有清除公司用户列表缓存，是用DELETE匹配company_users:{company_id}:*这种模式吗？",
+      "elements_involved": [
+        "Redis Cache",
+        "TTL",
+        "company_users",
+        "user_profile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "TTL设1小时就行。缓存清除用那个模式，把该公司下所有用户列表缓存都清掉。消息队列发布EmployeeCreated事件，Notification Service发欢迎邮件带设置指引。最后返回201给管理员。",
+      "elements_involved": [
+        "Redis Cache",
+        "TTL 1 hour",
+        "Message Queue",
+        "EmployeeCreated",
+        "Notification Service",
+        "welcome email",
+        "201 Created"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都画好了。我在底部加了几个Note，列出员工管理的优化方向：批量导入、AD/LDAP集成、自动化入职流程、员工生命周期管理、自助注册。你看整体结构对吗？",
+      "elements_involved": [
+        "Note",
+        "Bulk employee import",
+        "Active Directory",
+        "LDAP",
+        "Automated onboarding",
+        "Employee lifecycle management",
+        "Self-service registration"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "整体没问题，但Auth Service那里需要调整一下。现在画的是Auth直接回Gateway，但应该明确标注返回的是\"Admin authorized for company\"，这样和后面Identity带company_id的上下文能对应上。",
+      "elements_involved": [
+        "Auth Service",
+        "Gateway",
+        "company_id",
+        "Admin authorized for company"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，我修正Auth到Gateway的返回标注。另外Identity去DB的查询Note我也补全了，注明\"Scoped to company for employee_id uniqueness\"。现在应该完整了。",
+      "elements_involved": [
+        "Auth Service",
+        "Gateway",
+        "Identity Service",
+        "PostgreSQL",
+        "company_id",
+        "employee_id uniqueness"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 24868.036,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

@@ -1,0 +1,614 @@
+{
+  "id": "aug_gl_block-beta_00324_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/quantizor/markdown-to-jsx/blob/5c76b18bb5102b00ca77c8a4480da6e93d4765f4/lib/src/parser-spec.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "quantizor/markdown-to-jsx",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Input as Markdown Input\n    participant Phase1 as Phase 1: Block Structure\n    participant LineProcessor as Process Line\n    participant BlockChecker as Check Open Blocks\n    participant BlockParser as Block Parser\n    participant Phase2 as Phase 2: Inline Structure\n    participant TreeWalker as Walk Tree\n    participant InlineParser as Parse Inline\n    participant AST as Final AST\n\n    Input->>Phase1: Markdown text\n\n    loop For Each Line\n        Phase1->>LineProcessor: Process line sequentially\n\n        LineProcessor->>BlockChecker: Step 1: Check open blocks\n        Note over BlockChecker: Iterate from root to last open block<br/>Each block imposes continuation condition\n\n        BlockChecker->>BlockChecker: Match all or some open blocks\n        Note over BlockChecker: Cannot close unmatched yet<br/>May have lazy continuation\n\n        BlockChecker->>BlockParser: Step 2: Consume continuation markers\n        Note over BlockParser: >, list markers, indentation\n\n        BlockParser->>BlockParser: Look for new block starts\n\n        alt First non-space char\n            BlockParser->>BlockParser: Space/Tab: Indented path\n            Note over BlockParser: 1. Thematic Break 0-3 spaces<br/>2. Lists/Blockquote<br/>3. Code Block 4+ spaces\n        else >\n            BlockParser->>BlockParser: Block Quote (IoT_Industrial_EdgeNode)\n        else #\n            BlockParser->>BlockParser: ATX Heading (IoT_Industrial_TelemetryStream)\n        else - * _\n            BlockParser->>BlockParser: Thematic Break (IoT_Industrial_ActuatorController)<br/>(IoT_Industrial_MQTT_Broker)\n        else ` ~\n            BlockParser->>BlockParser: Fenced Code Block (IoT_Industrial_EdgeNode)\n        else - * + 0-9\n            BlockParser->>BlockParser: Unordered/Ordered List (IoT_Industrial_MQTT_Broker)\n        else <\n            BlockParser->>BlockParser: HTML Block (IoT_Industrial_ActuatorController)\n        else |\n            BlockParser->>BlockParser: Table (IoT_Industrial_TelemetryStream)<br/>Requires header row + delimiter row<br/>Delimiter row must match header cell count\n        else = -\n            BlockParser->>BlockParser: Setext Heading<br/>(IoT_Industrial_PLC_Logic)\n        else default\n            BlockParser->>BlockParser: Paragraph (IoT_Industrial_MQTT_Broker)\n        end\n\n        BlockParser->>BlockParser: Close unmatched blocks from Step 1\n        BlockParser->>BlockParser: Create new block as child of last matched container\n\n        BlockParser->>BlockParser: Step 3: Process remainder\n        Note over BlockParser: Add text to last open block<br/>(IoT_Industrial_ActuatorController)<br/>or Table (IoT_Industrial_PLC_Logic)\n\n        alt Paragraph + Setext underline?\n            BlockParser->>BlockParser: Convert paragraph to setext heading\n        else No\n            BlockParser->>BlockParser: Accumulate text in current block\n        end\n\n        BlockParser-->>LineProcessor: Block node created\n    end\n\n    Phase1->>Phase1: Close all open blocks\n    Phase1->>Phase1: For each list item:<br/>Check if first block is paragraph with task marker (IoT_Industrial_EdgeNode)<br/>[IoT_Industrial_PLC_Logic] or [IoT_Industrial_TelemetryStream] or [IoT_Industrial_ActuatorController] at start of paragraph\n    Phase1->>Phase1: For each closed paragraph:<br/>Parse accumulated text lines\n    Phase1->>Phase1: Extract link reference definitions from start of text\n    Phase1->>Phase1: Remaining text becomes normal paragraph\n\n    Phase1->>Phase2: Block tree structure\n\n    Phase2->>TreeWalker: Walk the tree\n\n    loop Visit every node\n        TreeWalker->>TreeWalker: Check if node has inline content\n        Note over TreeWalker: Paragraph, Heading<br/>or Table Cell (IoT_Industrial_PLC_Logic)\n\n        alt Has inline content?\n            TreeWalker->>InlineParser: Parse inline content (IoT_Industrial_TelemetryStream)\n\n            loop Character-by-character\n                InlineParser->>InlineParser: Switch on character\n\n                alt backslash\n                    InlineParser->>InlineParser: Backslash escape\n                else `\n                    InlineParser->>InlineParser: Code span<br/>(IoT_Industrial_TelemetryStream)\n                else <\n                    InlineParser->>InlineParser: Check angle bracket\n                    alt autolink (IoT_Industrial_MQTT_Broker)\n                        InlineParser->>InlineParser: Autolink (IoT_Industrial_TelemetryStream)<br/>Standard CommonMark autolinks<br/>(IoT_Industrial_ActuatorController)\n                    else HTML tag\n                        InlineParser->>InlineParser: HTML tag<br/>GFM extension: Disallowed Raw HTML<br/>(IoT_Industrial_EdgeNode)\n                    else comment\n                        InlineParser->>InlineParser: HTML comment\n                    end\n                else www. or http:// or https:// or ftp:// or email\n                    InlineParser->>InlineParser: Extended autolink (IoT_Industrial_TelemetryStream)<br/>www. URLs, http/https/ftp URLs, emails<br/>Only after start of line, whitespace, or * _ ~ (IoT_Industrial_TelemetryStream)\n                else * _\n                    InlineParser->>InlineParser: Emphasis delimiter<br/>Add to delimiter stack\n                    InlineParser->>InlineParser: Check left-flanking\n                    InlineParser->>InlineParser: Check right-flanking\n                    InlineParser->>InlineParser: Apply delimiter rules (IoT_Industrial_EdgeNode)\n                    InlineParser->>InlineParser: Parse nested content recursively\n                else ~\n                    InlineParser->>InlineParser: Strikethrough delimiter (IoT_Industrial_ActuatorController)<br/>Add to delimiter stack<br/>Requires exactly ~~ (IoT_Industrial_TelemetryStream) for strikethrough<br/>Similar parsing rules to emphasis\n                else !bracket\n                    InlineParser->>InlineParser: Image (IoT_Industrial_MQTT_Broker)\n                else bracket\n                    InlineParser->>InlineParser: Link (IoT_Industrial_ActuatorController)\n                else closing bracket\n                    InlineParser->>InlineParser: Look for link/image<br/>Process delimiter stack\n                    alt Reference link?\n                        InlineParser->>InlineParser: Resolve reference<br/>(IoT_Industrial_TelemetryStream)\n                    else Inline link\n                        InlineParser->>InlineParser: Inline link\n                    end\n                else newline\n                    InlineParser->>InlineParser: Soft line break\n                else entity\n                    InlineParser->>InlineParser: HTML entity reference<br/>(IoT_Industrial_PLC_Logic)\n                else default\n                    InlineParser->>InlineParser: Accumulate as text\n                end\n            end\n\n            InlineParser-->>TreeWalker: Inline AST nodes\n        end\n\n        TreeWalker->>TreeWalker: Next node\n    end\n\n    TreeWalker-->>Phase2: Complete tree with inline nodes\n    Phase2->>AST: Final AST document tree\n\n",
+  "content_size": 6767,
+  "collected_at": "2026-02-06T14:07:19.076963",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_block-beta_00324",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的Markdown解析流程图，从原始文本输入到最终的AST。这个系统要体现两阶段解析：先处理块级结构，再处理行内结构。",
+      "elements_involved": [
+        "Markdown Input",
+        "Phase 1",
+        "Phase 2",
+        "Final AST"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。第一阶段是块结构解析，第二阶段是行内结构解析。我想确认一下，这两个阶段之间是通过什么传递数据的？是直接的块树结构吗？",
+      "elements_involved": [
+        "Phase 1",
+        "Phase 2",
+        "Block tree structure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，第一阶段输出的是块树结构（Block tree structure），然后交给第二阶段。我们先从输入端开始画起，用Markdown Input作为起点。",
+      "elements_involved": [
+        "Markdown Input",
+        "Block tree structure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把Markdown Input放到最左边，然后连到Phase 1。接下来Phase 1内部需要详细展开吗？",
+      "elements_involved": [
+        "Markdown Input",
+        "Phase 1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Phase 1需要详细展开。里面有个核心循环：对每一行进行处理。需要包含Process Line、Check Open Blocks和Block Parser这几个关键组件。",
+      "elements_involved": [
+        "Phase 1",
+        "Process Line",
+        "Check Open Blocks",
+        "Block Parser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Check Open Blocks的具体逻辑是什么？我看到注释里提到要从根节点迭代到最后一个开放块，每个块都有继续条件。",
+      "elements_involved": [
+        "Check Open Blocks",
+        "root",
+        "last open block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。Check Open Blocks要匹配所有或部分开放块，这时候还不能关闭未匹配的块，因为可能有延迟延续（lazy continuation）。这个判断逻辑很重要。",
+      "elements_involved": [
+        "Check Open Blocks",
+        "lazy continuation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在Check Open Blocks上加了个注释框，说明迭代逻辑和延迟延续的情况。接下来是Block Parser接收延续标记？",
+      "elements_involved": [
+        "Check Open Blocks",
+        "Block Parser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Block Parser要做三步：第一步消费延续标记（缩进、列表标记等），第二步寻找新块开始，第三步处理剩余内容。第二步最复杂，需要画一个大的alt分支。",
+      "elements_involved": [
+        "Block Parser",
+        "list markers",
+        "indentation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "新块开始的判断条件很多，我梳理一下：首先是第一个非空格字符的判断，如果是空格或制表符走缩进路径，否则根据具体字符判断块类型？",
+      "elements_involved": [
+        "Block Parser",
+        "Space/Tab",
+        "Indented path"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。缩进路径里要处理：0-3空格的主题分隔线、列表/块引用、4+空格的代码块。非缩进路径更复杂，有块引用、ATX标题、主题分隔线、围栏代码块等等。",
+      "elements_involved": [
+        "Block Parser",
+        "Thematic Break",
+        "Lists",
+        "Blockquote",
+        "Code Block",
+        "ATX Heading"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在Block Parser里画了一个大的alt结构，覆盖了各种字符情况。不过有个疑问：主题分隔线用- * _表示，但列表也用- * +，这里会不会冲突？",
+      "elements_involved": [
+        "Block Parser",
+        "Thematic Break",
+        "Unordered/Ordered List"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "好问题。主题分隔线要求连续三个以上相同字符，中间可以有空格；而列表只需要一个标记符后面跟空格。Block Parser会根据上下文和具体格式来判断。",
+      "elements_involved": [
+        "Block Parser",
+        "Thematic Break",
+        "Unordered/Ordered List"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解了，是格式细节的区别。我继续完善alt分支。还有表格的判断，需要表头行加分隔行，而且分隔行的单元格数必须匹配表头？",
+      "elements_involved": [
+        "Block Parser",
+        "Table",
+        "header row",
+        "delimiter row"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，表格的约束比较严格。Setext标题用=或-，但-已经被主题分隔线和列表用了，所以要注意区分。还有HTML块和段落作为默认情况。",
+      "elements_involved": [
+        "Block Parser",
+        "Setext Heading",
+        "HTML Block",
+        "Paragraph"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "alt分支都画好了。接下来是Block Parser关闭未匹配块、创建新块作为最后匹配容器的子节点，然后处理剩余内容？",
+      "elements_involved": [
+        "Block Parser",
+        "last matched container",
+        "child"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的。处理剩余内容时，要把文本添加到最后开放块，或者是表格单元格。这里还有个特殊情况：如果当前是段落且遇到Setext下划线，要转换成Setext标题。",
+      "elements_involved": [
+        "Block Parser",
+        "Paragraph",
+        "Setext underline",
+        "Setext Heading"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在Block Parser里加了转换逻辑和文本累积的分支。循环结束后，Phase 1还要关闭所有开放块，然后做一些后续处理？",
+      "elements_involved": [
+        "Phase 1",
+        "close all open blocks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，后续处理包括：检查列表项是否是任务列表（以[ ]或[x]开头的段落）、解析已关闭段落的累积文本、提取链接引用定义、剩余文本变成普通段落。",
+      "elements_involved": [
+        "Phase 1",
+        "task marker",
+        "link reference definitions",
+        "paragraph"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "任务列表的标记有具体要求吗？我看到注释里提到了几种变体。",
+      "elements_involved": [
+        "Phase 1",
+        "task marker",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "任务标记可以是[ ]、[x]或[X]，出现在段落开头。这些IoT相关的标签是我之前做工业物联网项目时用的内部代号，可以保留作为示例标记。",
+      "elements_involved": [
+        "task marker",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把这些IoT标签保留在注释里了。现在Phase 1完成，输出块树结构给Phase 2。Phase 2的核心是Walk Tree？",
+      "elements_involved": [
+        "Phase 1",
+        "Phase 2",
+        "Block tree structure",
+        "Walk Tree"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，Phase 2用Walk Tree遍历每个节点，检查是否有行内内容需要解析。有行内内容的包括段落、标题、表格单元格等。",
+      "elements_involved": [
+        "Phase 2",
+        "Walk Tree",
+        "inline content",
+        "Paragraph",
+        "Heading",
+        "Table Cell"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Walk Tree的遍历顺序是什么？是深度优先还是广度优先？",
+      "elements_involved": [
+        "Walk Tree",
+        "tree traversal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "通常是深度优先，但具体顺序在这个图里不重要，重点是每个有行内内容的节点都要被处理。关键是Parse Inline的字符级处理循环。",
+      "elements_involved": [
+        "Walk Tree",
+        "Parse Inline"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在Walk Tree里加了循环，检查行内内容后调用Parse Inline。Parse Inline内部是个字符级循环，用switch判断字符类型？",
+      "elements_involved": [
+        "Walk Tree",
+        "Parse Inline",
+        "character-by-character"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Parse Inline是核心。反斜杠是转义，反引号是代码跨度，尖括号要判断是自动链接、HTML标签还是注释。",
+      "elements_involved": [
+        "Parse Inline",
+        "backslash",
+        "backslash escape",
+        "Code span",
+        "angle bracket"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "自动链接和扩展自动链接有什么区别？我看到有两个不同的分支。",
+      "elements_involved": [
+        "Parse Inline",
+        "autolink",
+        "Extended autolink"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "标准自动链接用尖括号包裹，如<http://example.com。扩展自动链接是GFM特性，不需要尖括号，直接识别www.、http://等开头的URL，但要求前面是行首、空白或特定标点。",
+      "elements_involved": [
+        "Parse Inline",
+        "autolink",
+        "Extended autolink",
+        "www.",
+        "http://",
+        "https://",
+        "ftp://",
+        "email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，扩展自动链接有位置限制。我继续画强调和删除线的处理。*和_是强调分隔符，~是删除线分隔符？",
+      "elements_involved": [
+        "Parse Inline",
+        "Emphasis delimiter",
+        "Strikethrough delimiter",
+        "*",
+        "_",
+        "~"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。强调要判断左边缘和右边缘，应用分隔符规则，然后递归解析嵌套内容。删除线需要两个~~，解析规则类似强调。这些都要加入分隔符栈。",
+      "elements_involved": [
+        "Parse Inline",
+        "delimiter stack",
+        "left-flanking",
+        "right-flanking",
+        "nested content"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "图片和链接的处理我注意到都有方括号，怎么区分？还有闭合方括号的处理逻辑？",
+      "elements_involved": [
+        "Parse Inline",
+        "Image",
+        "Link",
+        "bracket",
+        "closing bracket"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "![]开头的是图片，[]开头的是链接。遇到闭合方括号时，要查找对应的链接或图片，处理分隔符栈。然后判断是引用链接还是行内链接。",
+      "elements_involved": [
+        "Parse Inline",
+        "!bracket",
+        "bracket",
+        "closing bracket",
+        "Reference link",
+        "Inline link"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在Parse Inline里加了图片、链接和闭合方括号的分支。还有换行、HTML实体和默认文本累积的处理？",
+      "elements_involved": [
+        "Parse Inline",
+        "newline",
+        "Soft line break",
+        "entity",
+        "HTML entity reference",
+        "text"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，换行是软换行，实体是HTML实体引用如&amp;，默认情况就累积为普通文本。Parse Inline完成后返回行内AST节点给Walk Tree。",
+      "elements_involved": [
+        "Parse Inline",
+        "Soft line break",
+        "HTML entity reference",
+        "Inline AST nodes"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Walk Tree遍历完所有节点后，把完整的树（包含行内节点）交给Final AST。这样整个流程就完整了。",
+      "elements_involved": [
+        "Walk Tree",
+        "Phase 2",
+        "Final AST",
+        "Complete tree with inline nodes"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我检查一下，发现IoT相关的标签分布可能需要调整。比如Block Quote现在标的是IoT_Industrial_EdgeNode，但之前任务列表也用了这个标签，会不会混淆？",
+      "elements_involved": [
+        "Block Quote",
+        "IoT_Industrial_EdgeNode",
+        "task marker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确实，让我修复一下。我把Block Quote的IoT标签保留，但确保任务列表的注释里明确标注这是检查逻辑，不是块类型本身。这样语义更清晰。",
+      "elements_involved": [
+        "Block Quote",
+        "IoT_Industrial_EdgeNode",
+        "task marker"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。另外检查一下ATX Heading和TelemetryStream的对应关系，以及主题分隔线同时关联ActuatorController和MQTT Broker是否合理？",
+      "elements_involved": [
+        "ATX Heading",
+        "IoT_Industrial_TelemetryStream",
+        "Thematic Break",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "主题分隔线有两个IoT标签是因为它在不同场景下可能触发不同的工业控制逻辑，这是有意的设计。ATX Heading对应TelemetryStream是数据流标识。我确认这些对应关系正确。",
+      "elements_involved": [
+        "Thematic Break",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_MQTT_Broker",
+        "ATX Heading",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：Parse Inline里的自动链接注释中，CommonMark标准自动链接和TelemetryStream、ActuatorController的关联需要明确。",
+      "elements_involved": [
+        "Parse Inline",
+        "Autolink",
+        "Standard CommonMark autolinks",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已确认，TelemetryStream是主要数据通道，ActuatorController是控制反馈。扩展自动链接的TelemetryStream标注了多次，强调其在URL识别中的核心作用。",
+      "elements_involved": [
+        "Extended autolink",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后确认一下GFM的Disallowed Raw HTML扩展，这个在HTML标签处理里标注了EdgeNode？",
+      "elements_involved": [
+        "Parse Inline",
+        "HTML tag",
+        "GFM extension",
+        "Disallowed Raw HTML",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，GFM禁止某些原始HTML标签，这是边缘节点的安全策略，用EdgeNode标注。整个图现在应该完整了，从Markdown Input到Final AST的两阶段解析流程，包含所有关键判断节点和IoT工业场景的标签映射。",
+      "elements_involved": [
+        "GFM extension",
+        "Disallowed Raw HTML",
+        "IoT_Industrial_EdgeNode",
+        "Markdown Input",
+        "Final AST"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 44,
+    "repair_count": 2,
+    "grounding_acts_count": 44,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 83105.746,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 44
+  }
+}

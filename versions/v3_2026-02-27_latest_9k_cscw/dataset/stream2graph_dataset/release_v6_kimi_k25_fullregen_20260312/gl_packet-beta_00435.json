@@ -1,0 +1,431 @@
+{
+  "id": "gl_packet-beta_00435",
+  "source": "gitlab",
+  "source_url": "https://github.com/sean-galloway/RTLDesignSherpa/blob/47f8a16641658f570a69c3af3c9724b29ea39187/projects/components/stream/docs/stream_mas/assets/mermaid/11_scheduler_group_block.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sean-galloway/RTLDesignSherpa",
+  "diagram_type": "packet-beta",
+  "code": "graph TB\n    APB[APB Interface<br/>apb_valid/addr] --> DESC_ENG[Descriptor Engine]\n    CFG[Configuration] --> DESC_ENG\n    CFG --> SCHED\n\n    subgraph \"Scheduler Group\"\n        subgraph \"Descriptor Engine\"\n            DESC_ENG --> |desc_ar_*| DESC_AXI[AXI AR/R]\n            DESC_AXI --> |desc_r_data| DESC_PARSE[Parse Descriptor]\n            DESC_PARSE --> |descriptor_packet 256-bit| DESC_OUT[Descriptor Output]\n            DESC_ENG --> |mon_valid/packet| DESC_MON[MonBus Events<br/>Agent ID 0x10]\n        end\n\n        DESC_OUT --> |descriptor_valid/ready| SCHED[Scheduler FSM]\n\n        subgraph \"Scheduler\"\n            SCHED --> |datard_valid/addr/beats| RD_IF[Read Interface]\n            SCHED --> |datawr_valid/addr/beats| WR_IF[Write Interface]\n            RD_IF --> |datard_done_strobe| SCHED\n            WR_IF --> |datawr_done_strobe| SCHED\n            SCHED --> |mon_valid/packet| SCHED_MON[MonBus Events<br/>Agent ID 0x30]\n        end\n\n        DESC_MON --> ARB[MonBus Arbiter<br/>2 Clients]\n        SCHED_MON --> ARB\n        ARB --> |mon_valid/ready/packet| MON_OUT[MonBus Output]\n    end\n\n    RD_IF --> RD_ENG[AXI Read Engine]\n    WR_IF --> WR_ENG[AXI Write Engine]\n    RD_ENG --> |datard_done| RD_IF\n    WR_ENG --> |datawr_done| WR_IF\n    MON_OUT --> SYS_MON[System MonBus]\n\n    style DESC_ENG fill:#bbf,stroke:#333,stroke-width:2px\n    style SCHED fill:#f9f,stroke:#333,stroke-width:3px\n    style ARB fill:#bfb,stroke:#333,stroke-width:2px",
+  "content_size": 1451,
+  "collected_at": "2026-02-06T14:09:38.844299",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个数据包调度器的整体架构。核心是从APB接口进来的描述符处理，然后到调度器做读写控制。你先帮我搭个框架，把APB Interface和Configuration这两个输入源放在顶层。",
+      "elements_involved": [
+        "APB",
+        "CFG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，APB Interface带apb_valid和addr信号，Configuration是独立配置源。这两个都连到Descriptor Engine对吧？",
+      "elements_involved": [
+        "APB",
+        "CFG",
+        "DESC_ENG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，DESC_ENG是描述符引擎的核心。它要通过AXI去读描述符内存，你加上DESC_AXI这个模块，用desc_ar_*信号组连过去。",
+      "elements_involved": [
+        "DESC_ENG",
+        "DESC_AXI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加DESC_AXI，标注了AXI AR/R通道。那读回来的数据怎么处理？",
+      "elements_involved": [
+        "DESC_AXI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "读回来的desc_r_data送到DESC_PARSE做解析，解析完的256-bit descriptor_packet输出到DESC_OUT。这是描述符流水线。",
+      "elements_involved": [
+        "DESC_AXI",
+        "DESC_PARSE",
+        "DESC_OUT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "描述符链路完成了。DESC_OUT用descriptor_valid/ready握手连到后面的调度器？",
+      "elements_involved": [
+        "DESC_OUT",
+        "SCHED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，SCHED是Scheduler FSM，收到描述符后发起数据读写。它要输出datard_valid/addr/beats给读接口，还有对应的写控制。",
+      "elements_involved": [
+        "SCHED",
+        "RD_IF",
+        "WR_IF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了RD_IF和WR_IF。这两个接口是调度器的执行臂，分别处理数据读和数据写。",
+      "elements_involved": [
+        "RD_IF",
+        "WR_IF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RD_IF和WR_IF要连到真正的AXI引擎，你加上RD_ENG和WR_ENG。另外，读写完成要有反馈，RD_ENG回datard_done给RD_IF，WR_ENG回datawr_done给WR_IF。",
+      "elements_involved": [
+        "RD_IF",
+        "WR_IF",
+        "RD_ENG",
+        "WR_ENG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "AXI读写引擎都加上了。那RD_IF和WR_IF怎么通知SCHED完成？",
+      "elements_involved": [
+        "RD_ENG",
+        "WR_ENG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RD_IF用datard_done_strobe回SCHED，WR_IF用datawr_done_strobe回SCHED，这样调度器才能做状态机跳转。",
+      "elements_involved": [
+        "RD_IF",
+        "WR_IF",
+        "SCHED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成信号闭环了。现在监控部分怎么处理？需要看调度器的运行状态。",
+      "elements_involved": [
+        "SCHED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "有两路监控。DESC_ENG要输出mon_valid/packet到DESC_MON，Agent ID是0x10；SCHED要输出到SCHED_MON，Agent ID是0x30。",
+      "elements_involved": [
+        "DESC_ENG",
+        "DESC_MON",
+        "SCHED",
+        "SCHED_MON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "DESC_MON和SCHED_MON都加了，标注了各自的Agent ID。这两路监控要汇总吧？",
+      "elements_involved": [
+        "DESC_MON",
+        "SCHED_MON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，加一个ARB做MonBus Arbiter，两个client输入，输出统一格式。DESC_MON和SCHED_MON都连到ARB。",
+      "elements_involved": [
+        "DESC_MON",
+        "SCHED_MON",
+        "ARB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ARB加上了，标注2 Clients。它输出到MON_OUT？",
+      "elements_involved": [
+        "ARB",
+        "MON_OUT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，MON_OUT用mon_valid/ready/packet标准接口，最后连到SYS_MON系统监控总线。",
+      "elements_involved": [
+        "MON_OUT",
+        "SYS_MON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "监控链路完整了。我整体看一下，CFG除了连DESC_ENG，是不是还应该连SCHED？配置信息调度器也需要。",
+      "elements_involved": [
+        "CFG",
+        "SCHED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "你说得对，我漏了。CFG要同时连到DESC_ENG和SCHED，调度器的阈值、优先级这些都需要配置。",
+      "elements_involved": [
+        "CFG",
+        "SCHED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补上CFG到SCHED的连接。现在结构比较完整了，需要加一些视觉区分吗？",
+      "elements_involved": [
+        "CFG",
+        "SCHED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要。DESC_ENG用蓝色填充，它是描述符处理的核心；SCHED用粉色加粗边框，状态机是关键控制点；ARB用绿色，仲裁器要醒目。",
+      "elements_involved": [
+        "DESC_ENG",
+        "SCHED",
+        "ARB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "样式已应用。我检查一下分组结构，现在DESC_ENG、DESC_AXI、DESC_PARSE、DESC_OUT、DESC_MON应该放在Descriptor Engine子图里。",
+      "elements_involved": [
+        "DESC_ENG",
+        "DESC_AXI",
+        "DESC_PARSE",
+        "DESC_OUT",
+        "DESC_MON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，SCHED、RD_IF、WR_IF、SCHED_MON放在Scheduler子图里。这两个子图再一起放在Scheduler Group大子图里。",
+      "elements_involved": [
+        "SCHED",
+        "RD_IF",
+        "WR_IF",
+        "SCHED_MON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "层级结构整理好了。我再确认一下ARB的位置——它放在Scheduler Group里，但不在Scheduler子图里，对吧？",
+      "elements_involved": [
+        "ARB",
+        "Scheduler Group",
+        "Scheduler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，ARB和MON_OUT都在Scheduler Group层级，和Descriptor Engine、Scheduler两个子图并列。SYS_MON在Scheduler Group外面，是系统级接口。",
+      "elements_involved": [
+        "ARB",
+        "MON_OUT",
+        "SYS_MON",
+        "Scheduler Group"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "RD_ENG和WR_ENG的位置我有点犹豫——它们现在是在Scheduler Group外面，作为独立的AXI引擎，这样对吗？",
+      "elements_involved": [
+        "RD_ENG",
+        "WR_ENG",
+        "Scheduler Group"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，RD_ENG和WR_ENG是物理层AXI引擎，放在Scheduler Group外面。它们只和RD_IF、WR_IF交互，不直接参与调度逻辑。",
+      "elements_involved": [
+        "RD_ENG",
+        "WR_ENG",
+        "RD_IF",
+        "WR_IF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，引擎层独立出来。我再看信号命名——DESC_AXI到DESC_PARSE是desc_r_data，DESC_PARSE到DESC_OUT是256-bit descriptor_packet，这个位宽要保留。",
+      "elements_involved": [
+        "DESC_AXI",
+        "DESC_PARSE",
+        "DESC_OUT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "256-bit必须标出来，这是描述符宽度。还有DESC_OUT到SCHED的descriptor_valid/ready握手，SCHED出来的datard_valid/addr/beats，这些都要准确。",
+      "elements_involved": [
+        "DESC_OUT",
+        "SCHED",
+        "RD_IF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "SCHED到RD_IF和WR_IF的信号，beats字段表示突发长度对吧？还有datard_done_strobe是单脉冲完成指示？",
+      "elements_involved": [
+        "SCHED",
+        "RD_IF",
+        "WR_IF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，beats是AXI突发拍数。datard_done_strobe和datawr_done_strobe都是单脉冲，高有效一个周期，通知SCHED这次传输完成。",
+      "elements_involved": [
+        "SCHED",
+        "RD_IF",
+        "WR_IF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有信号标注完成。最后确认一下Agent ID——DESC_MON是0x10，SCHED_MON是0x30，ARB处理两路仲裁。",
+      "elements_involved": [
+        "DESC_MON",
+        "SCHED_MON",
+        "ARB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，0x10和0x30是固定的硬件编码。整个架构清晰了：APB+CFG输入，描述符引擎取数解析，调度器分发读写，双路监控经仲裁输出到系统总线。可以定稿了。",
+      "elements_involved": [
+        "APB",
+        "CFG",
+        "DESC_ENG",
+        "SCHED",
+        "SYS_MON"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 33,
+    "repair_count": 0,
+    "grounding_acts_count": 33,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 70055.0644,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 33
+  }
+}

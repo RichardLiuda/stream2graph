@@ -1,0 +1,474 @@
+{
+  "id": "aug_gl_packet-beta_00459_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Lucascis/discord_bot/blob/3c98f8c01a7f4e2f2e4770f9209b19c752940a0f/docs/architecture/diagrams/sequence-play.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "Lucascis/discord_bot",
+  "diagram_type": "packet-beta",
+  "code": "%% Sequence Diagram: Play Command Flow\n%% Purpose: Shows the complete flow when a user executes /play command\n%% Author: Discord Bot Team\n%% Last Updated: 2025-11-03\n\nsequenceDiagram\n    autonumber\n\n    actor User as 👤 Discord User\n    participant Discord as Discord API\n    participant Gateway as Gateway Service\n    participant Redis as Redis Pub/Sub\n    participant Audio as Audio Service\n    participant DB as PostgreSQL\n    participant Lavalink as Lavalink\n    participant YouTube as YouTube API\n\n    Note over User,YouTube: User wants to play a song in voice channel\n\n    %% Command Initiation\n    User->>Discord: /play query: \"never gonna give you up\"\n    activate Discord\n    Discord->>Gateway: INTERACTION_CREATE event\n    activate Gateway\n\n    Note over Gateway: Validate interaction<br/>Check permissions\n\n    Gateway->>Discord: POST /interactions/{Infra_LoadBalancer}/callback<br/>(Infra_LoadBalancer)\n    Discord->>User: Show processing message\n    deactivate Discord\n\n    %% Command Processing\n    Gateway->>DB: SELECT * FROM guild_settings<br/>WHERE guildId = ?\n    activate DB\n    DB-->>Gateway: Guild settings (Infra_IngressController)\n    deactivate DB\n\n    Gateway->>Redis: PUBLISH discord-bot:commands<br/>{Infra_WorkerNode}\n    activate Redis\n    Note over Redis: Message queued in pub/sub\n\n    Redis->>Audio: Message delivered\n    deactivate Redis\n    activate Audio\n\n    %% Audio Service Processing\n    Note over Audio: Extract query and guild info\n\n    Audio->>DB: SELECT * FROM queue<br/>WHERE guildId = ?\n    activate DB\n    DB-->>Audio: Current queue (Infra_LoadBalancer)\n    deactivate DB\n\n    %% Search for Track\n    alt Query is YouTube URL\n        Note over Audio: Parse YouTube URL<br/>Extract video ID\n    else Query is search term\n        Audio->>Lavalink: GET /loadtracks?identifier=ytsearch:{Infra_IngressController}\n        activate Lavalink\n        Lavalink->>YouTube: Search API request\n        activate YouTube\n        YouTube-->>Lavalink: Search results\n        deactivate YouTube\n        Lavalink-->>Audio: Track results (Infra_LoadBalancer)\n        deactivate Lavalink\n        Note over Audio: Select first result\n    end\n\n    %% Cache Search Results\n    Audio->>Redis: SETEX search:{Infra_IngressController} 300 {Infra_IngressController}\n    activate Redis\n    Redis-->>Audio: OK\n    deactivate Redis\n\n    %% Add to Queue\n    alt Queue is empty\n        Note over Audio: This will be the first track\n        Audio->>DB: INSERT INTO queue<br/>(Infra_LoadBalancer)\n        activate DB\n        DB-->>Audio: Queue entry created (Infra_EtcdCluster)\n        deactivate DB\n\n        %% Start Playback\n        Audio->>Lavalink: POST /sessions/{Infra_EtcdCluster}/players/{Infra_WorkerNode}<br/>{Infra_LoadBalancer} }\n        activate Lavalink\n\n        Note over Lavalink: Create player<br/>Connect to voice channel\n\n        Lavalink->>Discord: Voice connection (Infra_RedisCache)\n        activate Discord\n        Discord-->>Lavalink: Voice connection established\n        deactivate Discord\n\n        Lavalink->>YouTube: Stream audio data\n        activate YouTube\n        Note over Lavalink: Download and encode audio\n        YouTube-->>Lavalink: Audio stream\n        deactivate YouTube\n\n        Lavalink->>Discord: Send opus packets (Infra_RedisCache)\n        activate Discord\n        Discord->>User: 🎵 Audio playback in voice channel\n        deactivate Discord\n\n        Lavalink-->>Audio: Player updated event\n        deactivate Lavalink\n\n    else Queue has tracks\n        Note over Audio: Add to end of queue\n        Audio->>DB: SELECT MAX(Infra_EtcdCluster) FROM queue<br/>WHERE guildId = ?\n        activate DB\n        DB-->>Audio: maxPosition\n        deactivate DB\n\n        Audio->>DB: INSERT INTO queue<br/>(Infra_EtcdCluster)\n        activate DB\n        DB-->>Audio: Queue entry created\n        deactivate DB\n    end\n\n    %% Update Cache\n    Audio->>Redis: SET queue:{Infra_IngressController} {Infra_WorkerNode}<br/>EX 3600\n    activate Redis\n    Redis-->>Audio: OK\n    deactivate Redis\n\n    %% Send UI Update\n    alt First track (Infra_WorkerNode)\n        Audio->>Redis: PUBLISH discord-bot:ui:now<br/>{Infra_LoadBalancer}, ... }\n        activate Redis\n        Redis->>Gateway: UI update message\n        deactivate Redis\n\n        Gateway->>Discord: POST /channels/{Infra_RedisCache}/messages<br/>{Infra_WorkerNode], components: [Infra_LoadBalancer] }\n        activate Discord\n        Discord->>User: 🎵 Now Playing: Song Title<br/>[Infra_IngressController]\n        deactivate Discord\n\n        Gateway->>Discord: DELETE /webhooks/{Infra_EtcdCluster}/messages/@original<br/>(Infra_EtcdCluster)\n        activate Discord\n        deactivate Discord\n\n    else Added to queue\n        Gateway->>Discord: POST /webhooks/{Infra_IngressController}/messages/@original<br/>{Infra_WorkerNode)\", ephemeral: true }\n        activate Discord\n        Discord->>User: ✅ Added to queue (Infra_LoadBalancer)\n        deactivate Discord\n    end\n\n    deactivate Gateway\n    deactivate Audio\n\n    Note over User,YouTube: User hears music playing in voice channel\n\n    %% Track Events\n    loop Every 5 seconds\n        Lavalink->>Audio: PlayerUpdate event<br/>{Infra_LoadBalancer}\n        activate Audio\n\n        Audio->>Redis: PUBLISH discord-bot:to-discord<br/>{Infra_WorkerNode}\n        activate Redis\n        Redis->>Gateway: Player update event\n        deactivate Redis\n\n        Note over Gateway: Update UI if needed<br/>(Infra_LoadBalancer)\n        deactivate Audio\n    end\n\n    %% Track End\n    Note over Lavalink,Audio: Track finishes playing\n\n    Lavalink->>Audio: TrackEnd event<br/>{Infra_WorkerNode}\n    activate Audio\n\n    Audio->>DB: DELETE FROM queue<br/>WHERE guildId = ? AND position = 0\n    activate DB\n    DB-->>Audio: Deleted\n    deactivate DB\n\n    Audio->>DB: UPDATE queue SET position = position - 1<br/>WHERE guildId = ?\n    activate DB\n    DB-->>Audio: Queue reindexed\n    deactivate DB\n\n    alt More tracks in queue\n        Audio->>DB: SELECT * FROM queue<br/>WHERE guildId = ? AND position = 0\n        activate DB\n        DB-->>Audio: Next track\n        deactivate DB\n\n        Note over Audio: Play next track<br/>(Infra_EtcdCluster)\n\n    else Queue empty and autoplay enabled\n        Note over Audio: Generate autoplay recommendation\n        Audio->>Audio: Get similar tracks<br/>based on last played\n        Note over Audio: Add to queue and play\n\n    else Queue empty and autoplay disabled\n        Audio->>Lavalink: DELETE /sessions/{Infra_EtcdCluster}/players/{Infra_RedisCache}\n        activate Lavalink\n        Lavalink-->>Audio: Player destroyed\n        deactivate Lavalink\n\n        Audio->>Redis: PUBLISH discord-bot:ui:now<br/>{Infra_LoadBalancer}\n        activate Redis\n        Redis->>Gateway: Queue empty event\n        deactivate Redis\n\n        Gateway->>Discord: PATCH /channels/{Infra_IngressController}/messages/{Infra_WorkerNode}<br/>{Infra_RedisCache] }\n        activate Discord\n        Discord->>User: Queue finished (Infra_EtcdCluster)\n        deactivate Discord\n    end\n\n    deactivate Audio\n\n    Note over User,YouTube: Flow complete\n",
+  "content_size": 6985,
+  "collected_at": "2026-02-06T14:10:10.289943",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_packet-beta_00459",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的时序图，展示用户执行/play命令后的整个流程。从Discord用户输入命令开始，一直到音乐在语音频道播放，还要包括队列管理和自动播放的逻辑。",
+      "elements_involved": [
+        "User",
+        "Discord API",
+        "Gateway Service",
+        "Audio Service",
+        "PostgreSQL",
+        "Lavalink",
+        "YouTube API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下参与者的划分：用户通过Discord API发起，然后由Gateway Service接收事件，再通过Redis Pub/Sub把命令分发给Audio Service处理，最后Audio Service调用Lavalink和YouTube API获取音频。这个理解对吗？",
+      "elements_involved": [
+        "Discord API",
+        "Gateway Service",
+        "Redis Pub/Sub",
+        "Audio Service",
+        "Lavalink",
+        "YouTube API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。另外别忘了PostgreSQL，我们要存guild设置和播放队列。还有Redis不只是Pub/Sub，还要做搜索结果缓存和队列状态的缓存。",
+      "elements_involved": [
+        "PostgreSQL",
+        "Redis Pub/Sub",
+        "Guild settings",
+        "Queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出基础架构。顶部是Discord User，然后依次是Discord API、Gateway Service、Redis、Audio Service、PostgreSQL、Lavalink，最下面是YouTube API。我标注一个整体注释说明这是播放命令的完整流程。",
+      "elements_involved": [
+        "User",
+        "Discord API",
+        "Gateway Service",
+        "Redis",
+        "Audio Service",
+        "DB",
+        "Lavalink",
+        "YouTube API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来画命令发起阶段。用户输入\"/play never gonna give you up\"，Discord API发送INTERACTION_CREATE事件给Gateway Service。Gateway要先验证权限，然后立即回一个处理中的消息给用户，避免超时。",
+      "elements_involved": [
+        "User",
+        "Discord API",
+        "Gateway Service",
+        "INTERACTION_CREATE",
+        "processing message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。我画了一条从User到Discord的/play命令，然后Discord激活后发送事件到Gateway。Gateway激活后我加了个注释框说明\"验证交互、检查权限\"，然后Gateway回调Discord显示处理中消息。",
+      "elements_involved": [
+        "User",
+        "Discord API",
+        "Gateway Service",
+        "activate",
+        "deactivate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "命令处理阶段，Gateway要去PostgreSQL查guild_settings，拿到设置后通过Redis Pub/Sub把命令发布出去，由Audio Service订阅消费。这里要体现Infra_IngressController和Infra_WorkerNode的负载均衡。",
+      "elements_involved": [
+        "Gateway Service",
+        "PostgreSQL",
+        "Redis Pub/Sub",
+        "Audio Service",
+        "Infra_IngressController",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了。Gateway查询DB获取guild settings，标注了Infra_IngressController。然后Gateway向Redis发布消息到discord-bot:commands频道，标注Infra_WorkerNode。Redis有个注释说明消息在pub/sub中排队，然后消息投递给Audio Service。",
+      "elements_involved": [
+        "Gateway Service",
+        "DB",
+        "Redis",
+        "Audio Service",
+        "Infra_IngressController",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Audio Service开始处理。先提取查询词和guild信息，然后查当前队列状态。接下来是关键分支：如果用户给的是YouTube直接链接，就解析URL；如果是搜索词，要走Lavalink去YouTube搜索。",
+      "elements_involved": [
+        "Audio Service",
+        "DB",
+        "Queue",
+        "YouTube URL",
+        "Lavalink",
+        "YouTube API",
+        "search term"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Audio Service的处理注释和DB查询。然后画了alt分支：第一个分支是Query is YouTube URL，注释说明解析URL提取video ID；第二个分支是Query is search term，Audio调用Lavalink的/loadtracks接口，Lavalink再请求YouTube API。",
+      "elements_involved": [
+        "Audio Service",
+        "DB",
+        "Lavalink",
+        "YouTube API",
+        "alt",
+        "YouTube URL",
+        "search term"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "搜索结果要缓存一下，用Redis SETEX存300秒，key里面带上Infra_IngressController。然后进入队列处理的大分支：如果队列为空，这是第一首歌，要创建播放器并开始播放；如果队列有歌，就追加到末尾。",
+      "elements_involved": [
+        "Redis",
+        "SETEX",
+        "Infra_IngressController",
+        "Queue",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了缓存步骤，Audio向Redis SETEX搜索结果。然后是大alt分支：Queue is empty和Queue has tracks两个分支。我先画Queue is empty的情况。",
+      "elements_involved": [
+        "Audio Service",
+        "Redis",
+        "Infra_IngressController",
+        "Queue is empty",
+        "Queue has tracks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "队列为空时，Audio向PostgreSQL插入队列记录，标注Infra_LoadBalancer。然后调用Lavalink创建播放器，POST到/sessions/{sessionId}/players/{guildId}，标注Infra_EtcdCluster和Infra_WorkerNode。Lavalink要建立语音连接，然后从YouTube拉音频流。",
+      "elements_involved": [
+        "Audio Service",
+        "PostgreSQL",
+        "Lavalink",
+        "Discord API",
+        "YouTube API",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Audio插入DB创建队列条目，标注Infra_EtcdCluster。然后POST创建Lavalink播放器，Lavalink和Discord建立语音连接标注Infra_RedisCache。接着Lavalink从YouTube获取音频流，注释说明下载和编码，最后发送opus包给Discord，用户听到音乐。",
+      "elements_involved": [
+        "Audio Service",
+        "DB",
+        "Lavalink",
+        "Discord API",
+        "YouTube API",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "队列非空的情况简单些：Audio查一下当前最大position，然后插入新记录到队尾。两种情况下都要更新Redis缓存队列状态，SET queue:{guildId}，EX 3600。",
+      "elements_involved": [
+        "Audio Service",
+        "DB",
+        "Redis",
+        "Queue has tracks",
+        "maxPosition",
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了Queue has tracks分支：Audio查询max position，然后插入队列。两个分支汇合后，Audio更新Redis缓存队列状态，标注Infra_IngressController和Infra_WorkerNode。",
+      "elements_involved": [
+        "Audio Service",
+        "DB",
+        "Redis",
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后是UI更新，也要分情况。如果是第一首歌，要发\"Now Playing\"消息到频道，还要删除原来的处理中消息；如果是追加到队列，就修改原消息显示\"Added to queue\"。都用Redis Pub/Sub通知Gateway去操作Discord API。",
+      "elements_involved": [
+        "Audio Service",
+        "Redis Pub/Sub",
+        "Gateway Service",
+        "Discord API",
+        "Now Playing",
+        "Added to queue",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode",
+        "Infra_RedisCache",
+        "Infra_IngressController",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加UI更新分支。First track分支：Audio发布到discord-bot:ui:now，Redis通知Gateway，Gateway发消息到频道显示Now Playing并带按钮组件，然后删除原交互消息。Added to queue分支：Gateway修改原webhook消息显示已添加。",
+      "elements_involved": [
+        "Audio Service",
+        "Redis",
+        "Gateway Service",
+        "Discord API",
+        "First track",
+        "Added to queue",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode",
+        "Infra_RedisCache",
+        "Infra_IngressController",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要补充播放中的状态同步。每5秒Lavalink会给Audio发PlayerUpdate事件，Audio通过Redis Pub/Sub通知Gateway，Gateway按需更新UI。用loop画这个循环。",
+      "elements_involved": [
+        "Lavalink",
+        "Audio Service",
+        "Redis Pub/Sub",
+        "Gateway Service",
+        "PlayerUpdate",
+        "loop",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加loop Every 5 seconds：Lavalink发送PlayerUpdate给Audio，Audio发布到discord-bot:to-discord，Redis通知Gateway，Gateway注释说明按需更新UI。",
+      "elements_involved": [
+        "Lavalink",
+        "Audio Service",
+        "Redis",
+        "Gateway Service",
+        "loop",
+        "PlayerUpdate",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后是歌曲结束的处理。Lavalink发TrackEnd事件，Audio从DB删除已播放的歌曲，然后队列重新索引position。之后分三种情况：队列还有歌就播放下一首；队列空了但开了autoplay就推荐相似歌曲；队列空且没开autoplay就销毁播放器并提示队列结束。",
+      "elements_involved": [
+        "Lavalink",
+        "Audio Service",
+        "DB",
+        "TrackEnd",
+        "Queue",
+        "autoplay",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "Infra_IngressController",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了TrackEnd处理：Lavalink通知Audio，Audio删除DB记录并重新索引队列。然后alt三分支：More tracks in queue查下一首并播放；Queue empty and autoplay enabled生成推荐；Queue empty and autoplay disabled销毁Lavalink播放器，发队列结束消息。",
+      "elements_involved": [
+        "Lavalink",
+        "Audio Service",
+        "DB",
+        "Redis",
+        "Gateway Service",
+        "Discord API",
+        "TrackEnd",
+        "More tracks in queue",
+        "autoplay enabled",
+        "autoplay disabled",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "Infra_IngressController",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下，销毁播放器那里，DELETE请求的URL应该是/sessions/{sessionId}/players/{guildId}，你标注的Infra_RedisCache位置对吗？还有最后发队列结束消息，是PATCH消息还是发新消息？",
+      "elements_involved": [
+        "Lavalink",
+        "Audio Service",
+        "DELETE",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "PATCH",
+        "Infra_IngressController",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正一下：DELETE /sessions/{Infra_EtcdCluster}/players/{Infra_RedisCache}是对的，sessionId用Infra_EtcdCluster，guildId用Infra_RedisCache。队列结束是PATCH原来的消息，不是发新消息。我调整下注释。",
+      "elements_involved": [
+        "Lavalink",
+        "Audio Service",
+        "DELETE",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "PATCH",
+        "Infra_IngressController",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好的，整体结构完整了。开头和结尾都加上注释说明流程起点和终点。所有Infra组件的标注都对应上：LoadBalancer用于DB查询和回调，IngressController用于guild设置和搜索，WorkerNode用于命令分发和队列数据，EtcdCluster用于会话和队列条目，RedisCache用于语音连接。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Infra_IngressController",
+        "Infra_WorkerNode",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Note over User,YouTube"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成。开头注释\"User wants to play a song in voice channel\"，结尾注释\"User hears music playing in voice channel\"和\"Flow complete\"。所有Infra标注已核对：LoadBalancer出现在回调、DB队列查询、搜索结果、UI消息等；IngressController在guild设置、搜索标识、频道消息；WorkerNode在命令发布、队列数据、PlayerUpdate；EtcdCluster在会话创建、队列条目、webhook消息；RedisCache在语音连接。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Infra_IngressController",
+        "Infra_WorkerNode",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Note over User,YouTube"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 26,
+    "repair_count": 2,
+    "grounding_acts_count": 26,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 103344.8584,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 25
+  }
+}

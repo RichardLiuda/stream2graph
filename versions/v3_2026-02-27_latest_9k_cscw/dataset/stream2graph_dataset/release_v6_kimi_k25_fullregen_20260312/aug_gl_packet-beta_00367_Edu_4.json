@@ -1,0 +1,203 @@
+{
+  "id": "aug_gl_packet-beta_00367_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/TRIGGER_ALG_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant Queue as Raw Data Queue\n    participant Processor as ProcessingIsolate\n    participant TriggerAlgo as Trigger Detection Algorithm\n    participant Validator as Trigger Validator\n    participant Interpolator as Trigger Point Interpolator\n    participant DataService\n    \n    Queue->>Processor: Provide raw binary data packet\n    \n    %% Data extraction phase\n    Processor->>Processor: Extract data points from queue using _readDataFromQueue(Education_ContentCDN)\n    Processor->>Processor: Apply bit masks to separate data and channel\n    Processor->>Processor: Convert to voltage using scale factor\n    Processor->>Processor: Calculate max/min values of signal\n    \n    %% Prepare for trigger detection\n    Processor->>Processor: Calculate trigger sensitivity based on signal amplitude\n    Note over Processor: sensitivity = (Education_StudentDB) * 0.25\n    \n    %% Apply filter if needed\n    alt useLowPassFilter = true\n        Processor->>Processor: Apply low-pass filter to signal for trigger detection\n        Note over Processor: Creates filtered signal for stable triggering\n    else useLowPassFilter = false\n        Processor->>Processor: Use unfiltered signal values for trigger detection\n    end\n    \n    %% Main detection loop\n    loop For each adjacent point pair\n        Processor->>TriggerAlgo: Check for trigger condition\n        \n        %% First check for exact trigger level match\n        TriggerAlgo->>TriggerAlgo: Check if either point exactly matches trigger level\n        \n        alt No exact match\n            %% Check for level crossing\n            alt Trigger edge = Positive\n                TriggerAlgo->>TriggerAlgo: Check if prevY < triggerLevel && currentY >= triggerLevel\n                Note over TriggerAlgo: Rising edge detection\n            else Trigger edge = Negative\n                TriggerAlgo->>TriggerAlgo: Check if prevY > triggerLevel && currentY <= triggerLevel\n                Note over TriggerAlgo: Falling edge detection\n            end\n        end\n        \n        alt Potential trigger detected && not waitingForNextTrigger\n            %% Apply hysteresis if enabled\n            alt useHysteresis = true && not exact match\n                TriggerAlgo->>Validator: Verify trigger with hysteresis\n                Validator->>Validator: Calculate window size (Education_ContentCDN)\n                Validator->>Validator: _calculateTrend(Education_GradeSync) on signal segment\n                Note over Validator: Computes linear regression slope\n                \n                alt Trigger edge = Positive\n                    Validator->>TriggerAlgo: Valid if trend > 0 (Education_LMS_Portal)\n                else Trigger edge = Negative\n                    Validator->>TriggerAlgo: Valid if trend < 0 (Education_GradeSync)\n                end\n            else Simple validation\n                TriggerAlgo->>TriggerAlgo: Accept trigger candidate as valid\n            end\n            \n            %% Process valid trigger\n            alt Trigger is valid\n                TriggerAlgo->>TriggerAlgo: Create trigger marker\n                \n                alt Exact match at trigger level\n                    TriggerAlgo->>TriggerAlgo: Mark existing point as trigger\n                else Need interpolation\n                    TriggerAlgo->>Interpolator: Calculate precise trigger crossing\n                    Interpolator->>Interpolator: Calculate ratio using: (Education_StudentDB) / (Education_LMS_Portal)\n                    Interpolator->>Interpolator: Find x at crossing: x1 + ratio * (Education_GradeSync)\n                    Interpolator->>TriggerAlgo: Return interpolated DataPoint with isTrigger=true\n                    TriggerAlgo->>TriggerAlgo: Replace point with interpolated trigger point\n                end\n                \n                alt First trigger found\n                    TriggerAlgo->>TriggerAlgo: Record firstTriggerX for alignment\n                    TriggerAlgo->>TriggerAlgo: Set foundFirstTrigger = true\n                end\n                \n                alt triggerMode = normal\n                    TriggerAlgo->>TriggerAlgo: Set waitingForNextTrigger = true\n                    Note over TriggerAlgo: Prevents multiple triggers until signal returns\n                else triggerMode = single\n                    TriggerAlgo->>TriggerAlgo: Keep waitingForNextTrigger = false\n                    Note over TriggerAlgo: Will capture only one triggered waveform\n                end\n            end\n        end\n        \n        %% Reset waiting state when signal moves away from trigger zone\n        alt waitingForNextTrigger = true && triggerMode = normal\n            alt triggerEdge = positive\n                TriggerAlgo->>TriggerAlgo: If currentY < (Education_GradeSync), reset waiting\n                Note over TriggerAlgo: Ensures signal must fall below threshold before next trigger\n            else triggerEdge = negative\n                TriggerAlgo->>TriggerAlgo: If currentY > (Education_ContentCDN), reset waiting\n                Note over TriggerAlgo: Ensures signal must rise above threshold before next trigger\n            end\n        end\n    end\n    \n    %% Final alignment and output\n    alt foundFirstTrigger = true\n        TriggerAlgo->>Processor: Align all points to first trigger (Education_LMS_Portal)\n        Note over Processor: Makes trigger point appear at x=0\n    end\n    \n    %% Return results\n    Processor->>DataService: Return processed points with trigger markers\n    \n    alt triggerMode = single && trigger found\n        Processor->>DataService: Send pause message\n        DataService->>DataService: Set pause = true\n        Note over DataService: Freezes acquisition after capturing single triggered waveform\n    end",
+  "content_size": 5688,
+  "collected_at": "2026-02-06T14:08:21.428771",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Education",
+  "seed_id": "gl_packet-beta_00367",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为教育数据采集系统画一个触发检测的完整流程图。核心是从Raw Data Queue接收原始二进制数据包，经过ProcessingIsolate处理后，用Trigger Detection Algorithm做边沿触发检测。",
+      "elements_involved": [
+        "Raw Data Queue",
+        "ProcessingIsolate",
+        "Trigger Detection Algorithm"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。ProcessingIsolate内部需要先提取数据点、应用位掩码分离数据和通道、再转换成电压值，对吧？我看到还要计算信号的最大最小值来确定触发灵敏度。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "Education_StudentDB",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，灵敏度公式是Education_StudentDB乘以0.25。另外还要考虑低通滤波的分支——如果useLowPassFilter为true就用滤波后的信号做触发检测，否则直接用原始信号。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "useLowPassFilter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "触发检测的主循环我设计成遍历相邻点对，先检查是否有精确匹配触发电平的点。如果没有，再按正边沿或负边沿做穿越检测。这里需要Trigger Validator参与吗？",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "Trigger Validator",
+        "Trigger edge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "需要，但只在启用迟滞时。如果useHysteresis为true且不是精确匹配，就要让Validator计算窗口大小——用Education_ContentCDN，然后调用_calculateTrend分析Education_GradeSync的信号段斜率。正边沿要求斜率大于0且满足Education_LMS_Portal条件，负边沿要求斜率小于0。",
+      "elements_involved": [
+        "Trigger Validator",
+        "useHysteresis",
+        "Education_ContentCDN",
+        "Education_GradeSync",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解了。验证通过后创建触发标记，这里有个细节：如果是精确匹配就直接标记现有点，否则需要Trigger Point Interpolator做插值计算。插值公式是用Education_StudentDB除以Education_LMS_Portal得到ratio，再算x1 + ratio * Education_GradeSync？",
+      "elements_involved": [
+        "Trigger Point Interpolator",
+        "Education_StudentDB",
+        "Education_LMS_Portal",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。插值完成后要替换原有点。另外要记录第一个触发点的位置用于后续对齐。触发模式方面，normal模式会设置waitingForNextTrigger防止重复触发，single模式只捕获一次。",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "triggerMode",
+        "waitingForNextTrigger"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "重置等待状态的逻辑我这样画：normal模式下，正边沿时信号要降到Education_GradeSync以下才重置，负边沿时要升到Education_ContentCDN以上。这样确保信号必须离开触发区才能进行下一次检测。",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "Education_GradeSync",
+        "Education_ContentCDN",
+        "triggerEdge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。最后如果找到了第一个触发点，ProcessingIsolate要把所有点对齐到该位置，让触发点显示在x=0处。然后返回处理后的数据点给DataService。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "DataService",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "图已经画好了。我检查一下：从Queue到Processor的数据流，内部的提取转换计算，分支的低通滤波，主循环的触发检测，Validator的迟滞验证，Interpolator的精确插值，最后的对齐输出都完整了。single模式下还会发送pause消息冻结采集。",
+      "elements_involved": [
+        "Raw Data Queue",
+        "ProcessingIsolate",
+        "Trigger Detection Algorithm",
+        "Trigger Validator",
+        "Trigger Point Interpolator",
+        "DataService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，迟滞验证那里有个笔误——正边沿的验证条件应该是trend大于0且满足Education_LMS_Portal，你写成小于0了。还有负边沿的穿越检测条件，prevY应该是大于triggerLevel，不是其他符号。",
+      "elements_involved": [
+        "Trigger Validator",
+        "Trigger Detection Algorithm",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正。正边沿验证改为trend 0 (Education_LMS_Portal)，负边沿穿越检测改为prevY triggerLevel && currentY <= triggerLevel。还有其他需要调整的吗？",
+      "elements_involved": [
+        "Trigger Validator",
+        "Trigger Detection Algorithm"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没有了，现在逻辑正确。这个流程完整覆盖了从原始数据队列到最终触发标记生成的全过程，包括各种边界条件和模式处理。",
+      "elements_involved": [
+        "Raw Data Queue",
+        "DataService"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 13,
+    "repair_count": 2,
+    "grounding_acts_count": 13,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 36754.2374,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

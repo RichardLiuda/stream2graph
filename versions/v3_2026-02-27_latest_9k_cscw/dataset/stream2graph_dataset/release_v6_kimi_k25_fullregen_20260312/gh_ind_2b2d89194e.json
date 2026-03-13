@@ -1,0 +1,216 @@
+{
+  "id": "gh_ind_2b2d89194e",
+  "source": "github_industrial",
+  "repo": "OdyseeTeam/odysee-api",
+  "license": "mit",
+  "code": "---\ntitle: Publish v4 Flow\n---\nsequenceDiagram\n    actor Client\n    participant OAPI as Odysee API\n    participant Uploads as Uploads Service\n\n    Client->>OAPI: POST /api/v1/asynqueries/uploads/\n    activate OAPI\n    OAPI->>OAPI: token auth\n    OAPI-->>Client: 201 Created (<<token>>, <<location>>)\n    deactivate OAPI\n\n    Client->>Uploads: POST /:location, <<token>>\n    activate Uploads\n    Uploads->>Uploads: validate upload token\n    Uploads-->>Client: 201 Created (Location: <<upload-url>>)\n\n    loop TUS Uploads\n        Client->>Uploads: PATCH /:upload-id, <<token>>\n        Uploads-->>Client: 204 No Content\n    end\n    deactivate Uploads\n\n    Client->>OAPI: POST /api/v1/asynqueries/\n    activate OAPI\n    note Left of OAPI: stream_create {file_path: <<upload-url>>}\n    OAPI-->>Client: 201 Created (<<query-id>>)\n    deactivate OAPI\n\n    loop Status Check\n      Client->>OAPI: GET /api/v1/asynqueries/:query-id\n      activate OAPI\n      alt pending\n        OAPI-->>Client: 204 No Content\n      else completed\n        OAPI-->>Client: 200 OK (JSON-RPC response)\n      else not found\n        OAPI-->>Client: 404 Not Found\n      end\n      deactivate OAPI\n    end\n",
+  "diagram_type": "actor size:900..1500",
+  "collected_at": "2026-02-27T04:27:41.380852",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一下 Publish v4 的完整流程。核心思路是：客户端先找 Odysee API 申请上传权限，拿到 token 和 location 之后，再去 Uploads Service 做实际文件传输，最后回来创建异步查询任务。",
+      "elements_involved": [
+        "Client",
+        "Odysee API",
+        "Uploads Service",
+        "token",
+        "location"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以第一步是 Client 向 OAPI 发 POST 请求到 /api/v1/asynqueries/uploads/ 对吧？这个接口会激活 OAPI 做 token auth？",
+      "elements_involved": [
+        "Client",
+        "OAPI",
+        "POST /api/v1/asynqueries/uploads/",
+        "token auth"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，OAPI 激活后做内部鉴权，然后返回 201 Created，里面带上 <<token 和 <<location 这两个关键字段。注意这里 OAPI 要 deactivate。",
+      "elements_involved": [
+        "OAPI",
+        "201 Created",
+        "<<token",
+        "<<location",
+        "activate",
+        "deactivate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，第一步画好了。接下来 Client 拿着 location 和 token 去调 Uploads Service，POST 到那个动态路径 /:location 对吧？",
+      "elements_involved": [
+        "Client",
+        "Uploads",
+        "POST /:location",
+        "<<token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，Uploads Service 激活后要 validate upload token，验证通过返回 201 Created，响应头里带 Location: <<upload-url。这个 upload-url 后面创建查询时要用。",
+      "elements_involved": [
+        "Uploads",
+        "validate upload token",
+        "201 Created",
+        "Location: <<upload-url"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "文件上传部分是用 TUS 协议分片上传对吧？需要画个 loop 表示 TUS Uploads，里面是 Client PATCH 到 /:upload-id 带上 token，Uploads 返回 204 No Content？",
+      "elements_involved": [
+        "loop TUS Uploads",
+        "Client",
+        "Uploads",
+        "PATCH /:upload-id",
+        "<<token",
+        "204 No Content"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，TUS loop 结束后 Uploads Service deactivate。然后 Client 回到 OAPI，POST /api/v1/asynqueries/ 创建实际的发布查询。这里要在 OAPI 左侧加个 note，说明请求体是 stream_create {file_path: <<upload-url}。",
+      "elements_involved": [
+        "deactivate",
+        "Client",
+        "OAPI",
+        "POST /api/v1/asynqueries/",
+        "note Left of OAPI",
+        "stream_create",
+        "file_path: <<upload-url"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已加上 note。OAPI 返回 201 Created 带上 <<query-id，然后 deactivate。接下来是状态轮询部分？",
+      "elements_involved": [
+        "OAPI",
+        "201 Created",
+        "<<query-id",
+        "deactivate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，画个 loop Status Check，里面 Client GET /api/v1/asynqueries/:query-id。这里要用 alt 分支处理三种状态：pending 返回 204，completed 返回 200 带 JSON-RPC response，not found 返回 404。",
+      "elements_involved": [
+        "loop Status Check",
+        "Client",
+        "OAPI",
+        "GET /api/v1/asynqueries/:query-id",
+        "alt",
+        "pending",
+        "completed",
+        "not found",
+        "204 No Content",
+        "200 OK",
+        "JSON-RPC response",
+        "404 Not Found"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下分支结构：alt pending...else completed...else not found...end，然后 loop 结束、OAPI deactivate，这样对吗？",
+      "elements_involved": [
+        "alt",
+        "else",
+        "end",
+        "loop",
+        "deactivate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但要注意每个分支里 OAPI 都要 activate 和 deactivate。让我想想...其实可以在 loop 外面统一 activate OAPI，然后分支内部只处理响应？不对，还是每个循环都要 activate。",
+      "elements_involved": [
+        "activate OAPI",
+        "deactivate OAPI",
+        "loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我检查了一下，发现 loop 里 OAPI 的 activate 应该放在 Client 发 GET 请求之后，而不是之前。还有，not found 分支应该是 404 Not Found，不是 400。我调整一下。",
+      "elements_involved": [
+        "activate OAPI",
+        "404 Not Found"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题了。整个流程完整了：申请上传位置 → 上传文件 → 创建查询 → 轮询状态。标题用 \"Publish v4 Flow\"。",
+      "elements_involved": [
+        "Publish v4 Flow"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 13,
+    "repair_count": 1,
+    "grounding_acts_count": 13,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:40Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 39218.9744,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 13
+  }
+}

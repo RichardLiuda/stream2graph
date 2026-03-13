@@ -1,0 +1,154 @@
+{
+  "id": "ot_pie_00850",
+  "source": "other",
+  "source_url": "https://github.com/kotek-7/minpuzz/blob/654b51056933c621c2671ca993745a92ad3af09d/docs/sequence-game-connection.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "kotek-7/minpuzz",
+  "diagram_type": "pie",
+  "code": "%%{init: {'theme':'default', 'themeVariables': {'primaryColor': '#4f46e5', 'primaryTextColor': '#fff', 'primaryBorderColor': '#3730a3', 'lineColor': '#374151', 'secondaryColor': '#e5e7eb', 'tertiaryColor': '#f3f4f6'}}}%%\n\nsequenceDiagram\n    participant U1 as ユーザー1\n    participant F1 as フロントエンド1\n    participant B as バックエンド\n    participant R as Redis\n    participant F2 as フロントエンド2\n    participant U2 as ユーザー2\n\n    Note over U1,U2: ゲーム接続フェーズ（match-found 後）\n\n    par 両チームに並行通知\n        B->>F1: Socket to teamA: match-found（matchId, self, partner）\n        F1->>F1: ゲーム画面に遷移（接続待ち表示）\n    and\n        B->>F2: Socket to teamB: match-found（同一ペイロード）\n        F2->>F2: ゲーム画面に遷移（接続待ち表示）\n    end\n\n    Note over F1,F2: 各プレイヤーがゲームルームに接続登録（参加直後に game-init を受信）\n    par 両チームが並行接続\n        U1->>F1: ゲーム接続開始\n        F1->>B: Socket emit: join-game（matchId, teamId, userId）\n        B-->>F1: game-init（board, pieces, startedAt?, duration?）\n        Note over B,F1: 即座に本人へ state-sync も送出（最新全量）\n        B-->>F1: state-sync（board, pieces, score, timer?, matchStatus）\n        Note over B: publicルームへ参加（progress/game-end/timer-sync用）\n        B->>B: room:match:{id}:public に join\n        B->>R: SADD match:{matchId}:team:{teamId}:connected userId\n    and\n        U2->>F2: ゲーム接続開始\n        F2->>B: Socket emit: join-game（matchId, teamId, userId）\n        B-->>F2: game-init（board, pieces, startedAt?, duration?）\n        B-->>F2: state-sync（board, pieces, score, timer?, matchStatus）\n        B->>B: room:match:{id}:public に join\n        B->>R: SADD match:{matchId}:team:{teamId}:connected userId\n    end\n\n    B->>R: 接続数を確認（teamA/B が期待人数に到達?）\n    alt 全プレイヤーが接続完了\n        R-->>B: 達成\n        B->>R: match を READY に更新、チーム両方を IN_GAME に更新\n        Note over B: ゲーム開始通知（チームルームに限定）＋タイマー開始\n        B->>F1: Socket to teamA room: game-start（matchId）\n        B->>F2: Socket to teamB room: game-start（matchId）\n        B->>R: match:{id}:timer = {startedAt, durationMs}\n        Note over B: timer-sync を public に5秒周期で送出開始\n    else まだ接続待ち\n        Note over U1,U2: 接続待ち表示を継続\n    end\n\n    Note over U1,U2: 次: docs/in-game/sequence-in-game.mmd（game-start以後のゲーム操作）\n",
+  "content_size": 2111,
+  "collected_at": "2026-02-06T10:47:53.768596",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个时序图，描述匹配成功后玩家进入游戏房间的完整流程。核心场景是：match-found之后，两个队伍并行收到通知，然后各自连接，最后后端确认全员到齐才正式开始游戏。",
+      "elements_involved": [
+        "match-found",
+        "teamA",
+        "teamB",
+        "game-init",
+        "state-sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。参与者方面，我理解为两个用户U1、U2，各自对应前端F1、F2，加上后端B和Redis。通知阶段用par块表示并行，对吗？",
+      "elements_involved": [
+        "U1",
+        "U2",
+        "F1",
+        "F2",
+        "B",
+        "R",
+        "par"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，par块里分两个and分支：B→F1和B→F2同时发Socket通知，payload包含matchId、self、partner。两边前端收到后都显示\"接続待ち\"，然后各自的用户点击连接。",
+      "elements_involved": [
+        "Socket",
+        "matchId",
+        "self",
+        "partner",
+        "接続待ち"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，第一版草图有了。接下来连接阶段，我看到F1会emit join-game给B，然后B返回game-init和state-sync？这两个消息有什么区别？",
+      "elements_involved": [
+        "join-game",
+        "game-init",
+        "state-sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "game-init是初始化数据，比如board、pieces、startedAt、duration；state-sync是全量状态同步，包含score、timer、matchStatus。注意B还要做两件事：加入public房间用于后续progress同步，以及用SADD把userId写入Redis的connected集合。",
+      "elements_involved": [
+        "board",
+        "pieces",
+        "score",
+        "timer",
+        "publicルーム",
+        "SADD",
+        "connected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "了解了，两边队伍对称处理。现在关键分支：Redis确认connected人数达标后，走alt的\"全プレイヤー接続完了\"分支，B更新match为READY、team为IN_GAME，然后分别向teamA和teamB房间发game-start？",
+      "elements_involved": [
+        "alt",
+        "READY",
+        "IN_GAME",
+        "teamA room",
+        "teamB room",
+        "game-start"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，timer的处理需要修正。B要在Redis里存match:{id}:timer，包含startedAt和durationMs，然后才开始5秒周期的timer-sync广播。这个timer-sync是发到public房间的，不是team房间。",
+      "elements_involved": [
+        "timer",
+        "startedAt",
+        "durationMs",
+        "timer-sync",
+        "public",
+        "5秒周期"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "修正完成。最后加个Note指向下一文档docs/in-game/sequence-in-game.mmd，表示game-start之后的操作在另一个时序图里。整个流程：并行通知→并行连接→Redis确认→条件分支→游戏开始，结构清晰了。",
+      "elements_involved": [
+        "Note",
+        "docs/in-game/sequence-in-game.mmd",
+        "game-start"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:43Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:27Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:27Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 27017.4503,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 5
+  }
+}

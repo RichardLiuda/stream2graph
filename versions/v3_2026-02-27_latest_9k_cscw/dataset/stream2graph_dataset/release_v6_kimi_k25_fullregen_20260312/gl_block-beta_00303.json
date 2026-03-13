@@ -1,0 +1,160 @@
+{
+  "id": "gl_block-beta_00303",
+  "source": "gitlab",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_FIRMWARE/blob/615cebd32230a26c23013f1c75381475e12c0b93/diagrams/ACQ_AND_TRANSMIT_EXTERNAL.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_FIRMWARE",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client\n    participant DataTrans as data_transmission.c\n    participant Acquisition as acquisition.c\n    \n    Client->>DataTrans: Connect to data socket\n    activate DataTrans\n    \n    Note over DataTrans,Acquisition: External ADC already initialized during startup\n    \n    alt mode == 0 (Continuous)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit()\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Client: non_blocking_send() buffer\n            \n            opt Socket change detected\n                DataTrans->>DataTrans: Break acquisition loop\n            end\n        end\n    else mode == 1 (Single trigger)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit()\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Acquisition: pcnt_unit_get_count()\n            Acquisition-->>DataTrans: Current counter state\n            \n            alt Edge detected (counter changed)\n                DataTrans->>Client: non_blocking_send() buffer\n            end\n        end\n    end\n    \n    Client->>DataTrans: Disconnect\n    DataTrans->>DataTrans: safe_close(client_sock)\n    deactivate DataTrans",
+  "content_size": 1551,
+  "collected_at": "2026-02-06T14:06:49.098744",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个序列图，描述客户端和数据采集模块的交互流程。核心是两个参与者：Client 和 data_transmission.c，另外 acquisition.c 负责底层的 SPI 数据采集。整体流程从客户端连接开始，到断开结束。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，三个参与者。我注意到 acquisition.c 和 data_transmission.c 之间有频繁的 SPI 交互。在开始画图之前，需要标注一下外部 ADC 的初始化时机吗？这个是在启动阶段完成的，不在本次会话里。",
+      "elements_involved": [
+        "Acquisition",
+        "DataTrans",
+        "External ADC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，加一个注释说明 External ADC 已经在 startup 时初始化好了。另外关键是两种工作模式：mode 0 连续采集和 mode 1 单触发采集，这两种模式在检测到边沿时的发送逻辑不一样。",
+      "elements_involved": [
+        "mode 0",
+        "mode 1",
+        "continuous",
+        "single trigger",
+        "edge detected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主框架：Client 连接 data socket，激活 DataTrans，加上 ADC 初始化的注释。然后用 alt 分支区分 mode 0 和 mode 1。两种模式都是循环直到客户端断开，内部都要获取 spi_mutex、执行 spi_device_polling_transmit、释放 mutex。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "spi_mutex",
+        "spi_device_polling_transmit",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "mode 0 的连续模式里，每次 SPI 完成后直接 non_blocking_send 发送缓冲区。但要加一个 opt 分支：如果检测到 socket 变化，DataTrans 自己触发 break 跳出 acquisition loop。",
+      "elements_involved": [
+        "mode 0",
+        "non_blocking_send",
+        "socket change detected",
+        "break",
+        "opt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "mode 0 画好了。现在处理 mode 1：SPI 流程相同，但多了 pcnt_unit_get_count 获取计数器状态，然后嵌套一个 alt 判断边沿——只有 counter changed 时才执行 non_blocking_send。",
+      "elements_involved": [
+        "mode 1",
+        "pcnt_unit_get_count",
+        "counter changed",
+        "nested alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，mode 1 这里有个问题。pcnt_unit_get_count 是 Acquisition 提供的，返回 current counter state，所以箭头方向应该是 Acquisition 指向 DataTrans，不是 DataTrans 自己调用。另外 SPI transaction complete 的返回箭头也要确认方向。",
+      "elements_involved": [
+        "pcnt_unit_get_count",
+        "Acquisition",
+        "DataTrans",
+        "SPI transaction complete",
+        "arrow direction"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，Acquisition--DataTrans 的虚线返回箭头表示 SPI 完成和计数器状态返回。最后补充结束流程：Client 发送 Disconnect，DataTrans 执行 safe_close(client_sock) 并 deactivate。",
+      "elements_involved": [
+        "Disconnect",
+        "safe_close",
+        "client_sock",
+        "deactivate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完整了。再确认一下：mode 0 是连续发送，mode 1 是边沿触发发送，两种模式都支持 socket 变化时的优雅退出，最后资源释放也到位。可以定稿了。",
+      "elements_involved": [
+        "mode 0",
+        "mode 1",
+        "socket change",
+        "resource cleanup"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 1,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 20556.3242,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 9
+  }
+}

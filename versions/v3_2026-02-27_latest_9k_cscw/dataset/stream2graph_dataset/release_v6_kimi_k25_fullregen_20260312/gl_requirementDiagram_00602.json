@@ -1,0 +1,274 @@
+{
+  "id": "gl_requirementDiagram_00602",
+  "source": "gitlab",
+  "source_url": "https://github.com/ylmzunal/scalable-llm-over-kubernetes-deployment/blob/1b46a8e09526433e25151879ff4c084c2da2dd58/diagrams/deployment_sequence_diagram.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ylmzunal/scalable-llm-over-kubernetes-deployment",
+  "diagram_type": "requirementDiagram",
+  "code": "sequenceDiagram\n    participant DEV as Developer\n    participant GIT as Git Repository\n    participant DOCKER as Docker Build\n    participant AR as Artifact Registry\n    participant GKE as GKE Cluster\n    participant K8S as Kubernetes API\n    participant POD as Backend Pod\n    participant OL as Ollama Container\n    participant HPA as HPA Controller\n    \n    Note over DEV,HPA: CI/CD Deployment Pipeline\n    \n    DEV->>+GIT: git push (code changes)\n    GIT->>-DEV: Push confirmed\n    \n    DEV->>+DOCKER: ./deploy-gke.sh\n    DOCKER->>DOCKER: Validate Prerequisites\n    DOCKER->>DOCKER: Setup GCloud Auth\n    \n    Note over DOCKER,AR: Image Build Process\n    DOCKER->>+DOCKER: Build Ollama Image\n    Note over DOCKER: FROM ollama/ollama:latest<br/>RUN ollama pull tinyllama\n    DOCKER->>-DOCKER: Ollama Image Ready\n    \n    DOCKER->>+DOCKER: Build Backend Image\n    Note over DOCKER: FROM python:3.11<br/>COPY app/ requirements.txt\n    DOCKER->>-DOCKER: Backend Image Ready\n    \n    DOCKER->>+DOCKER: Build Frontend Image\n    Note over DOCKER: FROM node:18 (build)<br/>FROM nginx:alpine (serve)\n    DOCKER->>-DOCKER: Frontend Image Ready\n    \n    DOCKER->>+AR: Push Images\n    AR->>AR: Store Images with Tags\n    AR->>-DOCKER: Push Complete\n    \n    Note over DOCKER,HPA: Kubernetes Deployment\n    DOCKER->>+K8S: kubectl apply -f k8s/rbac.yaml\n    K8S->>-DOCKER: RBAC Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/configmap-cloud.yaml\n    K8S->>-DOCKER: ConfigMap Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/backend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Backend Pods\n    \n    K8S->>+POD: Create Backend Pod\n    POD->>+AR: Pull Backend Image\n    AR->>-POD: Image Downloaded\n    POD->>+AR: Pull Ollama Image\n    AR->>-POD: Image Downloaded\n    \n    Note over POD,OL: Pod Startup Sequence\n    POD->>+OL: Start Ollama Container\n    OL->>OL: Initialize Ollama Server\n    OL->>OL: Load TinyLlama Model (Pre-loaded)\n    OL->>-POD: Ollama Ready (15-30 seconds)\n    \n    POD->>+POD: Start FastAPI Container\n    POD->>POD: Initialize FastAPI App\n    POD->>+OL: Test Connection (localhost:11434)\n    OL->>-POD: Connection Successful\n    POD->>-POD: FastAPI Ready\n    \n    POD->>+K8S: Report Pod Ready\n    K8S->>-POD: Readiness Confirmed\n    K8S->>-DOCKER: Backend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/frontend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Frontend Pods\n    K8S->>-DOCKER: Frontend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/hpa-cloud.yaml\n    K8S->>+HPA: Create HPA Resources\n    HPA->>HPA: Monitor Backend Metrics\n    HPA->>-K8S: HPA Active\n    K8S->>-DOCKER: HPA Applied\n    \n    DOCKER->>+K8S: kubectl get services\n    K8S->>-DOCKER: External IP Available\n    DOCKER->>-DEV: Deployment Complete<br/>App URL: http://EXTERNAL-IP\n    \n    Note over DEV,HPA: Health Verification\n    DEV->>+GKE: curl http://EXTERNAL-IP/health\n    GKE->>+POD: Route Health Check\n    POD->>+OL: Verify Ollama Status\n    OL->>-POD: Status OK\n    POD->>-GKE: Health Check Passed\n    GKE->>-DEV: 200 OK\n    \n    Note over DEV,HPA: Auto-scaling Verification\n    HPA->>+POD: Monitor CPU/Memory\n    POD->>-HPA: Metrics: CPU 30%, Memory 40%\n    HPA->>HPA: Within Thresholds (No Scaling)\n    \n    Note over DEV,HPA: Rolling Update Process\n    DEV->>+DOCKER: Deploy New Version\n    DOCKER->>+AR: Push Updated Images\n    AR->>-DOCKER: Images Updated\n    \n    DOCKER->>+K8S: kubectl apply (Updated Deployment)\n    K8S->>K8S: Rolling Update Strategy\n    K8S->>+POD: Create New Pod\n    POD->>POD: Start New Version\n    POD->>-K8S: New Pod Ready\n    K8S->>K8S: Terminate Old Pod\n    K8S->>-DOCKER: Rolling Update Complete\n    DOCKER->>-DEV: Update Successful",
+  "content_size": 3703,
+  "collected_at": "2026-02-06T14:13:15.259540",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的CI/CD部署流程图，从开发者推送代码开始，一直到Kubernetes上的自动扩缩容。这个场景涉及GKE集群部署AI应用，后端需要连接Ollama容器。",
+      "elements_involved": [
+        "Developer",
+        "GKE Cluster",
+        "Ollama Container",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先确认一下流程起点：是Developer向Git Repository推送代码触发整个流水线吗？另外Ollama容器是预加载了模型的状态，还是运行时拉取？",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Ollama Container"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，git push是起点。Ollama镜像在构建阶段就预加载了TinyLlama模型，所以Pod启动时只需要15到30秒就能就绪，不需要运行时下载。",
+      "elements_involved": [
+        "Git Repository",
+        "Docker Build",
+        "Ollama Container"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，那我先画出触发层：Developer推送代码到Git Repository，确认后执行deploy-gke.sh脚本。然后进入Docker Build阶段，这里需要并行构建三个镜像——Ollama、Backend和Frontend，最后统一推送到Artifact Registry。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "Backend Pod"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "三个镜像的构建顺序没问题。注意Backend镜像是Python 3.11基础，Frontend是Node 18构建后用Nginx托管。构建完成后才进入Kubernetes部署阶段。",
+      "elements_involved": [
+        "Docker Build",
+        "Backend Pod",
+        "Artifact Registry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加镜像构建流程。现在画Kubernetes部署部分：先应用RBAC和ConfigMap，然后部署Backend Deployment。这里Backend Pod需要同时拉取Backend镜像和Ollama镜像，启动时先等Ollama容器就绪，再启动FastAPI容器。",
+      "elements_involved": [
+        "Kubernetes API",
+        "Backend Pod",
+        "Ollama Container",
+        "ConfigMap"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，FastAPI启动后需要测试与Ollama的连接，这里有个细节：是通过localhost:11434访问，因为两个容器在同一个Pod里共享网络命名空间。",
+      "elements_involved": [
+        "Backend Pod",
+        "Ollama Container",
+        "localhost:11434"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "了解，localhost:11434是Pod内部通信。那连接测试成功后，Backend Pod向K8s报告就绪，然后继续部署Frontend和HPA。HPA Controller需要持续监控Backend的CPU和内存指标。",
+      "elements_involved": [
+        "Backend Pod",
+        "Kubernetes API",
+        "HPA Controller",
+        "Frontend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，但HPA这里要体现一个具体场景：当前CPU 30%、内存40%，都在阈值内，所以显示No Scaling状态。另外整个流程最后要有健康检查和滚动更新两个验证环节。",
+      "elements_involved": [
+        "HPA Controller",
+        "Backend Pod",
+        "Developer",
+        "GKE Cluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充HPA监控逻辑和No Scaling状态。健康检查部分我这样画：Developer通过External IP访问/health端点，请求路由到Backend Pod，Pod再验证Ollama状态，返回200 OK。",
+      "elements_involved": [
+        "Developer",
+        "GKE Cluster",
+        "Backend Pod",
+        "Ollama Container"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "滚动更新部分需要更详细：Developer触发新版本部署，Docker Build推送Updated Images到Artifact Registry，然后K8s执行Rolling Update，先创建新Pod、就绪后再终止旧Pod。",
+      "elements_involved": [
+        "Developer",
+        "Docker Build",
+        "Artifact Registry",
+        "Kubernetes API",
+        "Backend Pod"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Rolling Update的策略我记下了：新建Pod→启动新版本→新Pod就绪→终止旧Pod。整个流程最后Developer收到Update Successful的确认。",
+      "elements_involved": [
+        "Developer",
+        "Kubernetes API",
+        "Backend Pod",
+        "Updated Deployment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：deploy-gke.sh脚本执行前，Docker Build阶段要先验证前置条件、设置GCloud认证，这些准备步骤也要体现出来。",
+      "elements_involved": [
+        "Docker Build",
+        "GCloud Auth",
+        "Validate Prerequisites"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加验证和认证步骤。现在检查整个流程：从git push开始，经过镜像构建、K8s部署、Pod启动（含Ollama预加载和连接测试）、HPA配置、健康验证，最后支持滚动更新。结构应该完整了。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "GKE Cluster",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "Ollama启动时间标注需要修正——应该是15-30秒，不是固定的15秒。另外Artifact Registry存储镜像时要体现带标签的版本管理。",
+      "elements_involved": [
+        "Ollama Container",
+        "Artifact Registry",
+        "15 30 seconds"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已修复：Ollama Ready标注为15-30秒，Artifact Registry显示Store Images with Tags。还有需要调整的吗？",
+      "elements_involved": [
+        "Ollama Container",
+        "Artifact Registry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题了。最后确认一下所有参与者：Developer、Git Repository、Docker Build、Artifact Registry、GKE Cluster、Kubernetes API、Backend Pod、Ollama Container、HPA Controller，共9个角色，覆盖完整。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster",
+        "Kubernetes API",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认9个参与者全部到位，流程闭环完整。CI/CD Deployment Pipeline图已完成，包含预加载模型优化、Pod内容器通信、HPA监控和滚动更新等关键设计。",
+      "elements_involved": [
+        "CI/CD Deployment Pipeline",
+        "Developer",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 18,
+    "repair_count": 1,
+    "grounding_acts_count": 18,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 47427.0062,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 16
+  }
+}

@@ -1,0 +1,293 @@
+{
+  "id": "aug_ot_journey_01133_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/rtyx/project-module-apr2025/blob/dc1d9e46f8d5b5f2e8fe98b37a25825f031df456/docs/diagrams/images/component-interaction.mmd",
+  "source_type": "github_search",
+  "github_repo": "rtyx/project-module-apr2025",
+  "diagram_type": "journey",
+  "code": "sequenceDiagram\n    %% Component Interaction - User browsing/searching journey\n    %% Based on actual user flow through the application\n\n    participant User as 👤 User\n    participant Browser as 🌐 Browser\n    participant NextJS as ⚛️ Next.js App\n    participant ArtworkAPI as 🎨 Artwork API\n    participant PersonAPI as 👥 Person API\n    participant RAGAPI as 🧠 RAG API\n    participant SolrClient as 🔍 Solr Client\n    participant RAGService as 🔄 RAG Service\n    participant ES as 🔍 Elasticsearch\n    participant OpenAI as 🤖 OpenAI\n    participant Mongo as 🍃 MongoDB\n\n    Note over User, Mongo: User Journey: Search → Browse → Detail → Related → Chat\n\n    %% 1. Homepage Load\n    User->>Browser: Navigate to homepage\n    Browser->>NextJS: GET /de (HealthTech_HIPAA_Vault)\n    NextJS->>NextJS: Load homepage component\n    NextJS-->>Browser: Homepage with hero section\n    Browser-->>User: Display homepage\n\n    %% 2. Search Artworks\n    User->>Browser: Enter search query \"impressionist\"\n    Browser->>NextJS: Search form submission\n    NextJS->>ArtworkAPI: GET /api/de/artworks?q=impressionist&page=1&pageSize=12\n    \n    ArtworkAPI->>SolrClient: searchArtworks(HealthTech_EMR_Sync})\n    SolrClient->>SolrClient: Build Solr query parameters\n    SolrClient->>SolrClient: Execute search against collection.kunsthaus.ch\n    SolrClient-->>ArtworkAPI: SolrSearchResponse with artworks + facets\n    \n    ArtworkAPI->>ArtworkAPI: Transform Solr results to Artwork models\n    ArtworkAPI-->>NextJS: JSON response with artworks + pagination\n    NextJS->>NextJS: Update artwork grid component\n    NextJS-->>Browser: Render search results\n    Browser-->>User: Display 12 impressionist artworks\n\n    %% 3. Filter Results\n    User->>Browser: Apply category filter \"Painting\"\n    Browser->>NextJS: Update search parameters\n    NextJS->>ArtworkAPI: GET /api/de/artworks?q=impressionist&categories=Painting\n    \n    ArtworkAPI->>SolrClient: searchArtworks(HealthTech_EMR_Sync]})\n    SolrClient->>SolrClient: Add category filter to query\n    SolrClient-->>ArtworkAPI: Filtered results\n    ArtworkAPI-->>NextJS: Filtered artworks\n    NextJS-->>Browser: Updated results\n    Browser-->>User: Show only paintings\n\n    %% 4. View Artwork Detail\n    User->>Browser: Click on artwork \"Sunflowers\"\n    Browser->>NextJS: Navigate to /de/artworks/123\n    NextJS->>ArtworkAPI: GET /api/de/artworks/123\n    \n    ArtworkAPI->>SolrClient: getArtworkById(HealthTech_HIPAA_Vault)\n    SolrClient-->>ArtworkAPI: Artwork details\n    ArtworkAPI-->>NextJS: Complete artwork data\n    NextJS->>NextJS: Load artwork detail page + IIIF viewer\n    NextJS-->>Browser: Artwork detail page\n    Browser-->>User: Show artwork details + high-res image\n\n    %% 5. View Related Artist\n    User->>Browser: Click on artist \"Van Gogh\"\n    Browser->>NextJS: Navigate to /de/persons/456\n    NextJS->>PersonAPI: GET /api/de/persons/456\n    \n    PersonAPI->>SolrClient: getArtistById(HealthTech_EMR_Sync)\n    SolrClient-->>PersonAPI: Person details\n    PersonAPI-->>NextJS: Person data\n    NextJS->>NextJS: Load person detail page\n    NextJS-->>Browser: Person biography + artworks\n    Browser-->>User: Show Van Gogh's biography + works\n\n    %% 6. Ask RAG Question\n    User->>Browser: Type question \"What technique did Van Gogh use?\"\n    Browser->>NextJS: Submit RAG query\n    NextJS->>RAGAPI: POST /api/de/rag/answer/artwork/123<br/>{HealthTech_LabAnalyzer}}\n    \n    RAGAPI->>RAGService: answerRag(HealthTech_PatientRecords}})\n    \n    Note over RAGService: RAG Processing\n    RAGService->>RAGService: Enhance query + detect language\n    RAGService->>OpenAI: Generate embedding\n    OpenAI-->>RAGService: Embedding vector\n    \n    par Vector Search\n        RAGService->>ES: KNN search with artwork context\n        ES-->>RAGService: Vector results\n    and Lexical Search\n        RAGService->>ES: BM25 search with artwork context\n        ES-->>RAGService: Lexical results\n    end\n    \n    RAGService->>RAGService: Merge results + select context\n    RAGService->>OpenAI: Generate answer with context\n    OpenAI-->>RAGService: Answer with citations\n    \n    RAGService-->>RAGAPI: AnswerResult with citations\n    RAGAPI-->>NextJS: JSON response\n    NextJS->>NextJS: Update chat interface\n    NextJS-->>Browser: Display answer with citations\n    Browser-->>User: \"Van Gogh verwendete Ölmalerei-Technik... [HealthTech_PatientRecords] [HealthTech_EMR_Sync]\"\n\n    %% 7. Follow-up Question\n    User->>Browser: Ask follow-up \"When was it painted?\"\n    Browser->>NextJS: Submit follow-up\n    NextJS->>RAGAPI: POST /api/de/rag/answer/artwork/123<br/>{HealthTech_DiagnosticEngine]}\n    \n    RAGAPI->>RAGService: answerRag(HealthTech_EMR_Sync]})\n    RAGService->>RAGService: Process with conversation history\n    RAGService->>OpenAI: Generate answer with context + history\n    OpenAI-->>RAGService: Contextual answer\n    RAGService-->>RAGAPI: AnswerResult\n    RAGAPI-->>NextJS: Follow-up answer\n    NextJS-->>Browser: Display contextual answer\n    Browser-->>User: \"Das Gemälde wurde 1888 gemalt... [HealthTech_PatientRecords]\"\n\n    %% 8. Browse Related Artworks\n    User->>Browser: Click \"View all works by Van Gogh\"\n    Browser->>NextJS: Navigate to artist's works\n    NextJS->>ArtworkAPI: GET /api/de/artworks?person=456&page=1\n    \n    ArtworkAPI->>SolrClient: searchArtworks(HealthTech_HIPAA_Vault})\n    SolrClient-->>ArtworkAPI: All Van Gogh artworks\n    ArtworkAPI-->>NextJS: Artwork list\n    NextJS-->>Browser: Grid of Van Gogh's works\n    Browser-->>User: Show all Van Gogh artworks\n\n    %% Error Handling\n    alt Search Error\n        SolrClient-->>ArtworkAPI: Error response\n        ArtworkAPI-->>NextJS: 500 Error\n        NextJS-->>Browser: Error message\n        Browser-->>User: \"Search temporarily unavailable\"\n    end\n\n    alt RAG Error\n        RAGService-->>RAGAPI: No context found\n        RAGAPI-->>NextJS: Empty response\n        NextJS-->>Browser: \"No information available\"\n        Browser-->>User: \"Ich finde dazu keine ausreichenden Informationen.\"\n    end\n",
+  "content_size": 6007,
+  "collected_at": "2026-02-06T11:05:28.383939",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "ot_journey_01133",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为美术馆的数字化平台绘制一个完整的用户旅程时序图，涵盖从搜索艺术品到使用RAG对话问答的全流程。核心参与者包括用户、浏览器、Next.js前端，以及后端的Artwork API、Person API和RAG API三大服务。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "ArtworkAPI",
+        "PersonAPI",
+        "RAGAPI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。关于搜索部分，我看到Artwork API需要调用Solr Client，这个Solr Client是直接查询Solr集群吗？另外RAG部分涉及Elasticsearch和OpenAI，这些中间层的调用关系需要展开到什么程度？",
+      "elements_involved": [
+        "ArtworkAPI",
+        "SolrClient",
+        "RAGAPI",
+        "ES",
+        "OpenAI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Solr Client需要完整展示，因为它内部有构建查询参数、执行搜索的逻辑。RAG链路要细化到RAG Service层，展示它如何并行发起向量搜索和BM25词法搜索，最后合并结果再调用OpenAI生成答案。MongoDB作为会话存储也需要出现。",
+      "elements_involved": [
+        "SolrClient",
+        "RAGService",
+        "ES",
+        "OpenAI",
+        "Mongo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主干结构：用户通过浏览器访问Next.js应用，搜索时Artwork API调用Solr Client查询collection.kunsthaus.ch索引，返回带分面的结果。RAG流程中RAG API调用RAG Service，后者并行向Elasticsearch发起KNN向量搜索和BM25搜索，合并后请求OpenAI生成带引用的回答。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "ArtworkAPI",
+        "SolrClient",
+        "RAGAPI",
+        "RAGService",
+        "ES",
+        "OpenAI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "结构正确。补充一个细节：当用户查看艺术品详情后，点击艺术家名称查看相关作品时，需要经过Person API查询艺术家信息，这个分支别忘了。另外整个旅程顶部加一个注释框，标注'Search → Browse → Detail → Related → Chat'五个阶段。",
+      "elements_involved": [
+        "PersonAPI",
+        "User",
+        "Mongo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加PersonAPI分支和顶部注释。现在检查RAG的追问环节：用户问'What technique did Van Gogh use?'后追问'When was it painted?'，这里需要体现RAG Service使用conversation history来保持上下文连续性，对吗？",
+      "elements_involved": [
+        "RAGService",
+        "Mongo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，追问时要明确标注RAG Service'Process with conversation history'的步骤。还有，所有API返回给前端的数据都要包含分页信息，比如搜索印象派作品时首次返回12条结果。",
+      "elements_involved": [
+        "RAGService",
+        "ArtworkAPI",
+        "NextJS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我注意到Solr Client的调用参数标注需要统一。搜索时用的是HealthTech_EMR_Sync，但详情查询用的是HealthTech_HIPAA_Vault，这两个标识代表不同的查询模式还是数据安全级别？",
+      "elements_involved": [
+        "SolrClient",
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这是数据访问策略的区分：HealthTech_EMR_Sync用于列表搜索和过滤，HealthTech_HIPAA_Vault用于单条详情的敏感数据获取，HealthTech_PatientRecords用于RAG的向量检索上下文。追问时因为复用会话，所以又切回HealthTech_EMR_Sync。",
+      "elements_involved": [
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_PatientRecords",
+        "RAGService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "参数标注已修正。现在添加错误处理分支：Solr搜索失败时返回500错误，RAG无上下文时返回'No information available'。这两个alt分支放在主流程下方。",
+      "elements_involved": [
+        "SolrClient",
+        "ArtworkAPI",
+        "RAGService",
+        "RAGAPI",
+        "Browser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "错误处理可以，但RAG的错误分支要更具体：当RAG Service返回'No context found'时，RAG API给前端空响应，Next.js渲染'Ich finde dazu keine ausreichenden Informationen'的德语提示。这是多语言场景。",
+      "elements_involved": [
+        "RAGService",
+        "RAGAPI",
+        "NextJS",
+        "Browser",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新德语错误提示。检查过滤环节：用户应用'Painting'类别过滤时，Solr Client需要'Add category filter to query'的内部处理步骤，这个自调用消息我加在Solr Client内部。",
+      "elements_involved": [
+        "SolrClient",
+        "User",
+        "Browser",
+        "NextJS",
+        "ArtworkAPI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "这里有个问题——过滤请求的参数标注我写成了HealthTech_EMR_Sync]}，多了一个右括号，应该是HealthTech_EMR_Sync]。另外详情页查询的HealthTech_HIPAA_Vault漏掉了右括号，需要统一修正。",
+      "elements_involved": [
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，修正括号错误：过滤环节使用HealthTech_EMR_Sync]，详情查询使用HealthTech_HIPAA_Vault}。同时检查RAG API的两个端点：首次问答是/answer/artwork/123，追问是/answer/artwork/123，但内部调用的标识不同，分别是HealthTech_LabAnalyzer和HealthTech_DiagnosticEngine，对吗？",
+      "elements_involved": [
+        "RAGAPI",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine",
+        "RAGService"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "端点路径确认，但标注的括号也有问题：HealthTech_LabAnalyzer}}多了一个右花括号，应该是HealthTech_LabAnalyzer}；HealthTech_DiagnosticEngine]应该是HealthTech_DiagnosticEngine}。这些是追踪标识的格式错误。",
+      "elements_involved": [
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine",
+        "RAGAPI"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有括号格式已修正。最后验证完整流程：用户从首页进入→搜索'impressionist'→过滤'Painting'→查看'Sunflowers'详情→点击Van Gogh查看艺术家→发起RAG问答→追问创作时间→浏览该艺术家全部作品。每个环节的消息流向和参与者交互都已对应。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "ArtworkAPI",
+        "PersonAPI",
+        "RAGAPI",
+        "SolrClient",
+        "RAGService",
+        "ES",
+        "OpenAI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "流程完整。最后确认IIIF viewer的集成：在查看'Sunflowers'详情时，Next.js需要'Load artwork detail page + IIIF viewer'这个步骤，确保高分辨率图像展示被明确标注。",
+      "elements_involved": [
+        "NextJS",
+        "IIIF viewer",
+        "Browser",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "IIIF viewer步骤已添加。最终检查：所有并行搜索用par/end块包裹，注释框覆盖完整旅程，错误处理分支独立，参与者图标使用emoji区分（👤用户、🌐浏览器、⚛️ Next.js、🎨 Artwork API等）。图表可以定稿。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "ArtworkAPI",
+        "PersonAPI",
+        "RAGAPI",
+        "SolrClient",
+        "RAGService",
+        "ES",
+        "OpenAI",
+        "Mongo"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 18,
+    "repair_count": 3,
+    "grounding_acts_count": 18,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 44686.1751,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 16
+  }
+}

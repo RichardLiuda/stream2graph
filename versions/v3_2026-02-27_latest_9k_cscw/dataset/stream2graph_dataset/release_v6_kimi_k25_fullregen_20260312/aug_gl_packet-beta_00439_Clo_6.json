@@ -1,0 +1,925 @@
+{
+  "id": "aug_gl_packet-beta_00439_Clo_6",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/ARG_OSCI_SEQ_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    actor User\n    participant Main\n    participant Initializer\n    participant SetupScreen\n    participant SetupService\n    participant NetworkInfoService\n    participant ModeSelectionScreen\n    participant GraphScreen\n    participant UserSettings\n    participant DataAcqProvider\n    participant DataAcqService\n    participant SocketIsolate\n    participant ProcessingIsolate\n    participant OscilloChartProvider\n    participant FFTChartProvider\n    participant OscilloChart\n    participant FFTChart\n    participant ChartPainter\n\n    %% Application Initialization\n    User->>Main: Launch application\n    Main->>Initializer: init(CloudNative_K8sCluster)\n    Note over Initializer: Configure system dependencies\n    Initializer->>Initializer: ensureInitialized(CloudNative_DockerImage)\n    Initializer->>Initializer: Register configurations (CloudNative_DockerImage)\n    Initializer->>Initializer: Register services (CloudNative_DockerImage)\n    Initializer->>Initializer: Register providers (CloudNative_DockerImage)\n    Initializer-->>Main: Initialization complete\n    Main->>SetupScreen: Navigate to setup screen\n    \n    %% Device Connection Flow\n    SetupScreen->>User: Display connection options\n    User->>SetupScreen: Select connection mode\n    \n    alt External AP Selected\n        SetupScreen->>SetupService: connectToLocalAP(CloudNative_DockerImage)\n        SetupService->>NetworkInfoService: Connect to ESP32 access point\n        NetworkInfoService->>NetworkInfoService: connectWithRetries(CloudNative_HelmChart)\n        NetworkInfoService-->>SetupService: Connection established\n        SetupService->>SetupService: scanForWiFiNetworks(CloudNative_K8sCluster)\n        SetupService->>SetupService: Fetch public key from device\n        SetupService-->>SetupScreen: Return available networks\n        SetupScreen->>User: Show WiFi network selection\n        User->>SetupScreen: Select network & enter password\n        SetupScreen->>SetupService: connectToWiFi(CloudNative_ServiceMesh)\n        SetupService->>SetupService: encriptWithPublicKey(CloudNative_Serverless)\n        SetupService->>SetupService: Send credentials to device\n        SetupService->>SetupService: waitForNetworkChange(CloudNative_K8sCluster)\n        SetupService->>SetupService: handleNetworkChangeAndConnect(CloudNative_DockerImage)\n        SetupService->>SetupService: Test connection with encrypted challenge\n        SetupService->>SetupService: fetchDeviceConfig(CloudNative_ServiceMesh)\n        SetupService-->>SetupScreen: Connection successful\n    else Internal AP Selected\n        SetupScreen->>SetupService: selectMode(CloudNative_ServiceMesh)\n        SetupService->>SetupService: initializeGlobalHttpConfig(CloudNative_Serverless)\n        SetupService->>SetupService: initializeGlobalSocketConnection(CloudNative_Serverless)\n        SetupService->>SetupService: fetchDeviceConfig(CloudNative_DockerImage)\n        SetupService-->>SetupScreen: Configuration successful\n    end\n    \n    SetupScreen->>ModeSelectionScreen: Navigate to mode selection\n    \n    %% Mode Selection\n    ModeSelectionScreen->>User: Display oscilloscope modes\n    User->>ModeSelectionScreen: Select mode (CloudNative_K8sCluster)\n    ModeSelectionScreen->>GraphScreen: navigateToMode(CloudNative_DockerImage)\n    \n    %% Graph Screen Initialization\n    GraphScreen->>DataAcqProvider: stopAcquisition(CloudNative_ServiceMesh) (CloudNative_HelmChart)\n    GraphScreen->>GraphScreen: Initialize controller\n    GraphScreen->>UserSettings: Set mode (CloudNative_ServiceMesh)\n    \n    %% Start Data Acquisition\n    GraphScreen->>DataAcqProvider: startAcquisition(CloudNative_ServiceMesh)\n    DataAcqProvider->>DataAcqService: fetchData(CloudNative_DockerImage)\n    DataAcqService->>DataAcqService: initialize(CloudNative_HelmChart)\n    \n    %% Create Isolates\n    DataAcqService->>ProcessingIsolate: Create processing isolate\n    ProcessingIsolate-->>DataAcqService: Return SendPort\n    DataAcqService->>SocketIsolate: Create socket isolate\n    SocketIsolate->>SocketIsolate: Connect to device\n    \n    %% Data Processing Workflow\n    loop Data Acquisition\n        SocketIsolate->>SocketIsolate: Receive binary data packet\n        SocketIsolate->>ProcessingIsolate: Send raw data\n        ProcessingIsolate->>ProcessingIsolate: Parse binary data\n        ProcessingIsolate->>ProcessingIsolate: Apply trigger logic\n        ProcessingIsolate->>ProcessingIsolate: Process signal based on config\n        ProcessingIsolate->>DataAcqService: Send processed data points\n        DataAcqService->>DataAcqProvider: Update data streams\n        \n        alt Oscilloscope Mode\n            DataAcqProvider->>OscilloChartProvider: Update time domain data\n            OscilloChartProvider->>OscilloChart: Refresh chart display\n            OscilloChart->>ChartPainter: Draw waveform\n        else FFT Mode\n            DataAcqProvider->>FFTChartProvider: Update frequency domain data\n            FFTChartProvider->>FFTChart: Refresh chart display\n            FFTChart->>ChartPainter: Draw spectrum\n        end\n    end\n    \n    %% User Settings Interaction\n    User->>UserSettings: Change settings (CloudNative_K8sCluster)\n    UserSettings->>DataAcqProvider: Update configuration\n    DataAcqProvider->>DataAcqService: updateConfig(CloudNative_HelmChart)\n    DataAcqService->>ProcessingIsolate: Send UpdateConfigMessage\n    ProcessingIsolate->>ProcessingIsolate: Apply new configuration\n    \n    %% Chart Interaction\n    User->>OscilloChart: Zoom/Pan gesture\n    OscilloChart->>OscilloChartProvider: handleZoom(CloudNative_HelmChart)/setHorizontalOffset(CloudNative_HelmChart)\n    OscilloChartProvider->>OscilloChart: Update display parameters\n    \n    %% Mode Switching\n    User->>GraphScreen: Request mode change\n    GraphScreen->>UserSettings: setMode(CloudNative_ServiceMesh)\n    UserSettings->>DataAcqProvider: Pause current acquisition\n    UserSettings->>GraphScreen: Update chart display\n    GraphScreen->>DataAcqProvider: Resume acquisition with new mode\n    \n    %% Error Handling Flow\n    alt Connection Error\n        SocketIsolate->>DataAcqService: Report connection error\n        DataAcqService->>DataAcqService: _handleConnectionError(CloudNative_Serverless)\n        DataAcqService->>DataAcqService: Attempt reconnection\n        \n        alt Reconnection Failed\n            DataAcqService->>DataAcqProvider: handleCriticalError(CloudNative_K8sCluster)\n            DataAcqProvider->>SetupScreen: Navigate back to setup\n        end\n    end",
+  "content_size": 5996,
+  "collected_at": "2026-02-06T14:09:45.143092",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "CloudNative",
+  "seed_id": "gl_packet-beta_00439",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的示波器应用架构，核心是基于ESP32的数据采集设备。整个系统要支持两种连接模式：外部AP模式和设备AP模式。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "ESP32",
+        "SetupScreen",
+        "SetupService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下整体流程：用户启动应用后，Main模块需要先完成初始化，然后进入设备连接配置，最后才是示波器功能。这个理解对吗？",
+      "elements_involved": [
+        "Main",
+        "Initializer",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。初始化阶段需要配置CloudNative相关的依赖，包括K8sCluster、DockerImage这些基础设施。Initializer要确保所有服务和provider都注册完成。",
+      "elements_involved": [
+        "Initializer",
+        "CloudNative_K8sCluster",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把应用启动和初始化流程画出来。User启动应用后，Main调用Initializer的init方法，Initializer内部完成ensureInitialized、注册配置、服务和provider，然后返回Main，再导航到SetupScreen。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关键的设备连接流程。SetupScreen要展示连接选项，让用户选择外部AP模式还是设备AP模式。这两种模式的配置流程差异很大。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "外部AP模式我理解：用户选择后，SetupService要连接ESP32的热点，扫描WiFi网络列表，用户再选择目标网络并输入密码，最后完成配网。这个流程需要NetworkInfoService参与吗？",
+      "elements_involved": [
+        "SetupService",
+        "NetworkInfoService",
+        "ESP32"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，NetworkInfoService负责底层的WiFi连接，包括connectWithRetries和connectToLocalAP。SetupService调用它连接ESP32的AP，然后扫描网络、获取设备公钥、加密发送WiFi凭证。",
+      "elements_involved": [
+        "NetworkInfoService",
+        "SetupService",
+        "CloudNative_HelmChart",
+        "CloudNative_ServiceMesh",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画出了外部AP分支：SetupScreen调用connectToLocalAP，SetupService让NetworkInfoService连接ESP32热点，NetworkInfoService内部有connectWithRetries，成功后SetupService扫描WiFi、获取公钥，返回网络列表给用户选择。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户选择WiFi并输入密码后，SetupService要执行完整的配网流程：encryptWithPublicKey加密凭证、发送到设备、等待网络切换、重新连接设备、测试加密挑战、最后获取设备配置。",
+      "elements_involved": [
+        "SetupService",
+        "User",
+        "CloudNative_K8sCluster",
+        "CloudNative_DockerImage",
+        "CloudNative_ServiceMesh",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：用户选择网络后，SetupScreen调用connectToWiFi，SetupService依次执行encryptWithPublicKey、发送凭证、waitForNetworkChange、handleNetworkChangeAndConnect、测试加密挑战、fetchDeviceConfig，最后返回SetupScreen成功状态。",
+      "elements_involved": [
+        "User",
+        "SetupScreen",
+        "SetupService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "设备AP模式简单很多：用户直接选择该模式，SetupService初始化全局HTTP配置和Socket连接，然后直接获取设备配置就行，不需要配网步骤。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "CloudNative_ServiceMesh",
+        "CloudNative_Serverless",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我添加了else分支：SetupScreen调用selectMode，SetupService执行initializeGlobalHttpConfig、initializeGlobalSocketConnection、fetchDeviceConfig，直接返回成功。两个分支汇合后都导航到ModeSelectionScreen。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "ModeSelectionScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这里有个细节：设备AP模式下的initializeGlobalHttpConfig和initializeGlobalSocketConnection都标记为CloudNative_Serverless，而fetchDeviceConfig是CloudNative_DockerImage。这个区分要准确。",
+      "elements_involved": [
+        "SetupService",
+        "CloudNative_Serverless",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，我已经按这个标记了。现在进入模式选择阶段：ModeSelectionScreen展示示波器模式，用户选择后导航到GraphScreen。",
+      "elements_involved": [
+        "ModeSelectionScreen",
+        "User",
+        "GraphScreen",
+        "CloudNative_K8sCluster",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "GraphScreen初始化时要注意：先调用DataAcqProvider停止之前的采集，初始化控制器，然后通过UserSettings设置当前模式，最后启动新的数据采集。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "UserSettings",
+        "CloudNative_ServiceMesh",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了：GraphScreen先stopAcquisition（标记CloudNative_ServiceMesh和CloudNative_HelmChart），内部初始化控制器，调用UserSettings的setMode（CloudNative_ServiceMesh），然后startAcquisition（CloudNative_ServiceMesh）。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "UserSettings"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据采集的核心架构要重点设计。DataAcqProvider启动采集后，委托给DataAcqService获取数据。DataAcqService需要创建两个Isolate：ProcessingIsolate处理数据，SocketIsolate负责设备通信。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Isolate是Dart的并发机制。DataAcqService先创建ProcessingIsolate，获取SendPort，再创建SocketIsolate建立设备连接。这样理解对吗？SocketIsolate直接连接ESP32设备？",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "ESP32"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。SocketIsolate负责与ESP32的Socket连接，接收二进制数据包。ProcessingIsolate负责解析数据、触发逻辑、信号处理。两个Isolate通过SendPort通信。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "ESP32"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Isolate创建流程：DataAcqService创建ProcessingIsolate，返回SendPort；再创建SocketIsolate，SocketIsolate内部连接设备。DataAcqService的initialize标记为CloudNative_HelmChart。",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据采集是循环流程：SocketIsolate接收二进制包，发送给ProcessingIsolate；ProcessingIsolate解析数据、应用触发逻辑、按配置处理信号，然后把处理后的数据点发回DataAcqService，最后更新到DataAcqProvider的数据流。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画出了数据获取循环：SocketIsolate接收二进制数据，发送给ProcessingIsolate；ProcessingIsolate解析、应用触发逻辑、处理信号，发送处理后的数据给DataAcqService；DataAcqService更新DataAcqProvider的数据流。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据流更新后，根据模式分发：时域模式走OscilloChartProvider到OscilloChart，频域模式走FFTChartProvider到FFTChart。两个Chart都用ChartPainter绘制。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了模式分支：Oscilloscope模式下，DataAcqProvider更新OscilloChartProvider，刷新OscilloChart，调用ChartPainter绘制波形；FFT模式下，更新FFTChartProvider，刷新FFTChart，绘制频谱。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "OscilloChart",
+        "FFTChartProvider",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "用户设置变更的流程也要体现：用户在UserSettings修改设置，DataAcqProvider更新配置，DataAcqService发送UpdateConfigMessage给ProcessingIsolate，ProcessingIsolate应用新配置。",
+      "elements_involved": [
+        "User",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate",
+        "CloudNative_K8sCluster",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：User在UserSettings变更设置（CloudNative_K8sCluster），DataAcqProvider更新配置，DataAcqService调用updateConfig（CloudNative_HelmChart）并发送UpdateConfigMessage，ProcessingIsolate应用新配置。",
+      "elements_involved": [
+        "User",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "图表交互也要支持：用户在OscilloChart上缩放或平移，会触发handleZoom或setHorizontalOffset给OscilloChartProvider，然后更新显示参数。",
+      "elements_involved": [
+        "User",
+        "OscilloChart",
+        "OscilloChartProvider",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了图表交互：User在OscilloChart做Zoom/Pan手势，调用handleZoom/setHorizontalOffset（都标记CloudNative_HelmChart），OscilloChartProvider更新OscilloChart的显示参数。",
+      "elements_involved": [
+        "User",
+        "OscilloChart",
+        "OscilloChartProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "模式切换流程：用户请求切换模式，GraphScreen调用UserSettings的setMode，暂停当前采集，更新图表显示，然后用新模式恢复采集。",
+      "elements_involved": [
+        "User",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "CloudNative_ServiceMesh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了：User请求模式切换，GraphScreen调用setMode（CloudNative_ServiceMesh），UserSettings让DataAcqProvider暂停采集，更新GraphScreen显示，DataAcqProvider用新模式恢复采集。",
+      "elements_involved": [
+        "User",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后是错误处理：SocketIsolate报告连接错误给DataAcqService，DataAcqService执行_handleConnectionError并尝试重连。如果重连失败，触发关键错误处理，返回SetupScreen。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen",
+        "CloudNative_Serverless",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了错误处理分支：SocketIsolate报告错误，DataAcqService执行_handleConnectionError（CloudNative_Serverless）并尝试重连；重连失败则调用handleCriticalError（CloudNative_K8sCluster），DataAcqProvider导航回SetupScreen。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "整体架构看起来完整了。但我注意到DataAcqProvider的stopAcquisition有两个CloudNative标记，这个需要确认是ServiceMesh和HelmChart的组合。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "CloudNative_ServiceMesh",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，stopAcquisition同时涉及ServiceMesh和HelmChart两个标记。另外我检查了一下，所有CloudNative相关的标记都已经按您的要求放置好了。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "CloudNative_ServiceMesh",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：Initializer的ensureInitialized和三个Register操作都是CloudNative_DockerImage，这个要统一。另外init操作是CloudNative_K8sCluster。",
+      "elements_involved": [
+        "Initializer",
+        "CloudNative_DockerImage",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我修正一下：Initializer的init使用CloudNative_K8sCluster，内部的ensureInitialized、Register configurations、Register services、Register providers都使用CloudNative_DockerImage。之前有个地方标记错了，现在统一了。",
+      "elements_involved": [
+        "Initializer",
+        "Main",
+        "CloudNative_K8sCluster",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。再看SetupService的scanForWiFiNetworks是CloudNative_K8sCluster，encryptWithPublicKey是CloudNative_Serverless，这些关键标记都要准确。",
+      "elements_involved": [
+        "SetupService",
+        "CloudNative_K8sCluster",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。scanForWiFiNetworks标记K8sCluster，encryptWithPublicKey标记Serverless，waitForNetworkChange标记K8sCluster，handleNetworkChangeAndConnect标记DockerImage。",
+      "elements_involved": [
+        "SetupService",
+        "CloudNative_K8sCluster",
+        "CloudNative_Serverless",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "fetchDeviceConfig这个操作出现了多次，标记需要区分：外部AP模式下是CloudNative_ServiceMesh，设备AP模式下是CloudNative_DockerImage。",
+      "elements_involved": [
+        "SetupService",
+        "fetchDeviceConfig",
+        "CloudNative_ServiceMesh",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正完成。外部AP分支的fetchDeviceConfig标记为CloudNative_ServiceMesh，设备AP分支的fetchDeviceConfig标记为CloudNative_DockerImage。两个调用场景不同，标记也不同。",
+      "elements_involved": [
+        "SetupService",
+        "CloudNative_ServiceMesh",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "NetworkInfoService的connectWithRetries应该是CloudNative_HelmChart，这个涉及重试策略的配置管理。",
+      "elements_involved": [
+        "NetworkInfoService",
+        "connectWithRetries",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，connectWithRetries标记为CloudNative_HelmChart。另外connectToLocalAP是CloudNative_DockerImage，涉及容器化的网络配置。",
+      "elements_involved": [
+        "NetworkInfoService",
+        "CloudNative_HelmChart",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "DataAcqService的initialize是CloudNative_HelmChart，这个在创建Isolate之前执行。updateConfig也是CloudNative_HelmChart，用于配置更新。",
+      "elements_involved": [
+        "DataAcqService",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认。DataAcqService的initialize和updateConfig都标记为CloudNative_HelmChart。fetchData标记为CloudNative_DockerImage，涉及数据获取的容器化实现。",
+      "elements_involved": [
+        "DataAcqService",
+        "CloudNative_HelmChart",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "用户选择模式的selectMode是CloudNative_K8sCluster，navigateToMode是CloudNative_DockerImage。这些导航相关的标记要区分开。",
+      "elements_involved": [
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "CloudNative_K8sCluster",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "正确。ModeSelectionScreen的selectMode标记K8sCluster，navigateToMode标记DockerImage。UserSettings的setMode标记ServiceMesh。",
+      "elements_involved": [
+        "ModeSelectionScreen",
+        "UserSettings",
+        "CloudNative_K8sCluster",
+        "CloudNative_DockerImage",
+        "CloudNative_ServiceMesh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再检查一下startAcquisition和stopAcquisition的标记。startAcquisition是CloudNative_ServiceMesh，stopAcquisition同时有ServiceMesh和HelmChart。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "startAcquisition",
+        "stopAcquisition",
+        "CloudNative_ServiceMesh",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。startAcquisition标记ServiceMesh，stopAcquisition标记ServiceMesh和HelmChart。这反映了停止操作涉及更复杂的配置管理。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "CloudNative_ServiceMesh",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "图表交互的handleZoom和setHorizontalOffset都是CloudNative_HelmChart，这两个操作都涉及图表配置的动态调整。",
+      "elements_involved": [
+        "OscilloChartProvider",
+        "handleZoom",
+        "setHorizontalOffset",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，handleZoom和setHorizontalOffset都标记为CloudNative_HelmChart。这些操作通过HelmChart管理图表的缩放和平移配置。",
+      "elements_involved": [
+        "OscilloChartProvider",
+        "CloudNative_HelmChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "错误处理中的_handleConnectionError是CloudNative_Serverless，handleCriticalError是CloudNative_K8sCluster。Serverless用于自动恢复逻辑，K8sCluster用于关键错误的状态管理。",
+      "elements_involved": [
+        "DataAcqService",
+        "DataAcqProvider",
+        "CloudNative_Serverless",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认。_handleConnectionError标记Serverless，支持无服务器架构的自动恢复；handleCriticalError标记K8sCluster，涉及集群级别的错误状态管理。",
+      "elements_involved": [
+        "DataAcqService",
+        "DataAcqProvider",
+        "CloudNative_Serverless",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "用户变更设置的Change settings是CloudNative_K8sCluster，这个涉及用户配置的集群级管理。",
+      "elements_involved": [
+        "UserSettings",
+        "Change settings",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，UserSettings的Change settings标记为CloudNative_K8sCluster。这表示用户设置存储在K8s集群的配置中心。",
+      "elements_involved": [
+        "UserSettings",
+        "CloudNative_K8sCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下所有Note和循环结构。Initializer上的Note说明配置系统依赖，数据获取的loop要包含完整的处理流程。",
+      "elements_involved": [
+        "Initializer",
+        "Note",
+        "loop",
+        "Data Acquisition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Initializer上的Note：\"Configure system dependencies\"。数据获取loop包含：SocketIsolate接收数据、发送给ProcessingIsolate、解析处理、返回DataAcqService、更新DataAcqProvider，然后分支到两种图表模式。",
+      "elements_involved": [
+        "Initializer",
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "FFTChartProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "alt和else分支的结构要清晰：外部AP/设备AP的选择、Oscilloscope/FFT模式的分支、连接错误处理的分支，这些条件结构都要正确嵌套。",
+      "elements_involved": [
+        "alt",
+        "else",
+        "SetupScreen",
+        "GraphScreen",
+        "DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "结构已确认：第一层alt是External AP Selected/Internal AP Selected；第二层在数据获取loop内是Oscilloscope Mode/FFT Mode；第三层是Connection Error处理，内部还有Reconnection Failed的嵌套alt。",
+      "elements_involved": [
+        "alt",
+        "else",
+        "SetupScreen",
+        "GraphScreen",
+        "DataAcqService",
+        "SocketIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "所有参与者都齐全了吗？再核对一下：User、Main、Initializer、SetupScreen、SetupService、NetworkInfoService、ModeSelectionScreen、GraphScreen、UserSettings、DataAcqProvider、DataAcqService、SocketIsolate、ProcessingIsolate、OscilloChartProvider、FFTChartProvider、OscilloChart、FFTChart、ChartPainter。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "18个参与者全部齐全。序列完整覆盖了：应用初始化、设备连接（双模式）、模式选择、图表显示初始化、数据采集循环（双Isolate架构）、图表渲染（双模式）、用户交互（设置变更、图表操作、模式切换）、错误处理（重连机制）。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "CloudNative标记的分布再确认一下：K8sCluster用于集群管理操作，DockerImage用于容器配置，HelmChart用于配置管理，ServiceMesh用于服务通信，Serverless用于无服务器逻辑。这个分类逻辑一致吗？",
+      "elements_involved": [
+        "CloudNative_K8sCluster",
+        "CloudNative_DockerImage",
+        "CloudNative_HelmChart",
+        "CloudNative_ServiceMesh",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "分类逻辑一致。我统计了一下：K8sCluster出现6次（init、scanForWiFiNetworks、waitForNetworkChange、selectMode、Change settings、handleCriticalError）；DockerImage出现8次；HelmChart出现7次；ServiceMesh出现7次；Serverless出现5次。分布合理。",
+      "elements_involved": [
+        "CloudNative_K8sCluster",
+        "CloudNative_DockerImage",
+        "CloudNative_HelmChart",
+        "CloudNative_ServiceMesh",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整个架构图完整了。从用户启动应用到数据采集显示，再到错误处理和用户交互，流程清晰，CloudNative技术栈的集成也体现得很充分。可以定稿了。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "定稿确认。完整的ESP32示波器应用架构序列图，涵盖18个参与者，5种CloudNative技术标记，4层条件分支结构，1个数据获取循环，全面展示了云原生嵌入式数据采集系统的协作流程。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 2,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 150602.6676,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 67
+  }
+}

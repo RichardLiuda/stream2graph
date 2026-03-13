@@ -1,0 +1,434 @@
+{
+  "id": "gh_flowchart_00345",
+  "source": "github",
+  "source_url": "https://github.com/imutkarshpatil/fhir-connector/blob/6322952c526be4b5c52792db2ff3d5ee75146c14/docs/diagrams/DataFlow_DLQ.mmd",
+  "github_repo": "imutkarshpatil/fhir-connector",
+  "github_file_path": "docs/diagrams/DataFlow_DLQ.mmd",
+  "diagram_type": "flowchart",
+  "code": "flowchart TB\n  subgraph Connector[\"Connector (worker)\"]\n    direction TB\n    1[\"Claim outbox row <br>(locked_by, lock_expires_at)\"]\n    2[\"Attempt FHIR call<br>(conditional PUT /Patient...)\"]\n    3a[Success: <br>record fhir_resource_id + meta.versionId; <br>mark processed=true]\n    3b[\"Transient error <br>(5xx / network)\"]\n    3c[\"Non-retryable error <br>(4xx conflict / malformed)\"]\n    4[Increment attempts; <br>release lock & schedule <br>retry with backoff]\n    5[Attempts > threshold ? <br>-> move to DLQ]\n  end\n\n  subgraph DB[\"PostgreSQL\"]\n    direction TB\n    OUT[outbox row]\n    DLQ[dlq table<br/>outbox_id, original_payload, <br>last_error, attempts, <br>first_failed_at]\n  end\n\n  subgraph Ops[\"Operations\"]\n    direction TB\n    ALERT[Alert: <br>DLQ growth / high retry rate]\n  end\n\n  OUT --> 1 --> 2\n  2 -- 2xx --> 3a --> OUT\n  2 -- transient --> 3b --> 4 --> OUT\n  2 -- non-retryable --> 3c --> 5 --> DLQ\n  DLQ --> ALERT\n",
+  "content_size": 934,
+  "collected_at": "2026-02-06T01:43:32.904322",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "imutkarshpatil",
+  "repo_name": "fhir-connector",
+  "repo_description": "🏥 Health Tables → FHIR Connector Service",
+  "repo_language": "JavaScript",
+  "repo_topics": [],
+  "repo_created_at": "2025-10-04T21:05:16Z",
+  "repo_updated_at": "2025-10-05T21:51:42Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的 Connector 工作流，处理 FHIR 资源的同步。核心是从 PostgreSQL 的 outbox 表里取数据，然后尝试调用 FHIR API。",
+      "elements_involved": [
+        "Connector",
+        "PostgreSQL",
+        "outbox row",
+        "FHIR call"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我先把 Connector 画成一个子图，里面包含 worker 的核心步骤。第一步是不是要从 outbox 里 claim 一行数据，同时加上锁机制？",
+      "elements_involved": [
+        "Connector",
+        "outbox row",
+        "locked_by",
+        "lock_expires_at"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，claim 的时候要设置 locked_by 和 lock_expires_at，防止多个 worker 抢同一行。然后第二步是尝试调用 FHIR，用 conditional PUT 到 Patient 资源。",
+      "elements_involved": [
+        "claim outbox row",
+        "Attempt FHIR call",
+        "conditional PUT",
+        "Patient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，我在 Connector 子图里加上这两个步骤。接下来需要处理不同的响应结果对吧？成功、失败的情况都要覆盖。",
+      "elements_involved": [
+        "1",
+        "2",
+        "Connector"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，成功的话要记录 fhir_resource_id 和 meta.versionId，然后把 processed 标记为 true。这个作为 3a 分支。",
+      "elements_involved": [
+        "3a",
+        "fhir_resource_id",
+        "meta.versionId",
+        "processed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "失败的情况我想到两种：一种是 5xx 或者网络问题，可以重试；另一种是 4xx 冲突或者请求格式错误，这种就不重试了。是这样吗？",
+      "elements_involved": [
+        "3b",
+        "3c",
+        "Transient error",
+        "Non-retryable error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。3b 是 transient error，包括 5xx 和网络超时；3c 是 non-retryable，比如 409 conflict 或者 malformed payload。这两种要走不同的处理路径。",
+      "elements_involved": [
+        "3b",
+        "3c",
+        "5xx",
+        "network",
+        "4xx conflict",
+        "malformed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在 Connector 里加上 3a、3b、3c 三个分支节点。对于 3b 的 transient error，后续怎么处理？需要重试机制吗？",
+      "elements_involved": [
+        "3a",
+        "3b",
+        "3c",
+        "Connector"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要。3b 之后进入步骤 4：增加 attempts 计数，释放锁，然后用 backoff 策略重新调度重试。这个要连回 outbox，让任务能被再次 claim。",
+      "elements_involved": [
+        "4",
+        "Increment attempts",
+        "release lock",
+        "schedule retry",
+        "backoff",
+        "OUT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "那重试次数有没有上限？如果一直失败怎么办，不能无限重试吧？",
+      "elements_involved": [
+        "attempts",
+        "threshold"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "当然有。步骤 5 要判断 attempts 是否超过阈值，超了就直接移到 DLQ。3c 的 non-retryable error 也是直接进 DLQ，不需要重试。",
+      "elements_involved": [
+        "5",
+        "Attempts threshold",
+        "DLQ",
+        "move to DLQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "清楚了，我加上步骤 5 和 DLQ 的判断逻辑。现在需要把数据库结构也画出来，除了 outbox 还要有个 dlq table 对吧？",
+      "elements_involved": [
+        "5",
+        "DLQ",
+        "PostgreSQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，PostgreSQL 子图里要有 OUT 代表 outbox row，还有 DLQ 表，字段包括 outbox_id、original_payload、last_error、attempts、first_failed_at。",
+      "elements_involved": [
+        "PostgreSQL",
+        "OUT",
+        "DLQ",
+        "outbox_id",
+        "original_payload",
+        "last_error",
+        "attempts",
+        "first_failed_at"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "数据库结构画好了。现在来理一下连接线：OUT 到步骤 1，步骤 1 到步骤 2，这个没问题。步骤 2 之后分三条线出去？",
+      "elements_involved": [
+        "OUT",
+        "1",
+        "2",
+        "2xx",
+        "transient",
+        "non-retryable"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，2 之后三条分支：2xx 成功走 3a 回到 OUT；transient error 走 3b 到 4 再回 OUT；non-retryable 走 3c 到 5 再到 DLQ。",
+      "elements_involved": [
+        "2",
+        "2xx",
+        "3a",
+        "OUT",
+        "transient",
+        "3b",
+        "4",
+        "non-retryable",
+        "3c",
+        "5",
+        "DLQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "连接关系都画上了。不过我觉得还缺一个运维视角，DLQ 增长或者重试率过高的时候需要告警，这个要体现吗？",
+      "elements_involved": [
+        "DLQ",
+        "Alert",
+        "retry rate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "非常需要！加个 Operations 子图，里面放 ALERT 节点，监控 DLQ growth 和 high retry rate，从 DLQ 连一条线过去。",
+      "elements_involved": [
+        "Operations",
+        "ALERT",
+        "DLQ growth",
+        "high retry rate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了 Operations 子图和 ALERT。整体结构应该完整了，我检查一下三个子图的方向都是 TB 从上到下。",
+      "elements_involved": [
+        "Connector",
+        "PostgreSQL",
+        "Operations",
+        "TB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "步骤 3a 的文案我再确认下，要强调记录 fhir_resource_id 和 versionId，还有标记 processed=true，这三个动作都要写清楚。",
+      "elements_involved": [
+        "3a",
+        "fhir_resource_id",
+        "meta.versionId",
+        "processed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "好的，我调整一下 3a 的显示文本，把三个动作都明确列出来。另外步骤 4 的 release lock 和 schedule retry 我也再细化一下描述。",
+      "elements_involved": [
+        "3a",
+        "4"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以了。还有 DLQ 表的字段，first_failed_at 是记录首次失败时间，方便我们统计消息在队列里待了多久。",
+      "elements_involved": [
+        "DLQ",
+        "first_failed_at"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "conditional PUT 的具体路径需要写全吗？比如 /Patient 后面是不是还有参数？",
+      "elements_involved": [
+        "2",
+        "conditional PUT",
+        "Patient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "简写就行，用 /Patient... 表示后面还有查询参数，比如按 identifier 匹配。重点是表达 conditional update 的语义。",
+      "elements_involved": [
+        "2",
+        "conditional PUT",
+        "Patient..."
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新。我再确认一下步骤 5 的文案，Attempts threshold ? 后面用短横线引出 move to DLQ，这样读起来更顺。",
+      "elements_involved": [
+        "5",
+        "Attempts threshold",
+        "move to DLQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题。整个流程看起来完整了：从 outbox claim，尝试 FHIR 调用，三种结果分别处理，重试有 backoff 和上限，最终失败进 DLQ 并触发告警。",
+      "elements_involved": [
+        "OUT",
+        "1",
+        "2",
+        "3a",
+        "3b",
+        "3c",
+        "4",
+        "5",
+        "DLQ",
+        "ALERT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "最后确认一个细节：步骤 4 的 Increment attempts 是在释放锁之前还是之后？这个顺序会影响并发安全。",
+      "elements_involved": [
+        "4",
+        "Increment attempts",
+        "release lock"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "先 increment attempts，再 release lock，这样锁还在的时候更新计数更安全。然后 schedule retry 是异步的，不阻塞。",
+      "elements_involved": [
+        "4",
+        "Increment attempts",
+        "release lock",
+        "schedule retry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，顺序已调整。所有连接线和节点都检查完毕，三个子图的边界清晰，跨子图的连接也正确标注了。",
+      "elements_involved": [
+        "Connector",
+        "PostgreSQL",
+        "Operations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个图可以了。涵盖了正常流程、重试机制、死信队列和运维告警，开发团队可以直接照着实现了。",
+      "elements_involved": [
+        "Connector",
+        "PostgreSQL",
+        "Operations",
+        "OUT",
+        "DLQ",
+        "ALERT"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 29,
+    "repair_count": 1,
+    "grounding_acts_count": 29,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:40Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:24Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:24Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 65655.3235,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 29
+  }
+}

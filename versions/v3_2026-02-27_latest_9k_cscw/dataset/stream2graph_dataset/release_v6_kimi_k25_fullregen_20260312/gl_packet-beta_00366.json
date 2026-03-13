@@ -1,0 +1,155 @@
+{
+  "id": "gl_packet-beta_00366",
+  "source": "gitlab",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/DATA_ACQ_ALG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant Device\n    participant Socket\n    participant ProcessingIsolate\n    participant DataService\n    participant Provider\n    participant ChartService\n    participant Chart\n\n    loop While acquisition active\n        Device->>Socket: Send binary data packet\n        Socket->>ProcessingIsolate: Forward raw data\n        \n        ProcessingIsolate->>ProcessingIsolate: Parse binary format\n        ProcessingIsolate->>ProcessingIsolate: Apply bit masks\n        ProcessingIsolate->>ProcessingIsolate: Extract values & channels\n        ProcessingIsolate->>ProcessingIsolate: Convert to voltage\n        \n        alt With trigger detection\n            ProcessingIsolate->>ProcessingIsolate: Run trigger detection algorithm\n        end\n        \n        ProcessingIsolate->>DataService: Send processed DataPoints\n        DataService->>DataService: Update metrics (frequency, max value)\n        DataService->>Provider: Update data streams\n        \n        alt Oscilloscope Mode\n            Provider->>ChartService: Forward time-domain data\n            ChartService->>ChartService: Apply active filters\n            \n            alt Filter enabled\n                ChartService->>ChartService: Apply selected filter (MA, Exp, LP)\n                \n                alt Zero-Phase enabled\n                    ChartService->>ChartService: Apply forward-backward filtering\n                end\n            end\n            \n            ChartService->>Chart: Update waveform display\n        else FFT Mode\n            Provider->>ChartService: Forward time-domain data\n            ChartService->>ChartService: Buffer points until blockSize reached\n            ChartService->>ChartService: Perform FFT computation\n            ChartService->>Chart: Update frequency spectrum display\n        end\n    end",
+  "content_size": 1803,
+  "collected_at": "2026-02-06T14:08:20.778991",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个实时数据采集系统的时序图。核心流程是设备通过Socket发送二进制数据包，经过ProcessingIsolate做解析和转换，最后到Chart显示。关键是要体现两种工作模式：示波器模式和FFT模式。",
+      "elements_involved": [
+        "Device",
+        "Socket",
+        "ProcessingIsolate",
+        "Chart",
+        "Oscilloscope Mode",
+        "FFT Mode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。ProcessingIsolate内部需要做哪些具体处理？我看到有Parse binary format，还有Apply bit masks和Convert to voltage，这些都要展开吗？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "Parse binary format",
+        "Apply bit masks",
+        "Convert to voltage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，ProcessingIsolate内部这几步都要体现。另外还要加一个触发检测的分支，用alt框住，不是所有数据都需要触发检测。处理完后通过DataService更新metrics，包括frequency和max value。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "trigger detection algorithm",
+        "DataService",
+        "frequency",
+        "max value"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，ProcessingIsolate到DataService的连线画好了。现在处理两种显示模式：示波器模式下，Provider把时域数据给ChartService，ChartService要做滤波处理，包括MA、Exp、LP这几种可选滤波器，还有可能启用零相位滤波。",
+      "elements_involved": [
+        "Provider",
+        "ChartService",
+        "MA",
+        "Exp",
+        "LP",
+        "Zero-Phase",
+        "forward-backward filtering"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，零相位滤波的条件应该是Filter enabled的前提下才能启用吧？这两个alt是嵌套关系，不是并列的。",
+      "elements_involved": [
+        "Filter enabled",
+        "Zero-Phase enabled",
+        "ChartService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "你说得对，我调整一下结构。Filter enabled是外层alt，里面再嵌套Zero-Phase enabled的判断。这样逻辑就对了。",
+      "elements_involved": [
+        "Filter enabled",
+        "Zero-Phase enabled",
+        "ChartService"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "FFT模式的流程不一样：ChartService需要先Buffer points累积到blockSize，然后Perform FFT computation，最后更新频谱显示。这个和示波器模式是互斥的else分支。",
+      "elements_involved": [
+        "FFT Mode",
+        "ChartService",
+        "Buffer points",
+        "blockSize",
+        "Perform FFT computation",
+        "frequency spectrum display"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "整个流程都串起来了：从Device采集开始，经过Socket、ProcessingIsolate解析转换，通过DataService和Provider分发，最后ChartService根据模式选择做滤波实时显示或者FFT频谱分析。整个loop框住While acquisition active，结构应该完整了。",
+      "elements_involved": [
+        "Device",
+        "Socket",
+        "ProcessingIsolate",
+        "DataService",
+        "Provider",
+        "ChartService",
+        "Chart",
+        "While acquisition active"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 27121.902,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

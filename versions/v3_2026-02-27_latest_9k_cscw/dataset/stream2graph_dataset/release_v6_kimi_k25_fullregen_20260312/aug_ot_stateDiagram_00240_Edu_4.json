@@ -1,0 +1,170 @@
+{
+  "id": "aug_ot_stateDiagram_00240_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/nostr-notifications/notification-state-machine.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Education_ContentCDN] --> Initializing: App starts\n\n    Initializing --> Loading: Load cached notifications\n    Loading --> Subscribing: Cache loaded\n    Loading --> Error: Load failed\n\n    Subscribing --> Active: Subscriptions ready\n    Subscribing --> Error: Subscription failed\n\n    Active --> Active: New notification arrives\n    Active --> Processing: User interaction\n    Active --> Updating: Mark as read\n\n    Processing --> Active: Interaction complete\n    Updating --> Active: Update complete\n\n    Active --> Cleanup: 30 days passed\n    Cleanup --> Active: Old notifications removed\n\n    Error --> Retrying: Retry after delay\n    Retrying --> Subscribing: Retry attempt\n    Retrying --> Failed: Max retries reached\n\n    Failed --> [Education_GradeSync]: Unrecoverable error\n\n    state Active {Education_LMS_Portal] --> Unread\n        Unread --> Read: Mark as read\n        Read --> Archived: Archive\n        Archived --> Deleted: Delete\n        Deleted --> [Education_GradeSync]\n    }\n\n    note right of Active\n        Notification lifecycle:\n        - Arrives as Unread\n        - User marks as Read\n        - Auto-archived after 7 days\n        - Deleted after 30 days\n    end note",
+  "content_size": 1147,
+  "collected_at": "2026-02-06T10:39:34.042337",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Education",
+  "seed_id": "ot_stateDiagram_00240",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为教育平台的通知系统设计一个完整的状态流转图。核心场景是：用户打开LMS门户后，通知从CDN加载，经历订阅、激活，最后根据用户操作和时效性进入不同终态。我特别关注错误恢复机制和自动清理逻辑。",
+      "elements_involved": [
+        "Education_ContentCDN",
+        "Education_LMS_Portal",
+        "Initializing",
+        "Loading",
+        "Subscribing",
+        "Active",
+        "Error",
+        "Cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先确认一下启动流程：应用从Education_ContentCDN启动后进入Initializing状态，然后尝试加载缓存通知到Loading状态。如果缓存加载成功就进入Subscribing，失败则转入Error——这个分支对吗？另外，Error之后是支持重试还是直接失败？",
+      "elements_involved": [
+        "Education_ContentCDN",
+        "Initializing",
+        "Loading",
+        "Subscribing",
+        "Error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Loading到Subscribing是正常路径。Error需要支持重试——我们设计一个Retrying状态，延迟后重新尝试订阅。但如果达到最大重试次数，就要进入Failed终态，最终流转到Education_GradeSync进行错误上报。",
+      "elements_involved": [
+        "Loading",
+        "Subscribing",
+        "Error",
+        "Retrying",
+        "Failed",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主干画出来：Initializing → Loading → Subscribing → Active，同时加上Error → Retrying → Subscribing的恢复路径，以及Retrying → Failed → Education_GradeSync的异常终态。Active状态内部需要展开吗？",
+      "elements_involved": [
+        "Initializing",
+        "Loading",
+        "Subscribing",
+        "Active",
+        "Error",
+        "Retrying",
+        "Failed",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Active需要展开成子状态图，这是用户实际交互的核心。门户内通知从Unread开始，用户标记后变为Read，7天后自动Archived，30天后Deleted并同步到GradeSync。另外Active本身还要支持新通知到达的自循环，以及用户交互时的Processing状态和标记已读时的Updating状态。",
+      "elements_involved": [
+        "Active",
+        "Education_LMS_Portal",
+        "Unread",
+        "Read",
+        "Archived",
+        "Deleted",
+        "Processing",
+        "Updating",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Processing和Updating都是临时状态吗？我理解Processing是用户点击通知时的处理中状态，完成后回到Active；Updating是执行标记已读操作，完成后也回到Active。另外，30天后的Cleanup是在Active层面触发还是子状态内部处理？",
+      "elements_involved": [
+        "Processing",
+        "Updating",
+        "Active",
+        "Cleanup",
+        "Unread",
+        "Read",
+        "Archived"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Processing和Updating都是临时状态，完成后返回Active。Cleanup放在Active层面——30天无操作后触发清理，移除旧通知后回到Active。子状态内部只负责Unread→Read→Archived→Deleted的递进，Deleted后数据同步到GradeSync。",
+      "elements_involved": [
+        "Processing",
+        "Updating",
+        "Active",
+        "Cleanup",
+        "Unread",
+        "Read",
+        "Archived",
+        "Deleted",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "结构完成了。我在Active右侧加一个注释框，说明通知生命周期：到达时为Unread，用户标记为Read，7天后自动归档，30天后删除。这样整个流转就清晰了——从CDN启动到门户内状态管理，再到错误恢复和数据同步，完整覆盖了业务需求。",
+      "elements_involved": [
+        "Active",
+        "Unread",
+        "Read",
+        "Archived",
+        "Deleted",
+        "Education_ContentCDN",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 37765.0039,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

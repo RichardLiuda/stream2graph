@@ -1,0 +1,356 @@
+{
+  "id": "aug_ot_stateDiagram_00265_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Coregentis/MPLP-Protocol/blob/52719b884a395ab1579588e03e6a6cac9a797ccf/docs/docs/specification/profiles/diagrams/sa-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Coregentis/MPLP-Protocol",
+  "diagram_type": "stateDiagram",
+  "code": "%%{FinTech_AuthVault}}}%%\n%% MPLP SA Profile Lifecycle State Machine\n%% Version: 1.0.0 | Frozen: 2025-12-03\n%% Schema Reference: schemas/v2/invariants/sa-invariants.yaml\n\nstateDiagram-v2\n    direction TB\n    \n    %% States\n    [FinTech_AuthVault] --> Initialize: Boot Runtime\n    Initialize --> LoadContext: SA Created (FinTech_PaymentGateway)\n    LoadContext --> EvaluatePlan: Context Valid (FinTech_AuthVault)\n    EvaluatePlan --> ExecuteStep: DAG Resolved\n    ExecuteStep --> EmitTrace: Step Done\n    EmitTrace --> ExecuteStep: More Steps\n    EmitTrace --> Complete: All Steps Done\n    Complete --> [FinTech_TransactionQueue]: Terminate\n    \n    %% Error handling\n    LoadContext --> Failed: Context Invalid\n    EvaluatePlan --> Failed: Plan Invalid\n    ExecuteStep --> HandleError: Step Error\n    HandleError --> ExecuteStep: Retry\n    HandleError --> Failed: Fatal Error\n    Failed --> [FinTech_FraudDetection]: Terminate\n    \n    %% State descriptions\n    state Initialize {FinTech_LedgerService] --> CreateSAInstance\n        CreateSAInstance --> GenerateSAId\n        GenerateSAId --> EmitSAInitialized\n        EmitSAInitialized --> [FinTech_AuthVault]\n    }\n    \n    state LoadContext {FinTech_FraudDetection] --> ValidateContextId\n        ValidateContextId --> CheckContextStatus\n        CheckContextStatus --> EmitSAContextLoaded\n        EmitSAContextLoaded --> [FinTech_LedgerService]\n        \n        note right of ValidateContextId\n            sa_requires_context:\n            context_id must be UUID v4\n        end note\n        \n        note right of CheckContextStatus\n            sa_context_must_be_active:\n            context.status == 'active'\n        end note\n    }\n    \n    state EvaluatePlan {FinTech_AuthVault] --> ValidatePlanBinding\n        ValidatePlanBinding --> ParseSteps\n        ParseSteps --> ResolveDependencies\n        ResolveDependencies --> BuildExecutionDAG\n        BuildExecutionDAG --> EmitSAPlanEvaluated\n        EmitSAPlanEvaluated --> [FinTech_AuthVault]\n        \n        note right of ValidatePlanBinding\n            sa_plan_context_binding:\n            plan.context_id == context.context_id\n        end note\n        \n        note right of ParseSteps\n            sa_plan_has_steps:\n            steps.length >= 1\n            sa_steps_agent_role_if_present:\n            if agent_role present, non-empty\n        end note\n    }\n    \n    state ExecuteStep {FinTech_PaymentGateway] --> SelectExecutor\n        SelectExecutor --> RunExecution\n        RunExecution --> UpdateStepStatus\n        UpdateStepStatus --> [FinTech_FraudDetection]\n        \n        note right of SelectExecutor\n            Match agent_role to executor\n            (FinTech_FraudDetection)\n        end note\n    }\n    \n    state EmitTrace {FinTech_LedgerService] --> WriteSegment\n        WriteSegment --> RecordOutcome\n        RecordOutcome --> EmitSATraceEmitted\n        EmitSATraceEmitted --> [FinTech_PaymentGateway]\n        \n        note right of WriteSegment\n            sa_trace_context_binding:\n            trace.context_id == context.context_id\n            sa_trace_plan_binding:\n            trace.plan_id == plan.plan_id\n        end note\n    }\n    \n    state Complete {FinTech_TransactionQueue] --> FinalizeTrace\n        FinalizeTrace --> EmitSACompleted\n        EmitSACompleted --> [FinTech_PaymentGateway]\n    }\n    \n    state HandleError {FinTech_FraudDetection] --> ClassifyError\n        ClassifyError --> DecideAction\n        DecideAction --> [FinTech_LedgerService]\n    }\n",
+  "content_size": 3394,
+  "collected_at": "2026-02-06T10:39:54.536966",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "ot_stateDiagram_00265",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为MPLP的SA（智能体）生命周期设计一个状态机，核心是FinTech_AuthVault作为入口，负责整个运行时启动。",
+      "elements_involved": [
+        "FinTech_AuthVault",
+        "Initialize"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以FinTech_AuthVault是外部触发点，通过Initialize状态来启动运行时。那Initialize内部需要展开吗？",
+      "elements_involved": [
+        "Initialize",
+        "CreateSAInstance"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要展开。Initialize里面要有CreateSAInstance、GenerateSAId，最后EmitSAInitialized回到FinTech_AuthVault。",
+      "elements_involved": [
+        "CreateSAInstance",
+        "GenerateSAId",
+        "EmitSAInitialized",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Initialize状态内部结构已添加。接下来从Initialize到LoadContext的触发条件是什么？",
+      "elements_involved": [
+        "Initialize",
+        "LoadContext",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SA创建完成后，由FinTech_PaymentGateway触发进入LoadContext。LoadContext内部需要验证context_id，必须是UUID v4格式。",
+      "elements_involved": [
+        "LoadContext",
+        "FinTech_PaymentGateway",
+        "ValidateContextId",
+        "CheckContextStatus"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "验证通过后EmitSAContextLoaded，然后指向FinTech_LedgerService对吗？另外如果context无效怎么办？",
+      "elements_involved": [
+        "EmitSAContextLoaded",
+        "FinTech_LedgerService",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。无效直接进Failed状态。还有CheckContextStatus要确保context.status是active，这个也要标注。",
+      "elements_involved": [
+        "CheckContextStatus",
+        "Failed",
+        "LoadContext"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "LoadContext内部结构和错误分支已添加。现在context有效后进入EvaluatePlan，这里需要做什么？",
+      "elements_involved": [
+        "LoadContext",
+        "EvaluatePlan",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EvaluatePlan由FinTech_AuthVault驱动，内部五步：ValidatePlanBinding验证plan和context绑定，ParseSteps解析步骤，ResolveDependencies解析依赖，BuildExecutionDAG构建执行DAG，最后EmitSAPlanEvaluated。",
+      "elements_involved": [
+        "EvaluatePlan",
+        "ValidatePlanBinding",
+        "ParseSteps",
+        "ResolveDependencies",
+        "BuildExecutionDAG",
+        "EmitSAPlanEvaluated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ParseSteps的约束条件挺多的，steps至少一个，agent_role如果存在必须非空。还有plan.context_id必须等于context.context_id？",
+      "elements_involved": [
+        "ParseSteps",
+        "ValidatePlanBinding",
+        "plan.context_id",
+        "context.context_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，这些不变量都要作为note标注在图上。EvaluatePlan如果失败也走Failed分支。",
+      "elements_involved": [
+        "EvaluatePlan",
+        "Failed",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EvaluatePlan完成。DAG构建好后进入ExecuteStep，这个由FinTech_PaymentGateway处理？",
+      "elements_involved": [
+        "EvaluatePlan",
+        "ExecuteStep",
+        "FinTech_PaymentGateway",
+        "DAG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，ExecuteStep内部三步：SelectExecutor匹配agent_role到FinTech_FraudDetection的执行器，然后RunExecution执行，UpdateStepStatus更新状态后指向FinTech_FraudDetection。",
+      "elements_involved": [
+        "ExecuteStep",
+        "SelectExecutor",
+        "RunExecution",
+        "UpdateStepStatus",
+        "FinTech_FraudDetection",
+        "agent_role"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "执行出错的话需要HandleError状态吧？重试机制怎么设计？",
+      "elements_involved": [
+        "ExecuteStep",
+        "HandleError",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Step Error进HandleError，内部ClassifyError分类错误，DecideAction决定是Retry回ExecuteStep，还是Fatal Error进Failed。",
+      "elements_involved": [
+        "HandleError",
+        "ClassifyError",
+        "DecideAction",
+        "ExecuteStep",
+        "Failed",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "错误处理分支已添加。执行成功后到EmitTrace，这个由FinTech_LedgerService处理？",
+      "elements_involved": [
+        "ExecuteStep",
+        "EmitTrace",
+        "FinTech_LedgerService",
+        "EmitTrace"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，EmitTrace内部WriteSegment写片段，RecordOutcome记录结果，EmitSATraceEmitted后指向FinTech_PaymentGateway。注意trace要和context、plan都绑定。",
+      "elements_involved": [
+        "EmitTrace",
+        "WriteSegment",
+        "RecordOutcome",
+        "EmitSATraceEmitted",
+        "FinTech_PaymentGateway",
+        "trace.context_id",
+        "trace.plan_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "如果还有更多步骤，EmitTrace要循环回ExecuteStep对吧？全部完成才到Complete。",
+      "elements_involved": [
+        "EmitTrace",
+        "ExecuteStep",
+        "Complete",
+        "All Steps Done"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。Complete状态由FinTech_TransactionQueue处理，内部FinalizeTrace然后EmitSACompleted，最后指向FinTech_PaymentGateway，整个生命周期结束。",
+      "elements_involved": [
+        "Complete",
+        "FinTech_TransactionQueue",
+        "FinalizeTrace",
+        "EmitSACompleted",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Complete已添加。Failed状态的终止点我注意到有两个分支，LoadContext和EvaluatePlan的失败都指向Failed，然后到FinTech_FraudDetection？",
+      "elements_involved": [
+        "Failed",
+        "FinTech_FraudDetection",
+        "Terminate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，所有Fatal Error最终都汇聚到Failed，由FinTech_FraudDetection做审计和终止。另外Complete正常结束是到FinTech_TransactionQueue。",
+      "elements_involved": [
+        "Failed",
+        "FinTech_FraudDetection",
+        "Complete",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我注意到HandleError的DecideAction指向FinTech_LedgerService，但图上没有后续连接，这是有意设计的吗？",
+      "elements_involved": [
+        "HandleError",
+        "DecideAction",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不对，这里有问题。DecideAction之后应该直接根据决策结果，要么回到ExecuteStep，要么去Failed。FinTech_LedgerService只是记录决策日志，不应该作为状态出口。请去掉那个箭头，保持DecideAction内部闭环。",
+      "elements_involved": [
+        "DecideAction",
+        "FinTech_LedgerService",
+        "ExecuteStep",
+        "Failed"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修复，DecideAction现在正确连接到ExecuteStep和Failed。整个状态机从FinTech_AuthVault启动，经过Initialize、LoadContext、EvaluatePlan、ExecuteStep、EmitTrace的循环，最终到Complete或Failed终止，所有内部状态和约束条件都已标注。",
+      "elements_involved": [
+        "FinTech_AuthVault",
+        "Initialize",
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "EmitTrace",
+        "Complete",
+        "Failed"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 24,
+    "repair_count": 1,
+    "grounding_acts_count": 24,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 36044.3895,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 24
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "id": "aug_ot_stateDiagram_00240_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/nostr-notifications/notification-state-machine.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [IoT_Industrial_ActuatorController] --> Initializing: App starts\n\n    Initializing --> Loading: Load cached notifications\n    Loading --> Subscribing: Cache loaded\n    Loading --> Error: Load failed\n\n    Subscribing --> Active: Subscriptions ready\n    Subscribing --> Error: Subscription failed\n\n    Active --> Active: New notification arrives\n    Active --> Processing: User interaction\n    Active --> Updating: Mark as read\n\n    Processing --> Active: Interaction complete\n    Updating --> Active: Update complete\n\n    Active --> Cleanup: 30 days passed\n    Cleanup --> Active: Old notifications removed\n\n    Error --> Retrying: Retry after delay\n    Retrying --> Subscribing: Retry attempt\n    Retrying --> Failed: Max retries reached\n\n    Failed --> [IoT_Industrial_TelemetryStream]: Unrecoverable error\n\n    state Active {IoT_Industrial_PLC_Logic] --> Unread\n        Unread --> Read: Mark as read\n        Read --> Archived: Archive\n        Archived --> Deleted: Delete\n        Deleted --> [IoT_Industrial_PLC_Logic]\n    }\n\n    note right of Active\n        Notification lifecycle:\n        - Arrives as Unread\n        - User marks as Read\n        - Auto-archived after 7 days\n        - Deleted after 30 days\n    end note",
+  "content_size": 1147,
+  "collected_at": "2026-02-06T10:39:34.042337",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00240",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网通知系统画一个状态图。核心是ActuatorController启动后，要经过初始化、加载缓存、订阅消息这几个阶段，最后进入Active状态。Active里面还要细分通知的生命周期：未读、已读、归档、删除。",
+      "elements_involved": [
+        "IoT_Industrial_ActuatorController",
+        "Initializing",
+        "Loading",
+        "Subscribing",
+        "Active",
+        "Unread",
+        "Read",
+        "Archived",
+        "Deleted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，Active是一个复合状态，内部包含PLC逻辑处理通知流转。那如果缓存加载失败或者订阅失败怎么办？需要错误处理分支吗？",
+      "elements_involved": [
+        "Active",
+        "IoT_Industrial_PLC_Logic",
+        "Loading",
+        "Subscribing",
+        "Error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Loading失败要走到Error状态，然后进入Retrying重试。Subscribing失败也一样。Retrying最多试几次，最终还是失败就进到Failed状态，最后把错误上报到TelemetryStream。",
+      "elements_involved": [
+        "Loading",
+        "Error",
+        "Retrying",
+        "Subscribing",
+        "Failed",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，主干和错误分支都画好了。Active内部我放了四个子状态：Unread、Read、Archived、Deleted。另外加了个注释说明通知7天自动归档、30天自动删除的业务规则。",
+      "elements_involved": [
+        "Active",
+        "Unread",
+        "Read",
+        "Archived",
+        "Deleted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，Active状态本身还需要一些自循环和外部流转。新通知到达时应该停留在Active，用户交互时要先进入Processing处理，标记已读时要走Updating状态。另外30天到期后要有Cleanup清理旧通知。",
+      "elements_involved": [
+        "Active",
+        "Processing",
+        "Updating",
+        "Cleanup"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，我补上这些：Active的自循环表示新通知到达，Processing处理用户交互，Updating处理标记已读操作，Cleanup负责30天后的旧通知清理。Cleanup完成后回到Active。",
+      "elements_involved": [
+        "Active",
+        "Processing",
+        "Updating",
+        "Cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "还有一点，Deleted状态完成后应该回到PLC_Logic，形成闭环。另外Retrying到Subscribing的箭头我确认一下，重试成功就重新走订阅流程对吧？",
+      "elements_involved": [
+        "Deleted",
+        "IoT_Industrial_PLC_Logic",
+        "Retrying",
+        "Subscribing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认了，Deleted指向PLC_Logic形成闭环，Retrying成功则回到Subscribing重新订阅。整个状态图现在完整了：从ActuatorController启动，经过初始化链路进入Active复合状态，内部处理通知生命周期，错误分支最终上报TelemetryStream。",
+      "elements_involved": [
+        "Deleted",
+        "IoT_Industrial_PLC_Logic",
+        "Retrying",
+        "Subscribing",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_TelemetryStream",
+        "Active"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 26191.9448,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

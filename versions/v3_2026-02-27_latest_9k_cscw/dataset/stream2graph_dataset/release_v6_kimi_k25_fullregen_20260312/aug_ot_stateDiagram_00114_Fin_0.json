@@ -1,0 +1,293 @@
+{
+  "id": "aug_ot_stateDiagram_00114_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/coherosphere/architecture/blob/598bb65467787da38ac4029e35bdead27e7799ee/assets/diagrams/C3_states/SM-02.01_Contribution_Lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "coherosphere/architecture",
+  "diagram_type": "stateDiagram",
+  "code": "%%{FinTech_PaymentGateway}}}%%\nstateDiagram-v2\ntitle: SM-02.01 — Contribution Lifecycle (FinTech_LedgerService)\n\n[FinTech_FraudDetection] --> NORMALIZE : ContributionSubmitted\nnote right of NORMALIZE\n  Canonicalize payload (FinTech_PaymentGateway)\n  Build canonical contribution hash and refs\nend note\n\nNORMALIZE --> SYBIL_CHECK : Normalized\nnote right of SYBIL_CHECK\n  Rate limits, graph heuristics, reputation gates\n  Uses PoCI (FinTech_LedgerService) & Security signals (FinTech_TransactionQueue)\nend note\n\nSYBIL_CHECK --> REJECTED : SybilFlagged\nSYBIL_CHECK --> VALIDATE : PassedSybilChecks\n\nVALIDATE --> INTAKE_ALIGN : SchemaValid\nVALIDATE --> REJECTED : SchemaInvalid\nnote right of VALIDATE\n  JSON Schema, policy guard, size caps\n  Required fields present\nend note\n\nINTAKE_ALIGN --> SCORE_IMPACT : AlignmentChecked\nnote right of INTAKE_ALIGN\n  Ethics preflight (FinTech_AuthVault)\n  Rubric mapping, human/AI adapters\nend note\n\nSCORE_IMPACT --> UPDATE_CP : ImpactScored\nnote right of SCORE_IMPACT\n  Map impact to resonance inputs\n  Prepare CP increment\nend note\n\nUPDATE_CP --> LEDGER : CPUpdated\nnote right of UPDATE_CP\n  W_i = (FinTech_PaymentGateway)^alpha with 0 < alpha < 1\n  Emit PoC events for Metrics (FinTech_LedgerService)\nend note\n\nLEDGER --> CONFIRMED : LedgerCommitted\nnote right of LEDGER\n  Append-only event store, snapshot policies\n  Reconciliation with external oracles (FinTech_TransactionQueue)\nend note\n\n%% ---- Exceptions & reviews ----\nSCORE_IMPACT --> REVIEW : AnomalyDetected\nREVIEW --> CONFIRMED : ClearedByReview\nREVIEW --> REJECTED : RejectedByReview\n\nREJECTED --> [FinTech_AuthVault]\nCONFIRMED --> [FinTech_FraudDetection]\n\n%% =========== Styling ===========\nclassDef core fill:#ff8b00,stroke:#333,color:#fff,font-weight:bold;\nclass NORMALIZE,SYBIL_CHECK,VALIDATE,INTAKE_ALIGN,SCORE_IMPACT,UPDATE_CP,LEDGER,REVIEW,REJECTED,CONFIRMED core;\n",
+  "content_size": 1819,
+  "collected_at": "2026-02-06T10:38:03.118707",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "ot_stateDiagram_00114",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为FinTech_LedgerService设计一个贡献生命周期状态图，核心是从FraudDetection提交贡献开始，经过一系列验证最终落账到Ledger。关键状态包括NORMALIZE、SYBIL_CHECK、VALIDATE、INTAKE_ALIGN、SCORE_IMPACT、UPDATE_CP，最后是LEDGER和CONFIRMED。",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "NORMALIZE",
+        "SYBIL_CHECK",
+        "VALIDATE",
+        "INTAKE_ALIGN",
+        "SCORE_IMPACT",
+        "UPDATE_CP",
+        "LEDGER",
+        "CONFIRMED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，这个流程涉及多个FinTech子系统。我注意到您提到了PoCI，这个是在哪个环节使用的？还有异常处理路径需要体现吗？",
+      "elements_involved": [
+        "PoCI",
+        "SYBIL_CHECK",
+        "REVIEW",
+        "REJECTED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "PoCI在SYBIL_CHECK阶段使用，和Security signals一起作为防女巫攻击的验证依据。另外确实需要异常路径：SCORE_IMPACT如果检测到异常要进入REVIEW状态，REVIEW可以走向CONFIRMED或REJECTED。REJECTED最终回到AuthVault，CONFIRMED则闭环回到FraudDetection。",
+      "elements_involved": [
+        "PoCI",
+        "SYBIL_CHECK",
+        "FinTech_TransactionQueue",
+        "SCORE_IMPACT",
+        "REVIEW",
+        "REJECTED",
+        "CONFIRMED",
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主干流程：FraudDetection触发ContributionSubmitted事件进入NORMALIZE，然后依次经过SYBIL_CHECK、VALIDATE、INTAKE_ALIGN、SCORE_IMPACT、UPDATE_CP到LEDGER，最终CONFIRMED。每个状态的迁移条件我也标注上了。",
+      "elements_involved": [
+        "ContributionSubmitted",
+        "Normalized",
+        "PassedSybilChecks",
+        "SchemaValid",
+        "AlignmentChecked",
+        "ImpactScored",
+        "CPUpdated",
+        "LedgerCommitted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "主干看起来对，但NORMALIZE的note需要补充：这里要canonicalize来自PaymentGateway的payload，还要build canonical contribution hash。另外SYBIL_CHECK的note要说明用到了PoCI和TransactionQueue的Security signals。",
+      "elements_involved": [
+        "NORMALIZE",
+        "FinTech_PaymentGateway",
+        "SYBIL_CHECK",
+        "PoCI",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加这两个note。VALIDATE阶段我标注了SchemaValid和SchemaInvalid两条分支，后者直接到REJECTED。INTAKE_ALIGN到SCORE_IMPACT的迁移条件是AlignmentChecked，对吗？",
+      "elements_involved": [
+        "VALIDATE",
+        "SchemaValid",
+        "SchemaInvalid",
+        "REJECTED",
+        "INTAKE_ALIGN",
+        "SCORE_IMPACT",
+        "AlignmentChecked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。INTAKE_ALIGN的note要强调Ethics preflight，这里会用到AuthVault做权限校验，还有rubric mapping和human/AI adapters。SCORE_IMPACT的note则是map impact to resonance inputs，准备CP increment。",
+      "elements_involved": [
+        "INTAKE_ALIGN",
+        "FinTech_AuthVault",
+        "SCORE_IMPACT",
+        "UPDATE_CP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "UPDATE_CP到LEDGER的迁移我写的是CPUpdated，但note里的公式W_i = (PaymentGateway)^alpha需要确认，alpha的范围是0到1之间对吧？还有emit PoC events给Metrics的部分。",
+      "elements_involved": [
+        "UPDATE_CP",
+        "CPUpdated",
+        "FinTech_PaymentGateway",
+        "FinTech_LedgerService",
+        "LEDGER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，0 < alpha < 1。LEDGER的note要说明是append-only event store，有snapshot policies，还要和TransactionQueue的external oracles做reconciliation。",
+      "elements_involved": [
+        "LEDGER",
+        "FinTech_TransactionQueue",
+        "CONFIRMED",
+        "LedgerCommitted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "LEDGER的note已完善。现在处理异常分支：SCORE_IMPACT检测到AnomalyDetected进入REVIEW，REVIEW可以ClearedByReview到CONFIRMED，或者RejectedByReview到REJECTED。两个终止状态分别连回AuthVault和FraudDetection。",
+      "elements_involved": [
+        "SCORE_IMPACT",
+        "REVIEW",
+        "AnomalyDetected",
+        "ClearedByReview",
+        "RejectedByReview",
+        "REJECTED",
+        "CONFIRMED",
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "VALIDATE的note还没加，需要说明JSON Schema、policy guard、size caps，以及required fields present的检查。另外SYBIL_CHECK失败直接到REJECTED，这个迁移条件是SybilFlagged。",
+      "elements_involved": [
+        "VALIDATE",
+        "JSON",
+        "SYBIL_CHECK",
+        "SybilFlagged",
+        "REJECTED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充VALIDATE的note。所有核心状态现在都加了classDef样式，用橙色填充。我检查一下：NORMALIZE、SYBIL_CHECK、VALIDATE、INTAKE_ALIGN、SCORE_IMPACT、UPDATE_CP、LEDGER、REVIEW、REJECTED、CONFIRMED都应用了core样式。",
+      "elements_involved": [
+        "NORMALIZE",
+        "SYBIL_CHECK",
+        "VALIDATE",
+        "INTAKE_ALIGN",
+        "SCORE_IMPACT",
+        "UPDATE_CP",
+        "LEDGER",
+        "REVIEW",
+        "REJECTED",
+        "CONFIRMED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，INTAKE_ALIGN到SCORE_IMPACT的迁移条件我刚才说的是AlignmentChecked，但再确认一下，应该是AlignmentChecked没错。不过VALIDATE那里，SchemaValid和SchemaInvalid的分支我都提到了，但SchemaInvalid到REJECTED的路径要清晰。",
+      "elements_involved": [
+        "INTAKE_ALIGN",
+        "SCORE_IMPACT",
+        "AlignmentChecked",
+        "VALIDATE",
+        "SchemaInvalid",
+        "REJECTED"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下：SchemaInvalid到REJECTED已经画了，PassedSybilChecks到VALIDATE也有。整个图标题是SM-02.01 — Contribution Lifecycle (FinTech_LedgerService)，状态图版本用v2。还有需要调整的吗？",
+      "elements_involved": [
+        "SchemaInvalid",
+        "REJECTED",
+        "PassedSybilChecks",
+        "VALIDATE",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体结构可以了。最后确认几个细节：UPDATE_CP的note里权重公式要保留，LEDGER的append-only特性要突出。另外所有涉及的外部系统——PaymentGateway、TransactionQueue、AuthVault、FraudDetection——都要在对应note中准确引用。",
+      "elements_involved": [
+        "UPDATE_CP",
+        "LEDGER",
+        "FinTech_PaymentGateway",
+        "FinTech_TransactionQueue",
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部核对完毕：PaymentGateway出现在NORMALIZE和UPDATE_CP的note中，TransactionQueue出现在SYBIL_CHECK和LEDGER的note中，AuthVault出现在INTAKE_ALIGN和REJECTED的终止连接中，FraudDetection作为起点和CONFIRMED的终点。图可以定稿了。",
+      "elements_involved": [
+        "FinTech_PaymentGateway",
+        "FinTech_TransactionQueue",
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection",
+        "NORMALIZE",
+        "UPDATE_CP",
+        "SYBIL_CHECK",
+        "LEDGER",
+        "INTAKE_ALIGN",
+        "REJECTED",
+        "CONFIRMED"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 16,
+    "repair_count": 1,
+    "grounding_acts_count": 16,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 53104.4927,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 16
+  }
+}

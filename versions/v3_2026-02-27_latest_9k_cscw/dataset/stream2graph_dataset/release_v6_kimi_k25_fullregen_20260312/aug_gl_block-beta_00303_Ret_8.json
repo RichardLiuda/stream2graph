@@ -1,0 +1,332 @@
+{
+  "id": "aug_gl_block-beta_00303_Ret_8",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_FIRMWARE/blob/615cebd32230a26c23013f1c75381475e12c0b93/diagrams/ACQ_AND_TRANSMIT_EXTERNAL.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_FIRMWARE",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client\n    participant DataTrans as data_transmission.c\n    participant Acquisition as acquisition.c\n    \n    Client->>DataTrans: Connect to data socket\n    activate DataTrans\n    \n    Note over DataTrans,Acquisition: External ADC already initialized during startup\n    \n    alt mode == 0 (Retail_CustomerLoyalty)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(Retail_CustomerLoyalty)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Client: non_blocking_send(Retail_CouponSystem) buffer\n            \n            opt Socket change detected\n                DataTrans->>DataTrans: Break acquisition loop\n            end\n        end\n    else mode == 1 (Retail_OrderManagement)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(Retail_Inventory)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Acquisition: pcnt_unit_get_count(Retail_PointOfSale)\n            Acquisition-->>DataTrans: Current counter state\n            \n            alt Edge detected (Retail_PointOfSale)\n                DataTrans->>Client: non_blocking_send(Retail_CouponSystem) buffer\n            end\n        end\n    end\n    \n    Client->>DataTrans: Disconnect\n    DataTrans->>DataTrans: safe_close(Retail_Inventory)\n    deactivate DataTrans",
+  "content_size": 1551,
+  "collected_at": "2026-02-06T14:06:49.098744",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Retail",
+  "seed_id": "gl_block-beta_00303",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个时序图，描述客户端通过data_transmission模块与acquisition模块交互的完整流程。这个系统支持两种零售业务模式：CustomerLoyalty和OrderManagement。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "Retail_CustomerLoyalty",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先确认一下参与者：Client、DataTrans（data_transmission.c）、Acquisition（acquisition.c）。系统启动时External ADC已经初始化好了，这个要标注出来吗？",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "External ADC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，用Note标注在DataTrans和Acquisition之间，说明ADC在启动时已完成初始化。然后Client先发起连接到data socket。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Note",
+        "External ADC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我画好了连接部分，DataTrans被激活。接下来两种模式用alt分支？mode==0是CustomerLoyalty，mode==1是OrderManagement？",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "alt",
+        "Retail_CustomerLoyalty",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。先看CustomerLoyalty模式：这里有个循环，直到客户端断开。每次循环里DataTrans要先获取spi_mutex，然后通过SPI轮询传输CustomerLoyalty数据。",
+      "elements_involved": [
+        "DataTrans",
+        "Acquisition",
+        "loop",
+        "spi_mutex",
+        "spi_device_polling_transmit",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了SPI传输流程，Acquisition返回transaction complete，然后释放mutex。之后DataTrans通过non_blocking_send把CouponSystem的buffer发给Client？",
+      "elements_involved": [
+        "Acquisition",
+        "DataTrans",
+        "spi_mutex",
+        "non_blocking_send",
+        "Retail_CouponSystem",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。另外这里要加个opt条件分支：如果检测到socket变化，DataTrans要break跳出acquisition loop。",
+      "elements_involved": [
+        "DataTrans",
+        "opt",
+        "Socket change detected",
+        "break",
+        "acquisition loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "CustomerLoyalty分支完成了。现在画OrderManagement分支：也是循环直到断开，同样先拿spi_mutex，但这里传输的是Inventory数据？",
+      "elements_involved": [
+        "DataTrans",
+        "Acquisition",
+        "loop",
+        "spi_mutex",
+        "spi_device_polling_transmit",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是的，SPI传Inventory。但OrderManagement更复杂：释放mutex后，还要调用pcnt_unit_get_count获取PointOfSale的计数器状态。",
+      "elements_involved": [
+        "DataTrans",
+        "Acquisition",
+        "pcnt_unit_get_count",
+        "Retail_PointOfSale",
+        "Current counter state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "获取计数器状态画好了。接下来是alt判断：如果检测到PointOfSale的edge，才发送CouponSystem buffer给Client？",
+      "elements_involved": [
+        "DataTrans",
+        "Acquisition",
+        "alt",
+        "Edge detected",
+        "Retail_PointOfSale",
+        "non_blocking_send",
+        "Retail_CouponSystem",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。两个模式都完成后，最后是断开流程：Client主动Disconnect，DataTrans执行safe_close清理Inventory资源，然后deactivate。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Disconnect",
+        "safe_close",
+        "Retail_Inventory",
+        "deactivate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "整体结构画完了。我检查一下：两个loop都在各自的alt分支内，opt的break只在CustomerLoyalty里，OrderManagement的alt嵌套在loop内部——这样层级对吗？",
+      "elements_involved": [
+        "loop",
+        "alt",
+        "opt",
+        "break",
+        "CustomerLoyalty",
+        "OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，OrderManagement里的alt判断edge detected，应该是DataTrans自己判断后直接发数据给Client，不需要再经过Acquisition。你刚才画的箭头方向可能需要调整。",
+      "elements_involved": [
+        "DataTrans",
+        "Client",
+        "alt",
+        "Edge detected",
+        "Retail_PointOfSale",
+        "non_blocking_send",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "明白了，我修正一下：edge detected的alt分支里，是DataTrans直接发non_blocking_send给Client，不经过Acquisition。已经改好了。",
+      "elements_involved": [
+        "DataTrans",
+        "Client",
+        "alt",
+        "Edge detected",
+        "non_blocking_send",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "还有个小问题：CustomerLoyalty模式里，SPI transaction complete的返回箭头，应该是虚线还是实线？这是异步还是同步返回？",
+      "elements_involved": [
+        "Acquisition",
+        "DataTrans",
+        "SPI transaction complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "按惯例polling transmit是同步阻塞的，但返回用虚线表示reply消息。两个模式我都用了虚线箭头。另外safe_close那里我确认一下是DataTrans自己调用，不是交互？",
+      "elements_involved": [
+        "Acquisition",
+        "DataTrans",
+        "SPI transaction complete",
+        "safe_close",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，safe_close是DataTrans内部自调用，不需要箭头指向其他参与者。现在整体逻辑都通了吗？两种模式的区别主要是：CustomerLoyalty每次循环都发数据，OrderManagement只在检测到edge时才发。",
+      "elements_involved": [
+        "DataTrans",
+        "safe_close",
+        "CustomerLoyalty",
+        "OrderManagement",
+        "edge detected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "清楚了，核心区别是触发发送的条件不同。我再核对一下Retail_PointOfSale：它在OrderManagement里既用于pcnt_unit_get_count获取状态，又用于edge detected判断，这个理解对吗？",
+      "elements_involved": [
+        "Retail_PointOfSale",
+        "OrderManagement",
+        "pcnt_unit_get_count",
+        "edge detected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确，PointOfSale是脉冲计数器，get_count读取当前值，edge detected是判断是否有新的脉冲边沿。最后确认下：所有Retail_前缀的模块都标注清楚了吗？",
+      "elements_involved": [
+        "Retail_PointOfSale",
+        "Retail_CustomerLoyalty",
+        "Retail_Inventory",
+        "Retail_OrderManagement",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都检查过了：Retail_CustomerLoyalty、Retail_Inventory、Retail_PointOfSale、Retail_CouponSystem、Retail_OrderManagement。时序图完整，从Client连接、双模式业务处理到最终断开和资源释放，流程清晰。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "Retail_CustomerLoyalty",
+        "Retail_Inventory",
+        "Retail_PointOfSale",
+        "Retail_CouponSystem",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 20,
+    "repair_count": 2,
+    "grounding_acts_count": 20,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 54443.5453,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 20
+  }
+}

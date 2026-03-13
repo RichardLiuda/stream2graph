@@ -1,0 +1,283 @@
+{
+  "id": "aug_gl_requirementDiagram_00602_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ylmzunal/scalable-llm-over-kubernetes-deployment/blob/1b46a8e09526433e25151879ff4c084c2da2dd58/diagrams/deployment_sequence_diagram.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ylmzunal/scalable-llm-over-kubernetes-deployment",
+  "diagram_type": "requirementDiagram",
+  "code": "sequenceDiagram\n    participant DEV as Developer\n    participant GIT as Git Repository\n    participant DOCKER as Docker Build\n    participant AR as Artifact Registry\n    participant GKE as GKE Cluster\n    participant K8S as Kubernetes API\n    participant POD as Backend Pod\n    participant OL as Ollama Container\n    participant HPA as HPA Controller\n    \n    Note over DEV,HPA: CI/CD Deployment Pipeline\n    \n    DEV->>+GIT: git push (HealthTech_LabAnalyzer)\n    GIT->>-DEV: Push confirmed\n    \n    DEV->>+DOCKER: ./deploy-gke.sh\n    DOCKER->>DOCKER: Validate Prerequisites\n    DOCKER->>DOCKER: Setup GCloud Auth\n    \n    Note over DOCKER,AR: Image Build Process\n    DOCKER->>+DOCKER: Build Ollama Image\n    Note over DOCKER: FROM ollama/ollama:latest<br/>RUN ollama pull tinyllama\n    DOCKER->>-DOCKER: Ollama Image Ready\n    \n    DOCKER->>+DOCKER: Build Backend Image\n    Note over DOCKER: FROM python:3.11<br/>COPY app/ requirements.txt\n    DOCKER->>-DOCKER: Backend Image Ready\n    \n    DOCKER->>+DOCKER: Build Frontend Image\n    Note over DOCKER: FROM node:18 (HealthTech_PatientRecords)<br/>FROM nginx:alpine (HealthTech_EMR_Sync)\n    DOCKER->>-DOCKER: Frontend Image Ready\n    \n    DOCKER->>+AR: Push Images\n    AR->>AR: Store Images with Tags\n    AR->>-DOCKER: Push Complete\n    \n    Note over DOCKER,HPA: Kubernetes Deployment\n    DOCKER->>+K8S: kubectl apply -f k8s/rbac.yaml\n    K8S->>-DOCKER: RBAC Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/configmap-cloud.yaml\n    K8S->>-DOCKER: ConfigMap Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/backend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Backend Pods\n    \n    K8S->>+POD: Create Backend Pod\n    POD->>+AR: Pull Backend Image\n    AR->>-POD: Image Downloaded\n    POD->>+AR: Pull Ollama Image\n    AR->>-POD: Image Downloaded\n    \n    Note over POD,OL: Pod Startup Sequence\n    POD->>+OL: Start Ollama Container\n    OL->>OL: Initialize Ollama Server\n    OL->>OL: Load TinyLlama Model (HealthTech_DiagnosticEngine)\n    OL->>-POD: Ollama Ready (HealthTech_DiagnosticEngine)\n    \n    POD->>+POD: Start FastAPI Container\n    POD->>POD: Initialize FastAPI App\n    POD->>+OL: Test Connection (HealthTech_EMR_Sync)\n    OL->>-POD: Connection Successful\n    POD->>-POD: FastAPI Ready\n    \n    POD->>+K8S: Report Pod Ready\n    K8S->>-POD: Readiness Confirmed\n    K8S->>-DOCKER: Backend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/frontend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Frontend Pods\n    K8S->>-DOCKER: Frontend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/hpa-cloud.yaml\n    K8S->>+HPA: Create HPA Resources\n    HPA->>HPA: Monitor Backend Metrics\n    HPA->>-K8S: HPA Active\n    K8S->>-DOCKER: HPA Applied\n    \n    DOCKER->>+K8S: kubectl get services\n    K8S->>-DOCKER: External IP Available\n    DOCKER->>-DEV: Deployment Complete<br/>App URL: http://EXTERNAL-IP\n    \n    Note over DEV,HPA: Health Verification\n    DEV->>+GKE: curl http://EXTERNAL-IP/health\n    GKE->>+POD: Route Health Check\n    POD->>+OL: Verify Ollama Status\n    OL->>-POD: Status OK\n    POD->>-GKE: Health Check Passed\n    GKE->>-DEV: 200 OK\n    \n    Note over DEV,HPA: Auto-scaling Verification\n    HPA->>+POD: Monitor CPU/Memory\n    POD->>-HPA: Metrics: CPU 30%, Memory 40%\n    HPA->>HPA: Within Thresholds (HealthTech_HIPAA_Vault)\n    \n    Note over DEV,HPA: Rolling Update Process\n    DEV->>+DOCKER: Deploy New Version\n    DOCKER->>+AR: Push Updated Images\n    AR->>-DOCKER: Images Updated\n    \n    DOCKER->>+K8S: kubectl apply (HealthTech_PatientRecords)\n    K8S->>K8S: Rolling Update Strategy\n    K8S->>+POD: Create New Pod\n    POD->>POD: Start New Version\n    POD->>-K8S: New Pod Ready\n    K8S->>K8S: Terminate Old Pod\n    K8S->>-DOCKER: Rolling Update Complete\n    DOCKER->>-DEV: Update Successful",
+  "content_size": 3703,
+  "collected_at": "2026-02-06T14:13:15.259540",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gl_requirementDiagram_00602",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为HealthTech LabAnalyzer设计一个完整的CI/CD部署流程，从代码提交到GKE集群上线，还要包含Ollama大模型服务的集成。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "GKE Cluster",
+        "Ollama Container",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这个流程涉及多个阶段。我先确认一下：开发者推送代码到Git仓库后，是通过脚本触发Docker构建，还是需要Webhook自动触发？",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "用脚本触发，开发者执行./deploy-gke.sh。这个脚本要先验证环境、配置GCloud认证，然后再进入镜像构建阶段。",
+      "elements_involved": [
+        "Developer",
+        "Docker Build",
+        "deploy-gke.sh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，那镜像构建部分我拆成三个并行构建：Ollama基础镜像、Python后端镜像，还有前端镜像。Ollama镜像要基于ollama/ollama:latest，并且预拉取tinyllama模型。",
+      "elements_involved": [
+        "Docker Build",
+        "Ollama Container",
+        "Backend Pod",
+        "tinyllama"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Ollama镜像预装tinyllama是为了启动速度。后端镜像是Python 3.11的FastAPI应用，前端要区分两个来源：HealthTech_PatientRecords用node:18构建，HealthTech_EMR_Sync用nginx:alpine做最终镜像。",
+      "elements_involved": [
+        "Docker Build",
+        "HealthTech_PatientRecords",
+        "HealthTech_EMR_Sync",
+        "FastAPI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "镜像构建完成后推送到Artifact Registry，带上版本标签存储。然后进入Kubernetes部署阶段，先应用RBAC和ConfigMap，再部署后端服务。",
+      "elements_involved": [
+        "Artifact Registry",
+        "Kubernetes API",
+        "RBAC",
+        "ConfigMap"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "后端Pod的启动顺序很重要，需要先拉取Backend镜像和Ollama镜像，然后先启动Ollama容器初始化服务、加载HealthTech_DiagnosticEngine模型，确认Ready后再启动FastAPI。",
+      "elements_involved": [
+        "Backend Pod",
+        "Ollama Container",
+        "HealthTech_DiagnosticEngine",
+        "FastAPI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，FastAPI启动后还要测试与Ollama的连接，对应HealthTech_EMR_Sync的连通性验证，通过后才向K8s报告Pod Ready。",
+      "elements_involved": [
+        "Backend Pod",
+        "Ollama Container",
+        "HealthTech_EMR_Sync",
+        "Kubernetes API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "后端部署完成后，继续部署前端服务，最后要配置HPA自动扩缩容。HPA需要持续监控Backend Pod的CPU和内存指标。",
+      "elements_involved": [
+        "Frontend",
+        "HPA Controller",
+        "Backend Pod",
+        "Kubernetes API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加HPA配置，监控指标阈值参考HealthTech_HIPAA_Vault的安全基线。部署完成后获取Service的外部IP，向开发者返回可访问的URL。",
+      "elements_involved": [
+        "HPA Controller",
+        "HealthTech_HIPAA_Vault",
+        "GKE Cluster",
+        "Developer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要健康检查验证流程。开发者通过外部IP访问/health端点，请求路由到Backend Pod，Pod再验证Ollama状态，层层返回确认。",
+      "elements_involved": [
+        "Developer",
+        "GKE Cluster",
+        "Backend Pod",
+        "Ollama Container",
+        "health check"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "健康检查链路清晰了。另外HPA要展示具体的监控数据，比如CPU 30%、内存40%，并在阈值范围内保持稳态。",
+      "elements_involved": [
+        "HPA Controller",
+        "Backend Pod",
+        "CPU",
+        "Memory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后补充滚动更新流程。开发者部署新版本时，Docker Build推送更新镜像到Artifact Registry，然后K8s执行Rolling Update：创建新Pod、就绪后终止旧Pod。",
+      "elements_involved": [
+        "Developer",
+        "Docker Build",
+        "Artifact Registry",
+        "Kubernetes API",
+        "Backend Pod",
+        "Rolling Update"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "这里有个细节需要修正——滚动更新触发时，kubectl apply应该明确关联HealthTech_PatientRecords的更新，这样和前面的前端镜像构建对应起来。",
+      "elements_involved": [
+        "kubectl apply",
+        "HealthTech_PatientRecords",
+        "Frontend"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，HealthTech_PatientRecords作为前端应用的标识，在滚动更新中保持一致。整个流程从git push开始，到更新成功通知开发者结束。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "HealthTech_PatientRecords",
+        "Deployment Complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我梳理一下完整的参与者：Developer、Git Repository、Docker Build、Artifact Registry、GKE Cluster、Kubernetes API、Backend Pod、Ollama Container、HPA Controller。每个阶段的Note标注也对应关键信息，比如CI/CD Deployment Pipeline、Image Build Process这些。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster",
+        "Kubernetes API",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认无误。特别是Pod Startup Sequence和Health Verification这两个Note，突出了Ollama模型加载和健康检查的关键路径。",
+      "elements_involved": [
+        "Pod Startup Sequence",
+        "Health Verification",
+        "Ollama Container",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "序列图已完成，完整覆盖了从代码提交、多镜像构建、K8s部署、服务启动顺序、健康检查、自动扩缩容到滚动更新的全生命周期。",
+      "elements_involved": [
+        "CI/CD Deployment Pipeline",
+        "Kubernetes Deployment",
+        "Auto-scaling Verification",
+        "Rolling Update Process"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 18,
+    "repair_count": 1,
+    "grounding_acts_count": 18,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 44871.5878,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 18
+  }
+}

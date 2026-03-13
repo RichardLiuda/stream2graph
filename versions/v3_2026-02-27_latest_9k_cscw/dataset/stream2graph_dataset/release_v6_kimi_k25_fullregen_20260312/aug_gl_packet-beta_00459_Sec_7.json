@@ -1,0 +1,358 @@
+{
+  "id": "aug_gl_packet-beta_00459_Sec_7",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Lucascis/discord_bot/blob/3c98f8c01a7f4e2f2e4770f9209b19c752940a0f/docs/architecture/diagrams/sequence-play.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "Lucascis/discord_bot",
+  "diagram_type": "packet-beta",
+  "code": "%% Sequence Diagram: Play Command Flow\n%% Purpose: Shows the complete flow when a user executes /play command\n%% Author: Discord Bot Team\n%% Last Updated: 2025-11-03\n\nsequenceDiagram\n    autonumber\n\n    actor User as 👤 Discord User\n    participant Discord as Discord API\n    participant Gateway as Gateway Service\n    participant Redis as Redis Pub/Sub\n    participant Audio as Audio Service\n    participant DB as PostgreSQL\n    participant Lavalink as Lavalink\n    participant YouTube as YouTube API\n\n    Note over User,YouTube: User wants to play a song in voice channel\n\n    %% Command Initiation\n    User->>Discord: /play query: \"never gonna give you up\"\n    activate Discord\n    Discord->>Gateway: INTERACTION_CREATE event\n    activate Gateway\n\n    Note over Gateway: Validate interaction<br/>Check permissions\n\n    Gateway->>Discord: POST /interactions/{Security_Firewall}/callback<br/>(Security_OAuth2)\n    Discord->>User: Show processing message\n    deactivate Discord\n\n    %% Command Processing\n    Gateway->>DB: SELECT * FROM guild_settings<br/>WHERE guildId = ?\n    activate DB\n    DB-->>Gateway: Guild settings (Security_ZeroTrust)\n    deactivate DB\n\n    Gateway->>Redis: PUBLISH discord-bot:commands<br/>{Security_IntrusionDetection}\n    activate Redis\n    Note over Redis: Message queued in pub/sub\n\n    Redis->>Audio: Message delivered\n    deactivate Redis\n    activate Audio\n\n    %% Audio Service Processing\n    Note over Audio: Extract query and guild info\n\n    Audio->>DB: SELECT * FROM queue<br/>WHERE guildId = ?\n    activate DB\n    DB-->>Audio: Current queue (Security_Encryption)\n    deactivate DB\n\n    %% Search for Track\n    alt Query is YouTube URL\n        Note over Audio: Parse YouTube URL<br/>Extract video ID\n    else Query is search term\n        Audio->>Lavalink: GET /loadtracks?identifier=ytsearch:{Security_OAuth2}\n        activate Lavalink\n        Lavalink->>YouTube: Search API request\n        activate YouTube\n        YouTube-->>Lavalink: Search results\n        deactivate YouTube\n        Lavalink-->>Audio: Track results (Security_Encryption)\n        deactivate Lavalink\n        Note over Audio: Select first result\n    end\n\n    %% Cache Search Results\n    Audio->>Redis: SETEX search:{Security_Encryption} 300 {Security_OAuth2}\n    activate Redis\n    Redis-->>Audio: OK\n    deactivate Redis\n\n    %% Add to Queue\n    alt Queue is empty\n        Note over Audio: This will be the first track\n        Audio->>DB: INSERT INTO queue<br/>(Security_IntrusionDetection)\n        activate DB\n        DB-->>Audio: Queue entry created (Security_OAuth2)\n        deactivate DB\n\n        %% Start Playback\n        Audio->>Lavalink: POST /sessions/{Security_IntrusionDetection}/players/{Security_ZeroTrust}<br/>{Security_IntrusionDetection} }\n        activate Lavalink\n\n        Note over Lavalink: Create player<br/>Connect to voice channel\n\n        Lavalink->>Discord: Voice connection (Security_Encryption)\n        activate Discord\n        Discord-->>Lavalink: Voice connection established\n        deactivate Discord\n\n        Lavalink->>YouTube: Stream audio data\n        activate YouTube\n        Note over Lavalink: Download and encode audio\n        YouTube-->>Lavalink: Audio stream\n        deactivate YouTube\n\n        Lavalink->>Discord: Send opus packets (Security_OAuth2)\n        activate Discord\n        Discord->>User: 🎵 Audio playback in voice channel\n        deactivate Discord\n\n        Lavalink-->>Audio: Player updated event\n        deactivate Lavalink\n\n    else Queue has tracks\n        Note over Audio: Add to end of queue\n        Audio->>DB: SELECT MAX(Security_IntrusionDetection) FROM queue<br/>WHERE guildId = ?\n        activate DB\n        DB-->>Audio: maxPosition\n        deactivate DB\n\n        Audio->>DB: INSERT INTO queue<br/>(Security_OAuth2)\n        activate DB\n        DB-->>Audio: Queue entry created\n        deactivate DB\n    end\n\n    %% Update Cache\n    Audio->>Redis: SET queue:{Security_OAuth2} {Security_ZeroTrust}<br/>EX 3600\n    activate Redis\n    Redis-->>Audio: OK\n    deactivate Redis\n\n    %% Send UI Update\n    alt First track (Security_ZeroTrust)\n        Audio->>Redis: PUBLISH discord-bot:ui:now<br/>{Security_IntrusionDetection}, ... }\n        activate Redis\n        Redis->>Gateway: UI update message\n        deactivate Redis\n\n        Gateway->>Discord: POST /channels/{Security_OAuth2}/messages<br/>{Security_ZeroTrust], components: [Security_Firewall] }\n        activate Discord\n        Discord->>User: 🎵 Now Playing: Song Title<br/>[Security_IntrusionDetection]\n        deactivate Discord\n\n        Gateway->>Discord: DELETE /webhooks/{Security_OAuth2}/messages/@original<br/>(Security_ZeroTrust)\n        activate Discord\n        deactivate Discord\n\n    else Added to queue\n        Gateway->>Discord: POST /webhooks/{Security_OAuth2}/messages/@original<br/>{Security_OAuth2)\", ephemeral: true }\n        activate Discord\n        Discord->>User: ✅ Added to queue (Security_OAuth2)\n        deactivate Discord\n    end\n\n    deactivate Gateway\n    deactivate Audio\n\n    Note over User,YouTube: User hears music playing in voice channel\n\n    %% Track Events\n    loop Every 5 seconds\n        Lavalink->>Audio: PlayerUpdate event<br/>{Security_Encryption}\n        activate Audio\n\n        Audio->>Redis: PUBLISH discord-bot:to-discord<br/>{Security_Encryption}\n        activate Redis\n        Redis->>Gateway: Player update event\n        deactivate Redis\n\n        Note over Gateway: Update UI if needed<br/>(Security_IntrusionDetection)\n        deactivate Audio\n    end\n\n    %% Track End\n    Note over Lavalink,Audio: Track finishes playing\n\n    Lavalink->>Audio: TrackEnd event<br/>{Security_Firewall}\n    activate Audio\n\n    Audio->>DB: DELETE FROM queue<br/>WHERE guildId = ? AND position = 0\n    activate DB\n    DB-->>Audio: Deleted\n    deactivate DB\n\n    Audio->>DB: UPDATE queue SET position = position - 1<br/>WHERE guildId = ?\n    activate DB\n    DB-->>Audio: Queue reindexed\n    deactivate DB\n\n    alt More tracks in queue\n        Audio->>DB: SELECT * FROM queue<br/>WHERE guildId = ? AND position = 0\n        activate DB\n        DB-->>Audio: Next track\n        deactivate DB\n\n        Note over Audio: Play next track<br/>(Security_Firewall)\n\n    else Queue empty and autoplay enabled\n        Note over Audio: Generate autoplay recommendation\n        Audio->>Audio: Get similar tracks<br/>based on last played\n        Note over Audio: Add to queue and play\n\n    else Queue empty and autoplay disabled\n        Audio->>Lavalink: DELETE /sessions/{Security_Encryption}/players/{Security_OAuth2}\n        activate Lavalink\n        Lavalink-->>Audio: Player destroyed\n        deactivate Lavalink\n\n        Audio->>Redis: PUBLISH discord-bot:ui:now<br/>{Security_Firewall}\n        activate Redis\n        Redis->>Gateway: Queue empty event\n        deactivate Redis\n\n        Gateway->>Discord: PATCH /channels/{Security_OAuth2}/messages/{Security_Firewall}<br/>{Security_OAuth2] }\n        activate Discord\n        Discord->>User: Queue finished (Security_ZeroTrust)\n        deactivate Discord\n    end\n\n    deactivate Audio\n\n    Note over User,YouTube: Flow complete\n",
+  "content_size": 6985,
+  "collected_at": "2026-02-06T14:10:10.289943",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Security",
+  "seed_id": "gl_packet-beta_00459",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的时序图，展示用户执行/play命令后的完整流程。从Discord用户发起请求，一直到音频真正播放出来的全过程。",
+      "elements_involved": [
+        "User",
+        "Discord",
+        "play command"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，这是一个音乐机器人的播放流程。我想确认一下参与方有哪些？我看到有Discord API、Gateway Service，还有音频相关的服务？",
+      "elements_involved": [
+        "Discord API",
+        "Gateway Service",
+        "Audio Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，核心参与方包括：Discord User、Discord API、Gateway Service、Redis Pub/Sub、Audio Service、PostgreSQL数据库、Lavalink节点，还有YouTube API。Gateway负责接收和验证指令，Audio Service处理实际的音频逻辑。",
+      "elements_involved": [
+        "Redis Pub/Sub",
+        "Audio Service",
+        "PostgreSQL",
+        "Lavalink",
+        "YouTube API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经把这些参与方按顺序排列好了。现在从用户输入/play命令开始画第一条消息。",
+      "elements_involved": [
+        "User",
+        "Discord",
+        "/play command"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，用户输入比如/play query: \"never gonna give you up\"，Discord API会触发INTERACTION_CREATE事件给Gateway。这里要注意Gateway需要先验证交互权限。",
+      "elements_involved": [
+        "Discord",
+        "Gateway",
+        "INTERACTION_CREATE",
+        "permission validation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "验证之后Gateway要回一个callback给Discord，让用户看到\"正在处理\"的提示对吧？然后Gateway要去查数据库获取服务器设置？",
+      "elements_involved": [
+        "Gateway",
+        "Discord",
+        "callback",
+        "PostgreSQL",
+        "guild_settings"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，查询guild_settings表。这里有个安全点——我们用了ZeroTrust架构。然后Gateway通过Redis Pub/Sub把命令发布出去，Audio Service订阅接收。",
+      "elements_involved": [
+        "guild_settings",
+        "Security_ZeroTrust",
+        "Redis Pub/Sub",
+        "Audio"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了Redis的消息队列和Audio Service的激活。Audio Service收到消息后，需要查询当前的播放队列状态？",
+      "elements_involved": [
+        "Redis",
+        "Audio",
+        "queue query"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Audio Service查queue表获取当前队列。然后这里有个分支逻辑——用户输入的可能是YouTube直链，也可能是搜索关键词。这两种情况要分开画。",
+      "elements_involved": [
+        "Audio",
+        "DB",
+        "queue",
+        "YouTube URL",
+        "search term",
+        "alt branch"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我用alt画了两个分支。如果是搜索关键词，Audio Service要通过Lavalink去YouTube API搜索。这里Lavalink返回的结果需要加密传输。",
+      "elements_involved": [
+        "alt",
+        "Audio",
+        "Lavalink",
+        "YouTube API",
+        "Security_Encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，搜索结果要缓存到Redis，设置300秒过期。然后进入另一个关键分支——判断队列是否为空。如果为空，这是第一首歌，要创建播放器；否则只是追加到队列。",
+      "elements_involved": [
+        "Redis",
+        "SETEX",
+        "cache",
+        "queue empty check",
+        "player creation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "第一首歌的情况比较复杂，我需要确认流程：Audio通知Lavalink创建player，Lavalink连接Discord的语音频道，然后从YouTube拉流、编码，最后把opus包发给Discord？",
+      "elements_involved": [
+        "Audio",
+        "Lavalink",
+        "Discord",
+        "YouTube",
+        "voice connection",
+        "opus packets"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。而且这里要注意多个安全节点：防火墙验证、OAuth2认证、加密传输。用户最终听到\"🎵\"提示音开始播放。如果是追加到队列的情况就简单很多，只是插入数据库。",
+      "elements_involved": [
+        "Security_Firewall",
+        "Security_OAuth2",
+        "Security_Encryption",
+        "queue insert"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个分支都画好了。接下来是UI更新部分？我看到有通过Redis Pub/Sub通知Gateway，然后Gateway调Discord API发消息。",
+      "elements_involved": [
+        "Redis",
+        "Gateway",
+        "Discord",
+        "UI update",
+        "now playing message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，这里又要分情况。如果是第一首歌，要发\"Now Playing\"的富文本消息，带控制按钮，还要删除原来的\"处理中\"提示。如果只是追加到队列，就简单回复一个临时消息说\"已添加到队列\"。",
+      "elements_involved": [
+        "Now Playing",
+        "components",
+        "ephemeral message",
+        "webhook delete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "播放过程中的事件循环需要画吗？比如Lavalink定期发PlayerUpdate？",
+      "elements_involved": [
+        "Lavalink",
+        "PlayerUpdate",
+        "loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "要的，用loop画每5秒的更新。Lavalink把进度发给Audio，Audio通过Redis Pub/Sub广播，Gateway按需更新UI。这个循环直到歌曲结束。",
+      "elements_involved": [
+        "loop",
+        "Lavalink",
+        "Audio",
+        "Redis",
+        "Gateway",
+        "5 seconds"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "循环画好了。现在画歌曲结束后的流程：TrackEnd事件，Audio删除队列第一首，然后重新索引位置？",
+      "elements_involved": [
+        "TrackEnd",
+        "Audio",
+        "DB",
+        "DELETE",
+        "UPDATE position"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，然后这里还有三个分支：队列还有歌就继续播放；队列空了但开了autoplay就推荐相似歌曲；队列空且没开autoplay就销毁player、发\"队列结束\"提示。",
+      "elements_involved": [
+        "next track",
+        "autoplay",
+        "player destroy",
+        "queue finished"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "等等，autoplay分支那里，Audio Service自己调用自己获取相似歌曲？这个自调用需要特别标注吗？",
+      "elements_involved": [
+        "Audio",
+        "self-call",
+        "similar tracks"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Audio Service内部调用推荐算法，然后自己把结果加入队列并触发播放。这个自调用用Audio到Audio的箭头表示就行，旁边标注\"Get similar tracks\"。",
+      "elements_involved": [
+        "Audio",
+        "Audio",
+        "Get similar tracks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有分支都画完了。我检查一下安全相关的标注：Firewall、OAuth2、Encryption、ZeroTrust、IntrusionDetection都已经在对应位置标好了。",
+      "elements_involved": [
+        "Security_Firewall",
+        "Security_OAuth2",
+        "Security_Encryption",
+        "Security_ZeroTrust",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后确认一下，整个流程的起点和终点都加了注释说明？比如开头\"User wants to play a song\"和结尾\"User hears music\"？",
+      "elements_involved": [
+        "Note over User,YouTube",
+        "start note",
+        "end note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都加好了，还有作者信息和更新日期。整个时序图从用户输入命令到最终听到音乐，完整覆盖了正常播放、队列追加、事件循环、切歌、autoplay、队列结束等所有场景。",
+      "elements_involved": [
+        "complete flow",
+        "all scenarios covered"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 24,
+    "repair_count": 1,
+    "grounding_acts_count": 24,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 56774.4396,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 24
+  }
+}

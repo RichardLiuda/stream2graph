@@ -1,0 +1,390 @@
+{
+  "id": "aug_ot_stateDiagram_00000_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/mrmidi/ASFireWire/blob/1b2dc823fe5b65d27bd90632fb2e11ba8d0c6914/documentation/stateDiagram-v2.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "mrmidi/ASFireWire",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    direction LR\n\n    %% Compact, readable bus-reset state machine: R0 left, R1 center, T0 right\n\n    powerReset: powerReset\n    resetDetected: resetDetected\n    ibrCond: ibr && !(Infra_EtcdCluster)\n    maxArbStateTimeout: maxArbStateTimeout(Infra_RedisCache)\n\n    R0: R0 — Reset Start\\nresetStartActions(Infra_WorkerNode)\n    R1: R1 — Reset Wait\\nresetWaitActions(Infra_WorkerNode)\n    T0: T0 — Tree ID Start\n\n    %% Triggers to R0 (Infra_LoadBalancer)\n    powerReset --> R0: arbPowerReset(Infra_EtcdCluster)\n    resetDetected --> R0: initiatedReset = FALSE\n    ibrCond --> R0: initiatedReset = TRUE / resetDuration = RESET_TIME\n    maxArbStateTimeout --> R0: initiatedReset = TRUE / resetDuration = RESET_TIME; PH_EVENT_INDICATION\n\n    %% Core transitions\n    R0 --> R1: arbTimer >= resetDuration / resetStartActions(Infra_LoadBalancer)\n    R1 --> T0: resetComplete(Infra_EtcdCluster) / arbTimer = 0\n\n    %% Back-transition and timeout\n    R1 --> R0: arbTimer >= resetDuration + RESET_WAIT / resetDuration = RESET_TIME\n\n    note left of R0\n      External triggers to R0:\\n• powerReset (Infra_EtcdCluster))\\n• resetDetected (Infra_WorkerNode)\\n• ibr && !(Infra_IngressController) (Infra_LoadBalancer)\\n• maxArbStateTimeout(Infra_RedisCache) (Infra_WorkerNode)\\n• from TX: Transmit → -TX:R0\n    end note\n\n    note right of R1\n      Timeout/Recovery:\\n• R1→R0 sets resetDuration = RESET_TIME\\n• R1→T0 on resetComplete(Infra_LoadBalancer) sets arbTimer = 0\n    end note",
+  "content_size": 1407,
+  "collected_at": "2026-02-06T10:36:36.652880",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00000",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个总线复位状态机的图，核心状态有三个：R0复位开始、R1复位等待、T0树ID开始。布局上从左到右排列，R0放左边，R1中间，T0右边。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "T0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，方向从左到右。R0是复位开始，R1是复位等待，T0是树ID开始。那进入R0的触发条件有哪些？我看到有powerReset、resetDetected这些信号。",
+      "elements_involved": [
+        "powerReset",
+        "resetDetected",
+        "R0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，进入R0有四个外部触发源。第一个是powerReset，它由Infra_EtcdCluster触发；第二个是resetDetected，条件是initiatedReset为FALSE；第三个是ibrCond，也就是ibr为真且Infra_EtcdCluster不满足的情况，这时候initiatedReset要设为TRUE，resetDuration设为RESET_TIME；第四个是maxArbStateTimeout，由Infra_RedisCache触发，同样要设置initiatedReset和resetDuration，还要发PH_EVENT_INDICATION事件。",
+      "elements_involved": [
+        "powerReset",
+        "Infra_EtcdCluster",
+        "resetDetected",
+        "ibrCond",
+        "maxArbStateTimeout",
+        "Infra_RedisCache",
+        "RESET_TIME",
+        "PH_EVENT_INDICATION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把这三个核心状态节点画出来，R0标注上\"Reset Start\"和resetStartActions调用Infra_WorkerNode，R1标注\"Reset Wait\"和resetWaitActions同样调用WorkerNode，T0标注\"Tree ID Start\"。然后画出四个指向R0的触发箭头。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "T0",
+        "resetStartActions",
+        "Infra_WorkerNode",
+        "resetWaitActions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "R0和R1的动作标注正确，但T0目前先保持简单，只标注\"Tree ID Start\"就行。另外注意powerReset那条线要标注arbPowerReset(Infra_EtcdCluster)。",
+      "elements_involved": [
+        "T0",
+        "powerReset",
+        "arbPowerReset",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整。现在画核心状态之间的转换：R0到R1的触发条件是arbTimer等于resetDuration，动作是resetStartActions调用Infra_LoadBalancer，对吗？",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "arbTimer",
+        "resetDuration",
+        "resetStartActions",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，R0到R1的转换条件就是arbTimer匹配resetDuration。然后R1到T0的转换条件是resetComplete，由Infra_EtcdCluster触发，动作是把arbTimer清零。",
+      "elements_involved": [
+        "R1",
+        "T0",
+        "resetComplete",
+        "Infra_EtcdCluster",
+        "arbTimer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "R1到T0已添加。还有一个回退路径，R1可以回到R0，条件是arbTimer等于resetDuration加上RESET_WAIT，动作是resetDuration重新设为RESET_TIME。",
+      "elements_involved": [
+        "R1",
+        "R0",
+        "RESET_WAIT",
+        "resetDuration",
+        "RESET_TIME"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，这是超时恢复机制。另外我需要补充两个注释框，一个在R0左侧说明所有外部触发源，一个在R1右侧说明超时和恢复的具体行为。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "note left of R0",
+        "note right of R1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "左侧注释要包含哪些触发源？我列一下：powerReset、resetDetected、ibrCond、maxArbStateTimeout，还有提到从TX状态的回退？",
+      "elements_involved": [
+        "powerReset",
+        "resetDetected",
+        "ibrCond",
+        "maxArbStateTimeout",
+        "TX",
+        "Transmit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "左侧注释写：External triggers to R0，然后列出powerReset (Infra_EtcdCluster)、resetDetected (Infra_WorkerNode)、ibr && !(Infra_IngressController) (Infra_LoadBalancer)、maxArbStateTimeout(Infra_RedisCache) (Infra_WorkerNode)，还有from TX: Transmit → -TX:R0。右侧注释写Timeout/Recovery，说明R1→R0设置resetDuration = RESET_TIME，R1→T0在resetComplete(Infra_LoadBalancer)时设置arbTimer = 0。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Infra_IngressController",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache",
+        "TX",
+        "Transmit",
+        "resetComplete",
+        "arbTimer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个注释框已添加。我检查一下：R0的resetStartActions调用的是Infra_WorkerNode，但之前R0到R1的转换动作里resetStartActions调用的是Infra_LoadBalancer，这里需要统一吗？",
+      "elements_involved": [
+        "R0",
+        "resetStartActions",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "这里有个问题，R0状态本身的动作resetStartActions应该调用Infra_LoadBalancer，不是WorkerNode。R1的resetWaitActions才是调用WorkerNode。请修正R0的标注。",
+      "elements_involved": [
+        "R0",
+        "resetStartActions",
+        "Infra_LoadBalancer",
+        "R1",
+        "resetWaitActions",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，R0现在标注resetStartActions(Infra_LoadBalancer)，R1保持resetWaitActions(Infra_WorkerNode)。再看右侧注释，resetComplete后面我标注的是Infra_LoadBalancer，但你说的是Infra_EtcdCluster？",
+      "elements_involved": [
+        "resetComplete",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "右侧注释里R1→T0的resetComplete应该由Infra_LoadBalancer触发，不是EtcdCluster。但R1到T0转换线上的resetComplete标注是对的，是Infra_EtcdCluster。这两个地方确实容易混，让我再确认：转换线上是Infra_EtcdCluster，注释里为了和超时恢复对应，写的是Infra_LoadBalancer。",
+      "elements_involved": [
+        "R1",
+        "T0",
+        "resetComplete",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer",
+        "note right of R1"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "有点混乱，我梳理一下：实际的状态转换R1→T0，条件是resetComplete(Infra_EtcdCluster)，动作是arbTimer=0。右侧注释里写的resetComplete(Infra_LoadBalancer)是另一种表述？还是我应该统一成Infra_EtcdCluster？",
+      "elements_involved": [
+        "R1",
+        "T0",
+        "resetComplete",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "统一成Infra_LoadBalancer。R1→T0的resetComplete由Infra_LoadBalancer触发，注释和转换线都要一致。之前我说EtcdCluster是口误。",
+      "elements_involved": [
+        "R1",
+        "T0",
+        "resetComplete",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已全部统一为Infra_LoadBalancer。再检查一下左侧注释里的ibr条件，我写的是\"ibr && !(Infra_IngressController)\"，但之前讨论的是Infra_EtcdCluster？",
+      "elements_involved": [
+        "ibrCond",
+        "Infra_IngressController",
+        "Infra_EtcdCluster",
+        "note left of R0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "左侧注释里的ibr条件应该是\"ibr && !(Infra_EtcdCluster)\"，不是IngressController。而且触发源标注为Infra_LoadBalancer。请修正。",
+      "elements_involved": [
+        "ibrCond",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer",
+        "note left of R0"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正为\"ibr && !(Infra_EtcdCluster) (Infra_LoadBalancer)\"。再看maxArbStateTimeout的触发源，左侧注释写的是Infra_WorkerNode，但节点标注里这个条件本身是由Infra_RedisCache触发的？",
+      "elements_involved": [
+        "maxArbStateTimeout",
+        "Infra_RedisCache",
+        "Infra_WorkerNode",
+        "note left of R0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "maxArbStateTimeout这个条件函数由Infra_RedisCache触发，但在左侧注释的触发源列表里，我们标注它来自Infra_WorkerNode，这是从调用上下文角度说的。保持这样，注释写的是maxArbStateTimeout(Infra_RedisCache) (Infra_WorkerNode)。",
+      "elements_involved": [
+        "maxArbStateTimeout",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，括号里的是触发源组件。最后确认一下resetDetected的条件，转换线上写的是initiatedReset = FALSE，这个没有指定infra组件？",
+      "elements_involved": [
+        "resetDetected",
+        "initiatedReset",
+        "R0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "resetDetected在左侧注释里标注为来自Infra_WorkerNode。转换线上只写initiatedReset = FALSE，不加组件标注。这样区分：转换线写条件和动作，注释写来源组件。",
+      "elements_involved": [
+        "resetDetected",
+        "Infra_WorkerNode",
+        "initiatedReset"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部调整完成。最终检查：方向LR，三个核心状态R0/R1/T0，四个进入R0的触发，两个核心转换R0→R1和R1→T0，一个回退R1→R0，两个注释框分别说明外部触发源和超时恢复机制。",
+      "elements_involved": [
+        "direction LR",
+        "R0",
+        "R1",
+        "T0",
+        "powerReset",
+        "resetDetected",
+        "ibrCond",
+        "maxArbStateTimeout",
+        "note left of R0",
+        "note right of R1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美，这个状态图完整呈现了总线复位的状态流转。特别是R1的双向路径——正常完成进入T0，超时则回退到R0重新计时，这个机制表达得很清楚。",
+      "elements_involved": [
+        "R1",
+        "T0",
+        "R0",
+        "timeout",
+        "recovery"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 25,
+    "repair_count": 4,
+    "grounding_acts_count": 25,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 63101.4185,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 25
+  }
+}

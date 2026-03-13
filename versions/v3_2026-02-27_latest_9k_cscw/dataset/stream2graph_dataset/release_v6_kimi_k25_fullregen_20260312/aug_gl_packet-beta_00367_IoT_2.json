@@ -1,0 +1,210 @@
+{
+  "id": "aug_gl_packet-beta_00367_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/TRIGGER_ALG_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant Queue as Raw Data Queue\n    participant Processor as ProcessingIsolate\n    participant TriggerAlgo as Trigger Detection Algorithm\n    participant Validator as Trigger Validator\n    participant Interpolator as Trigger Point Interpolator\n    participant DataService\n    \n    Queue->>Processor: Provide raw binary data packet\n    \n    %% Data extraction phase\n    Processor->>Processor: Extract data points from queue using _readDataFromQueue(IoT_Industrial_EdgeNode)\n    Processor->>Processor: Apply bit masks to separate data and channel\n    Processor->>Processor: Convert to voltage using scale factor\n    Processor->>Processor: Calculate max/min values of signal\n    \n    %% Prepare for trigger detection\n    Processor->>Processor: Calculate trigger sensitivity based on signal amplitude\n    Note over Processor: sensitivity = (IoT_Industrial_TelemetryStream) * 0.25\n    \n    %% Apply filter if needed\n    alt useLowPassFilter = true\n        Processor->>Processor: Apply low-pass filter to signal for trigger detection\n        Note over Processor: Creates filtered signal for stable triggering\n    else useLowPassFilter = false\n        Processor->>Processor: Use unfiltered signal values for trigger detection\n    end\n    \n    %% Main detection loop\n    loop For each adjacent point pair\n        Processor->>TriggerAlgo: Check for trigger condition\n        \n        %% First check for exact trigger level match\n        TriggerAlgo->>TriggerAlgo: Check if either point exactly matches trigger level\n        \n        alt No exact match\n            %% Check for level crossing\n            alt Trigger edge = Positive\n                TriggerAlgo->>TriggerAlgo: Check if prevY < triggerLevel && currentY >= triggerLevel\n                Note over TriggerAlgo: Rising edge detection\n            else Trigger edge = Negative\n                TriggerAlgo->>TriggerAlgo: Check if prevY > triggerLevel && currentY <= triggerLevel\n                Note over TriggerAlgo: Falling edge detection\n            end\n        end\n        \n        alt Potential trigger detected && not waitingForNextTrigger\n            %% Apply hysteresis if enabled\n            alt useHysteresis = true && not exact match\n                TriggerAlgo->>Validator: Verify trigger with hysteresis\n                Validator->>Validator: Calculate window size (IoT_Industrial_EdgeNode)\n                Validator->>Validator: _calculateTrend(IoT_Industrial_EdgeNode) on signal segment\n                Note over Validator: Computes linear regression slope\n                \n                alt Trigger edge = Positive\n                    Validator->>TriggerAlgo: Valid if trend > 0 (IoT_Industrial_EdgeNode)\n                else Trigger edge = Negative\n                    Validator->>TriggerAlgo: Valid if trend < 0 (IoT_Industrial_PLC_Logic)\n                end\n            else Simple validation\n                TriggerAlgo->>TriggerAlgo: Accept trigger candidate as valid\n            end\n            \n            %% Process valid trigger\n            alt Trigger is valid\n                TriggerAlgo->>TriggerAlgo: Create trigger marker\n                \n                alt Exact match at trigger level\n                    TriggerAlgo->>TriggerAlgo: Mark existing point as trigger\n                else Need interpolation\n                    TriggerAlgo->>Interpolator: Calculate precise trigger crossing\n                    Interpolator->>Interpolator: Calculate ratio using: (IoT_Industrial_MQTT_Broker) / (IoT_Industrial_MQTT_Broker)\n                    Interpolator->>Interpolator: Find x at crossing: x1 + ratio * (IoT_Industrial_EdgeNode)\n                    Interpolator->>TriggerAlgo: Return interpolated DataPoint with isTrigger=true\n                    TriggerAlgo->>TriggerAlgo: Replace point with interpolated trigger point\n                end\n                \n                alt First trigger found\n                    TriggerAlgo->>TriggerAlgo: Record firstTriggerX for alignment\n                    TriggerAlgo->>TriggerAlgo: Set foundFirstTrigger = true\n                end\n                \n                alt triggerMode = normal\n                    TriggerAlgo->>TriggerAlgo: Set waitingForNextTrigger = true\n                    Note over TriggerAlgo: Prevents multiple triggers until signal returns\n                else triggerMode = single\n                    TriggerAlgo->>TriggerAlgo: Keep waitingForNextTrigger = false\n                    Note over TriggerAlgo: Will capture only one triggered waveform\n                end\n            end\n        end\n        \n        %% Reset waiting state when signal moves away from trigger zone\n        alt waitingForNextTrigger = true && triggerMode = normal\n            alt triggerEdge = positive\n                TriggerAlgo->>TriggerAlgo: If currentY < (IoT_Industrial_MQTT_Broker), reset waiting\n                Note over TriggerAlgo: Ensures signal must fall below threshold before next trigger\n            else triggerEdge = negative\n                TriggerAlgo->>TriggerAlgo: If currentY > (IoT_Industrial_ActuatorController), reset waiting\n                Note over TriggerAlgo: Ensures signal must rise above threshold before next trigger\n            end\n        end\n    end\n    \n    %% Final alignment and output\n    alt foundFirstTrigger = true\n        TriggerAlgo->>Processor: Align all points to first trigger (IoT_Industrial_MQTT_Broker)\n        Note over Processor: Makes trigger point appear at x=0\n    end\n    \n    %% Return results\n    Processor->>DataService: Return processed points with trigger markers\n    \n    alt triggerMode = single && trigger found\n        Processor->>DataService: Send pause message\n        DataService->>DataService: Set pause = true\n        Note over DataService: Freezes acquisition after capturing single triggered waveform\n    end",
+  "content_size": 5688,
+  "collected_at": "2026-02-06T14:08:21.428771",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_packet-beta_00367",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网边缘节点设计一个触发检测流程。核心是从Raw Data Queue获取原始二进制数据，经过ProcessingIsolate处理后，识别出信号中的触发点。这个流程要支持正负边沿检测，还要考虑滞回验证。",
+      "elements_involved": [
+        "Raw Data Queue",
+        "ProcessingIsolate",
+        "Trigger Detection Algorithm"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下数据流：Queue把原始数据包给Processor，Processor内部先做数据提取——包括从队列读取、位掩码分离、电压转换，还有计算信号的最大最小值。这些自循环处理都放在Processor内部，对吗？",
+      "elements_involved": [
+        "Raw Data Queue",
+        "ProcessingIsolate",
+        "extract",
+        "convert",
+        "calculate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这些预处理都在ProcessingIsolate内部完成。另外要注意，触发灵敏度要基于信号幅度动态计算，公式是TelemetryStream的0.25倍。之后根据useLowPassFilter标志决定要不要做低通滤波。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "IoT_Industrial_TelemetryStream",
+        "sensitivity",
+        "useLowPassFilter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我画出了预处理分支：alt节点区分滤波和直通路径。接下来是主检测循环——Processor把处理好的数据点逐对送到Trigger Detection Algorithm检查触发条件。这里需要区分精确匹配和电平穿越两种情况。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "Trigger Detection Algorithm",
+        "loop",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "触发检测这块要仔细设计。首先检查是否有数据点精确落在触发电平上，如果没有，再看是上升沿还是下降沿穿越。正边沿是prevY小于触发电平且currentY大于等于；负边沿反过来。检测到潜在触发后，还要判断是不是在等待下一个触发窗口。",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "Positive",
+        "Negative",
+        "triggerLevel",
+        "waitingForNextTrigger"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我注意到触发验证有两个路径：如果开了滞回且不是精确匹配，就要走Trigger Validator做线性回归斜率验证；否则直接接受。Validator计算窗口大小用的是EdgeNode参数，斜率验证时正边沿要求趋势大于零，这个逻辑对吗？",
+      "elements_involved": [
+        "Trigger Validator",
+        "useHysteresis",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_PLC_Logic",
+        "_calculateTrend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "基本对，但有个细节：负边沿验证时趋势应该小于零，不过这里用的是PLC Logic参数而不是EdgeNode。另外验证通过后，如果是精确匹配就直接标记，否则需要Trigger Point Interpolator做插值计算。",
+      "elements_involved": [
+        "Trigger Validator",
+        "Trigger Point Interpolator",
+        "IoT_Industrial_PLC_Logic",
+        "exact match",
+        "interpolation"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。Interpolator的计算我理解为：用MQTT Broker相关的两个值算比例，然后基于EdgeNode的步长找到精确的穿越点x坐标，最后返回带isTrigger标记的插值点替换原有点。",
+      "elements_involved": [
+        "Trigger Point Interpolator",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_EdgeNode",
+        "ratio",
+        "DataPoint"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。还有几个状态管理点：首次触发要记录位置用于后续对齐；触发模式分normal和single，normal模式下触发后要设置waitingForNextTrigger防止重复触发，直到信号回到阈值另一侧。",
+      "elements_involved": [
+        "firstTriggerX",
+        "triggerMode",
+        "normal",
+        "single",
+        "waitingForNextTrigger",
+        "align"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下复位逻辑：normal模式下，正边沿触发后要等currentY低于MQTT Broker阈值才复位waiting状态；负边沿触发后要等currentY高于ActuatorController阈值。这样确保信号必须完全离开触发区才能下次触发。",
+      "elements_involved": [
+        "waitingForNextTrigger",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_ActuatorController",
+        "positive",
+        "negative"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。最后输出阶段：如果找到了第一个触发点，所有数据要对齐到该点使触发点位于x=0；Processor把带触发标记的点返回给DataService。如果是single模式且已触发，还要发送暂停消息冻结采集。",
+      "elements_involved": [
+        "TriggerAlgo",
+        "Processor",
+        "DataService",
+        "foundFirstTrigger",
+        "align",
+        "pause"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "流程图已完成。我检查了所有分支：预处理滤波选择、触发检测的双层alt结构、滞回验证路径、插值计算、状态机管理，以及最终的对齐和暂停机制。整个序列从Queue到DataService形成了完整的工业物联网触发采集闭环。",
+      "elements_involved": [
+        "Raw Data Queue",
+        "ProcessingIsolate",
+        "Trigger Detection Algorithm",
+        "Trigger Validator",
+        "Trigger Point Interpolator",
+        "DataService"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 12,
+    "repair_count": 1,
+    "grounding_acts_count": 12,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 36610.4066,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

@@ -1,0 +1,458 @@
+{
+  "id": "gl_packet-beta_00454",
+  "source": "gitlab",
+  "source_url": "https://github.com/Ghenghis/SvonyBrowser/blob/b02803cf7b47e7d54ef3c45466f973948f5a47d4/docs/v2.0.6/diagrams/IPC_COMMUNICATION.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "Ghenghis/SvonyBrowser",
+  "diagram_type": "packet-beta",
+  "code": "%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#10b981'}}}%%\nsequenceDiagram\n    autonumber\n    participant R as 🖼️ Renderer<br/>(renderer.js)\n    participant P as 📡 Preload<br/>(preload.js)\n    participant M as 🖥️ Main<br/>(index.js)\n    participant S as ⚙️ Services\n    participant MCP as 🤖 MCP Servers\n    participant LM as 🧠 LM Studio\n    \n    Note over R,LM: Application Initialization\n    \n    R->>P: DOMContentLoaded\n    P->>M: ipcRenderer.invoke('get-version')\n    M-->>P: { version: '2.0.6' }\n    P-->>R: version\n    \n    R->>P: Initialize LM Studio\n    P->>M: ipcRenderer.invoke('lm-studio-connect', url)\n    M->>S: lmStudioClient.connect(url)\n    S->>LM: HTTP GET /v1/models\n    LM-->>S: { models: [...] }\n    S-->>M: { connected: true, models }\n    M-->>P: status\n    P-->>R: Update UI\n    \n    Note over R,LM: Chat Message Flow\n    \n    R->>P: User sends chat message\n    P->>M: ipcRenderer.invoke('chatbot-message', msg)\n    M->>S: chatbotService.processMessage(msg)\n    \n    alt Intent: Knowledge Query\n        S->>MCP: evony_search(query)\n        MCP-->>S: { results: [...] }\n    else Intent: Calculation\n        S->>MCP: calc_training(params)\n        MCP-->>S: { result: {...} }\n    else Intent: Protocol\n        S->>MCP: protocol_lookup(id)\n        MCP-->>S: { action: {...} }\n    end\n    \n    S->>S: Build context from MCP results\n    S->>LM: POST /v1/chat/completions\n    LM-->>S: { response: '...' }\n    S-->>M: formatted response\n    M-->>P: response\n    P-->>R: Display in chat\n    \n    Note over R,LM: Traffic Capture Flow\n    \n    R->>P: Webview traffic detected\n    P->>M: ipcRenderer.send('traffic-captured', packet)\n    M->>S: proxyMonitor.processPacket(packet)\n    S->>S: Decode AMF3\n    S->>S: Identify action\n    S->>S: Update game state\n    M->>P: mainWindow.webContents.send('traffic-update', entry)\n    P->>R: Update traffic list\n    \n    Note over R,LM: Settings Flow\n    \n    R->>P: User saves settings\n    P->>M: ipcRenderer.invoke('save-settings', settings)\n    M->>S: store.set(settings)\n    M->>S: lmStudioClient.updateSettings(settings.lmStudio)\n    S->>LM: Reconnect if URL changed\n    M-->>P: { success: true }\n    P-->>R: Show confirmation\n",
+  "content_size": 2201,
+  "collected_at": "2026-02-06T14:10:02.606566",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为Electron应用画一个完整的序列图，涵盖初始化、聊天消息、流量捕获和设置四大流程。参与者包括Renderer、Preload、Main、Services、MCP Servers和LM Studio这六个。",
+      "elements_involved": [
+        "Renderer",
+        "Preload",
+        "Main",
+        "Services",
+        "MCP Servers",
+        "LM Studio"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，六个参与者。我注意到Renderer对应renderer.js，Preload对应preload.js，Main对应index.js，这样标注可以吗？",
+      "elements_involved": [
+        "Renderer",
+        "Preload",
+        "Main",
+        "renderer.js",
+        "preload.js",
+        "index.js"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，文件标注加上去。先从应用初始化开始：Renderer触发DOMContentLoaded，然后Preload调用get-version获取版本号。",
+      "elements_involved": [
+        "Renderer",
+        "Preload",
+        "DOMContentLoaded",
+        "get-version"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加初始化流程。版本号2.0.6返回给Renderer后，下一步是LM Studio连接？",
+      "elements_involved": [
+        "Main",
+        "version",
+        "LM Studio"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，Renderer让Preload初始化LM Studio，Preload通过lm-studio-connect调用Main，Main再让Services去连接。Services要向LM Studio发HTTP GET请求获取模型列表。",
+      "elements_involved": [
+        "Renderer",
+        "Preload",
+        "Main",
+        "Services",
+        "LM Studio",
+        "lm-studio-connect",
+        "url",
+        "HTTP GET"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有个问题：Services到LM Studio的HTTP GET /v1/models是同步还是异步？返回后怎么层层回调？",
+      "elements_involved": [
+        "Services",
+        "LM Studio",
+        "HTTP GET",
+        "/v1/models"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是异步的。LM Studio返回models数组，Services包装成connected和models返回给Main，Main再传给Preload，最后Preload更新Renderer的UI。",
+      "elements_involved": [
+        "LM Studio",
+        "Services",
+        "Main",
+        "Preload",
+        "Renderer",
+        "models",
+        "connected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "初始化流程画完了。接下来是聊天消息流程，用户发送chat message对吧？",
+      "elements_involved": [
+        "chat message",
+        "Renderer",
+        "Preload"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，用户发送chatbot message，走ipcRenderer.invoke到Main，Main交给chatbotService处理。这里有个分支：意图可能是知识查询、计算或协议查询。",
+      "elements_involved": [
+        "chatbot message",
+        "Renderer",
+        "Preload",
+        "Main",
+        "chatbotService",
+        "msg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "三个分支都用MCP Servers处理？知识查询是evony_search，计算是calc_training，协议是protocol_lookup？",
+      "elements_involved": [
+        "MCP Servers",
+        "evony_search",
+        "calc_training",
+        "protocol_lookup",
+        "query",
+        "params",
+        "id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。MCP返回results或result或action后，Services构建context，然后向LM Studio发POST /v1/chat/completions请求。",
+      "elements_involved": [
+        "MCP Servers",
+        "Services",
+        "LM Studio",
+        "context",
+        "POST",
+        "/v1/chat/completions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "聊天流程完成。现在画流量捕获：Webview检测到traffic，Preload用traffic-captured发送到Main？",
+      "elements_involved": [
+        "Webview",
+        "traffic captured",
+        "Preload",
+        "Main",
+        "packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，traffic-captured应该用ipcRenderer.send而不是invoke，这是单向通知。Main里的proxyMonitor处理packet，需要解码AMF3。",
+      "elements_involved": [
+        "traffic-captured",
+        "ipcRenderer.send",
+        "proxyMonitor",
+        "packet",
+        "AMF3",
+        "decode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已修正为send。解码后identify action，然后update game state，最后通过traffic-update推回Renderer？",
+      "elements_involved": [
+        "identify",
+        "action",
+        "game state",
+        "traffic-update",
+        "entry",
+        "Renderer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Main用mainWindow.webContents.send发traffic-update，Preload收到后更新traffic list。",
+      "elements_involved": [
+        "Main",
+        "mainWindow.webContents.send",
+        "traffic-update",
+        "Preload",
+        "traffic list"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "流量捕获画好了。最后是设置流程：用户save settings，Preload调用save-settings？",
+      "elements_involved": [
+        "save settings",
+        "Preload",
+        "save-settings",
+        "settings"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，save-settings带settings对象到Main，Main用store.set保存，同时要更新lmStudioClient的设置。如果URL变了还要重连。",
+      "elements_involved": [
+        "save-settings",
+        "Main",
+        "store.set",
+        "lmStudioClient",
+        "settings.lmStudio",
+        "url",
+        "Reconnect"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "settings.lmStudio和url的关系是？Reconnect是Services向LM Studio发请求吗？",
+      "elements_involved": [
+        "settings.lmStudio",
+        "url",
+        "Reconnect",
+        "Services",
+        "LM Studio"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "settings.lmStudio包含url配置。如果url变更，lmStudioClient.updateSettings会触发Reconnect，Services重新连接LM Studio。",
+      "elements_involved": [
+        "settings.lmStudio",
+        "url",
+        "lmStudioClient.updateSettings",
+        "Reconnect",
+        "Services",
+        "LM Studio"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "设置流程完成。我检查一下：四个Note分别标记了Application Initialization、Chat Message Flow、Traffic Capture Flow、Settings Flow，对吗？",
+      "elements_involved": [
+        "Note",
+        "Application Initialization",
+        "Chat Message Flow",
+        "Traffic Capture Flow",
+        "Settings Flow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，四个Note覆盖R到LM的范围。还有，聊天流程里的alt分支要清晰，end别漏了。",
+      "elements_involved": [
+        "Note",
+        "Renderer",
+        "LM Studio",
+        "alt",
+        "end"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "alt分支已画好：Knowledge Query、Calculation、Protocol三个else。我数一下总消息数...",
+      "elements_involved": [
+        "Knowledge Query",
+        "Calculation",
+        "Protocol",
+        "alt",
+        "else"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "流量捕获里Services有三个自调用：Decode AMF3、Identify action、Update game state，这三个是顺序执行的。",
+      "elements_involved": [
+        "Services",
+        "Decode AMF3",
+        "Identify action",
+        "Update game state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "看到了，S-S的自调用三连。确认一下：build context也是在Services内部完成的，然后才发POST到LM Studio？",
+      "elements_involved": [
+        "Services",
+        "Build context",
+        "MCP results",
+        "POST",
+        "LM Studio"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Build context from MCP results，然后POST /v1/chat/completions。返回的response格式化后层层传回Renderer显示。",
+      "elements_involved": [
+        "Build context",
+        "MCP results",
+        "POST",
+        "/v1/chat/completions",
+        "response",
+        "formatted response",
+        "Renderer",
+        "Display in chat"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有流程都画完了。最后确认：设置保存成功后，Main返回success: true给Preload，Preload让Renderer显示confirmation？",
+      "elements_involved": [
+        "Main",
+        "success",
+        "Preload",
+        "Renderer",
+        "confirmation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "small fix：confirmation前面应该是Show confirmation，不是直接confirmation。还有，所有autonumber要开启。",
+      "elements_involved": [
+        "Show confirmation",
+        "autonumber"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正为Show confirmation，autonumber已启用。整个序列图从Renderer到LM Studio的完整交互都覆盖到了，包括初始化、聊天、流量、设置四大模块。",
+      "elements_involved": [
+        "Renderer",
+        "LM Studio",
+        "initialization",
+        "chat",
+        "traffic",
+        "settings"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个图能清楚展示Electron主进程、渲染进程、预加载脚本、服务层、MCP服务器和LM Studio之间的完整协作关系。可以定稿了。",
+      "elements_involved": [
+        "Electron",
+        "Main",
+        "Renderer",
+        "Preload",
+        "Services",
+        "MCP Servers",
+        "LM Studio"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 29,
+    "repair_count": 2,
+    "grounding_acts_count": 29,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 52281.7554,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 29
+  }
+}

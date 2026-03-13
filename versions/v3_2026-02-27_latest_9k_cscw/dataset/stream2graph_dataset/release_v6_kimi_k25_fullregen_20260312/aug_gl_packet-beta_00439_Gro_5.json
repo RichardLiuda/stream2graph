@@ -1,0 +1,923 @@
+{
+  "id": "aug_gl_packet-beta_00439_Gro_5",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/ARG_OSCI_SEQ_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    actor User\n    participant Main\n    participant Initializer\n    participant SetupScreen\n    participant SetupService\n    participant NetworkInfoService\n    participant ModeSelectionScreen\n    participant GraphScreen\n    participant UserSettings\n    participant DataAcqProvider\n    participant DataAcqService\n    participant SocketIsolate\n    participant ProcessingIsolate\n    participant OscilloChartProvider\n    participant FFTChartProvider\n    participant OscilloChart\n    participant FFTChart\n    participant ChartPainter\n\n    %% Application Initialization\n    User->>Main: Launch application\n    Main->>Initializer: init(Groupware_IssueTracker)\n    Note over Initializer: Configure system dependencies\n    Initializer->>Initializer: ensureInitialized(Groupware_IssueTracker)\n    Initializer->>Initializer: Register configurations (Groupware_ChatRoom)\n    Initializer->>Initializer: Register services (Groupware_SprintBacklog)\n    Initializer->>Initializer: Register providers (Groupware_KanbanBoard)\n    Initializer-->>Main: Initialization complete\n    Main->>SetupScreen: Navigate to setup screen\n    \n    %% Device Connection Flow\n    SetupScreen->>User: Display connection options\n    User->>SetupScreen: Select connection mode\n    \n    alt External AP Selected\n        SetupScreen->>SetupService: connectToLocalAP(Groupware_IssueTracker)\n        SetupService->>NetworkInfoService: Connect to ESP32 access point\n        NetworkInfoService->>NetworkInfoService: connectWithRetries(Groupware_KanbanBoard)\n        NetworkInfoService-->>SetupService: Connection established\n        SetupService->>SetupService: scanForWiFiNetworks(Groupware_KanbanBoard)\n        SetupService->>SetupService: Fetch public key from device\n        SetupService-->>SetupScreen: Return available networks\n        SetupScreen->>User: Show WiFi network selection\n        User->>SetupScreen: Select network & enter password\n        SetupScreen->>SetupService: connectToWiFi(Groupware_KanbanBoard)\n        SetupService->>SetupService: encriptWithPublicKey(Groupware_IssueTracker)\n        SetupService->>SetupService: Send credentials to device\n        SetupService->>SetupService: waitForNetworkChange(Groupware_IssueTracker)\n        SetupService->>SetupService: handleNetworkChangeAndConnect(Groupware_SprintBacklog)\n        SetupService->>SetupService: Test connection with encrypted challenge\n        SetupService->>SetupService: fetchDeviceConfig(Groupware_SprintBacklog)\n        SetupService-->>SetupScreen: Connection successful\n    else Internal AP Selected\n        SetupScreen->>SetupService: selectMode(Groupware_ChatRoom)\n        SetupService->>SetupService: initializeGlobalHttpConfig(Groupware_IssueTracker)\n        SetupService->>SetupService: initializeGlobalSocketConnection(Groupware_KanbanBoard)\n        SetupService->>SetupService: fetchDeviceConfig(Groupware_IssueTracker)\n        SetupService-->>SetupScreen: Configuration successful\n    end\n    \n    SetupScreen->>ModeSelectionScreen: Navigate to mode selection\n    \n    %% Mode Selection\n    ModeSelectionScreen->>User: Display oscilloscope modes\n    User->>ModeSelectionScreen: Select mode (Groupware_KanbanBoard)\n    ModeSelectionScreen->>GraphScreen: navigateToMode(Groupware_WikiPage)\n    \n    %% Graph Screen Initialization\n    GraphScreen->>DataAcqProvider: stopAcquisition(Groupware_KanbanBoard) (Groupware_SprintBacklog)\n    GraphScreen->>GraphScreen: Initialize controller\n    GraphScreen->>UserSettings: Set mode (Groupware_ChatRoom)\n    \n    %% Start Data Acquisition\n    GraphScreen->>DataAcqProvider: startAcquisition(Groupware_WikiPage)\n    DataAcqProvider->>DataAcqService: fetchData(Groupware_SprintBacklog)\n    DataAcqService->>DataAcqService: initialize(Groupware_KanbanBoard)\n    \n    %% Create Isolates\n    DataAcqService->>ProcessingIsolate: Create processing isolate\n    ProcessingIsolate-->>DataAcqService: Return SendPort\n    DataAcqService->>SocketIsolate: Create socket isolate\n    SocketIsolate->>SocketIsolate: Connect to device\n    \n    %% Data Processing Workflow\n    loop Data Acquisition\n        SocketIsolate->>SocketIsolate: Receive binary data packet\n        SocketIsolate->>ProcessingIsolate: Send raw data\n        ProcessingIsolate->>ProcessingIsolate: Parse binary data\n        ProcessingIsolate->>ProcessingIsolate: Apply trigger logic\n        ProcessingIsolate->>ProcessingIsolate: Process signal based on config\n        ProcessingIsolate->>DataAcqService: Send processed data points\n        DataAcqService->>DataAcqProvider: Update data streams\n        \n        alt Oscilloscope Mode\n            DataAcqProvider->>OscilloChartProvider: Update time domain data\n            OscilloChartProvider->>OscilloChart: Refresh chart display\n            OscilloChart->>ChartPainter: Draw waveform\n        else FFT Mode\n            DataAcqProvider->>FFTChartProvider: Update frequency domain data\n            FFTChartProvider->>FFTChart: Refresh chart display\n            FFTChart->>ChartPainter: Draw spectrum\n        end\n    end\n    \n    %% User Settings Interaction\n    User->>UserSettings: Change settings (Groupware_IssueTracker)\n    UserSettings->>DataAcqProvider: Update configuration\n    DataAcqProvider->>DataAcqService: updateConfig(Groupware_SprintBacklog)\n    DataAcqService->>ProcessingIsolate: Send UpdateConfigMessage\n    ProcessingIsolate->>ProcessingIsolate: Apply new configuration\n    \n    %% Chart Interaction\n    User->>OscilloChart: Zoom/Pan gesture\n    OscilloChart->>OscilloChartProvider: handleZoom(Groupware_WikiPage)/setHorizontalOffset(Groupware_WikiPage)\n    OscilloChartProvider->>OscilloChart: Update display parameters\n    \n    %% Mode Switching\n    User->>GraphScreen: Request mode change\n    GraphScreen->>UserSettings: setMode(Groupware_KanbanBoard)\n    UserSettings->>DataAcqProvider: Pause current acquisition\n    UserSettings->>GraphScreen: Update chart display\n    GraphScreen->>DataAcqProvider: Resume acquisition with new mode\n    \n    %% Error Handling Flow\n    alt Connection Error\n        SocketIsolate->>DataAcqService: Report connection error\n        DataAcqService->>DataAcqService: _handleConnectionError(Groupware_KanbanBoard)\n        DataAcqService->>DataAcqService: Attempt reconnection\n        \n        alt Reconnection Failed\n            DataAcqService->>DataAcqProvider: handleCriticalError(Groupware_ChatRoom)\n            DataAcqProvider->>SetupScreen: Navigate back to setup\n        end\n    end",
+  "content_size": 5996,
+  "collected_at": "2026-02-06T14:09:45.143092",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Groupware",
+  "seed_id": "gl_packet-beta_00439",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个示波器应用的完整启动和数据采集流程。用户从启动应用到看到波形，中间涉及多个模块的协作。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先确认一下整体架构：用户启动应用后，Main模块应该先找Initializer完成系统初始化，然后再进入设置界面？",
+      "elements_involved": [
+        "Main",
+        "Initializer",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Initializer要配置系统依赖，包括注册各种服务和Provider。等初始化完成，Main再导航到SetupScreen。",
+      "elements_involved": [
+        "Initializer",
+        "SetupScreen",
+        "Groupware_IssueTracker",
+        "Groupware_ChatRoom",
+        "Groupware_SprintBacklog",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把应用初始化部分画出来。User启动应用，Main调用Initializer的init方法，Initializer内部完成ensureInitialized，然后注册配置、服务和Provider。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "Groupware_IssueTracker",
+        "Groupware_ChatRoom",
+        "Groupware_SprintBacklog",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是设备连接流程。SetupScreen要显示连接选项，用户可以选择外部AP模式或者内部AP模式。",
+      "elements_involved": [
+        "SetupScreen",
+        "User",
+        "SetupService",
+        "NetworkInfoService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "两种模式的区别是什么？外部AP是连ESP32的热点再配网，内部AP是直接连现有网络？",
+      "elements_involved": [
+        "SetupService",
+        "NetworkInfoService",
+        "ESP32"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。外部AP模式下，SetupService先connectToLocalAP，通过NetworkInfoService连接ESP32的AP，然后扫描WiFi、获取公钥，用户选网输密码后加密发送。",
+      "elements_involved": [
+        "SetupService",
+        "NetworkInfoService",
+        "ESP32",
+        "Groupware_KanbanBoard",
+        "Groupware_IssueTracker",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画一下外部AP的完整流程：NetworkInfoService用connectWithRetries连接设备，成功后扫描网络、获取公钥，用户选择后SetupService用encriptWithPublicKey加密密码，发送凭证，等待网络切换，最后用加密挑战测试连接。",
+      "elements_involved": [
+        "NetworkInfoService",
+        "SetupService",
+        "SetupScreen",
+        "User",
+        "ESP32",
+        "Groupware_KanbanBoard",
+        "Groupware_IssueTracker",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "内部AP模式简单些，直接初始化HTTP配置和Socket连接，然后获取设备配置就行。两种模式完成后都进入ModeSelectionScreen。",
+      "elements_involved": [
+        "SetupService",
+        "ModeSelectionScreen",
+        "Groupware_ChatRoom",
+        "Groupware_IssueTracker",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加内部AP分支。现在ModeSelectionScreen显示示波器模式，用户选择后进入GraphScreen。",
+      "elements_involved": [
+        "ModeSelectionScreen",
+        "User",
+        "GraphScreen",
+        "Groupware_KanbanBoard",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "GraphScreen初始化时要先停止之前的数据采集，初始化控制器，设置模式，然后启动新的采集流程。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "UserSettings",
+        "Groupware_KanbanBoard",
+        "Groupware_SprintBacklog",
+        "Groupware_ChatRoom",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "DataAcqProvider和DataAcqService的分工是什么？看起来Provider是上层接口，Service是实际执行？",
+      "elements_involved": [
+        "DataAcqProvider",
+        "DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。DataAcqProvider面向UI层，DataAcqService负责底层数据获取。Service会创建两个Isolate：ProcessingIsolate处理数据，SocketIsolate负责设备通信。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我添加Isolate创建流程：DataAcqService先创建ProcessingIsolate获取SendPort，再创建SocketIsolate，SocketIsolate内部连接设备。",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "Device"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据采集是循环过程：SocketIsolate接收二进制数据包，发给ProcessingIsolate解析、应用触发逻辑、按配置处理信号，然后把处理后的数据点发回Service。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "数据最终怎么显示？有两个模式：示波器模式看时域，FFT模式看频域？",
+      "elements_involved": [
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart",
+        "FFTChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。DataAcqProvider根据模式更新对应的数据：Oscilloscope模式走OscilloChartProvider到OscilloChart，FFT模式走FFTChartProvider到FFTChart。两个Chart都用ChartPainter绘制。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加数据采集循环和两种显示模式的分支。现在处理用户设置变更的流程。",
+      "elements_involved": [
+        "User",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在UserSettings改设置后，通知DataAcqProvider更新配置，Provider告诉Service，Service发UpdateConfigMessage给ProcessingIsolate，Isolate内部应用新配置。",
+      "elements_involved": [
+        "User",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate",
+        "Groupware_IssueTracker",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "设置更新流程已添加。还需要图表交互吗？比如缩放平移？",
+      "elements_involved": [
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要。用户在OscilloChart上做缩放或平移手势，OscilloChart调用Provider的handleZoom或setHorizontalOffset，Provider更新显示参数。",
+      "elements_involved": [
+        "User",
+        "OscilloChart",
+        "OscilloChartProvider",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "图表交互已添加。模式切换怎么实现？",
+      "elements_involved": [
+        "User",
+        "OscilloChart",
+        "OscilloChartProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用户在GraphScreen请求切换模式，GraphScreen调用UserSettings的setMode，UserSettings让DataAcqProvider暂停当前采集，更新图表显示，然后GraphScreen通知Provider用新模式恢复采集。",
+      "elements_involved": [
+        "User",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "模式切换流程完成。最后需要错误处理吗？",
+      "elements_involved": [
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "必须有。SocketIsolate发现连接错误时报告给DataAcqService，Service调用_handleConnectionError尝试重连，如果失败就通知Provider处理严重错误，Provider导航回SetupScreen。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen",
+        "Groupware_KanbanBoard",
+        "Groupware_ChatRoom"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "错误处理流程已添加。整体图完成了，我检查一下各模块命名是否准确。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Initializer里的Groupware标注是不是有点多？IssueTracker、ChatRoom、SprintBacklog、KanbanBoard这些在代码里具体对应什么？",
+      "elements_involved": [
+        "Initializer",
+        "Groupware_IssueTracker",
+        "Groupware_ChatRoom",
+        "Groupware_SprintBacklog",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "这些是代码里的标记参数，我确认一下：init用IssueTracker，ensureInitialized也是IssueTracker，注册配置用ChatRoom，注册服务用SprintBacklog，注册Provider用KanbanBoard。需要调整显示吗？",
+      "elements_involved": [
+        "Initializer",
+        "Groupware_IssueTracker",
+        "Groupware_ChatRoom",
+        "Groupware_SprintBacklog",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "不用调整，保持代码原意。但stopAcquisition后面有两个标记，KanbanBoard和SprintBacklog，这个要确认清楚。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "Groupware_KanbanBoard",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "看到了，GraphScreen调用stopAcquisition时带了两个参数标记。我修正一下，确保和代码一致。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "Groupware_KanbanBoard",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "另外，connectWithRetries用的是KanbanBoard，scanForWiFiNetworks也是KanbanBoard，但connectToLocalAP是IssueTracker，这些对应关系要准确。",
+      "elements_involved": [
+        "SetupService",
+        "NetworkInfoService",
+        "Groupware_KanbanBoard",
+        "Groupware_IssueTracker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已核对：connectToLocalAP(IssueTracker)，connectWithRetries(KanbanBoard)，scanForWiFiNetworks(KanbanBoard)，fetchPublicKey没有标记，encriptWithPublicKey(KanbanBoard)，waitForNetworkChange(IssueTracker)，handleNetworkChangeAndConnect(SprintBacklog)，fetchDeviceConfig(SprintBacklog)。",
+      "elements_involved": [
+        "SetupService",
+        "NetworkInfoService",
+        "Groupware_IssueTracker",
+        "Groupware_KanbanBoard",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "fetchDeviceConfig在两种AP模式下都调用了，但标记不同：外部AP是SprintBacklog，内部AP是IssueTracker？",
+      "elements_involved": [
+        "SetupService",
+        "fetchDeviceConfig",
+        "Groupware_SprintBacklog",
+        "Groupware_IssueTracker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确认代码：外部AP分支fetchDeviceConfig(SprintBacklog)，内部AP分支fetchDeviceConfig(IssueTracker)。这是有意区分还是代码问题？",
+      "elements_involved": [
+        "SetupService",
+        "fetchDeviceConfig",
+        "Groupware_SprintBacklog",
+        "Groupware_IssueTracker"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "按代码原样保留，可能是不同配置源的设计。继续检查其他标记。",
+      "elements_involved": [
+        "SetupService",
+        "fetchDeviceConfig"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我梳理一下所有Groupware标记的分布：Initializer阶段IssueTracker/ChatRoom/SprintBacklog/KanbanBoard各用一次；Setup阶段外部AP用IssueTracker/KanbanBoard/SprintBacklog，内部AP用ChatRoom/IssueTracker/KanbanBoard；ModeSelection用KanbanBoard/WikiPage；GraphScreen初始化用KanbanBoard/SprintBacklog/ChatRoom/WikiPage；数据采集用SprintBacklog/KanbanBoard。",
+      "elements_involved": [
+        "Groupware_IssueTracker",
+        "Groupware_ChatRoom",
+        "Groupware_SprintBacklog",
+        "Groupware_KanbanBoard",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有用户设置相关的：Change settings用IssueTracker，updateConfig用SprintBacklog，setMode用KanbanBoard。图表交互的handleZoom和setHorizontalOffset都用WikiPage。",
+      "elements_involved": [
+        "UserSettings",
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "Groupware_IssueTracker",
+        "Groupware_SprintBacklog",
+        "Groupware_KanbanBoard",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "错误处理部分：_handleConnectionError用KanbanBoard，handleCriticalError用ChatRoom。都对应上了。",
+      "elements_involved": [
+        "DataAcqService",
+        "DataAcqProvider",
+        "Groupware_KanbanBoard",
+        "Groupware_ChatRoom"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "DataAcqService的initialize用KanbanBoard，这个在创建Isolate之前，对吗？",
+      "elements_involved": [
+        "DataAcqService",
+        "initialize",
+        "Groupware_KanbanBoard",
+        "ProcessingIsolate",
+        "SocketIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，流程是：DataAcqService先initialize(KanbanBoard)，然后创建ProcessingIsolate，再创建SocketIsolate。",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "检查一下Note的位置。Initializer那里有个Note说明Configure system dependencies，这个放在ensureInitialized之前还是之后？",
+      "elements_involved": [
+        "Initializer",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "代码里Note over Initializer是在init调用之后，ensureInitialized之前。我调整一下位置，让它覆盖Initializer的完整初始化阶段。",
+      "elements_involved": [
+        "Initializer",
+        "Note",
+        "ensureInitialized",
+        "Register configurations",
+        "Register services",
+        "Register providers"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。再看一下alt分支的完整性。外部AP和内部AP两个分支，最后都汇合到SetupScreen导航到ModeSelectionScreen。",
+      "elements_involved": [
+        "SetupScreen",
+        "ModeSelectionScreen",
+        "External AP",
+        "Internal AP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个alt分支都已闭合，正确汇合。数据采集循环里的alt Oscilloscope Mode/FFT Mode也完整。",
+      "elements_involved": [
+        "Data Acquisition loop",
+        "Oscilloscope Mode",
+        "FFT Mode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "错误处理的嵌套alt结构对吗？Connection Error外层，里面嵌套Reconnection Failed？",
+      "elements_involved": [
+        "Connection Error",
+        "Reconnection Failed",
+        "SocketIsolate",
+        "DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "正确。外层是Connection Error，SocketIsolate报告错误，Service处理；内层alt是Reconnection Failed，失败时Provider处理严重错误并导航回SetupScreen。",
+      "elements_involved": [
+        "Connection Error",
+        "Reconnection Failed",
+        "SocketIsolate",
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下所有participant都定义了：User作为actor，Main、Initializer、SetupScreen、SetupService、NetworkInfoService、ModeSelectionScreen、GraphScreen、UserSettings、DataAcqProvider、DataAcqService、SocketIsolate、ProcessingIsolate、OscilloChartProvider、FFTChartProvider、OscilloChart、FFTChart、ChartPainter。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "18个参与者全部定义。User是actor，其他都是participant。没有遗漏。",
+      "elements_involved": [
+        "actor User",
+        "participant list"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ChartPainter只被OscilloChart和FFTChart调用，没有直接和其他模块交互，这个理解对吗？",
+      "elements_involved": [
+        "ChartPainter",
+        "OscilloChart",
+        "FFTChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，ChartPainter是底层绘制工具，只接收绘制指令。OscilloChart-ChartPainter: Draw waveform，FFTChart-ChartPainter: Draw spectrum。",
+      "elements_involved": [
+        "ChartPainter",
+        "OscilloChart",
+        "FFTChart",
+        "Draw waveform",
+        "Draw spectrum"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "看一下消息箭头类型。初始化完成、连接建立、返回可用网络这些用虚线箭头--，其他用实线箭头-。",
+      "elements_involved": [
+        "Initializer--Main",
+        "NetworkInfoService--SetupService",
+        "SetupService--SetupScreen",
+        "SetupService--SetupScreen",
+        "ProcessingIsolate--DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "检查：Initializer--Main虚线，NetworkInfoService--SetupService虚线，SetupService--SetupScreen有两个返回虚线，ProcessingIsolate--DataAcqService的Return SendPort是虚线。还有遗漏吗？",
+      "elements_involved": [
+        "Initializer",
+        "Main",
+        "NetworkInfoService",
+        "SetupService",
+        "ProcessingIsolate",
+        "DataAcqService"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "DataAcqService--DataAcqProvider的Update data streams应该是实线，这是主动推送不是返回。",
+      "elements_involved": [
+        "DataAcqService",
+        "DataAcqProvider",
+        "Update data streams"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确认，DataAcqService-DataAcqProvider是实线箭头。同理，ProcessingIsolate-DataAcqService发送processed data points也是实线。",
+      "elements_involved": [
+        "DataAcqService",
+        "DataAcqProvider",
+        "ProcessingIsolate"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查：SocketIsolate内部有Connect to device的自调用，ProcessingIsolate内部有Parse binary data、Apply trigger logic、Process signal based on config的自调用，这些都要用自循环箭头。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "self loops"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认：SocketIsolate-SocketIsolate: Connect to device，ProcessingIsolate-ProcessingIsolate: Parse binary data / Apply trigger logic / Process signal based on config，还有Apply new configuration也是自循环。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "Connect to device",
+        "Parse binary data",
+        "Apply trigger logic",
+        "Process signal based on config",
+        "Apply new configuration"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Initializer的自循环呢？ensureInitialized、Register configurations、Register services、Register providers。",
+      "elements_involved": [
+        "Initializer",
+        "ensureInitialized",
+        "Register configurations",
+        "Register services",
+        "Register providers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都有：Initializer-Initializer: ensureInitialized，Initializer-Initializer: Register configurations，Initializer-Initializer: Register services，Initializer-Initializer: Register providers。",
+      "elements_involved": [
+        "Initializer",
+        "self loops"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SetupService也有不少自循环：scanForWiFiNetworks、Fetch public key、encriptWithPublicKey、Send credentials、waitForNetworkChange、handleNetworkChangeAndConnect、Test connection、fetchDeviceConfig。外部AP模式下特别多。",
+      "elements_involved": [
+        "SetupService",
+        "self loops",
+        "External AP mode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已列出：SetupService-SetupService: scanForWiFiNetworks(KanbanBoard)，SetupService-SetupService: Fetch public key from device，SetupService-SetupService: encriptWithPublicKey(IssueTracker)，SetupService-SetupService: Send credentials to device，SetupService-SetupService: waitForNetworkChange(IssueTracker)，SetupService-SetupService: handleNetworkChangeAndConnect(SprintBacklog)，SetupService-SetupService: Test connection with encrypted challenge，SetupService-SetupService: fetchDeviceConfig(SprintBacklog)。",
+      "elements_involved": [
+        "SetupService",
+        "scanForWiFiNetworks",
+        "encriptWithPublicKey",
+        "waitForNetworkChange",
+        "handleNetworkChangeAndConnect",
+        "fetchDeviceConfig",
+        "Groupware_KanbanBoard",
+        "Groupware_IssueTracker",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "内部AP模式的自循环：initializeGlobalHttpConfig、initializeGlobalSocketConnection、fetchDeviceConfig。",
+      "elements_involved": [
+        "SetupService",
+        "Internal AP mode",
+        "initializeGlobalHttpConfig",
+        "initializeGlobalSocketConnection",
+        "fetchDeviceConfig"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认：SetupService-SetupService: initializeGlobalHttpConfig(IssueTracker)，SetupService-SetupService: initializeGlobalSocketConnection(KanbanBoard)，SetupService-SetupService: fetchDeviceConfig(IssueTracker)。",
+      "elements_involved": [
+        "SetupService",
+        "initializeGlobalHttpConfig",
+        "initializeGlobalSocketConnection",
+        "fetchDeviceConfig",
+        "Groupware_IssueTracker",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有DataAcqService的自循环：initialize、_handleConnectionError、Attempt reconnection。GraphScreen的Initialize controller。",
+      "elements_involved": [
+        "DataAcqService",
+        "GraphScreen",
+        "initialize",
+        "_handleConnectionError",
+        "Attempt reconnection",
+        "Initialize controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部确认：DataAcqService-DataAcqService: initialize(KanbanBoard)，DataAcqService-DataAcqService: _handleConnectionError(KanbanBoard)，DataAcqService-DataAcqService: Attempt reconnection，GraphScreen-GraphScreen: Initialize controller。图已完成，所有模块、消息、分支、循环、错误处理都按代码准确呈现。",
+      "elements_involved": [
+        "DataAcqService",
+        "GraphScreen",
+        "initialize",
+        "_handleConnectionError",
+        "Attempt reconnection",
+        "Initialize controller",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 6,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 122809.7079,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 64
+  }
+}

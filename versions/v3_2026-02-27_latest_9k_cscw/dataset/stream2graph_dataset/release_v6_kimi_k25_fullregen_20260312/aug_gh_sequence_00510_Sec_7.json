@@ -1,0 +1,643 @@
+{
+  "id": "aug_gh_sequence_00510_Sec_7",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/DREAMSCAPE-AI/dreamscape-docs/blob/24aa5a14265601b36ddbbb02c958eea524e6eb11/architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "github_repo": "DREAMSCAPE-AI/dreamscape-docs",
+  "github_file_path": "architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    autonumber\n    actor User as 👤 Utilisateur\n    participant WC as Web Client\n    participant CN as Core NGINX<br/>:80\n    participant Voyage as Voyage Service<br/>:3003\n    participant Payment as Payment Service<br/>:3005\n    participant AI as AI Service<br/>:3004\n    participant PG as PostgreSQL<br/>:5432\n    participant Redis as Redis<br/>:6379\n    participant Kafka as Kafka<br/>:9092\n    participant Stripe as 💳 Stripe API\n\n    rect rgb(Security_OAuth2)\n        Note over User,Voyage: Phase 1: Sélection Vol\n        User->>WC: Sélectionne vol<br/>(Security_OAuth2)\n        WC->>WC: Add to cart<br/>(Security_ZeroTrust)\n        User->>WC: Click \"Réserver\"\n        \n        WC->>CN: POST /api/v1/bookings<br/>{Security_IntrusionDetection}<br/>Authorization: Bearer JWT\n        CN->>CN: Validate JWT (Security_Encryption)\n        CN->>Voyage: Forward to Voyage<br/>localhost:3003/bookings\n    end\n\n    rect rgb(Security_Firewall)\n        Note over Voyage,Kafka: Phase 2: Création Réservation\n        Voyage->>Voyage: Extract userId from JWT\n        Voyage->>PG: BEGIN transaction\n        Note right of PG: 🔄 ACID transaction<br/>pour cohérence\n        \n        Voyage->>PG: INSERT booking<br/>{Security_OAuth2}\n        PG-->>Voyage: Booking created (Security_Firewall)\n        \n        Voyage->>Redis: Store booking temp<br/>key: \"booking:temp:bookingId\"<br/>TTL: 15min\n        Note right of Redis: ⏱️ Timeout si paiement<br/>échoue après 15min\n        \n        Voyage->>Kafka: Publish event<br/>Topic: \"voyage.booking.created\"<br/>{Security_OAuth2}\n        Note left of Kafka: Event-Driven Architecture<br/>- Decoupling services<br/>- Async processing<br/>- Audit trail\n        \n        Voyage-->>CN: 201 Created<br/>{Security_Encryption}\n        CN-->>WC: 201 Created\n    end\n\n    rect rgb(Security_Firewall)\n        Note over WC,Stripe: Phase 3: Demande Paiement\n        WC->>CN: POST /api/v1/payments/intent<br/>{Security_OAuth2}<br/>Authorization: Bearer JWT\n        CN->>Payment: Forward to Payment<br/>localhost:3005/payments/intent\n        \n        Payment->>Payment: Extract userId from JWT\n        Payment->>PG: Verify booking exists<br/>SELECT * FROM bookings<br/>WHERE id = bookingId AND userId = userId\n        \n        alt Booking Non Trouvé ❌\n            PG-->>Payment: null\n            Payment-->>CN: 404 Not Found<br/>{Security_Encryption}\n            CN-->>WC: 404 Error\n            WC->>User: ❌ Erreur réservation\n        else Booking Trouvé ✅\n            PG-->>Payment: Booking found\n            Payment->>Stripe: Create PaymentIntent<br/>POST /v1/payment_intents<br/>{Security_Encryption),<br/>currency: \"eur\",<br/>metadata: {Security_IntrusionDetection}}\n            \n            Stripe-->>Payment: PaymentIntent created<br/>{Security_Firewall}\n            \n            Payment->>PG: INSERT payment<br/>{Security_Firewall}\n            Payment->>Kafka: Publish event<br/>Topic: \"payment.intent.created\"<br/>{Security_OAuth2}\n            \n            Payment-->>CN: 200 OK<br/>{Security_IntrusionDetection}\n            CN-->>WC: 200 OK\n        end\n    end\n\n    rect rgb(Security_Encryption)\n        Note over WC,Stripe: Phase 4: Paiement Stripe (Security_ZeroTrust)\n        WC->>WC: Initialize Stripe.js<br/>with clientSecret\n        WC->>User: Affiche formulaire carte<br/>(Security_IntrusionDetection)\n        \n        User->>WC: Saisit infos carte<br/>(Security_ZeroTrust)\n        WC->>Stripe: POST /v1/payment_intents/:id/confirm<br/>(Security_OAuth2)<br/>{Security_IntrusionDetection}\n        \n        Note right of Stripe: 🔒 Sécurité PCI-DSS<br/>- Carte jamais envoyée à notre backend<br/>- Stripe gère tout<br/>- Tokenization automatique\n        \n        alt Paiement Réussi ✅\n            Stripe-->>WC: PaymentIntent succeeded\n            WC->>WC: Display success message\n            WC->>User: ✅ Paiement accepté\n        else Paiement Échoué ❌\n            Stripe-->>WC: PaymentIntent failed<br/>(Security_OAuth2)\n            WC->>User: ❌ \"Paiement refusé\"<br/>(Security_ZeroTrust)\n        end\n    end\n\n    rect rgb(Security_Encryption)\n        Note over Stripe,Kafka: Phase 5: Webhook Stripe (Security_ZeroTrust)\n        Stripe->>Payment: POST /webhooks/stripe<br/>Stripe-Signature header<br/>{Security_OAuth2}}\n        \n        Payment->>Payment: Verify signature<br/>stripe.webhooks.constructEvent(Security_IntrusionDetection)\n        \n        alt Signature Invalide ❌\n            Payment-->>Stripe: 400 Bad Request\n            Note right of Payment: Protection contre<br/>webhooks forgés\n        else Signature Valide ✅\n            Payment->>PG: UPDATE payment<br/>SET status = \"SUCCEEDED\"<br/>WHERE stripePaymentIntentId = id\n            \n            Payment->>PG: UPDATE booking<br/>SET status = \"CONFIRMED\"<br/>WHERE id = bookingId\n            \n            Payment->>Redis: Delete temp booking<br/>DEL \"booking:temp:bookingId\"\n            \n            Payment->>Kafka: Publish event<br/>Topic: \"payment.succeeded\"<br/>{Security_Encryption}\n            \n            Payment-->>Stripe: 200 OK\n        end\n    end\n\n    rect rgb(Security_ZeroTrust)\n        Note over Kafka,User: Phase 6: Traitement Async (Security_IntrusionDetection)\n        Kafka->>Voyage: Consume event<br/>\"payment.succeeded\"\n        Voyage->>PG: SELECT booking details\n        Voyage->>Voyage: Generate confirmation email<br/>(Security_OAuth2)\n        Voyage->>User: 📧 Email confirmation<br/>+ PDF billet\n        \n        Kafka->>AI: Consume event<br/>\"voyage.booking.created\"\n        AI->>PG: Get user profile<br/>+ booking history\n        AI->>AI: Update ML model<br/>(Security_Firewall)\n        Note right of AI: 🤖 AI learning<br/>from user behavior\n        AI->>Redis: Update recommendations<br/>key: \"reco:userId\"\n    end\n\n    rect rgb(Security_IntrusionDetection)\n        Note over WC,User: Phase 7: Confirmation Frontend\n        loop Polling every 2s\n            WC->>CN: GET /api/v1/bookings/:bookingId\n            CN->>Voyage: Forward request\n            Voyage->>PG: SELECT booking<br/>WHERE id = bookingId\n            \n            alt Status = CONFIRMED ✅\n                PG-->>Voyage: Booking confirmed\n                Voyage-->>CN: 200 OK<br/>{Security_ZeroTrust}\n                CN-->>WC: 200 OK\n                WC->>WC: Stop polling\n                WC->>WC: Redirect /bookings/:id\n                WC->>User: ✅ Affiche confirmation<br/>+ détails voyage\n            else Status = PENDING ⏳\n                PG-->>Voyage: Booking still pending\n                Voyage-->>CN: 200 OK<br/>{Security_IntrusionDetection}\n                CN-->>WC: 200 OK (Security_OAuth2)\n                Note right of WC: ⏱️ Après 15min<br/>réservation annulée<br/>automatiquement\n            end\n        end\n    end\n\n    Note over User,Kafka: 📊 Performance Réservation<br/>Create booking: ~100-150ms<br/>Payment intent: ~500-800ms (Security_ZeroTrust)<br/>Confirmation: ~1-2s (Security_ZeroTrust)<br/>Email: ~3-5s (Security_Encryption)<br/><br/>🔒 Fiabilité<br/>- Transaction ACID (Security_ZeroTrust)<br/>- Idempotency keys (Security_Encryption)<br/>- Webhook retry (Security_ZeroTrust)<br/>- Event sourcing (Security_Encryption)",
+  "content_size": 7218,
+  "collected_at": "2026-02-06T01:33:16.963511",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "augmentation_domain": "Security",
+  "seed_id": "gh_sequence_00510",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的机票预订支付流程时序图。用户从Web Client开始，经过Core NGINX网关，最终与Stripe完成支付。整个流程要体现我们的安全架构和异步处理机制。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Stripe"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我注意到您提到了安全架构，我们需要在图中体现哪些具体的安全组件？比如OAuth2认证、防火墙、入侵检测这些？",
+      "elements_involved": [
+        "Security_OAuth2",
+        "Security_Firewall",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，安全是重点。我们采用Zero Trust架构，每个阶段都有不同的安全控制。第一阶段用户选航班时，Web Client用OAuth2认证，加入购物车时走Zero Trust验证。",
+      "elements_involved": [
+        "Security_OAuth2",
+        "Security_ZeroTrust",
+        "Web Client",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出第一阶段的框架：用户选航班、加入购物车、点击预订，然后Web Client向Core NGINX发送POST请求，携带JWT Token，NGINX做入侵检测。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "NGINX收到请求后要在本地验证JWT，这里标注Security_Encryption。验证通过后转发到Voyage Service的3003端口。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "Security_Encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Voyage Service是负责预订逻辑的核心服务对吧？它需要操作数据库，这里用PostgreSQL，还有Redis做临时缓存？",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。Voyage Service提取userId后开启ACID事务，向PostgreSQL插入预订记录，这个操作受OAuth2保护。同时把临时预订存到Redis，设置15分钟TTL，防止支付超时后数据残留。",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "Redis",
+        "Security_OAuth2",
+        "ACID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "理解了。我在PostgreSQL旁边标注ACID事务保证一致性，Redis旁边说明15分钟超时机制。然后Voyage Service发布事件到Kafka？",
+      "elements_involved": [
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "Voyage Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Topic是\"voyage.booking.created\"，同样受OAuth2保护。Kafka这里要体现我们的Event-Driven Architecture，实现服务解耦、异步处理和审计追踪。",
+      "elements_involved": [
+        "Kafka",
+        "Security_OAuth2",
+        "Event-Driven Architecture",
+        "async",
+        "audit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "第一阶段完成后返回201 Created。现在进入第三阶段支付请求：Web Client向NGINX发起支付意图请求，转发到Payment Service的3005端口？",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Payment Service",
+        "201 Created"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的。Payment Service要先验证预订是否存在，这里有个分支逻辑：如果PostgreSQL返回null，走404错误流程；如果找到预订，才创建Stripe PaymentIntent。",
+      "elements_involved": [
+        "Payment Service",
+        "PostgreSQL",
+        "Stripe",
+        "alt Booking Non Trouvé",
+        "alt Booking Trouvé"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画出了alt分支：预订不存在时返回404，页面显示错误；预订存在时，Payment Service向Stripe API创建PaymentIntent，用欧元结算，元数据带入侵检测标记。",
+      "elements_involved": [
+        "Payment Service",
+        "Stripe API",
+        "Security_Encryption",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Stripe返回PaymentIntent后，Payment Service要同时做几件事：向PostgreSQL插入支付记录、向Kafka发布\"payment.intent.created\"事件、最后返回200给前端。",
+      "elements_involved": [
+        "Stripe",
+        "Payment Service",
+        "PostgreSQL",
+        "Kafka",
+        "200 OK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "第四阶段是前端直接与Stripe交互？Web Client用Stripe.js初始化，显示卡片表单，用户输入信息后直接发给Stripe，不经过我们的后端。",
+      "elements_involved": [
+        "Web Client",
+        "Stripe",
+        "Stripe.js",
+        "Security_ZeroTrust",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这正是PCI-DSS合规的关键——卡号永远不会到达我们的服务器，Stripe全程处理并自动做Tokenization。确认支付时带OAuth2和入侵检测双重保护。",
+      "elements_involved": [
+        "Stripe",
+        "PCI-DSS",
+        "Tokenization",
+        "Security_OAuth2",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我标注了PCI-DSS安全说明。然后画出支付结果的两个分支：成功时显示确认页面，失败时显示\"Paiement refusé\"，都用Zero Trust保护。",
+      "elements_involved": [
+        "Stripe",
+        "Web Client",
+        "User",
+        "alt Paiement Réussi",
+        "alt Paiement Échoué",
+        "Security_ZeroTrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第五阶段是Stripe的Webhook回调，这是异步确认的关键。Stripe向Payment Service的/webhooks/stripe端点POST，带Stripe-Signature头，我们需要验证签名防伪造。",
+      "elements_involved": [
+        "Stripe",
+        "Payment Service",
+        "Webhook",
+        "Security_OAuth2",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "签名验证也有分支对吧？无效签名返回400，有效签名才更新数据库。这里要更新payment表状态为SUCCEEDED，booking表状态为CONFIRMED。",
+      "elements_involved": [
+        "Payment Service",
+        "Stripe",
+        "alt Signature Invalide",
+        "alt Signature Valide",
+        "PostgreSQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，还要删除Redis的临时预订键，然后发布\"payment.succeeded\"事件到Kafka。整个Webhook处理用Encryption保护。",
+      "elements_involved": [
+        "Payment Service",
+        "Redis",
+        "Kafka",
+        "Security_Encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第六阶段是异步处理。Voyage Service消费\"payment.succeeded\"事件，查询预订详情，生成确认邮件和PDF机票发送给用户。",
+      "elements_involved": [
+        "Kafka",
+        "Voyage Service",
+        "PostgreSQL",
+        "User",
+        "Security_OAuth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "同时AI Service也在工作，它消费\"voyage.booking.created\"事件，获取用户画像和预订历史，更新ML模型，把个性化推荐写回Redis。",
+      "elements_involved": [
+        "Kafka",
+        "AI Service",
+        "PostgreSQL",
+        "AI",
+        "Redis",
+        "Security_Firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "AI Service这里标注\"AI learning from user behavior\"，体现机器学习持续优化。防火墙保护模型训练过程。",
+      "elements_involved": [
+        "AI Service",
+        "AI",
+        "Redis",
+        "Security_Firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "最后第七阶段，前端轮询确认状态。Web Client每2秒查询预订状态，如果CONFIRMED就停止轮询、跳转详情页；如果还是PENDING，继续轮询直到15分钟超时。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "PostgreSQL",
+        "loop Polling",
+        "Security_ZeroTrust",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画出了轮询循环和状态分支。最后加上性能指标注释：创建预订100-150ms，支付意图500-800ms，整体确认1-2秒，邮件3-5秒。",
+      "elements_involved": [
+        "Web Client",
+        "Performance metrics",
+        "Security_ZeroTrust",
+        "Security_Encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还要加上可靠性说明：ACID事务、幂等键、Webhook重试、事件溯源。这些和性能数据一起放在最后的Note里。",
+      "elements_involved": [
+        "Note over User,Kafka",
+        "ACID",
+        "Idempotency keys",
+        "Webhook retry",
+        "Event sourcing",
+        "Security_ZeroTrust",
+        "Security_Encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我注意到图中用了多个rect分组，每个阶段用不同安全颜色：OAuth2用Security_OAuth2色，Firewall用Security_Firewall色，这样视觉区分清晰。",
+      "elements_involved": [
+        "rect rgb(Security_OAuth2)",
+        "rect rgb(Security_Firewall)",
+        "rect rgb(Security_Encryption)",
+        "rect rgb(Security_ZeroTrust)",
+        "rect rgb(Security_IntrusionDetection)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。但让我检查一下——Voyage Service向PostgreSQL的BEGIN transaction和INSERT booking，这两个操作都在同一个ACID事务里吗？需要明确标注。",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "BEGIN transaction",
+        "INSERT booking",
+        "ACID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "您说得对，我调整一下：在PostgreSQL右侧添加明确标注\"🔄 ACID transaction pour cohérence\"，强调事务一致性。",
+      "elements_involved": [
+        "PostgreSQL",
+        "ACID",
+        "Note right of PG"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Redis的临时存储也要说明清楚，标注\"⏱️ Timeout si paiement échoue après 15min\"，让运维团队明白自动清理机制。",
+      "elements_involved": [
+        "Redis",
+        "TTL 15min",
+        "Note right of Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Kafka的事件驱动架构说明我也补全了：Decoupling services、Async processing、Audit trail三点。",
+      "elements_involved": [
+        "Kafka",
+        "Event-Driven Architecture",
+        "async",
+        "audit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Stripe交互那块，确认支付时的端点应该是/v1/payment_intents/:id/confirm，我看看你有没有漏掉路径参数。",
+      "elements_involved": [
+        "Web Client",
+        "Stripe",
+        "POST /v1/payment_intents/:id/confirm"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确实，我修正为/v1/payment_intents/:id/confirm，并确保Security_OAuth2和Security_IntrusionDetection两个标签都带上。",
+      "elements_involved": [
+        "Stripe",
+        "Security_OAuth2",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Webhook验证签名的方法名也要准确，是stripe.webhooks.constructEvent，这个细节不能错，否则开发团队会对照不上文档。",
+      "elements_involved": [
+        "Payment Service",
+        "stripe.webhooks.constructEvent",
+        "Security_IntrusionDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正方法名。轮询部分的注释\"⏱️ Après 15min réservation annulée automatiquement\"我也放在Web Client右侧了，说明前端超时后的自动取消。",
+      "elements_involved": [
+        "Web Client",
+        "15min timeout",
+        "Note right of WC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "所有服务端口号都确认正确吗？Voyage 3003、Payment 3005、AI 3004、PostgreSQL 5432、Redis 6379、Kafka 9092？",
+      "elements_involved": [
+        "Voyage Service:3003",
+        "Payment Service:3005",
+        "AI Service:3004",
+        "PostgreSQL:5432",
+        "Redis:6379",
+        "Kafka:9092"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部核对无误。NGINX的80端口和Core NGINX<br/:80标注也正确。各服务间的localhost转发路径都匹配。",
+      "elements_involved": [
+        "Core NGINX:80",
+        "localhost:3003/bookings",
+        "localhost:3005/payments/intent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后的性能指标里，支付意图500-800ms和确认1-2秒都标注Zero Trust，邮件3-5秒标注Encryption，这些安全标签要对应正确。",
+      "elements_involved": [
+        "Performance metrics",
+        "Security_ZeroTrust",
+        "Security_Encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "安全标签已对应。可靠性说明中的ACID对应Zero Trust，幂等键和事件溯源对应Encryption，Webhook重试对应Zero Trust。",
+      "elements_involved": [
+        "Fiabilité",
+        "ACID",
+        "Idempotency keys",
+        "Webhook retry",
+        "Event sourcing",
+        "Security_ZeroTrust",
+        "Security_Encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我再看一眼角色定义——User用👤 Utilisateur，Stripe用💳 Stripe API，这些emoji图标都加上了吗？",
+      "elements_involved": [
+        "actor User as 👤 Utilisateur",
+        "participant Stripe as 💳 Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都加上了。所有参与者定义完整：User、WC、CN、Voyage、Payment、AI、PG、Redis、Kafka、Stripe，共10个参与者。",
+      "elements_involved": [
+        "User",
+        "WC",
+        "CN",
+        "Voyage",
+        "Payment",
+        "AI",
+        "PG",
+        "Redis",
+        "Kafka",
+        "Stripe"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "流程中的法语术语统一检查：Sélection Vol、Réserver、Création Réservation、Demande Paiement、Paiement Stripe、Webhook Stripe、Traitement Async、Confirmation Frontend，这些Phase标题都准确吗？",
+      "elements_involved": [
+        "Phase 1: Sélection Vol",
+        "Phase 2: Création Réservation",
+        "Phase 3: Demande Paiement",
+        "Phase 4: Paiement Stripe",
+        "Phase 5: Webhook Stripe",
+        "Phase 6: Traitement Async",
+        "Phase 7: Confirmation Frontend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部准确。分支条件也用法语标注：Booking Non Trouvé ❌、Booking Trouvé ✅、Paiement Réussi ✅、Paiement Échoué ❌、Signature Invalide ❌、Signature Valide ✅、Status = CONFIRMED ✅、Status = PENDING ⏳。",
+      "elements_involved": [
+        "alt branches",
+        "else branches",
+        "loop Polling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。整个时序图完整覆盖了从航班选择到支付确认的端到端流程，安全控制点、异步架构、故障处理都体现到位。可以定稿了。",
+      "elements_involved": [
+        "architecture",
+        "async",
+        "security",
+        "booking",
+        "confirmed",
+        "carte"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "定稿完成。最终时序图包含7个阶段、10个参与者、6个rect安全分组、4个alt分支、1个轮询loop，完整呈现了我们机票预订系统的技术架构和安全设计。",
+      "elements_involved": [
+        "sequenceDiagram",
+        "autonumber",
+        "7 phases",
+        "security architecture",
+        "event-driven",
+        "ACID",
+        "PCI-DSS"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 44,
+    "repair_count": 2,
+    "grounding_acts_count": 44,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 79516.3624,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 44
+  }
+}

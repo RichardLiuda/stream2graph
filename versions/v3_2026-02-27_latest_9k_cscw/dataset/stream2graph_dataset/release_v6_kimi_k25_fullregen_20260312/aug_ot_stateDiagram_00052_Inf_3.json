@@ -1,0 +1,230 @@
+{
+  "id": "aug_ot_stateDiagram_00052_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/timfornell/StockScreener/blob/c2207e1c48de8d77025e6ab50d872a68992d9f55/Doc/OverviewFlow.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "timfornell/StockScreener",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n\n    state ForkState <<fork>>\n    state JoinState <<join>>\n\n    GUIProcess: Process for displaying\n GUI is started\n    GUIInit: GUI initializes data interface\n and components\n    GUI: GUI is opened and shows\n list of stocks\n    ReadData: Data interface reads\n relevant pickle file\n    StockHandled: The data for the stock\n has been updated\n    FindStock: Find stock with mising data\n    DataGathererProcess: Process for gathering\n data is started\n    WriteData: Data is written to\n pickle file\n    DataGatherer: DataGatherer scrapes\n webpages\n    GatherData: Stock data is gathered\n\n    [Infra_EtcdCluster] --> ForkState: Program is started\n    ForkState --> GUIProcess\n    ForkState --> DataGathererProcess\n    GUIProcess --> JoinState\n    DataGathererProcess --> GatherData\n    GatherData --> WriteData\n    WriteData --> JoinState\n    JoinState --> GUIInit: Data exists in file\n    GUIInit --> ReadData: GUI requests data\n    ReadData --> GUI: Data interface returns data\n    GUI --> UpdateData: Every 500ms\n    GUI --> RefreshData: User requests data\n to be updated\n    GUI --> FilterData: User creates a filter\n    GUI --> SortData: User requests data\n to be sorted\n    GUI --> [Infra_EtcdCluster]: User closes GUI\n    StockHandled --> GUI: Tell the GUI that new\n data is available\n    RefreshButton --> GUI: Data interface\n returns data\n    Filter --> GUI: Data interface\n returns data\n    Sort --> GUI: Data interface\n returns data\n\n    state RefreshData {Infra_LoadBalancer] --> RefreshButton\n    }\n\n    state SortData {Infra_RedisCache] --> Sort: Send column and sort direction\n to data interface\n    }\n\n    state FilterData {Infra_EtcdCluster] --> Filter: Send filter type to\n data interface\n    }\n\n    state UpdateData {Infra_LoadBalancer] --> FindStock\n        FindStock --> [Infra_WorkerNode]: No stock found\n        FindStock --> DataGatherer: Send stock to data\n gathering process\n        DataGatherer --> StockHandled\n    }",
+  "content_size": 2102,
+  "collected_at": "2026-02-06T10:37:16.280414",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00052",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个股票数据监控系统的状态流转图。核心场景是：程序启动后要同时拉起GUI显示进程和数据采集进程，这两个分支最终要汇合。",
+      "elements_involved": [
+        "ForkState",
+        "GUIProcess",
+        "DataGathererProcess",
+        "JoinState"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，ForkState作为分叉点，同时触发GUIProcess和DataGathererProcess。那数据采集这边具体怎么流转？数据最终写到哪里？",
+      "elements_involved": [
+        "ForkState",
+        "DataGathererProcess",
+        "GatherData",
+        "WriteData"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "DataGathererProcess启动后进入GatherData状态，爬虫抓取网页数据，然后写入WriteData状态，把数据序列化到pickle文件。这个WriteData和GUIProcess都要汇入JoinState。",
+      "elements_involved": [
+        "DataGathererProcess",
+        "GatherData",
+        "WriteData",
+        "JoinState",
+        "GUIProcess"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，两支汇入JoinState。汇合后的条件是数据文件已存在，然后进入GUIInit初始化界面组件。接下来GUI怎么获取数据？",
+      "elements_involved": [
+        "JoinState",
+        "GUIInit",
+        "ReadData",
+        "GUI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "GUIInit完成后，GUI请求数据，ReadData状态从pickle文件读取，返回给GUI主界面显示股票列表。GUI还要支持用户交互：刷新、筛选、排序，以及后台每500ms自动更新。",
+      "elements_involved": [
+        "GUIInit",
+        "ReadData",
+        "GUI",
+        "RefreshData",
+        "FilterData",
+        "SortData",
+        "UpdateData"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这几个交互状态需要细化内部逻辑吗？特别是UpdateData，每500ms触发的话，怎么判断需要采集新数据？",
+      "elements_involved": [
+        "UpdateData",
+        "FindStock",
+        "DataGatherer",
+        "StockHandled"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "UpdateData内部有个FindStock子状态，负责查找缺失数据的股票。如果找到了，就发送到DataGatherer去采集；没找到则标记到WorkerNode。采集完成后StockHandled通知GUI有新数据。",
+      "elements_involved": [
+        "UpdateData",
+        "FindStock",
+        "DataGatherer",
+        "StockHandled",
+        "GUI",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我先把主干画出来：从EtcdCluster启动，ForkState分叉，两支汇入JoinState，再到GUIInit、ReadData、GUI。然后GUI分出四条线：UpdateData、RefreshData、FilterData、SortData，最后关闭时回到EtcdCluster。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "ForkState",
+        "JoinState",
+        "GUIInit",
+        "ReadData",
+        "GUI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，UpdateData、RefreshData、FilterData、SortData这四个不是简单状态，它们内部都有子结构。比如RefreshData里面有个RefreshButton，通过LoadBalancer触发；SortData需要RedisCache来传递排序参数。",
+      "elements_involved": [
+        "RefreshData",
+        "RefreshButton",
+        "SortData",
+        "FilterData",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "了解了，这四个都是复合状态。FilterData内部用EtcdCluster传递过滤条件，SortData用RedisCache传递列名和排序方向，RefreshData用LoadBalancer到RefreshButton。",
+      "elements_involved": [
+        "FilterData",
+        "Infra_EtcdCluster",
+        "SortData",
+        "Infra_RedisCache",
+        "RefreshData",
+        "Infra_LoadBalancer",
+        "RefreshButton"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有StockHandled到GUI的回流线别忘了——数据采集完成后要通知界面更新。另外RefreshButton、Filter、Sort这三个操作完成后都要返回数据给GUI。",
+      "elements_involved": [
+        "StockHandled",
+        "GUI",
+        "RefreshButton",
+        "Filter",
+        "Sort"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部补上了。现在结构完整了：启动分叉、双进程汇合、GUI初始化、数据读取、主界面显示，四个用户交互复合状态各自调用基础设施，采集流程闭环通知更新，关闭时回归EtcdCluster。",
+      "elements_involved": [
+        "ForkState",
+        "JoinState",
+        "GUI",
+        "UpdateData",
+        "RefreshData",
+        "FilterData",
+        "SortData",
+        "DataGatherer",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认无误。这个设计覆盖了程序启动、并发采集、界面展示、用户交互和后台更新的完整生命周期，基础设施的调用关系也清晰了。",
+      "elements_involved": [
+        "GUIProcess",
+        "DataGathererProcess",
+        "GUI",
+        "UpdateData",
+        "RefreshData",
+        "FilterData",
+        "SortData"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 13,
+    "repair_count": 1,
+    "grounding_acts_count": 13,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 39081.1925,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 13
+  }
+}

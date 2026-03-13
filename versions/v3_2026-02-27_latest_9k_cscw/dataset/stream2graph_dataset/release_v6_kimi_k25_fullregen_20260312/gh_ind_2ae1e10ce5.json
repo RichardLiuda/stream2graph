@@ -1,0 +1,483 @@
+{
+  "id": "gh_ind_2ae1e10ce5",
+  "source": "github_industrial",
+  "repo": "kubernetes-sigs/security-profiles-operator",
+  "license": "apache-2.0",
+  "code": "flowchart LR\n    U(User)\n    subgraph Node\n        FS1[(FileSystem)]\n        P1[Pod]\n        D1[Daemon]\n        R1[eBpfRecorder]\n        E1[LogEnricher]\n        M1[Metrics]\n\n        D1 -.->|install profile|FS1\n        P1 -.-> |use profile|FS1\n        D1 --> |gRPC: record profile| R1\n        D1 --> |gRPC: record profile| E1\n        D1 --> |gRPC: update metric| M1\n        R1 --> |record profile| P1\n        E1 --> |record profile| P1\n        D1 -->|get/watch| P1\n    end\n    \n    Recording[/ProfileRecording<br> CR/]\n    Config[/SPOD CR/]\n    Profile[/SeccompProfile CR<br>SelinuxProfile CR <br> ApparmorProfile CR/]\n    Binding[ProfileBinding CR]\n    W[Webhook]\n    M[Manager]\n    D[Daemonset]\n\n    U -->|deploy|M\n    U -->|deploy|W\n    U -->|update|Config\n    U -->|create|Recording\n    U -->|create/update/get/delete|Profile\n\n    W -.->|watch| Recording\n    W -->|add annotations| P1\n\n    M -.->|watch|Config\n    M -->|create/update|D\n    M -->|create<br>when not preset|W\n\n    D -.->|start|D1\n    D1 -.->|watch|Config\n    D1-.->|get/update|Recording\n    D1 -->|create/update/watch|Profile\n\n    W-->|get|Binding\n    W-->|get|Profile\n    W-->|add SecurityContext<br>when profile binding is defined|P1\n\n  classDef green fill:#9f6,stroke:#333,stroke-width:2px;\n  classDef orange fill:#f96,stroke:#333,stroke-width:4px;\n  classDef purple fill:#f9f,stroke:#333,stroke-width:4px\n  class W,M,D,D1,D2,R1,R2,E1,M1 green\n  class U orange\n  class P1,P2 purple",
+  "diagram_type": "node size:900..1500",
+  "collected_at": "2026-02-27T05:30:18.074488",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一下安全配置文件管理系统的架构图，核心是用户通过几个CR来驱动整个工作流。先放User节点在最左边，然后右边是一个大的Node子图，里面跑Pod、Daemon这些组件。",
+      "elements_involved": [
+        "User",
+        "Node",
+        "Pod",
+        "Daemon"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，Node子图内部需要包含哪些具体组件？看代码里有FS1、P1、D1、R1、E1、M1这些，我理解为FileSystem、Pod、Daemon、eBpfRecorder、LogEnricher、Metrics？",
+      "elements_involved": [
+        "FS1",
+        "P1",
+        "D1",
+        "R1",
+        "E1",
+        "M1",
+        "FileSystem",
+        "Pod",
+        "Daemon",
+        "eBpfRecorder",
+        "LogEnricher",
+        "Metrics"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，就是这个对应关系。Daemon是核心协调者，它通过gRPC去调R1和E1做录制，还要更新M1的指标。另外Daemon和FileSystem之间有个install profile的虚线关系。",
+      "elements_involved": [
+        "D1",
+        "R1",
+        "E1",
+        "M1",
+        "FS1",
+        "gRPC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在Node子图里把FS1画成圆柱体数据库形状，P1、D1用矩形，然后D1到R1、E1、M1画上实线箭头标注gRPC。D1到FS1用虚线。",
+      "elements_involved": [
+        "D1",
+        "R1",
+        "E1",
+        "M1",
+        "FS1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Node外面还有几个关键的CR资源：ProfileRecording、SPODConfig、SeccompProfile这些，以及ProfileBinding。另外要有Webhook、Manager、Daemonset这三个控制面组件。",
+      "elements_involved": [
+        "Recording",
+        "Config",
+        "Profile",
+        "Binding",
+        "W",
+        "M",
+        "D"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Profile那个节点我看代码里写了三种profile类型：SeccompProfile、SelinuxProfile、ApparmorProfile，是要堆在一个框里还是分开？",
+      "elements_involved": [
+        "Profile",
+        "SeccompProfile",
+        "SelinuxProfile",
+        "ApparmorProfile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "堆在一个框里就行，用多行文本标注。User到这些组件的操作关系要理清：deploy指向Manager和Webhook，update指向Config，create指向Recording，对Profile是完整的CRUD。",
+      "elements_involved": [
+        "User",
+        "M",
+        "W",
+        "Config",
+        "Recording",
+        "Profile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了User出发的五条线，deploy到M和W，update到Config，create到Recording，CRUD到Profile。",
+      "elements_involved": [
+        "User",
+        "M",
+        "W",
+        "Config",
+        "Recording",
+        "Profile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在补控制面的协作关系。Manager要watch Config的变化，然后create/update Daemonset。另外Manager还负责在Webhook不存在时创建它。",
+      "elements_involved": [
+        "M",
+        "Config",
+        "D",
+        "W"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Manager到Daemonset是实线，到Webhook也是实线？然后Manager到Config是watch关系用虚线？",
+      "elements_involved": [
+        "M",
+        "D",
+        "W",
+        "Config"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，M到Config虚线watch，M到D和W都是实线操作。Daemonset启动后要和Node里的Daemon建立联系。",
+      "elements_involved": [
+        "M",
+        "Config",
+        "D",
+        "W",
+        "D1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了M到Config的虚线watch，M到D的create/update实线，M到W的create实线（标注when not present）。然后D到D1画了start虚线。",
+      "elements_involved": [
+        "M",
+        "Config",
+        "D",
+        "W",
+        "D1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Webhook这边比较复杂。它要watch Recording的变化，然后给Pod加annotations。另外Webhook还要get Binding和Profile，如果ProfileBinding定义了，就要给Pod加SecurityContext。",
+      "elements_involved": [
+        "W",
+        "Recording",
+        "P1",
+        "Binding",
+        "Profile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "W到Recording是watch虚线对吧？W到P1有两条线，一条是add annotations，另一条是add SecurityContext when profile binding is defined？",
+      "elements_involved": [
+        "W",
+        "Recording",
+        "P1",
+        "Binding"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，W到P1两条实线，一条标注add annotations，另一条标注add SecurityContext when profile binding is defined。W到Binding和Profile都是get实线。",
+      "elements_involved": [
+        "W",
+        "P1",
+        "Binding",
+        "Profile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了W的相关连线。现在Node内部还有R1、E1到P1的record profile关系，以及D1到P1的get/watch，这些都要补上。",
+      "elements_involved": [
+        "R1",
+        "E1",
+        "P1",
+        "D1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，R1和E1各有一条到P1的实线，标注record profile。D1到P1是get/watch。另外别忘了P1到FS1有个use profile的虚线。",
+      "elements_involved": [
+        "R1",
+        "E1",
+        "P1",
+        "D1",
+        "FS1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Node内部关系补全了。D1这边还要和Config、Recording、Profile有交互，watch Config、get/update Recording、create/update/watch Profile。",
+      "elements_involved": [
+        "D1",
+        "Config",
+        "Recording",
+        "Profile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "D1到Config是watch虚线，到Recording是get/update虚线，到Profile是create/update/watch实线。这些关系容易搞混，确认一下。",
+      "elements_involved": [
+        "D1",
+        "Config",
+        "Recording",
+        "Profile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，D1到Config和Recording都是虚线，到Profile是实线。我检查一下现在的图...发现D1到Recording的线型画成实线了，需要修复。",
+      "elements_involved": [
+        "D1",
+        "Recording"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 21,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修复完成，把D1到Recording从实线改成虚线，标注get/update。现在线型正确了。",
+      "elements_involved": [
+        "D1",
+        "Recording"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 22,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后加样式区分。User用橙色，控制面组件Webhook、Manager、Daemonset、Daemon还有R1、E1、M1用绿色，Pod用紫色。",
+      "elements_involved": [
+        "U",
+        "W",
+        "M",
+        "D",
+        "D1",
+        "R1",
+        "E1",
+        "M1",
+        "P1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "样式定义用classDef，green是#9f6填充，orange是#f96，purple是#f9f。stroke-width绿色2px，橙色和紫色4px？",
+      "elements_involved": [
+        "green",
+        "orange",
+        "purple",
+        "classDef"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，就按代码里的定义。W、M、D、D1、R1、E1、M1应用green类，U应用orange类，P1应用purple类。",
+      "elements_involved": [
+        "W",
+        "M",
+        "D",
+        "D1",
+        "R1",
+        "E1",
+        "M1",
+        "U",
+        "P1",
+        "green",
+        "orange",
+        "purple"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "样式应用完成。我整体检查一遍：Node子图包含FS1、P1、D1、R1、E1、M1，外部有Recording、Config、Profile、Binding四个CR，以及W、M、D三个控制面组件，User在左侧发起操作。",
+      "elements_involved": [
+        "Node",
+        "FS1",
+        "P1",
+        "D1",
+        "R1",
+        "E1",
+        "M1",
+        "Recording",
+        "Config",
+        "Profile",
+        "Binding",
+        "W",
+        "M",
+        "D",
+        "U"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "D1到R1和E1的gRPC标注是record profile，到M1是update metric，这个没错吧？",
+      "elements_involved": [
+        "D1",
+        "R1",
+        "E1",
+        "M1",
+        "gRPC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，D1到R1和E1都是gRPC: record profile，到M1是gRPC: update metric。",
+      "elements_involved": [
+        "D1",
+        "R1",
+        "E1",
+        "M1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有个小细节，Profile节点里三种profile类型要分行显示，SeccompProfile CR、SelinuxProfile CR、ApparmorProfile CR。",
+      "elements_involved": [
+        "Profile",
+        "SeccompProfile",
+        "SelinuxProfile",
+        "ApparmorProfile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整Profile节点的文本格式，三行显示。另外Manager到Webhook的标注when not present，我简写成when not preset了，需要改回吗？",
+      "elements_involved": [
+        "M",
+        "W",
+        "Profile"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "要改，是present不是preset，虽然代码里可能笔误但我们按正确语义来。",
+      "elements_involved": [
+        "M",
+        "W"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正为when not present。整个图现在完整了：从User操作CR触发，Manager和Webhook协调，Daemonset在Node上启动Daemon，通过gRPC调用录制组件，最终生成各种Profile。",
+      "elements_involved": [
+        "User",
+        "CR",
+        "Manager",
+        "Webhook",
+        "Daemonset",
+        "Daemon",
+        "gRPC",
+        "Profile"
+      ],
+      "is_repair": true
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 31,
+    "repair_count": 4,
+    "grounding_acts_count": 31,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:40Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 67806.1934,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 31
+  }
+}

@@ -1,0 +1,247 @@
+{
+  "id": "aug_ot_stateDiagram_00353_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Ulisses37/ktor-server-sandbox/blob/82adffecc1811b5b839dbd70f410a2c2e7e214fd/docs/system_lock_state_machine.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Ulisses37/ktor-server-sandbox",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n[Infra_IngressController] --> Idle: File Opened (Infra_LoadBalancer)\n\n    state \"User Edits File\" as UserAction\n    Idle --> UserAction: User types a character\n\n    state \"Request Lock\" as RequestLock {Infra_IngressController)\n        }\n    }\n\n    GrantLock --> LockedState: 200 OK\n    DenyLock --> ConflictState: 409 Conflict\n\n    state \"Locked (Infra_WorkerNode)\" as LockedState {Infra_IngressController] --> Editing\n        Editing --> Heartbeat: Every 30s\n        Heartbeat --> ServerUpdate: UPDATE locks SET timestamp\n        ServerUpdate --> Editing: 200 OK\n        \n        Editing --> Unlock: User saves/closes/stops\n    }\n\n    state \"Conflict (Infra_LoadBalancer)\" as ConflictState {Infra_LoadBalancer] --> ShowWarning: Display \"File Locked by User B\"\n        ShowWarning --> Idle: User cancels edit\n    }\n\n    Unlock --> Idle: DELETE /lock (Infra_WorkerNode)\n    \n    note right of Heartbeat\n        Prevents \"Stale Locks\" if\n        PC crashes or loses power.\n    end note",
+  "content_size": 1259,
+  "collected_at": "2026-02-06T10:41:06.727564",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00353",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个状态图来描述多人协作编辑时的文件锁定机制。核心场景是：用户打开文件后，系统要通过Ingress Controller和Load Balancer来协调锁的状态。",
+      "elements_involved": [
+        "Infra_IngressController",
+        "Infra_LoadBalancer",
+        "Idle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，所以初始状态是Idle，然后由Infra_LoadBalancer触发文件打开事件？这个入口流量是由Ingress Controller接收的对吧？",
+      "elements_involved": [
+        "Idle",
+        "Infra_LoadBalancer",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Idle是初始状态。用户开始打字后进入UserAction状态，这时候系统要发起锁请求。",
+      "elements_involved": [
+        "Idle",
+        "UserAction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把UserAction画成\"User Edits File\"的复合状态。接下来是RequestLock状态，这里需要包含Infra_IngressController的处理逻辑。",
+      "elements_involved": [
+        "UserAction",
+        "RequestLock",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RequestLock之后要分支：成功的话返回200 OK进入锁定状态，失败的话返回409 Conflict进入冲突处理。锁定状态要关联到具体的WorkerNode。",
+      "elements_involved": [
+        "RequestLock",
+        "GrantLock",
+        "DenyLock",
+        "LockedState",
+        "ConflictState",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "GrantLock和DenyLock是中间状态还是事件？我看更像是请求的结果事件，直接触发状态转移。",
+      "elements_involved": [
+        "GrantLock",
+        "DenyLock",
+        "LockedState",
+        "ConflictState"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "你说得对，它们是转移条件。LockedState我命名为\"Locked (Infra_WorkerNode)\"，里面包含Editing子状态。",
+      "elements_involved": [
+        "LockedState",
+        "Editing",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "LockedState画好了，Editing内部还需要心跳机制。每30秒发送一次Heartbeat对吧？",
+      "elements_involved": [
+        "Editing",
+        "Heartbeat"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Heartbeat触发ServerUpdate去更新数据库的时间戳，成功返回200 OK后继续Editing。这个机制防止PC崩溃导致的死锁。",
+      "elements_involved": [
+        "Heartbeat",
+        "ServerUpdate",
+        "Editing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在Heartbeat右边加了个注释说明这个用途。另外Editing结束时有Unlock状态，用户保存、关闭或停止编辑都会触发。",
+      "elements_involved": [
+        "Heartbeat",
+        "Editing",
+        "Unlock"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Unlock之后要回到Idle，并且发送DELETE /lock请求到WorkerNode释放锁。ConflictState那边也要确认一下。",
+      "elements_involved": [
+        "Unlock",
+        "Idle",
+        "Infra_WorkerNode",
+        "ConflictState"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "ConflictState我命名为\"Conflict (Infra_LoadBalancer)\"，里面先ShowWarning显示\"File Locked by User B\"，用户取消后回到Idle。",
+      "elements_involved": [
+        "ConflictState",
+        "Infra_LoadBalancer",
+        "ShowWarning",
+        "Idle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，ConflictState的括号里应该是Infra_LoadBalancer，但ShowWarning的转移目标写错了。用户取消编辑后应该回到Idle，不是留在ShowWarning。",
+      "elements_involved": [
+        "ConflictState",
+        "ShowWarning",
+        "Idle"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，ShowWarning -- Idle的转移加上去了。还有LockedState内部的结构，Ingress Controller到Editing的入口我也补上了。",
+      "elements_involved": [
+        "ShowWarning",
+        "Idle",
+        "LockedState",
+        "Infra_IngressController",
+        "Editing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "检查一遍：Idle入口是Load Balancer，Locked关联WorkerNode，Conflict关联Load Balancer，心跳防死锁，Unlock释放锁。结构完整了。",
+      "elements_involved": [
+        "Idle",
+        "Infra_LoadBalancer",
+        "LockedState",
+        "Infra_WorkerNode",
+        "ConflictState",
+        "Heartbeat",
+        "Unlock"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "状态图已完成，所有状态和转移都按讨论结果绘制，心跳机制的注释也保留了。可以定稿了。",
+      "elements_involved": [
+        "Idle",
+        "UserAction",
+        "RequestLock",
+        "LockedState",
+        "ConflictState",
+        "Heartbeat"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 16,
+    "repair_count": 1,
+    "grounding_acts_count": 16,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:22Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:22Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 39280.6306,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 16
+  }
+}

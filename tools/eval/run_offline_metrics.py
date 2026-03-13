@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 if __package__ in {None, ""}:
@@ -41,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=str, default="reports/evaluation/offline/default_run")
     parser.add_argument("--compile-command", type=str, default="")
     parser.add_argument("--compile-cache-dir", type=str, default="artifacts/evaluation/compile_cache")
+    parser.add_argument("--max-workers", type=int, default=8)
 
     pre_args, _ = parser.parse_known_args()
     if pre_args.config:
@@ -134,6 +137,28 @@ def _summary_markdown(summary: dict) -> str:
     return "\n".join(parts).strip() + "\n"
 
 
+def _detail_row_from_prediction(row: dict, compile_checker: MermaidCompileChecker | None) -> dict:
+    metrics = score_prediction(
+        reference_code=str(row.get("reference_code", "")),
+        predicted_code=str(row.get("generated_code", "")),
+        declared_diagram_type=str(row.get("diagram_type", "unknown")),
+        compile_checker=compile_checker,
+    )
+    return {
+        "sample_id": row.get("sample_id"),
+        "split": row.get("split"),
+        "diagram_type": row.get("diagram_type"),
+        "dialogue_turns": row.get("dialogue_turns"),
+        "dialogue_turn_bucket": dialogue_turn_bucket(int(row.get("dialogue_turns", 0))),
+        "reference_nonempty_lines": metrics["reference_nonempty_lines"],
+        "reference_code_bucket": code_line_bucket(int(metrics["reference_nonempty_lines"])),
+        "provider": row.get("provider"),
+        "model_name": row.get("model_name"),
+        "latency_ms": row.get("latency_ms"),
+        **metrics,
+    }
+
+
 def main() -> None:
     args = parse_args()
     input_jsonl = resolve_path(args.input_jsonl)
@@ -149,28 +174,13 @@ def main() -> None:
 
     rows = read_jsonl(input_jsonl)
     detail_rows: list[dict] = []
-    for row in rows:
-        metrics = score_prediction(
-            reference_code=str(row.get("reference_code", "")),
-            predicted_code=str(row.get("generated_code", "")),
-            declared_diagram_type=str(row.get("diagram_type", "unknown")),
-            compile_checker=compile_checker,
-        )
-        detail_rows.append(
-            {
-                "sample_id": row.get("sample_id"),
-                "split": row.get("split"),
-                "diagram_type": row.get("diagram_type"),
-                "dialogue_turns": row.get("dialogue_turns"),
-                "dialogue_turn_bucket": dialogue_turn_bucket(int(row.get("dialogue_turns", 0))),
-                "reference_nonempty_lines": metrics["reference_nonempty_lines"],
-                "reference_code_bucket": code_line_bucket(int(metrics["reference_nonempty_lines"])),
-                "provider": row.get("provider"),
-                "model_name": row.get("model_name"),
-                "latency_ms": row.get("latency_ms"),
-                **metrics,
-            }
-        )
+    worker_count = max(1, args.max_workers)
+    if compile_checker is not None and len(rows) > 1:
+        worker_count = min(worker_count, len(rows), os.cpu_count() or worker_count)
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            detail_rows = list(executor.map(lambda row: _detail_row_from_prediction(row, compile_checker), rows))
+    else:
+        detail_rows = [_detail_row_from_prediction(row, compile_checker) for row in rows]
 
     summary = {
         "generated_at_utc": utc_iso(),

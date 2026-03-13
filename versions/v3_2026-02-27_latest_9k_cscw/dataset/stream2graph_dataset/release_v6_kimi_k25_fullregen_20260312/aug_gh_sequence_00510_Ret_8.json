@@ -1,0 +1,710 @@
+{
+  "id": "aug_gh_sequence_00510_Ret_8",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/DREAMSCAPE-AI/dreamscape-docs/blob/24aa5a14265601b36ddbbb02c958eea524e6eb11/architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "github_repo": "DREAMSCAPE-AI/dreamscape-docs",
+  "github_file_path": "architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    autonumber\n    actor User as 👤 Utilisateur\n    participant WC as Web Client\n    participant CN as Core NGINX<br/>:80\n    participant Voyage as Voyage Service<br/>:3003\n    participant Payment as Payment Service<br/>:3005\n    participant AI as AI Service<br/>:3004\n    participant PG as PostgreSQL<br/>:5432\n    participant Redis as Redis<br/>:6379\n    participant Kafka as Kafka<br/>:9092\n    participant Stripe as 💳 Stripe API\n\n    rect rgb(Retail_CustomerLoyalty)\n        Note over User,Voyage: Phase 1: Sélection Vol\n        User->>WC: Sélectionne vol<br/>(Retail_PointOfSale)\n        WC->>WC: Add to cart<br/>(Retail_CouponSystem)\n        User->>WC: Click \"Réserver\"\n        \n        WC->>CN: POST /api/v1/bookings<br/>{Retail_CouponSystem}<br/>Authorization: Bearer JWT\n        CN->>CN: Validate JWT (Retail_CouponSystem)\n        CN->>Voyage: Forward to Voyage<br/>localhost:3003/bookings\n    end\n\n    rect rgb(Retail_CouponSystem)\n        Note over Voyage,Kafka: Phase 2: Création Réservation\n        Voyage->>Voyage: Extract userId from JWT\n        Voyage->>PG: BEGIN transaction\n        Note right of PG: 🔄 ACID transaction<br/>pour cohérence\n        \n        Voyage->>PG: INSERT booking<br/>{Retail_PointOfSale}\n        PG-->>Voyage: Booking created (Retail_PointOfSale)\n        \n        Voyage->>Redis: Store booking temp<br/>key: \"booking:temp:bookingId\"<br/>TTL: 15min\n        Note right of Redis: ⏱️ Timeout si paiement<br/>échoue après 15min\n        \n        Voyage->>Kafka: Publish event<br/>Topic: \"voyage.booking.created\"<br/>{Retail_PointOfSale}\n        Note left of Kafka: Event-Driven Architecture<br/>- Decoupling services<br/>- Async processing<br/>- Audit trail\n        \n        Voyage-->>CN: 201 Created<br/>{Retail_Inventory}\n        CN-->>WC: 201 Created\n    end\n\n    rect rgb(Retail_OrderManagement)\n        Note over WC,Stripe: Phase 3: Demande Paiement\n        WC->>CN: POST /api/v1/payments/intent<br/>{Retail_Inventory}<br/>Authorization: Bearer JWT\n        CN->>Payment: Forward to Payment<br/>localhost:3005/payments/intent\n        \n        Payment->>Payment: Extract userId from JWT\n        Payment->>PG: Verify booking exists<br/>SELECT * FROM bookings<br/>WHERE id = bookingId AND userId = userId\n        \n        alt Booking Non Trouvé ❌\n            PG-->>Payment: null\n            Payment-->>CN: 404 Not Found<br/>{Retail_CouponSystem}\n            CN-->>WC: 404 Error\n            WC->>User: ❌ Erreur réservation\n        else Booking Trouvé ✅\n            PG-->>Payment: Booking found\n            Payment->>Stripe: Create PaymentIntent<br/>POST /v1/payment_intents<br/>{Retail_PointOfSale),<br/>currency: \"eur\",<br/>metadata: {Retail_PointOfSale}}\n            \n            Stripe-->>Payment: PaymentIntent created<br/>{Retail_CustomerLoyalty}\n            \n            Payment->>PG: INSERT payment<br/>{Retail_Inventory}\n            Payment->>Kafka: Publish event<br/>Topic: \"payment.intent.created\"<br/>{Retail_CustomerLoyalty}\n            \n            Payment-->>CN: 200 OK<br/>{Retail_CouponSystem}\n            CN-->>WC: 200 OK\n        end\n    end\n\n    rect rgb(Retail_CouponSystem)\n        Note over WC,Stripe: Phase 4: Paiement Stripe (Retail_CustomerLoyalty)\n        WC->>WC: Initialize Stripe.js<br/>with clientSecret\n        WC->>User: Affiche formulaire carte<br/>(Retail_CouponSystem)\n        \n        User->>WC: Saisit infos carte<br/>(Retail_OrderManagement)\n        WC->>Stripe: POST /v1/payment_intents/:id/confirm<br/>(Retail_OrderManagement)<br/>{Retail_PointOfSale}\n        \n        Note right of Stripe: 🔒 Sécurité PCI-DSS<br/>- Carte jamais envoyée à notre backend<br/>- Stripe gère tout<br/>- Tokenization automatique\n        \n        alt Paiement Réussi ✅\n            Stripe-->>WC: PaymentIntent succeeded\n            WC->>WC: Display success message\n            WC->>User: ✅ Paiement accepté\n        else Paiement Échoué ❌\n            Stripe-->>WC: PaymentIntent failed<br/>(Retail_Inventory)\n            WC->>User: ❌ \"Paiement refusé\"<br/>(Retail_Inventory)\n        end\n    end\n\n    rect rgb(Retail_CustomerLoyalty)\n        Note over Stripe,Kafka: Phase 5: Webhook Stripe (Retail_CustomerLoyalty)\n        Stripe->>Payment: POST /webhooks/stripe<br/>Stripe-Signature header<br/>{Retail_Inventory}}\n        \n        Payment->>Payment: Verify signature<br/>stripe.webhooks.constructEvent(Retail_PointOfSale)\n        \n        alt Signature Invalide ❌\n            Payment-->>Stripe: 400 Bad Request\n            Note right of Payment: Protection contre<br/>webhooks forgés\n        else Signature Valide ✅\n            Payment->>PG: UPDATE payment<br/>SET status = \"SUCCEEDED\"<br/>WHERE stripePaymentIntentId = id\n            \n            Payment->>PG: UPDATE booking<br/>SET status = \"CONFIRMED\"<br/>WHERE id = bookingId\n            \n            Payment->>Redis: Delete temp booking<br/>DEL \"booking:temp:bookingId\"\n            \n            Payment->>Kafka: Publish event<br/>Topic: \"payment.succeeded\"<br/>{Retail_CouponSystem}\n            \n            Payment-->>Stripe: 200 OK\n        end\n    end\n\n    rect rgb(Retail_Inventory)\n        Note over Kafka,User: Phase 6: Traitement Async (Retail_Inventory)\n        Kafka->>Voyage: Consume event<br/>\"payment.succeeded\"\n        Voyage->>PG: SELECT booking details\n        Voyage->>Voyage: Generate confirmation email<br/>(Retail_CustomerLoyalty)\n        Voyage->>User: 📧 Email confirmation<br/>+ PDF billet\n        \n        Kafka->>AI: Consume event<br/>\"voyage.booking.created\"\n        AI->>PG: Get user profile<br/>+ booking history\n        AI->>AI: Update ML model<br/>(Retail_OrderManagement)\n        Note right of AI: 🤖 AI learning<br/>from user behavior\n        AI->>Redis: Update recommendations<br/>key: \"reco:userId\"\n    end\n\n    rect rgb(Retail_CustomerLoyalty)\n        Note over WC,User: Phase 7: Confirmation Frontend\n        loop Polling every 2s\n            WC->>CN: GET /api/v1/bookings/:bookingId\n            CN->>Voyage: Forward request\n            Voyage->>PG: SELECT booking<br/>WHERE id = bookingId\n            \n            alt Status = CONFIRMED ✅\n                PG-->>Voyage: Booking confirmed\n                Voyage-->>CN: 200 OK<br/>{Retail_CouponSystem}\n                CN-->>WC: 200 OK\n                WC->>WC: Stop polling\n                WC->>WC: Redirect /bookings/:id\n                WC->>User: ✅ Affiche confirmation<br/>+ détails voyage\n            else Status = PENDING ⏳\n                PG-->>Voyage: Booking still pending\n                Voyage-->>CN: 200 OK<br/>{Retail_PointOfSale}\n                CN-->>WC: 200 OK (Retail_CustomerLoyalty)\n                Note right of WC: ⏱️ Après 15min<br/>réservation annulée<br/>automatiquement\n            end\n        end\n    end\n\n    Note over User,Kafka: 📊 Performance Réservation<br/>Create booking: ~100-150ms<br/>Payment intent: ~500-800ms (Retail_CouponSystem)<br/>Confirmation: ~1-2s (Retail_CustomerLoyalty)<br/>Email: ~3-5s (Retail_CouponSystem)<br/><br/>🔒 Fiabilité<br/>- Transaction ACID (Retail_CustomerLoyalty)<br/>- Idempotency keys (Retail_PointOfSale)<br/>- Webhook retry (Retail_PointOfSale)<br/>- Event sourcing (Retail_CustomerLoyalty)",
+  "content_size": 7218,
+  "collected_at": "2026-02-06T01:33:16.963511",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "augmentation_domain": "Retail",
+  "seed_id": "gh_sequence_00510",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的机票预订支付流程，从用户选航班到最终确认出票。这个系统要支撑高并发，而且支付环节必须可靠。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Voyage Service",
+        "Payment Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个典型的零售旅游场景。我理解为需要覆盖航班选择、预订创建、支付处理、Stripe集成这几个核心阶段？另外用户角色我们用👤 Utilisateur来表示可以吗？",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Voyage Service",
+        "Payment Service",
+        "Stripe"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，七个大阶段。用户是Utilisateur，前端用Web Client，后面接Core NGINX做网关，端口80。然后Voyage Service在3003端口处理预订逻辑，Payment Service在3005处理支付。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出参与者结构：User、Web Client、Core NGINX:80、Voyage Service:3003、Payment Service:3005。还需要哪些后端组件？数据库和消息队列怎么安排？",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据库用PostgreSQL在5432端口，Redis做缓存放6379，Kafka做事件总线在9092。另外还需要一个AI Service在3004，用于用户行为分析和推荐。",
+      "elements_involved": [
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "AI Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，加上PostgreSQL:5432、Redis:6379、Kafka:9092、AI Service:3004。现在开始第一阶段：用户选航班。用户通过Web Client选择航班，这里关联Retail_PointOfSale对吧？",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "AI Service",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，第一阶段叫\"Sélection Vol\"，用Retail_CustomerLoyalty色块。用户选航班后，Web Client内部有个Add to cart操作，走Retail_CouponSystem。然后点击\"Réserver\"按钮。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Retail_CustomerLoyalty",
+        "Retail_PointOfSale",
+        "Retail_CouponSystem",
+        "Sélection Vol"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第一阶段画好了：User选航班（Retail_PointOfSale）→ Web Client内部Add to cart（Retail_CouponSystem）→ 点击Réserver → POST /api/v1/bookings到Core NGINX，带JWT授权。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "POST /api/v1/bookings",
+        "JWT",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "JWT验证在NGINX层做，验证通过后转发到Voyage Service的localhost:3003/bookings。第二阶段是创建预订，用Retail_CouponSystem色块，叫\"Création Réservation\"。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "JWT",
+        "Retail_CouponSystem",
+        "Création Réservation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，NGINX验证JWT后转发。第二阶段Voyage Service从JWT提取userId，然后开启PostgreSQL的ACID事务保证一致性。这里要标注ACID transaction pour cohérence。",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "JWT",
+        "userId",
+        "ACID",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，事务里INSERT booking（Retail_PointOfSale），然后同时写Redis做临时缓存，key是\"booking:temp:bookingId\"，TTL设15分钟。如果支付失败会自动过期。",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "Redis",
+        "booking:temp:bookingId",
+        "TTL 15min",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，加上Redis缓存和15分钟超时说明。然后发Kafka事件？",
+      "elements_involved": [
+        "Voyage Service",
+        "Redis",
+        "Kafka",
+        "TTL 15min"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Voyage发事件到Kafka，topic是\"voyage.booking.created\"，也是Retail_PointOfSale。这里要标注Event-Driven Architecture，说明解耦、异步处理、审计追踪这些特性。",
+      "elements_involved": [
+        "Voyage Service",
+        "Kafka",
+        "voyage.booking.created",
+        "Retail_PointOfSale",
+        "Event-Driven Architecture"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第二阶段完成：INSERT booking → Redis缓存15分钟 → Kafka事件 → 返回201 Created（Retail_Inventory）。现在第三阶段支付请求？",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "201 Created",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第三阶段\"Demande Paiement\"用Retail_OrderManagement色块。Web Client请求POST /api/v1/payments/intent，走Retail_CouponSystem，带JWT。NGINX转发到Payment Service的3005端口。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Payment Service",
+        "POST /api/v1/payments/intent",
+        "Retail_OrderManagement",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Payment Service也要提取userId，然后查PostgreSQL验证booking存在对吧？这里有个分支逻辑？",
+      "elements_involved": [
+        "Payment Service",
+        "PostgreSQL",
+        "userId",
+        "bookingId"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，alt分支：如果booking没找到，返回404 Not Found（Retail_CouponSystem），前端显示错误。找到了才继续调Stripe。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了alt分支：Booking Non Trouvé走404，Booking Trouvé才调Stripe。Stripe用💳 Stripe API表示。",
+      "elements_involved": [
+        "Payment Service",
+        "Stripe",
+        "PostgreSQL",
+        "404 Not Found",
+        "Booking Non Trouvé",
+        "Booking Trouvé"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Stripe调用是Create PaymentIntent，POST /v1/payment_intents，Retail_PointOfSale，货币eur，metadata带Retail_PointOfSale。成功后Payment Service写payment表（Retail_Inventory），再发Kafka事件\"payment.intent.created\"（Retail_CustomerLoyalty）。",
+      "elements_involved": [
+        "Payment Service",
+        "Stripe",
+        "PostgreSQL",
+        "Kafka",
+        "payment.intent.created",
+        "Retail_PointOfSale",
+        "Retail_Inventory",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "第三阶段完成：Stripe创建PaymentIntent → 写payment表 → Kafka事件 → 返回200 OK（Retail_CouponSystem）。第四阶段是Stripe前端支付？",
+      "elements_involved": [
+        "Payment Service",
+        "Stripe",
+        "PostgreSQL",
+        "Kafka",
+        "200 OK",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第四阶段\"Paiement Stripe\"用Retail_CustomerLoyalty色块。Web Client用Stripe.js初始化，拿到clientSecret。然后给用户显示银行卡表单，这里用Affiche formulaire carte，Retail_CouponSystem。",
+      "elements_involved": [
+        "Web Client",
+        "Stripe",
+        "Retail_CustomerLoyalty",
+        "Stripe.js",
+        "clientSecret",
+        "Affiche formulaire carte",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "用户输入卡信息是Saisit infos carte，Retail_OrderManagement对吧？然后直接调Stripe的confirm接口？",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Stripe",
+        "Saisit infos carte",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Web Client直接POST到Stripe的/v1/payment_intents/:id/confirm，Retail_OrderManagement和Retail_PointOfSale。这里要标注PCI-DSS安全说明：卡号从不进我们后端，Stripe全权处理，自动tokenization。",
+      "elements_involved": [
+        "Web Client",
+        "Stripe",
+        "PCI-DSS",
+        "Retail_OrderManagement",
+        "Retail_PointOfSale",
+        "Tokenization"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第四阶段加了PCI-DSS安全标注。然后也是alt分支：成功显示Paiement accepté，失败显示Paiement refusé？",
+      "elements_involved": [
+        "Web Client",
+        "Stripe",
+        "PCI-DSS",
+        "Paiement accepté",
+        "Paiement refusé"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Paiement Réussi显示✅，Paiement Échoué显示❌ Paiement refusé（Retail_Inventory）。第五阶段是Stripe Webhook回调，用Retail_CustomerLoyalty色块。",
+      "elements_involved": [
+        "Stripe",
+        "Web Client",
+        "User",
+        "Paiement Réussi",
+        "Paiement Échoué",
+        "Retail_Inventory",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "第五阶段Webhook：Stripe POST到Payment Service的/webhooks/stripe，带Stripe-Signature header，Retail_Inventory。Payment Service要验证签名？",
+      "elements_involved": [
+        "Stripe",
+        "Payment Service",
+        "Webhook",
+        "Stripe-Signature",
+        "Retail_Inventory",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，用stripe.webhooks.constructEvent验证，Retail_PointOfSale。也是alt分支：签名无效返回400，防伪造；有效才更新数据库。",
+      "elements_involved": [
+        "Payment Service",
+        "Stripe",
+        "stripe.webhooks.constructEvent",
+        "400 Bad Request",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了签名验证分支。验证通过后更新payment状态为SUCCEEDED，booking状态为CONFIRMED，然后删Redis临时key，发Kafka事件\"payment.succeeded\"（Retail_CouponSystem）。",
+      "elements_involved": [
+        "Payment Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "SUCCEEDED",
+        "CONFIRMED",
+        "payment.succeeded",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，最后返回200 OK给Stripe。第六阶段是异步处理，用Retail_Inventory色块，叫\"Traitement Async\"。",
+      "elements_involved": [
+        "Payment Service",
+        "Stripe",
+        "200 OK",
+        "Retail_Inventory",
+        "Traitement Async"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "第六阶段Kafka驱动：Voyage Service消费\"payment.succeeded\"事件，查booking详情，生成确认邮件（Retail_CustomerLoyalty），发邮件和PDF机票给用户。",
+      "elements_involved": [
+        "Kafka",
+        "Voyage Service",
+        "PostgreSQL",
+        "User",
+        "payment.succeeded",
+        "Retail_CustomerLoyalty",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有AI Service也要消费\"voyage.booking.created\"事件，查用户画像和历史订单，更新ML模型（Retail_OrderManagement），然后写Redis更新推荐缓存key \"reco:userId\"。标注AI learning from user behavior。",
+      "elements_involved": [
+        "Kafka",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "voyage.booking.created",
+        "reco:userId",
+        "Retail_OrderManagement",
+        "AI learning"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第六阶段完成：Voyage处理邮件，AI处理推荐。第七阶段前端确认，用Retail_CustomerLoyalty色块？",
+      "elements_involved": [
+        "Voyage Service",
+        "AI Service",
+        "Kafka",
+        "PostgreSQL",
+        "Redis",
+        "User",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，第七阶段\"Confirmation Frontend\"，Retail_CustomerLoyalty。Web Client轮询，每2秒GET /api/v1/bookings/:bookingId，查状态。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Retail_CustomerLoyalty",
+        "Confirmation Frontend",
+        "Polling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "轮询用loop表示，2秒一次。也是alt分支：CONFIRMED就停止轮询，跳转到详情页；PENDING继续等，15分钟后自动取消？",
+      "elements_involved": [
+        "Web Client",
+        "Voyage Service",
+        "PostgreSQL",
+        "CONFIRMED",
+        "PENDING",
+        "loop",
+        "15min timeout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，CONFIRMED显示✅ Affiche confirmation + détails voyage。PENDING继续轮询，标注15分钟后自动取消。CONFIRMED返回Retail_CouponSystem，PENDING返回Retail_PointOfSale，最后一次返回Retail_CustomerLoyalty。",
+      "elements_involved": [
+        "Web Client",
+        "User",
+        "CONFIRMED",
+        "PENDING",
+        "Retail_CouponSystem",
+        "Retail_PointOfSale",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第七阶段完成。最后需要性能指标备注吗？",
+      "elements_involved": [
+        "Web Client",
+        "User",
+        "CONFIRMED",
+        "PENDING",
+        "loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，最后加个Note跨所有参与者，标注Performance Réservation：创建预订100-150ms，Payment intent 500-800ms（Retail_CouponSystem），确认1-2s（Retail_CustomerLoyalty），邮件3-5s（Retail_CouponSystem）。",
+      "elements_involved": [
+        "User",
+        "Kafka",
+        "Performance Réservation",
+        "Retail_CouponSystem",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到性能指标。还有Fiabilité可靠性说明？",
+      "elements_involved": [
+        "Performance Réservation",
+        "Fiabilité"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Fiabilité：Transaction ACID（Retail_CustomerLoyalty），Idempotency keys（Retail_PointOfSale），Webhook retry（Retail_PointOfSale），Event sourcing（Retail_CustomerLoyalty）。",
+      "elements_involved": [
+        "Fiabilité",
+        "ACID",
+        "Idempotency keys",
+        "Webhook retry",
+        "Event sourcing",
+        "Retail_CustomerLoyalty",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部完成。我检查一下各阶段色块：Phase 1 Retail_CustomerLoyalty，Phase 2 Retail_CouponSystem，Phase 3 Retail_OrderManagement，Phase 4 Retail_CustomerLoyalty，Phase 5 Retail_CustomerLoyalty，Phase 6 Retail_Inventory，Phase 7 Retail_CustomerLoyalty。对吗？",
+      "elements_involved": [
+        "Retail_CustomerLoyalty",
+        "Retail_CouponSystem",
+        "Retail_OrderManagement",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "Phase 5应该是Retail_CustomerLoyalty，你刚才说对了。但Phase 4也是Retail_CustomerLoyalty，Phase 5我再看一下——对，都是Retail_CustomerLoyalty。不过Phase 3的色块确认是Retail_OrderManagement，Phase 6是Retail_Inventory。",
+      "elements_involved": [
+        "Phase 3",
+        "Phase 4",
+        "Phase 5",
+        "Phase 6",
+        "Retail_OrderManagement",
+        "Retail_CustomerLoyalty",
+        "Retail_Inventory"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。另外所有autonumber都加上了，从1到完整的流程编号。各阶段的法语标注也都保留了：Sélection Vol、Création Réservation、Demande Paiement、Paiement Stripe、Webhook Stripe、Traitement Async、Confirmation Frontend。",
+      "elements_involved": [
+        "autonumber",
+        "Sélection Vol",
+        "Création Réservation",
+        "Demande Paiement",
+        "Paiement Stripe",
+        "Webhook Stripe",
+        "Traitement Async",
+        "Confirmation Frontend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有几个细节：Phase 1的Note是\"Phase 1: Sélection Vol\"，Phase 2是\"Phase 2: Création Réservation\"，以此类推。Phase 4的Note要加上(Retail_CustomerLoyalty)后缀，Phase 5也是，Phase 6是(Retail_Inventory)。",
+      "elements_involved": [
+        "Phase 1",
+        "Phase 2",
+        "Phase 4",
+        "Phase 5",
+        "Phase 6",
+        "Retail_CustomerLoyalty",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整所有Phase Note的后缀标注。现在完整检查一遍：13个参与者，7个rect色块阶段，6个alt分支，1个loop轮询，跨参与者的性能Note，全部 grounded terms 都已正确使用。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "Stripe"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个图完整覆盖了从用户选航班到支付确认的全流程，事件驱动架构清晰，安全合规标注到位，性能和可靠性指标也都有了。可以定稿。",
+      "elements_involved": [
+        "Architecture",
+        "Async",
+        "Audit",
+        "ACID",
+        "PCI-DSS",
+        "Event-Driven Architecture"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 45,
+    "repair_count": 1,
+    "grounding_acts_count": 44,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 89358.2997,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 45
+  }
+}

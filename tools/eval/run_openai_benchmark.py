@@ -10,7 +10,7 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from tools.eval.common import resolve_path, slugify, write_json
+from tools.eval.common import inject_api_key, resolve_path, slugify, write_json
 from tools.eval.export_run_bundle import export_entries
 
 
@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--split", type=str, default="test", choices=["train", "validation", "test", "all"])
     parser.add_argument("--max-samples", type=int, default=0)
     parser.add_argument("--api-key-env", type=str, default="OPENAI_API_KEY")
+    parser.add_argument("--api-key", type=str, default="")
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-new-tokens", type=int, default=2048)
     parser.add_argument("--timeout-sec", type=int, default=180)
@@ -49,6 +50,7 @@ def _run_script(script: str, config_path: Path) -> None:
 
 def main() -> None:
     args = parse_args()
+    inject_api_key(args.api_key_env, args.api_key)
     run_name = args.run_name or slugify(f"openai_{args.model}_{args.split}")
     run_root = resolve_path(args.output_root) / run_name
     config_root = run_root / "configs"

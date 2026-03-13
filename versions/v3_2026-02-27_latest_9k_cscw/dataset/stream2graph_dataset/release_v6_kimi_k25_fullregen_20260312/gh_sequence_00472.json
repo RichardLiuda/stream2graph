@@ -1,0 +1,455 @@
+{
+  "id": "gh_sequence_00472",
+  "source": "github",
+  "source_url": "https://github.com/luth9r/FitTracker/blob/c81958bfbd32229654cff70c18fdc0d6e0541f71/docs/register-flow.mmd",
+  "github_repo": "luth9r/FitTracker",
+  "github_file_path": "docs/register-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "%%{init: {'look':'neo', 'theme':'redux-color'}}%%\nsequenceDiagram\n    autonumber\n    \n    box \"Client & Application\"\n        participant C as Client\n        participant AC as Auth Controller\n        participant H as Register Handler\n        participant PH as Password Hasher\n        participant U as User (Domain)\n    end\n\n    box \"Persistence\"\n        participant WR as Repository / DbContext\n        participant DB as PostgreSQL\n    end\n\n    box \"Background Infrastructure\"\n        participant OS as Signal (Channel)\n        participant OP as Outbox Processor\n        participant RMQ as RabbitMQ\n    end\n\n    box \"Email Delivery\"\n        participant EC as Email Consumer\n        participant JTG as Jwt Generator\n        participant SMTP as SMTP Server\n    end\n\n    Note over C, SMTP: == STAGE 1: Registration (Synchronous) ==\n\n    C->>AC: POST /register {email, password...}\n    AC->>H: Handle Command\n    \n    H->>WR: Check if Email Unique\n    WR->>DB: SELECT Count(*) WHERE Email = ?\n    DB-->>H: 0 (Unique)\n    \n    H->>PH: HashPassword(password)\n    PH-->>H: \"hashed_secret\"\n    \n    H->>U: User.Create(email, hashed...)\n    Note over U: 1. Creates User Entity<br/>(IsEmailVerified = false)<br/>2. Adds UserRegisteredEvent\n    \n    Note over H, DB: ATOMIC TRANSACTION\n    H->>WR: SaveChangesAsync()\n    \n    rect rgb(255, 245, 245)\n        Note right of WR: Inside DbContext\n        WR->>DB: BEGIN TRANSACTION\n        WR->>DB: INSERT INTO Users\n        WR->>DB: INSERT INTO OutboxMessages\n        WR->>DB: COMMIT\n    end\n    \n    WR-)OS: TryWrite(true) (Wake up signal)\n    \n    H-->>C: 200 OK { \"Success\" }\n    \n    Note over C, SMTP: == STAGE 2: Outbox Processing ==\n\n    OS-)OP: Signal Received\n    OP->>DB: SELECT * FROM OutboxMessages\n    DB-->>OP: [UserRegisteredEvent]\n    \n    OP->>RMQ: Publish(UserRegisteredEvent)\n    RMQ-->>OP: ACK\n    \n    OP->>DB: UPDATE OutboxMessages (Mark Processed)\n    \n    Note over C, SMTP: == STAGE 3: Verification Email ==\n    \n    RMQ->>EC: Consume(UserRegisteredEvent)\n    \n    Note right of EC: Token generated exclusively<br/>for the email\n    EC->>JTG: GenerateVerificationToken(userId)\n    JTG-->>EC: \"eyJ...\" (1 hour)\n    \n    EC->>SMTP: Send Email (link + token)\n    SMTP->>C: Email in Inbox\n    EC->>RMQ: ACK Message",
+  "content_size": 2270,
+  "collected_at": "2026-02-06T01:32:48.141822",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 2,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个用户注册的完整流程图，重点是保证注册和发邮件这两个操作的原子性。我设想分成三个阶段：同步注册、后台处理、邮件发送。",
+      "elements_involved": [
+        "Client",
+        "Auth Controller",
+        "Register Handler",
+        "Outbox Processor",
+        "Email Consumer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，原子性是关键。那第一阶段同步处理里，客户端直接调用Auth Controller，然后由Register Handler来处理业务逻辑对吗？",
+      "elements_involved": [
+        "Client",
+        "Auth Controller",
+        "Register Handler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Register Handler要负责检查邮箱唯一性、密码哈希，还有创建User领域对象。这里User实体创建时IsEmailVerified应该是false。",
+      "elements_involved": [
+        "Register Handler",
+        "User (Domain)",
+        "Password Hasher",
+        "IsEmailVerified = false"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我先把Client到Auth Controller的POST请求画出来，然后Auth Controller调用Register Handler。Handler需要先查数据库确认邮箱是否唯一。",
+      "elements_involved": [
+        "Client",
+        "Auth Controller",
+        "Register Handler",
+        "Repository / DbContext",
+        "PostgreSQL",
+        "unique"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Repository去PostgreSQL做SELECT Count(*)，返回0表示唯一。然后Handler调用Password Hasher做哈希，拿到hashed_secret。",
+      "elements_involved": [
+        "Repository / DbContext",
+        "PostgreSQL",
+        "Password Hasher",
+        "hashed..."
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了第一阶段的前半部分。现在Handler创建User实体，同时会产生一个UserRegisteredEvent。这里要标注原子事务。",
+      "elements_involved": [
+        "Register Handler",
+        "User (Domain)",
+        "UserRegisteredEvent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，原子事务很重要。SaveChangesAsync的时候，DbContext要在一个事务里同时插入Users表和OutboxMessages表。我想用rect框把这个事务包起来，背景色用rgb(255, 245, 245)。",
+      "elements_involved": [
+        "Repository / DbContext",
+        "PostgreSQL",
+        "OutboxMessages",
+        "255, 245, 245"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到，用浅红色背景标注事务边界。事务提交后，DbContext要发一个Signal唤醒后台处理器？",
+      "elements_involved": [
+        "Repository / DbContext",
+        "Signal (Channel)",
+        "Outbox Processor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，TryWrite(true)发送信号，然后Handler返回200 OK给客户端。第一阶段结束，客户端立刻收到成功响应，但邮件还没发。",
+      "elements_involved": [
+        "Repository / DbContext",
+        "Signal (Channel)",
+        "Register Handler",
+        "Client",
+        "200 OK",
+        "Success",
+        "synchronous"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第一阶段画完了。现在开始第二阶段Outbox Processing，Signal被Outbox Processor接收，它去数据库拉取未处理的OutboxMessages。",
+      "elements_involved": [
+        "Signal (Channel)",
+        "Outbox Processor",
+        "PostgreSQL",
+        "OutboxMessages"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Processor拿到UserRegisteredEvent后，发布到RabbitMQ，等ACK确认后再把消息标记为已处理。",
+      "elements_involved": [
+        "Outbox Processor",
+        "RabbitMQ",
+        "UserRegisteredEvent",
+        "ACK",
+        "mark processed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，Processor更新OutboxMessages表标记已处理。然后第三阶段是Email Consumer从RabbitMQ消费这个消息？",
+      "elements_involved": [
+        "Outbox Processor",
+        "PostgreSQL",
+        "RabbitMQ",
+        "Email Consumer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Email Consumer专门负责发验证邮件。这里有个细节：token要专门为邮件生成，用Jwt Generator，有效期1小时。",
+      "elements_involved": [
+        "Email Consumer",
+        "Jwt Generator",
+        "1 hour",
+        "email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了Consumer调用Jwt Generator，拿到eyJ开头的token。然后Consumer通过SMTP Server发送带链接和token的邮件。",
+      "elements_involved": [
+        "Email Consumer",
+        "Jwt Generator",
+        "SMTP Server",
+        "link + token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，SMTP Server到Client的箭头应该是虚线还是实线？邮件是异步投递到收件箱的。",
+      "elements_involved": [
+        "SMTP Server",
+        "Client",
+        "Email in Inbox"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我觉得用实线表示最终投递结果，因为用户确实会在收件箱看到邮件。最后Consumer要给RabbitMQ发ACK确认消息已处理。",
+      "elements_involved": [
+        "SMTP Server",
+        "Client",
+        "Email Consumer",
+        "RabbitMQ",
+        "ACK Message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。整体结构差不多了，但我们用box把参与者分组吧：Client和Application一层、Persistence一层、Background Infrastructure一层、Email Delivery一层。",
+      "elements_involved": [
+        "box",
+        "Client & Application",
+        "Persistence",
+        "Background Infrastructure",
+        "Email Delivery"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "分好四个box了。我再加三个Note标注三个阶段：STAGE 1 Registration (Synchronous)、STAGE 2 Outbox Processing、STAGE 3 Verification Email。",
+      "elements_involved": [
+        "Note",
+        "STAGE 1: Registration (Synchronous)",
+        "STAGE 2: Outbox Processing",
+        "STAGE 3: Verification Email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下，Register Handler到Repository的箭头方向对吗？Handler是调用方。",
+      "elements_involved": [
+        "Register Handler",
+        "Repository / DbContext"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "啊，我之前画反了，应该是Handler指向Repository。还有Repository到Signal的箭头，应该是异步信号用-)对吧？",
+      "elements_involved": [
+        "Register Handler",
+        "Repository / DbContext",
+        "Signal (Channel)"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，TryWrite是异步信号。Signal到Outbox Processor也是-)异步箭头。其他的同步调用用实线箭头，返回用--虚线。",
+      "elements_involved": [
+        "Signal (Channel)",
+        "Outbox Processor",
+        "true"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "修正了箭头。现在给User领域对象加注释说明：创建User实体、IsEmailVerified=false、添加UserRegisteredEvent。",
+      "elements_involved": [
+        "User (Domain)",
+        "IsEmailVerified = false",
+        "UserRegisteredEvent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "在Email Consumer右边也加个注释，说明token是专门为邮件生成的。这样读图的人能理解安全设计。",
+      "elements_involved": [
+        "Email Consumer",
+        "Jwt Generator",
+        "email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了。现在检查所有autonumber序号，从Client发请求开始，到最后的ACK Message，一共多少步？",
+      "elements_involved": [
+        "autonumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "序号应该覆盖所有交互箭头，但Note和rect里的数据库操作不用单独编号。rect里的BEGIN、INSERT、COMMIT是展示内部细节。",
+      "elements_involved": [
+        "autonumber",
+        "rect",
+        "BEGIN TRANSACTION",
+        "INSERT INTO Users",
+        "INSERT INTO OutboxMessages",
+        "COMMIT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，rect里的操作是Note说明性质，不走autonumber。整体看下，Channel命名为Signal可以吗？还是叫OutboxSignal更明确？",
+      "elements_involved": [
+        "Signal (Channel)",
+        "channel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "叫Signal就行，配合box标题Background Infrastructure能理解。但Participant简称要统一，比如WR是Repository/DbContext，DB是PostgreSQL。",
+      "elements_involved": [
+        "Signal (Channel)",
+        "Repository / DbContext",
+        "WR",
+        "DB",
+        "PostgreSQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "检查了一遍简称：C、AC、H、PH、U、WR、DB、OS、OP、RMQ、EC、JTG、SMTP，都对应上了。最后确认下主题色用redux-color？",
+      "elements_involved": [
+        "theme",
+        "redux-color"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，redux-color比较清晰。还有look用neo风格。现在完整过一遍流程：客户端提交→同步处理返回→后台发邮件。",
+      "elements_involved": [
+        "look",
+        "neo",
+        "Client",
+        "Auth Controller",
+        "Register Handler",
+        "Outbox Processor",
+        "Email Consumer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "最后确认一个细节：Outbox Processor更新消息状态时，是UPDATE OutboxMessages标记已处理，这个要写在Note里还是箭头上？",
+      "elements_involved": [
+        "Outbox Processor",
+        "PostgreSQL",
+        "Mark Processed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "写在Note里吧，因为具体的UPDATE是隐含的，重点是说明这个动作。整体图完成了，符合所有要求。",
+      "elements_involved": [
+        "Note",
+        "Outbox Processor",
+        "Mark Processed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，最终版本已确认。所有阶段清晰，原子事务用红色框标注，异步信号用-)箭头，四个box分组合理，主题和样式配置完成。",
+      "elements_involved": [
+        "rect rgb(255, 245, 245)",
+        "ATOMIC TRANSACTION",
+        "signal",
+        "box"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 32,
+    "repair_count": 1,
+    "grounding_acts_count": 32,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 56954.0858,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 32
+  }
+}

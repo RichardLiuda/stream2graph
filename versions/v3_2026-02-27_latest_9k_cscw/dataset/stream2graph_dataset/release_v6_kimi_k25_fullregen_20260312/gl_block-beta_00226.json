@@ -1,0 +1,529 @@
+{
+  "id": "gl_block-beta_00226",
+  "source": "gitlab",
+  "source_url": "https://github.com/bsbodden/barudb/blob/dc97c4d833ff103d104f2e68bfec8fba50980d8e/final_report/diagrams/block_cache_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "bsbodden/barudb",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client Code\n    participant BlockCache as Block Cache\n    participant EvictionPolicy as Eviction Policy\n    participant TTLManager as TTL Manager\n    participant Storage as Storage Layer\n    \n    %% Define participant boxes with consistent colors\n    rect rgba(144, 238, 144, 0.3)\n        note right of BlockCache: Cache components\n        note right of EvictionPolicy: Policy components\n        note right of TTLManager: TTL components\n    end\n    rect rgba(255, 165, 0, 0.3)\n        note right of Storage: Storage components\n    end\n    \n    %% Block cache operations\n    Client->>BlockCache: get_block(block_id)\n    \n    %% Check if block is in cache\n    BlockCache->>BlockCache: lookup(block_id)\n    \n    alt block found in cache\n        %% Update access statistics\n        BlockCache->>EvictionPolicy: record_access(block_id)\n        EvictionPolicy-->>BlockCache: updated_metadata\n        \n        %% Check if TTL expired\n        BlockCache->>TTLManager: is_expired(block_id)\n        \n        alt block expired\n            TTLManager-->>BlockCache: true\n            BlockCache->>BlockCache: remove_from_cache(block_id)\n            \n            %% Load from storage\n            BlockCache->>Storage: read_block(block_id)\n            Storage-->>BlockCache: block_data\n            \n            %% Insert back with refreshed TTL\n            BlockCache->>TTLManager: set_expiry(block_id, now + ttl)\n            BlockCache->>EvictionPolicy: add_entry(block_id)\n            \n            BlockCache-->>Client: block_data\n        else block not expired\n            TTLManager-->>BlockCache: false\n            BlockCache-->>Client: cached_block_data\n        end\n    else block not found in cache\n        %% Load from storage\n        BlockCache->>Storage: read_block(block_id)\n        Storage-->>BlockCache: block_data\n        \n        %% Check if cache is full\n        BlockCache->>EvictionPolicy: is_cache_full()\n        \n        alt cache full - need eviction\n            EvictionPolicy-->>BlockCache: true\n            \n            %% Policy determines what to evict\n            BlockCache->>EvictionPolicy: select_victim()\n            \n            alt using LRU policy\n                note right of EvictionPolicy: Least Recently Used block selected\n            else using LFU policy\n                note right of EvictionPolicy: Least Frequently Used block selected\n            else using TinyLFU policy\n                note right of EvictionPolicy: Frequency sketch determines victim\n            end\n            \n            EvictionPolicy-->>BlockCache: victim_block_id\n            \n            %% Evict the selected block\n            BlockCache->>BlockCache: evict_block(victim_block_id)\n            BlockCache->>TTLManager: remove_expiry(victim_block_id)\n        else cache has space\n            EvictionPolicy-->>BlockCache: false\n        end\n        \n        %% Insert new block\n        BlockCache->>BlockCache: insert_block(block_id, block_data)\n        BlockCache->>EvictionPolicy: add_entry(block_id)\n        EvictionPolicy-->>BlockCache: success\n        BlockCache->>TTLManager: set_expiry(block_id, now + ttl)\n        TTLManager-->>BlockCache: success\n        \n        BlockCache-->>Client: block_data\n    end\n    \n    %% Periodic TTL cleanup (background task)\n    loop TTL cleanup interval\n        TTLManager->>TTLManager: check_expired_entries()\n        \n        loop For each expired entry\n            TTLManager->>BlockCache: notify_expired(block_id)\n            BlockCache->>BlockCache: remove_from_cache(block_id)\n            BlockCache->>EvictionPolicy: remove_entry(block_id)\n        end\n    end",
+  "content_size": 3655,
+  "collected_at": "2026-02-06T14:04:54.927677",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个块缓存系统的时序图，核心是要体现客户端、块缓存、淘汰策略、TTL管理器和存储层之间的协作关系。先从参与者定义开始吧。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，五个参与者：客户端代码、块缓存、淘汰策略、TTL管理器和存储层。我建议用分组来区分缓存相关组件和存储组件，视觉上更清晰。",
+      "elements_involved": [
+        "Cache components",
+        "Policy components",
+        "TTL components",
+        "Storage components"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好主意。缓存组件用浅绿色背景，存储层用橙色背景，rgba值分别是144,238,144,0.3和255,165,0,0.3。现在先画主流程：客户端发起get_block请求。",
+      "elements_involved": [
+        "get_block",
+        "block_id",
+        "rgba(144, 238, 144, 0.3)",
+        "rgba(255, 165, 0, 0.3)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加分组着色和初始请求。块缓存收到请求后先做内部lookup检查，这个自调用需要体现出来。",
+      "elements_involved": [
+        "lookup",
+        "block_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，这里要分两个分支。如果block found in cache，先更新访问统计，调用record_access给淘汰策略，然后检查TTL是否过期。",
+      "elements_involved": [
+        "block found in cache",
+        "record_access",
+        "updated_metadata",
+        "is_expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到。record_access返回updated_metadata，然后块缓存询问TTLManager的is_expired。这里又要分支：过期和未过期两种情况。",
+      "elements_involved": [
+        "block expired",
+        "block not expired",
+        "TTLManager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "先处理未过期的情况，比较简单：TTLManager返回false，块缓存直接把cached_block_data返回给客户端。过期的情况复杂一些，需要重新加载。",
+      "elements_involved": [
+        "false",
+        "cached_block_data",
+        "true"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加未过期分支。过期分支我画一下：TTLManager返回true，块缓存先remove_from_cache，然后从Storage Layer读取read_block获取block_data。",
+      "elements_involved": [
+        "remove_from_cache",
+        "read_block",
+        "block_data",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，重新加载后需要刷新TTL，调用set_expiry，参数是block_id和now + ttl。同时淘汰策略那边也要add_entry重新加入。",
+      "elements_involved": [
+        "set_expiry",
+        "now + ttl",
+        "add_entry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，添加了set_expiry和add_entry，最后把block_data返回客户端。现在处理另一个主分支：block not found in cache的情况。",
+      "elements_involved": [
+        "block not found in cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "缓存未命中时，同样要从Storage Layer的read_block加载数据。但插入前需要检查缓存是否已满，调用is_cache_full询问淘汰策略。",
+      "elements_involved": [
+        "is_cache_full",
+        "cache full",
+        "cache has space"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解。如果缓存未满，直接插入；如果已满，需要触发淘汰。这里select_victim要支持多种策略：LRU、LFU和TinyLFU，用alt分支展示。",
+      "elements_involved": [
+        "select_victim",
+        "LRU policy",
+        "LFU policy",
+        "TinyLFU policy",
+        "victim_block_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，每个策略用note标注说明：LRU是Least Recently Used，LFU是Least Frequently Used，TinyLFU是Frequency sketch determines victim。淘汰策略返回victim_block_id后执行evict_block。",
+      "elements_involved": [
+        "Least Recently Used block selected",
+        "Least Frequently Used block selected",
+        "Frequency sketch determines victim",
+        "evict_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加三种策略的note说明。evict_block之后，TTLManager要remove_expiry清理过期记录。然后才能插入新块。",
+      "elements_involved": [
+        "remove_expiry",
+        "insert_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "插入新块的完整流程：insert_block自调用，然后add_entry到淘汰策略，成功后set_expiry设置now + ttl，最后返回block_data给客户端。",
+      "elements_involved": [
+        "insert_block",
+        "add_entry",
+        "success",
+        "set_expiry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "主流程已完成。还需要一个后台任务：TTL cleanup interval的循环，定期检查过期条目。",
+      "elements_involved": [
+        "TTL cleanup interval",
+        "background task",
+        "check_expired_entries"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，这是periodic TTL cleanup。TTLManager内部循环check_expired_entries，对每个过期条目notify_expired通知块缓存，然后remove_from_cache和remove_entry清理。",
+      "elements_involved": [
+        "periodic",
+        "For each expired entry",
+        "notify_expired",
+        "remove_from_cache",
+        "remove_entry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "整体结构看起来完整了。我检查一下：五个参与者、两个颜色分组、缓存命中/未命中两大分支、三种淘汰策略、TTL过期处理、后台清理循环。还有遗漏吗？",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "有个细节：缓存命中时的record_access和缓存未命中时的add_entry，这两个调用方向都是块缓存发往淘汰策略，但语义不同，要确保箭头方向正确。",
+      "elements_involved": [
+        "record_access",
+        "add_entry",
+        "BlockCache-EvictionPolicy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现了，我之前把record_access画成了双向箭头。应该是BlockCache-EvictionPolicy的单向调用，返回updated_metadata。已修正。",
+      "elements_involved": [
+        "record_access",
+        "updated_metadata"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再看一下颜色分组。Cache components应该包含BlockCache、EvictionPolicy、TTLManager三个，Storage components只有Storage Layer。现在的note位置对吗？",
+      "elements_involved": [
+        "Cache components",
+        "Policy components",
+        "TTL components",
+        "Storage components"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "note right of的位置我分别放在BlockCache、EvictionPolicy、TTLManager和Storage旁边，对应各自的组件说明。浅绿色rgba(144,238,144,0.3)和橙色rgba(255,165,0,0.3)的透明度都是0.3。",
+      "elements_involved": [
+        "rgba(144, 238, 144, 0.3)",
+        "rgba(255, 165, 0, 0.3)",
+        "note right of"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "TTL过期后的重新加载流程，set_expiry的参数写法要确认是now + ttl，不是字符串，要体现为表达式。",
+      "elements_involved": [
+        "now + ttl",
+        "set_expiry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认参数格式。另外我发现缓存未命中插入新块时，add_entry和set_expiry都有success返回，这个需要体现出来吗？",
+      "elements_involved": [
+        "success",
+        "add_entry",
+        "set_expiry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，这两个success返回都要画，表示操作确认。但不需要每个都详细展开，保持和前面风格一致即可。",
+      "elements_involved": [
+        "success",
+        "EvictionPolicy--BlockCache",
+        "TTLManager--BlockCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。现在检查loop嵌套：外层是TTL cleanup interval，内层是For each expired entry，这个嵌套关系正确。",
+      "elements_involved": [
+        "TTL cleanup interval",
+        "For each expired entry",
+        "loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "后台清理时，notify_expired是TTLManager发往BlockCache，然后BlockCache内部remove_from_cache，再通知EvictionPolicy做remove_entry。这个调用链对吗？",
+      "elements_involved": [
+        "notify_expired",
+        "remove_from_cache",
+        "remove_entry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认调用链：TTLManager-BlockCache(notify_expired)，BlockCache自调用remove_from_cache，然后BlockCache-EvictionPolicy(remove_entry)。顺序正确。",
+      "elements_involved": [
+        "TTLManager-BlockCache",
+        "BlockCache-BlockCache",
+        "BlockCache-EvictionPolicy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再看一下alt的配对。缓存命中分支有两个alt：外层是block found/not found，内层是expired/not expired。缓存未命中分支也有两个alt：外层是cache full/space，内层是三种策略选择。",
+      "elements_involved": [
+        "alt",
+        "else",
+        "end"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "检查发现缓存未命中的策略选择alt嵌套位置有问题。三种策略的alt应该完全包含在cache full分支内部，我调整了一下缩进和end的位置。",
+      "elements_involved": [
+        "using LRU policy",
+        "using LFU policy",
+        "using TinyLFU policy",
+        "cache full - need eviction"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "现在结构清晰了。最后确认一下箭头的虚实线：同步调用用实线，返回消息用虚线。get_block、lookup、record_access这些用-，返回用--。",
+      "elements_involved": [
+        "-",
+        "--",
+        "synchronous",
+        "return"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已统一箭头样式。所有请求用实线箭头，所有响应用虚线箭头。包括updated_metadata、true/false返回值、block_data、victim_block_id、success等。",
+      "elements_involved": [
+        "updated_metadata",
+        "true",
+        "false",
+        "block_data",
+        "victim_block_id",
+        "success"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "participant的别名显示也要确认：Client显示为Client Code，BlockCache显示为Block Cache，EvictionPolicy显示为Eviction Policy，TTLManager显示为TTL Manager，Storage显示为Storage Layer。",
+      "elements_involved": [
+        "Client as Client Code",
+        "BlockCache as Block Cache",
+        "EvictionPolicy as Eviction Policy",
+        "TTLManager as TTL Manager",
+        "Storage as Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "别名都已正确设置。完整检查一遍：所有参与者、所有消息流、所有分支条件、所有注释、颜色分组、循环结构、箭头方向都符合要求。",
+      "elements_involved": [
+        "participant",
+        "sequenceDiagram"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：缓存命中且过期的情况下，remove_from_cache是自调用，但随后从Storage读取是发往Storage Layer，这个转换要自然。",
+      "elements_involved": [
+        "remove_from_cache",
+        "read_block",
+        "BlockCache-Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认流程：块缓存内部清理后，向Storage Layer发起read_block，收到block_data后刷新TTL并重新加入淘汰策略，最后返回。流程连贯。",
+      "elements_involved": [
+        "BlockCache-BlockCache",
+        "BlockCache-Storage",
+        "BlockCache-TTLManager",
+        "BlockCache-EvictionPolicy",
+        "BlockCache--Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整体完成。这个时序图完整展示了块缓存系统的核心机制：多级缓存查询、TTL过期处理、多种淘汰策略、以及后台清理任务。可以定稿了。",
+      "elements_involved": [
+        "block cache",
+        "ttl manager",
+        "eviction policy",
+        "storage layer",
+        "client code"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已最终确认。所有元素 grounded：144/238/144/0.3绿色、255/165/0/0.3橙色、background task、block cache、block id、block data、now + ttl、client code、eviction policy、space、storage layer、ttl manager、victim block id，以及define、check、evict、insert、load、periodic等操作。",
+      "elements_involved": [
+        "144",
+        "238",
+        "144",
+        "0.3",
+        "255",
+        "165",
+        "0",
+        "0.3",
+        "background task",
+        "block cache",
+        "block id",
+        "block data",
+        "now + ttl",
+        "client code",
+        "eviction policy",
+        "space"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 38,
+    "repair_count": 2,
+    "grounding_acts_count": 38,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 76365.6709,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 41
+  }
+}

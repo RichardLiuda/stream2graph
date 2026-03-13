@@ -1,0 +1,863 @@
+{
+  "id": "gl_flowchart_00788",
+  "source": "gitlab",
+  "source_url": "https://github.com/Romainkul/PBD/blob/c3dc7cb7f3dc4252f23a1bcf8d31f603a3733f3f/DfdMonaiLabel.mmd",
+  "source_note": "collected_from_github_final",
+  "github_repo": "Romainkul/PBD",
+  "diagram_type": "flowchart",
+  "code": "%%{init: {'flowchart': { 'curve': 'basis', 'htmlLabels': true, 'nodeSpacing': 90, 'rankSpacing': 120, 'useMaxWidth': false }, 'themeVariables': { 'fontSize': '16px' }}}%%\nflowchart LR\n  %% ======================= Concise MONAI Label DFD (Simplified) =======================\n  %% Shapes: Processes = ovals ( ), Actors = rectangles [ ], Storage = cylinders [( )]\n\n  %% -------- Hospital Scope (background) --------\n  subgraph HOSP[Hospital Scope]\n\n    %% -------- Client Device (actors) --------\n    subgraph CLIENT[Client Device]\n      patient2[Patient]\n      user[Annotator/Admin]\n      ui([Viewer UI<br/> 3D Slicer · MITK · OHIF])\n      sdk([Client SDK<br/> HTTP wrapper])\n      user --> ui\n      ui --> sdk\n      patient2 --> ui\n    end\n\n    %% -------- MONAI Label Server (processes + storage) --------\n    subgraph SERVER[MONAI Label Server]\n      core([Server Core<br/>FastAPI · Auth · App])\n      ml([ML Tasks<br/>Infer · Train · Score · AL])\n      proxy([DICOM Proxy])\n      storage[(Images · Labels · Models · Sessions)]\n    end\n\n    %% -------- Additional internal actors --------\n    mluser[Data Scientist/ML Engineer]\n    itops[IT Infrastructure/DevOps]\n\n  end\n\n  %% -------- External Services (outside Hospital) --------\n  subgraph EXTERNAL[External Services]\n    dicom[(DICOMweb/PACS)]\n    dsa[(DSA)]\n    xnat[(XNAT)]\n    idp[(IdP/OIDC)]\n    patient[Patient]\n  end\n\n  %% =================== Consolidated Flows (one edge per direction) =====================\n  %% Client <-> Core\n  sdk -->|API calls: info · datastore · infer · train · scoring · AL · session · auth · proxy| core\n  core -->|Responses: JSON · files · tokens| sdk\n\n  %% Core <-> ML (single pair)\n  core -->|Dispatch tasks| ml\n  ml -->|Results/metrics| core\n\n  %% Core <-> Storage (single; read/write implied)\n  core -->|R/W dataset · labels · models · sessions| storage\n\n  %% ML <-> Storage (single; read/write implied)\n  ml -->|R/W images · labels · artifacts| storage\n\n  %% Proxy <-> DICOMweb (single pair)\n  sdk -->|\"DICOMweb ops (qido/wado/stow)\"| proxy\n  proxy -->|HTTP DICOMweb| dicom\n  proxy -->|Streamed response| sdk\n\n  %% External Datastores (optional import/export)\n  storage -->|\"Import/Export (optional)\"| dsa\n  storage -->|\"Import/Export (optional)\"| xnat\n\n  %% Auth (single pair)\n  core -->|Token exchange| idp\n  idp -->|JWT/claims| core\n\n  %% Added actors interactions\n  mluser -->|Train/Score/Admin| core\n  core -->|Results/metrics| mluser\n  itops -->|Deploy/Monitor| core\n  itops -->|Backup/Monitoring| storage\n  itops -->|Provision/Policy| idp\n  patient -->|Imaging/PHI source| dicom",
+  "content_size": 2578,
+  "collected_at": "2026-02-06T14:20:22.283772",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为MONAI Label画一个数据流图，重点是展示医院内部和外部的数据流动。先确定一下范围：医院内部有客户端设备、MONAI Label服务器，外部有DICOMweb/PACS这些服务。",
+      "elements_involved": [
+        "Hospital Scope",
+        "Client Device",
+        "MONAI Label Server",
+        "External Services"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。客户端设备这边，我理解为是医生和标注人员实际操作的终端。需要区分Viewer UI和底层的Client SDK吗？还是说合并成一个框？",
+      "elements_involved": [
+        "Client Device",
+        "Viewer UI",
+        "Client SDK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "要分开。Viewer UI是3D Slicer、MITK、OHIF这些可视化工具，Client SDK是HTTP wrapper，负责实际的网络通信。标注人员通过UI操作，UI再调用SDK。",
+      "elements_involved": [
+        "Annotator/Admin",
+        "Viewer UI",
+        "Client SDK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，所以客户端内部的关系是：Annotator/Admin → Viewer UI → Client SDK。Patient也要能直接连到Viewer UI看结果对吧？",
+      "elements_involved": [
+        "Patient",
+        "Viewer UI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，患者可以查看自己的标注结果。现在看服务器端，核心是Server Core，基于FastAPI，包含认证和应用逻辑。",
+      "elements_involved": [
+        "Server Core",
+        "FastAPI",
+        "Auth",
+        "App"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "Server Core和ML Tasks之间是什么关系？ML Tasks包含推理、训练、评分和主动学习，我理解这些是独立的计算模块？",
+      "elements_involved": [
+        "Server Core",
+        "ML Tasks",
+        "Infer",
+        "Train",
+        "Score",
+        "AL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Server Core负责任务调度，把训练、推理这些请求分发给ML Tasks，ML Tasks执行完返回结果和指标。",
+      "elements_involved": [
+        "Server Core",
+        "ML Tasks",
+        "Dispatch tasks",
+        "Results/metrics"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "存储部分我注意到有Images、Labels、Models、Sessions，这些是统一放在一个Storage里，还是分开画？",
+      "elements_involved": [
+        "Storage",
+        "Images",
+        "Labels",
+        "Models",
+        "Sessions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "统一成一个Storage圆柱体，但标注清楚里面包含这四类数据。Server Core和ML Tasks都要读写这个Storage。",
+      "elements_involved": [
+        "Storage",
+        "Server Core",
+        "ML Tasks",
+        "R/W dataset",
+        "R/W images"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我画一下Server Core和Storage的双向箭头，标注R/W dataset · labels · models · sessions。ML Tasks到Storage标注R/W images · labels · artifacts。",
+      "elements_involved": [
+        "Server Core",
+        "ML Tasks",
+        "Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个关键组件是DICOM Proxy，负责和外部PACS系统通信。Client SDK发DICOMweb操作给它，它再转发到外部。",
+      "elements_involved": [
+        "DICOM Proxy",
+        "Client SDK",
+        "DICOMweb",
+        "PACS",
+        "qido/wado/stow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里我有点疑问：Client SDK是直接连Server Core，还是通过DICOM Proxy？DICOM Proxy的定位是只处理DICOMweb协议，还是所有流量都走它？",
+      "elements_involved": [
+        "Client SDK",
+        "Server Core",
+        "DICOM Proxy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "分两条线：Client SDK直接连Server Core走API calls，包括info、datastore、infer、train这些；另一条线Client SDK → DICOM Proxy → 外部PACS，专门处理DICOMweb的qido/wado/stow操作。",
+      "elements_involved": [
+        "Client SDK",
+        "Server Core",
+        "DICOM Proxy",
+        "API calls",
+        "DICOMweb ops"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，所以DICOM Proxy是双向的：SDK发请求给它，它转发给外部DICOMweb/PACS，然后把流式响应返回给SDK。同时Proxy和Server Core之间没有直接连接？",
+      "elements_involved": [
+        "DICOM Proxy",
+        "Client SDK",
+        "DICOMweb/PACS",
+        "Streamed response"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我需要修正一下。DICOM Proxy其实也在Server子图内部，它应该和Server Core有交互。让我重新梳理：SDK可以走两条路径，一条直接到Core，一条到Proxy处理DICOM相关请求。",
+      "elements_involved": [
+        "DICOM Proxy",
+        "Server Core",
+        "Client SDK"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "那Proxy和Core之间需要画连线吗？还是Proxy相对独立，只负责协议转换？",
+      "elements_involved": [
+        "DICOM Proxy",
+        "Server Core"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "当前简化版本里，Proxy和Core不直接连线。Proxy主要做SDK到外部PACS的桥接。但Server Core可以通过API感知Proxy的状态。先保持简单，只画SDK→Proxy→外部PACS→Proxy→SDK。",
+      "elements_involved": [
+        "DICOM Proxy",
+        "Client SDK",
+        "DICOMweb/PACS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我调整一下。现在看外部服务：DICOMweb/PACS、DSA、XNAT、IdP/OIDC，还有Patient作为外部数据源。",
+      "elements_involved": [
+        "External Services",
+        "DICOMweb/PACS",
+        "DSA",
+        "XNAT",
+        "IdP/OIDC",
+        "Patient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，外部Patient产生影像和PHI数据，进入DICOMweb/PACS系统。Storage可以和DSA、XNAT做可选的导入导出。认证走IdP/OIDC。",
+      "elements_involved": [
+        "Patient",
+        "DICOMweb/PACS",
+        "Storage",
+        "DSA",
+        "XNAT",
+        "IdP/OIDC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "认证流程是Server Core直接和IdP交互？Client SDK不参与？",
+      "elements_involved": [
+        "Server Core",
+        "IdP/OIDC",
+        "Client SDK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Server Core和IdP做token exchange，获取JWT和claims。Client SDK从Server Core获取token，不直接对接IdP。",
+      "elements_involved": [
+        "Server Core",
+        "IdP/OIDC",
+        "Token exchange",
+        "JWT/claims",
+        "Client SDK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了Server Core和IdP的双向箭头。现在补充一下内部的其他角色：Data Scientist/ML Engineer和IT Infrastructure/DevOps。",
+      "elements_involved": [
+        "Data Scientist/ML Engineer",
+        "IT Infrastructure/DevOps"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ML Engineer通过Server Core进行训练、评分和管理操作，Core返回结果和指标。DevOps负责部署监控Core、备份监控Storage、以及IdP的预配和策略管理。",
+      "elements_involved": [
+        "Data Scientist/ML Engineer",
+        "IT Infrastructure/DevOps",
+        "Server Core",
+        "Storage",
+        "IdP/OIDC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下：ML Engineer和Core是双向的，标注Train/Score/Admin和Results/metrics。DevOps到Core是Deploy/Monitor，到Storage是Backup/Monitoring，到IdP是Provision/Policy。",
+      "elements_involved": [
+        "Data Scientist/ML Engineer",
+        "IT Infrastructure/DevOps",
+        "Server Core",
+        "Storage",
+        "IdP/OIDC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。现在整体结构差不多了，但需要检查一下Client SDK到Server Core的API调用描述是否准确。",
+      "elements_involved": [
+        "Client SDK",
+        "Server Core",
+        "API calls"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我目前标注的是：info、datastore、infer、train、scoring、AL、session、auth、proxy。需要调整顺序或者补充吗？",
+      "elements_involved": [
+        "Client SDK",
+        "Server Core",
+        "API calls"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "顺序可以，但scoring改成score，和ML Tasks里的命名保持一致。另外proxy这个端点其实是指向DICOM Proxy的，不是Server Core直接处理。",
+      "elements_involved": [
+        "API calls",
+        "score",
+        "proxy",
+        "DICOM Proxy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我理解了，但这里有个问题：如果proxy端点是走DICOM Proxy，那SDK→Core的箭头上就不应该包含proxy。需要把proxy从API calls列表里去掉。",
+      "elements_involved": [
+        "Client SDK",
+        "Server Core",
+        "DICOM Proxy",
+        "API calls"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，修正后API calls只包含：info、datastore、infer、train、score、AL、session、auth。proxy相关的DICOMweb操作单独走SDK→DICOM Proxy那条线。",
+      "elements_involved": [
+        "Client SDK",
+        "Server Core",
+        "DICOM Proxy",
+        "API calls",
+        "DICOMweb ops"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。现在检查Server Core返回给SDK的响应：JSON、files、tokens。这个准确吗？",
+      "elements_involved": [
+        "Server Core",
+        "Client SDK",
+        "Responses",
+        "JSON",
+        "files",
+        "tokens"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "准确。tokens包含认证token，files是模型文件或标注结果，JSON是各类元数据和状态信息。",
+      "elements_involved": [
+        "Server Core",
+        "Client SDK",
+        "tokens",
+        "files",
+        "JSON"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "再看一下Storage和外部DSA、XNAT的导入导出。标注为optional，意思是手动触发而非自动同步？",
+      "elements_involved": [
+        "Storage",
+        "DSA",
+        "XNAT",
+        "Import/Export"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，optional表示管理员可以手动触发，把Storage里的数据导出到DSA或XNAT做进一步分析，或者从它们导入历史数据。不是实时同步。",
+      "elements_involved": [
+        "Storage",
+        "DSA",
+        "XNAT",
+        "Import/Export",
+        "optional"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了。现在整体布局：Hospital Scope包含Client Device和MONAI Label Server两个子图，外部是External Services。需要调整任何子图的边界吗？",
+      "elements_involved": [
+        "Hospital Scope",
+        "Client Device",
+        "MONAI Label Server",
+        "External Services"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Client Device里的Patient和外部External Services里的Patient是同一个概念吗？看起来一个是查看结果的患者，一个是产生影像数据源的患者。",
+      "elements_involved": [
+        "Patient",
+        "Client Device",
+        "External Services"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "确实容易混淆。Client Device里的patient2我标注为Patient（查看结果），External里的标注为Patient（Imaging/PHI source）。需要改名字区分吗？",
+      "elements_involved": [
+        "patient2",
+        "Patient",
+        "Imaging/PHI source"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持都叫Patient也可以，通过位置和连接关系能区分。内部的Patient连Viewer UI，外部的Patient连DICOMweb/PACS。这样更简洁。",
+      "elements_involved": [
+        "Patient",
+        "Viewer UI",
+        "DICOMweb/PACS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，保持现状。现在检查所有节点的形状：Actors用方括号，Processes用圆括号，Storage用圆柱体。确认一下分类。",
+      "elements_involved": [
+        "Actors",
+        "Processes",
+        "Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Actors：Annotator/Admin、Patient（内部）、Data Scientist/ML Engineer、IT Infrastructure/DevOps、Patient（外部）。Processes：Viewer UI、Client SDK、Server Core、ML Tasks、DICOM Proxy。Storage：Images·Labels·Models·Sessions、DICOMweb/PACS、DSA、XNAT、IdP/OIDC。",
+      "elements_involved": [
+        "Actors",
+        "Processes",
+        "Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Viewer UI和Client SDK用圆括号，标记为Processes。但它们在客户端，更像是软件组件而不是传统意义上的处理流程，这样合适吗？",
+      "elements_involved": [
+        "Viewer UI",
+        "Client SDK",
+        "Processes"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "在DFD语境下，它们属于处理数据的进程，用圆括号合理。如果强调是用户界面，也可以用方括号，但为了和Server端的Processes保持一致，建议都用圆括号。",
+      "elements_involved": [
+        "Viewer UI",
+        "Client SDK",
+        "Server Core",
+        "ML Tasks",
+        "DICOM Proxy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "接受，统一用圆括号。现在检查边的方向，确保每个方向只有一条边，没有重复。",
+      "elements_involved": [
+        "edges",
+        "direction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SDK和Core之间是双向的，但应该画成两条单向边还是一条双向边？",
+      "elements_involved": [
+        "Client SDK",
+        "Server Core",
+        "bidirectional"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "按DFD惯例，不同数据流应该分开画。SDK→Core是API请求，Core→SDK是响应，这是两个不同的数据流，画两条单向边更清晰。",
+      "elements_involved": [
+        "Client SDK",
+        "Server Core",
+        "API calls",
+        "Responses"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意。同样，Core↔ML Tasks、Core↔Storage、ML↔Storage、Core↔IdP、Proxy↔DICOMweb都保持单向边分开画。",
+      "elements_involved": [
+        "Server Core",
+        "ML Tasks",
+        "Storage",
+        "IdP/OIDC",
+        "DICOM Proxy",
+        "DICOMweb/PACS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整。但发现Proxy到SDK的响应我标注为Streamed response，而SDK到Proxy的请求是DICOMweb ops，这是合理的对吗？",
+      "elements_involved": [
+        "DICOM Proxy",
+        "Client SDK",
+        "Streamed response",
+        "DICOMweb ops"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，DICOM影像数据量大，用流式响应。qido查询、wado获取、stow存储这些操作走过去，流式数据走回来。",
+      "elements_involved": [
+        "DICOM Proxy",
+        "Client SDK",
+        "qido/wado/stow",
+        "Streamed response"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "最后检查一下标签里的HTML换行。Viewer UI标注为\"Viewer UI<br/ 3D Slicer · MITK · OHIF\"，这个格式正确吗？斜杠位置看起来有点特别。",
+      "elements_involved": [
+        "Viewer UI",
+        "3D Slicer",
+        "MITK",
+        "OHIF",
+        "HTML labels"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Mermaid的HTML标签用<br/，但为了让标签更紧凑，可以写成<br/后面加空格。不过标准写法是<br/，建议统一用<br/。",
+      "elements_involved": [
+        "Viewer UI",
+        "Client SDK",
+        "Server Core",
+        "ML Tasks",
+        "HTML labels"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我注意到代码里实际用的是<br/加空格的形式，比如\"Viewer UI<br/ 3D Slicer · MITK · OHIF\"。这可能是为了视觉对齐。需要改成标准<br/吗？",
+      "elements_involved": [
+        "HTML labels",
+        "<br/",
+        "formatting"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持代码里的格式吧，<br/加空格在渲染时能正确换行，而且和现有风格一致。Server Core的\"FastAPI · Auth · App\"、ML Tasks的\"Infer · Train · Score · AL\"也保持同样风格。",
+      "elements_involved": [
+        "Server Core",
+        "ML Tasks",
+        "Client SDK",
+        "HTML labels",
+        "formatting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，保持现有格式。现在整体检查一遍：Hospital Scope包含CLIENT和SERVER两个子图，CLIENT里有patient2、user、ui、sdk；SERVER里有core、ml、proxy、storage，以及mluser、itops。外部有dicom、dsa、xnat、idp、patient。",
+      "elements_involved": [
+        "Hospital Scope",
+        "CLIENT",
+        "SERVER",
+        "External Services"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "mluser和itops的位置对吗？它们是在SERVER子图内部，但和core、ml这些进程并列？",
+      "elements_involved": [
+        "Data Scientist/ML Engineer",
+        "IT Infrastructure/DevOps",
+        "MONAI Label Server"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，它们作为Additional internal actors和SERVER子图内的进程并列，但属于Actors（方括号），不是Processes（圆括号）。",
+      "elements_involved": [
+        "Data Scientist/ML Engineer",
+        "IT Infrastructure/DevOps",
+        "Actors",
+        "Processes"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "确认无误。现在看布局方向，用LR（从左到右），CLIENT在左，SERVER在中间，EXTERNAL在右，符合数据流动方向。",
+      "elements_involved": [
+        "flowchart LR",
+        "Client Device",
+        "MONAI Label Server",
+        "External Services"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "布局确认。最后优化一下样式参数：curve用basis，htmlLabels开启，nodeSpacing 90，rankSpacing 120，useMaxWidth false，字体16px。这些会影响最终渲染效果。",
+      "elements_involved": [
+        "flowchart config",
+        "themeVariables",
+        "fontSize"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "参数合理。useMaxWidth false确保图表不会过度拉伸，nodeSpacing和rankSpacing给复杂连接留出足够空间。",
+      "elements_involved": [
+        "nodeSpacing",
+        "rankSpacing",
+        "useMaxWidth",
+        "layout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "所有边的标注都检查过了，但有一个细节：Storage到DSA和XNAT的边，我标注为\"Import/Export (optional)\"，括号需要保留吗？",
+      "elements_involved": [
+        "Storage",
+        "DSA",
+        "XNAT",
+        "Import/Export",
+        "optional"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保留，强调这是可选功能，不是核心数据流。同样，所有标注都用引号包裹，避免特殊字符解析问题。",
+      "elements_involved": [
+        "Import/Export (optional)",
+        "edge labels",
+        "quotation marks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成最终检查。所有元素：5个Actors（patient2, user, mluser, itops, patient），5个Processes（ui, sdk, core, ml, proxy），5个Storage（storage, dicom, dsa, xnat, idp），共15个节点。边连接共14组，方向正确，标注清晰。",
+      "elements_involved": [
+        "nodes",
+        "edges",
+        "final check"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再数一遍边：user-ui, patient2-ui, ui-sdk, sdk-core, core-sdk, core-ml, ml-core, core-storage, ml-storage, sdk-proxy, proxy-dicom, proxy-sdk, storage-dsa, storage-xnat, core-idp, idp-core, mluser-core, core-mluser, itops-core, itops-storage, itops-idp, patient-dicom。是不是22条？",
+      "elements_involved": [
+        "edges",
+        "count"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对的，22条单向边。但按\"one edge per direction\"的简化原则，有些双向关系在视觉上是一对，实际是两条单向边。代码里每条都单独写了。",
+      "elements_involved": [
+        "edges",
+        "one edge per direction",
+        "bidirectional"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "完美。这个简化版DFD准确反映了MONAI Label的数据流：客户端通过SDK与Core交互，Core调度ML任务并管理存储，Proxy桥接DICOMweb，外部服务提供影像数据源和可选的扩展存储，认证走IdP，运维角色覆盖全链路。",
+      "elements_involved": [
+        "MONAI Label",
+        "data flow",
+        "architecture"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "图已完成，所有元素和关系都经过验证。可以输出最终版本了。",
+      "elements_involved": [
+        "final diagram",
+        "validation complete"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 3,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 118681.9816,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 80
+  }
+}

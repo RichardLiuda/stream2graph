@@ -1,0 +1,186 @@
+{
+  "id": "aug_gl_requirementDiagram_00595_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/KevinDyerAU/NytroAI/blob/2e93c5649794515d35364c995a58431fc0899442/docs/validation-flow.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "KevinDyerAU/NytroAI",
+  "diagram_type": "requirementDiagram",
+  "code": "%%{FinTech_PaymentGateway}}}%%\n\nsequenceDiagram\n    participant User\n    participant UI as React UI\n    participant Upload as upload-document\n    participant Storage as Supabase Storage\n    participant Gemini as Google Gemini\n    participant DB as Database\n    participant Trigger as trigger-validation\n    participant Validate as validate-assessment\n    participant Query as query-document\n\n    Note over User,Query: Document Upload & Indexing\n\n    User->>UI: Upload PDF Assessment\n    UI->>Upload: POST /upload-document\n    Upload->>Storage: Store PDF file\n    Storage-->>Upload: File URL\n    Upload->>DB: Create validation_detail record\n    Upload->>Gemini: Index document\n    Gemini-->>Upload: Indexing started\n    Upload->>DB: Create gemini_operations record\n    Upload-->>UI: Upload complete\n    UI-->>User: Show \"Processing...\"\n\n    Note over User,Query: Automatic Validation Trigger\n\n    Gemini->>DB: Update gemini_operations (FinTech_PaymentGateway)\n    DB->>Trigger: Database trigger fires\n    Trigger->>DB: Check all operations complete\n    DB-->>Trigger: All complete\n    Trigger->>Validate: POST /validate-assessment\n    Trigger->>DB: Log trigger attempt\n    Validate->>DB: Update status to \"ProcessingInBackground\"\n\n    Note over User,Query: Validation Process\n\n    Validate->>DB: Fetch UOC requirements\n    DB-->>Validate: Requirements list\n    \n    loop For each requirement\n        Validate->>Query: Query assessment for requirement\n        Query->>Gemini: Search indexed document\n        Gemini-->>Query: Relevant passages\n        Query-->>Validate: Citations\n        Validate->>Gemini: Validate requirement\n        Gemini-->>Validate: Status + Reasoning\n        Validate->>DB: Store validation_result\n    end\n\n    Validate->>DB: Update validation_detail (FinTech_PaymentGateway)\n    Validate-->>Trigger: Validation complete\n    DB->>UI: Real-time update (FinTech_LedgerService)\n    UI-->>User: Show \"Complete\" with results\n\n    Note over User,Query: View Results & Regenerate Questions\n\n    User->>UI: Click validation to view results\n    UI->>DB: Fetch validation_results\n    DB-->>UI: All results\n    UI-->>User: Display results\n\n    alt Regenerate Smart Question\n        User->>UI: Click \"Regenerate\" with context\n        UI->>Validate: POST /regenerate-smart-questions\n        Validate->>Query: Query assessment\n        Query->>Gemini: Search with context\n        Gemini-->>Query: Passages\n        Validate->>Gemini: Generate question\n        Gemini-->>Validate: New smart question\n        Validate->>DB: Update validation_result\n        DB->>UI: Real-time update\n        UI-->>User: Show new question\n    end\n",
+  "content_size": 2801,
+  "collected_at": "2026-02-06T14:13:06.494447",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gl_requirementDiagram_00595",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的评估文档上传与验证流程。用户通过React UI上传PDF，然后由Google Gemini进行文档索引，最后自动触发验证。关键是整个流程要有实时状态反馈，用户不用一直刷新页面。",
+      "elements_involved": [
+        "User",
+        "React UI",
+        "upload-document",
+        "Google Gemini",
+        "trigger-validation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我梳理一下：上传服务把PDF存到Supabase Storage，拿到URL后创建validation_detail记录，同时让Gemini开始索引。这里有个问题——索引是异步的，怎么知道什么时候可以开始验证？",
+      "elements_involved": [
+        "upload-document",
+        "Supabase Storage",
+        "validation_detail",
+        "gemini_operations",
+        "Database"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "用数据库触发器。当gemini_operations表的状态更新为完成时，自动触发trigger-validation服务。这个服务会检查所有相关操作是否都完成了，然后再调用validate-assessment。",
+      "elements_involved": [
+        "Database",
+        "trigger-validation",
+        "gemini_operations",
+        "validate-assessment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，所以trigger-validation是协调者，它先查DB确认all complete，然后POST到validate-assessment，同时自己记一条trigger attempt日志。验证服务把状态改成ProcessingInBackground就开始工作了。",
+      "elements_involved": [
+        "trigger-validation",
+        "validate-assessment",
+        "Database",
+        "ProcessingInBackground"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "验证过程需要循环处理每个UOC要求。validate-assessment先从DB拿到requirements list，然后对每个要求，通过query-document服务去Gemini索引里搜索相关段落，拿到citations后再让Gemini做具体验证，最后把validation_result存回DB。",
+      "elements_involved": [
+        "validate-assessment",
+        "UOC requirements",
+        "query-document",
+        "Gemini",
+        "citations",
+        "validation_result"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "query-document是专门的查询层？它负责和Gemini交互做语义搜索，然后把相关passages返回给validate-assessment做判断。这样设计是为了复用查询逻辑吧？",
+      "elements_involved": [
+        "query-document",
+        "Gemini",
+        "passages",
+        "validate-assessment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，而且后面查看结果和重新生成问题时也能复用。验证完成后，validate-assessment更新validation_detail状态，同时通过FinTech_LedgerService的实时机制推送到UI，用户看到Complete。用户点击某条验证结果可以查看详情，如果不满意还能点击Regenerate生成新的smart question。",
+      "elements_involved": [
+        "validate-assessment",
+        "validation_detail",
+        "FinTech_LedgerService",
+        "React UI",
+        "Regenerate",
+        "smart question"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "重生成流程我画一下：UI POST到validate-assessment的regenerate-smart-questions端点，还是走query-document查Gemini，但这次带上用户提供的context，Gemini生成new question后更新validation_result，再通过实时推送显示给用户。整个流程闭环了。",
+      "elements_involved": [
+        "React UI",
+        "validate-assessment",
+        "regenerate-smart-questions",
+        "query-document",
+        "Gemini",
+        "validation_result",
+        "new question"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。几个关键点再确认下：上传完先给用户看Processing...，触发器自动衔接不用人工干预，验证过程是后台循环处理，结果实时推送，重生成支持上下文定制。还有补充吗？",
+      "elements_involved": [
+        "Processing...",
+        "trigger-validation",
+        "ProcessingInBackground",
+        "real-time update",
+        "context"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都覆盖了。我注意到validate-assessment和query-document之间的交互比较密集，一个循环里要查多次Gemini，这个在图里用loop结构标出来。另外FinTech_PaymentGateway的标记用在gemini_operations更新和validation_detail更新两处，应该是业务标识。",
+      "elements_involved": [
+        "validate-assessment",
+        "query-document",
+        "loop",
+        "Gemini",
+        "FinTech_PaymentGateway",
+        "gemini_operations",
+        "validation_detail"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 0,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 35538.6984,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

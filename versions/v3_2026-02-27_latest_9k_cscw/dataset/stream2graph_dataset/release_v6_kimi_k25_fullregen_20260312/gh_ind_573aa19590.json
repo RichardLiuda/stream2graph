@@ -1,0 +1,164 @@
+{
+  "id": "gh_ind_573aa19590",
+  "source": "github_industrial",
+  "repo": "twirl/The-API-Book",
+  "license": "other",
+  "code": "sequenceDiagram\n    participant U as Client\n    participant D as Gateway D\n    participant A as Authorization<br/>Service A\n    participant B as User Profiles<br/>Service B\n    participant C as Orders<br/>Service C\n    U->>+D: POST /v1/orders HTTP/1.1<br/>If-Match: #60;revision#62;<br/>Authorization: Bearer #60;token#62;\n    D->>+A: GET /v1/auth<br/><token>\n    A-->>-D: { status, user_id }\n    D->>+C: POST /v1/orders?user_id=#60;user_id#62;<br/>If-Match: #60;revision#62;\n    alt Actual revision\n        C-->>D: 201 Created<br/>Content-Location: /v1/orders?user_id=<user_id><br/>ETag: #60;New revision#62;<br/>{ orders }\n    else Wrong Revision\n        C-->>D: 409 Conflict\n    end\n    deactivate C\n    D-->>-U: 201 Created<br/>ETag: #60;New revision#62;<br/>{ orders }\n",
+  "diagram_type": "alt size:600..900",
+  "collected_at": "2026-02-27T04:16:54.367569",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个订单创建的时序图。场景是：客户端通过Gateway D提交订单，需要先走Authorization Service A鉴权，然后User Profiles Service B暂时用不到，但Orders Service C是核心。关键是要有乐观锁——客户端得带上If-Match头，里面是之前的revision。",
+      "elements_involved": [
+        "Client",
+        "Gateway D",
+        "Authorization Service A",
+        "User Profiles Service B",
+        "Orders Service C",
+        "POST /v1/orders",
+        "If-Match",
+        "revision"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下：Client到Gateway D是POST请求，带If-Match和Bearer token的Authorization头对吧？然后Gateway D要去Authorization Service A做GET /v1/auth验证token，拿到user_id后再去Orders Service C创建订单？",
+      "elements_involved": [
+        "Client",
+        "Gateway D",
+        "Authorization Service A",
+        "POST /v1/orders",
+        "Authorization: Bearer <token",
+        "GET /v1/auth",
+        "user_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，流程没错。不过Authorization Service A返回的是简单状态加user_id，用虚线箭头表示异步响应。然后Gateway D调Orders Service C的时候，要把user_id拼到查询参数里，If-Match头要原样透传。",
+      "elements_involved": [
+        "Authorization Service A",
+        "Gateway D",
+        "status",
+        "user_id",
+        "Orders Service C",
+        "POST /v1/orders?user_id=<user_id",
+        "If-Match"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主流程。这里Orders Service C的响应需要分支处理——乐观锁命中和冲突两种情况。我加个alt块：Actual revision分支返回201 Created，带Content-Location和新ETag；Wrong Revision分支返回409 Conflict。",
+      "elements_involved": [
+        "Orders Service C",
+        "alt",
+        "Actual revision",
+        "Wrong Revision",
+        "201 Created",
+        "Content-Location",
+        "ETag",
+        "409 Conflict"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，Content-Location的格式注意一下，应该是/v1/orders?user_id=具体的user_id，不是尖括号。还有ETag返回的是New revision，要提示客户端下次用这个值。最后Gateway D要把201和ETag透传给Client。",
+      "elements_involved": [
+        "Content-Location",
+        "user_id",
+        "ETag",
+        "New revision",
+        "Gateway D",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我修正一下Content-Location的写法。另外确认：Orders Service C处理完后要deactivate，然后Gateway D到Client的响应也是虚线对吧？因为这只是返回结果，不是新的请求。",
+      "elements_involved": [
+        "Content-Location",
+        "deactivate C",
+        "Gateway D",
+        "Client",
+        "201 Created"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，deactivate C表示订单服务处理结束。整个流程完整了：鉴权、透传user_id、乐观锁校验、分支响应。User Profiles Service B虽然这次没用到，但保留在参与者列表里，说明架构上有这个服务。",
+      "elements_involved": [
+        "deactivate C",
+        "User Profiles Service B",
+        "participant"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。我检查一遍：五个参与者、Client到Gateway D的POST带双头部、Gateway D到A的GET验证、A返回status和user_id、Gateway D到C的POST带user_id参数和If-Match、alt分支处理201和409、最后Gateway D返回201和ETag给Client。结构应该符合你的设计了。",
+      "elements_involved": [
+        "Client",
+        "Gateway D",
+        "Authorization Service A",
+        "User Profiles Service B",
+        "Orders Service C",
+        "POST /v1/orders",
+        "GET /v1/auth",
+        "POST /v1/orders?user_id=<user_id",
+        "alt",
+        "201 Created",
+        "409 Conflict",
+        "ETag"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 30926.08,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

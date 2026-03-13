@@ -1,0 +1,647 @@
+{
+  "id": "aug_gl_block-beta_00226_Gro_5",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/bsbodden/barudb/blob/dc97c4d833ff103d104f2e68bfec8fba50980d8e/final_report/diagrams/block_cache_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "bsbodden/barudb",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client Code\n    participant BlockCache as Block Cache\n    participant EvictionPolicy as Eviction Policy\n    participant TTLManager as TTL Manager\n    participant Storage as Storage Layer\n    \n    %% Define participant boxes with consistent colors\n    rect rgba(Groupware_ChatRoom)\n        note right of BlockCache: Cache components\n        note right of EvictionPolicy: Policy components\n        note right of TTLManager: TTL components\n    end\n    rect rgba(Groupware_SprintBacklog)\n        note right of Storage: Storage components\n    end\n    \n    %% Block cache operations\n    Client->>BlockCache: get_block(Groupware_WikiPage)\n    \n    %% Check if block is in cache\n    BlockCache->>BlockCache: lookup(Groupware_SprintBacklog)\n    \n    alt block found in cache\n        %% Update access statistics\n        BlockCache->>EvictionPolicy: record_access(Groupware_SprintBacklog)\n        EvictionPolicy-->>BlockCache: updated_metadata\n        \n        %% Check if TTL expired\n        BlockCache->>TTLManager: is_expired(Groupware_KanbanBoard)\n        \n        alt block expired\n            TTLManager-->>BlockCache: true\n            BlockCache->>BlockCache: remove_from_cache(Groupware_KanbanBoard)\n            \n            %% Load from storage\n            BlockCache->>Storage: read_block(Groupware_IssueTracker)\n            Storage-->>BlockCache: block_data\n            \n            %% Insert back with refreshed TTL\n            BlockCache->>TTLManager: set_expiry(Groupware_WikiPage)\n            BlockCache->>EvictionPolicy: add_entry(Groupware_KanbanBoard)\n            \n            BlockCache-->>Client: block_data\n        else block not expired\n            TTLManager-->>BlockCache: false\n            BlockCache-->>Client: cached_block_data\n        end\n    else block not found in cache\n        %% Load from storage\n        BlockCache->>Storage: read_block(Groupware_WikiPage)\n        Storage-->>BlockCache: block_data\n        \n        %% Check if cache is full\n        BlockCache->>EvictionPolicy: is_cache_full(Groupware_WikiPage)\n        \n        alt cache full - need eviction\n            EvictionPolicy-->>BlockCache: true\n            \n            %% Policy determines what to evict\n            BlockCache->>EvictionPolicy: select_victim(Groupware_IssueTracker)\n            \n            alt using LRU policy\n                note right of EvictionPolicy: Least Recently Used block selected\n            else using LFU policy\n                note right of EvictionPolicy: Least Frequently Used block selected\n            else using TinyLFU policy\n                note right of EvictionPolicy: Frequency sketch determines victim\n            end\n            \n            EvictionPolicy-->>BlockCache: victim_block_id\n            \n            %% Evict the selected block\n            BlockCache->>BlockCache: evict_block(Groupware_ChatRoom)\n            BlockCache->>TTLManager: remove_expiry(Groupware_KanbanBoard)\n        else cache has space\n            EvictionPolicy-->>BlockCache: false\n        end\n        \n        %% Insert new block\n        BlockCache->>BlockCache: insert_block(Groupware_SprintBacklog)\n        BlockCache->>EvictionPolicy: add_entry(Groupware_SprintBacklog)\n        EvictionPolicy-->>BlockCache: success\n        BlockCache->>TTLManager: set_expiry(Groupware_WikiPage)\n        TTLManager-->>BlockCache: success\n        \n        BlockCache-->>Client: block_data\n    end\n    \n    %% Periodic TTL cleanup (Groupware_SprintBacklog)\n    loop TTL cleanup interval\n        TTLManager->>TTLManager: check_expired_entries(Groupware_ChatRoom)\n        \n        loop For each expired entry\n            TTLManager->>BlockCache: notify_expired(Groupware_KanbanBoard)\n            BlockCache->>BlockCache: remove_from_cache(Groupware_WikiPage)\n            BlockCache->>EvictionPolicy: remove_entry(Groupware_ChatRoom)\n        end\n    end",
+  "content_size": 3655,
+  "collected_at": "2026-02-06T14:04:54.927677",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Groupware",
+  "seed_id": "gl_block-beta_00226",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为分布式存储系统绘制一个块缓存的交互时序图。核心场景是客户端读取块时的完整流程，包括缓存命中、未命中、淘汰策略和TTL管理。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。参与方我梳理一下：客户端代码、块缓存、淘汰策略模块、TTL管理器，还有存储层。这样五个参与者够覆盖完整流程吗？",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，这五个是核心。为了视觉分组，我想用矩形框把缓存相关组件和存储组件区分开。缓存这边用Groupware_ChatRoom的配色，存储用Groupware_SprintBacklog。",
+      "elements_involved": [
+        "Groupware_ChatRoom",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出参与者框架，把BlockCache、EvictionPolicy、TTLManager放在ChatRoom色系的框里，Storage放在SprintBacklog色系的框里。现在开始画第一条消息：客户端请求获取Groupware_WikiPage对应的块。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来要分两条支路：缓存命中和未命中。先画命中的情况。块缓存收到请求后，先内部查找Groupware_SprintBacklog对应的元数据。",
+      "elements_involved": [
+        "Block Cache",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在BlockCache上画了一个自调用消息lookup(Groupware_SprintBacklog)。然后进入alt分支，第一个分支是\"block found in cache\"。",
+      "elements_involved": [
+        "Block Cache",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "命中之后，块缓存要通知淘汰策略模块记录这次访问，更新Groupware_SprintBacklog的访问统计信息。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：BlockCache发送record_access(Groupware_SprintBacklog)给EvictionPolicy，EvictionPolicy返回updated_metadata。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "关键检查点：块缓存要向TTL管理器确认这个块是否过期，检查的是Groupware_KanbanBoard的过期状态。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了is_expired(Groupware_KanbanBoard)调用。这里需要嵌套alt分支：过期和未过期两种情况。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "先画过期的情况。TTL管理器返回true，块缓存把Groupware_KanbanBoard从缓存中移除，然后从存储层重新读取Groupware_IssueTracker的数据。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "Storage Layer",
+        "Groupware_KanbanBoard",
+        "Groupware_IssueTracker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成：TTLManager返回true，BlockCache自调用remove_from_cache(Groupware_KanbanBoard)，然后调用Storage的read_block(Groupware_IssueTracker)，Storage返回block_data。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "Storage Layer",
+        "Groupware_KanbanBoard",
+        "Groupware_IssueTracker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "重新加载后，块缓存要刷新TTL和淘汰策略的元数据。先给Groupware_WikiPage设置新的过期时间，再给Groupware_KanbanBoard添加淘汰条目。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "Eviction Policy",
+        "Groupware_WikiPage",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：set_expiry(Groupware_WikiPage)给TTLManager，add_entry(Groupware_KanbanBoard)给EvictionPolicy，最后BlockCache返回block_data给Client。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "Eviction Policy",
+        "Client Code",
+        "Groupware_WikiPage",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "过期分支的另一边：如果TTL管理器返回false，说明块没过期，直接返回缓存数据给客户端就行。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "Client Code"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了else分支\"block not expired\"：TTLManager返回false，BlockCache直接返回cached_block_data给Client。缓存命中的主分支完成了。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "Client Code"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画缓存未命中的情况。块缓存内部查找失败，需要从存储层读取Groupware_WikiPage的数据。",
+      "elements_involved": [
+        "Block Cache",
+        "Storage Layer",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加else分支\"block not found in cache\"：BlockCache调用Storage的read_block(Groupware_WikiPage)，Storage返回block_data。",
+      "elements_involved": [
+        "Block Cache",
+        "Storage Layer",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据读回来后，要先检查缓存是否已满。块缓存询问淘汰策略，检查Groupware_WikiPage对应的空间状态。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了is_cache_full(Groupware_WikiPage)调用。这里又要分alt：缓存满需要淘汰，或者缓存有空间。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "先画缓存满的情况。EvictionPolicy返回true，然后块缓存请求选择淘汰目标，传入Groupware_IssueTracker作为上下文参考。",
+      "elements_involved": [
+        "Eviction Policy",
+        "Block Cache",
+        "Groupware_IssueTracker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：EvictionPolicy返回true，BlockCache调用select_victim(Groupware_IssueTracker)。这里需要展示三种具体的淘汰策略选择。",
+      "elements_involved": [
+        "Eviction Policy",
+        "Block Cache",
+        "Groupware_IssueTracker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，用嵌套alt展示策略选择：LRU、LFU、TinyLFU三种。每种策略右边加注释说明。",
+      "elements_involved": [
+        "Eviction Policy",
+        "LRU policy",
+        "LFU policy",
+        "TinyLFU policy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了三个alt分支：LRU策略注释\"Least Recently Used block selected\"，LFU策略注释\"Least Frequently Used block selected\"，TinyLFU策略注释\"Frequency sketch determines victim\"。",
+      "elements_involved": [
+        "Eviction Policy",
+        "LRU policy",
+        "LFU policy",
+        "TinyLFU policy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "策略选择完成后，EvictionPolicy返回victim_block_id给块缓存。然后块缓存执行实际的淘汰操作。",
+      "elements_involved": [
+        "Eviction Policy",
+        "Block Cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加EvictionPolicy返回victim_block_id。接下来块缓存自调用evict_block，淘汰的是Groupware_ChatRoom对应的块。",
+      "elements_involved": [
+        "Eviction Policy",
+        "Block Cache",
+        "Groupware_ChatRoom"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "淘汰时还要同步清理TTL管理器中的过期记录，移除Groupware_KanbanBoard的过期时间设置。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了remove_expiry(Groupware_KanbanBoard)调用。缓存满的alt分支完成。现在画else分支：缓存有空间的情况。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "缓存有空间就简单了，EvictionPolicy返回false，直接进入插入新块的流程。块缓存自调用insert_block，插入Groupware_SprintBacklog。",
+      "elements_involved": [
+        "Eviction Policy",
+        "Block Cache",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加else分支：EvictionPolicy返回false。然后BlockCache自调用insert_block(Groupware_SprintBacklog)。",
+      "elements_involved": [
+        "Eviction Policy",
+        "Block Cache",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "插入后要通知淘汰策略添加条目，同样是Groupware_SprintBacklog，策略模块返回成功。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了add_entry(Groupware_SprintBacklog)，EvictionPolicy返回success。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "同时设置TTL，给Groupware_WikiPage设置过期时间，TTL管理器返回成功。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了set_expiry(Groupware_WikiPage)，TTLManager返回success。最后块缓存把block_data返回给客户端。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "Client Code",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "主流程都完成了。但还缺一个背景任务：TTL管理器的定期清理机制。这个用loop循环表示，标注为TTL cleanup interval。",
+      "elements_involved": [
+        "TTL Manager",
+        "TTL cleanup interval"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了loop \"TTL cleanup interval\"，注释里标注了关联的Groupware_SprintBacklog。",
+      "elements_involved": [
+        "TTL Manager",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "清理循环内部：TTL管理器自调用check_expired_entries，检查Groupware_ChatRoom中的过期条目。",
+      "elements_involved": [
+        "TTL Manager",
+        "Groupware_ChatRoom"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了TTLManager的自调用check_expired_entries(Groupware_ChatRoom)。然后需要内层循环处理每个过期条目。",
+      "elements_involved": [
+        "TTL Manager",
+        "Groupware_ChatRoom"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "内层loop标注\"For each expired entry\"。对于每个过期条目，TTL管理器通知块缓存，传入Groupware_KanbanBoard。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了内层loop \"For each expired entry\"，以及notify_expired(Groupware_KanbanBoard)调用。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "块缓存收到通知后，自调用remove_from_cache，移除Groupware_WikiPage。然后通知淘汰策略移除对应条目，是Groupware_ChatRoom。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "Groupware_WikiPage",
+        "Groupware_ChatRoom"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了BlockCache自调用remove_from_cache(Groupware_WikiPage)，以及remove_entry(Groupware_ChatRoom)给EvictionPolicy。内层循环完成。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "Groupware_WikiPage",
+        "Groupware_ChatRoom"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "整体结构检查一遍。有个细节：在缓存命中且过期重载的分支里，淘汰策略的add_entry参数应该是Groupware_SprintBacklog还是Groupware_KanbanBoard？",
+      "elements_involved": [
+        "Eviction Policy",
+        "Groupware_SprintBacklog",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我检查一下...当前画的是add_entry(Groupware_KanbanBoard)。但根据语义，重载后应该更新SprintBacklog的元数据。需要改成Groupware_SprintBacklog吗？",
+      "elements_involved": [
+        "Eviction Policy",
+        "Groupware_SprintBacklog",
+        "Groupware_KanbanBoard"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "不，保持KanbanBoard是对的。因为KanbanBoard代表块的访问频率统计，SprintBacklog是空间分配。重载后需要重新建立访问统计，所以KanbanBoard正确。",
+      "elements_involved": [
+        "Eviction Policy",
+        "Groupware_KanbanBoard",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，保持原设计。再确认一下：所有Groupware前缀的元素都正确对应了吗？WikiPage、SprintBacklog、KanbanBoard、ChatRoom、IssueTracker五个都用上了。",
+      "elements_involved": [
+        "Groupware_WikiPage",
+        "Groupware_SprintBacklog",
+        "Groupware_KanbanBoard",
+        "Groupware_ChatRoom",
+        "Groupware_IssueTracker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "都正确。WikiPage是客户端请求的块类型，SprintBacklog用于空间元数据，KanbanBoard用于访问统计，ChatRoom用于过期检查，IssueTracker用于存储读取上下文。",
+      "elements_involved": [
+        "Groupware_WikiPage",
+        "Groupware_SprintBacklog",
+        "Groupware_KanbanBoard",
+        "Groupware_ChatRoom",
+        "Groupware_IssueTracker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终检查完成：5个参与者、2个矩形分组、4层alt嵌套、2层loop嵌套、完整的缓存命中/未命中/过期/淘汰策略分支、以及后台TTL清理循环。时序图已完整绘制。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "非常好，这个时序图完整展示了块缓存系统的核心交互逻辑。从客户端请求到缓存命中优化、未命中加载、满缓存淘汰、TTL过期处理，再到后台清理，流程清晰且覆盖了所有关键场景。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 49,
+    "repair_count": 3,
+    "grounding_acts_count": 49,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 78879.8068,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 49
+  }
+}

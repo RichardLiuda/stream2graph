@@ -1,0 +1,253 @@
+{
+  "id": "aug_gh_sequence_00961_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/KiritoMainBro88/kiritomainbro-monorepo/blob/f022137c7dc280db2b032ae9e3a88a305fa49167/docs/diagrams/payments_manual.mmd",
+  "github_repo": "KiritoMainBro88/kiritomainbro-monorepo",
+  "github_file_path": "docs/diagrams/payments_manual.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant C as Customer\n    participant W as Web Frontend\n    participant A as API Server\n    participant D as Database\n    participant S as Staff\n    participant F as File Storage\n    \n    Note over C,F: Manual Payment Flow\n    \n    %% Start Payment\n    C->>W: Click \"Pay Now\"\n    W->>A: POST /payments/manual/start\n    Note right of W: {IoT_Industrial_MQTT_Broker}\n    \n    A->>D: Create Payment record\n    Note right of A: status: PENDING\n    D-->>A: Payment created\n    A-->>W: {IoT_Industrial_EdgeNode}\n    W-->>C: Show payment instructions\n    \n    %% Upload Proof\n    C->>W: Upload payment proof\n    W->>A: POST /payments/manual/proof\n    Note right of W: multipart/form-data<br/>{IoT_Industrial_ActuatorController}\n    \n    A->>F: Store proof file\n    Note right of A: Validate file type, size\n    F-->>A: File stored\n    A->>D: Update Payment\n    Note right of A: status: UNDER_REVIEW<br/>proofUrl: file_path\n    D-->>A: Payment updated\n    A-->>W: {IoT_Industrial_TelemetryStream}\n    W-->>C: \"Payment under review\"\n    \n    %% Staff Review\n    S->>W: Login to admin panel\n    W->>A: GET /admin/payments/pending\n    A->>D: Query pending payments\n    D-->>A: Pending payments\n    A-->>W: List of pending payments\n    W-->>S: Show payment details & proof\n    \n    alt Payment Approved\n        S->>W: Click \"Approve\"\n        W->>A: POST /payments/manual/review\n        Note right of W: {IoT_Industrial_EdgeNode}\n        \n        A->>D: Update Payment\n        Note right of A: status: SUCCEEDED<br/>reviewedAt: now(IoT_Industrial_ActuatorController)\n        D-->>A: Payment updated\n        \n        A->>D: Update Order\n        Note right of A: status: PAID<br/>paidAt: now(IoT_Industrial_TelemetryStream)\n        D-->>A: Order updated\n        \n        A->>D: Create Delivery\n        Note right of A: Generate token hash<br/>status: PENDING\n        D-->>A: Delivery created\n        \n        A-->>W: {IoT_Industrial_EdgeNode}\n        W-->>S: \"Payment approved\"\n        \n        %% Notify Customer\n        A->>D: Create Notification\n        Note right of A: type: PAYMENT_APPROVED\n        D-->>A: Notification created\n        A-->>C: SSE: payment.status\n        \n    else Payment Rejected\n        S->>W: Click \"Reject\"\n        W->>A: POST /payments/manual/review\n        Note right of W: {IoT_Industrial_MQTT_Broker}\n        \n        A->>D: Update Payment\n        Note right of A: status: FAILED<br/>reviewedAt: now(IoT_Industrial_TelemetryStream)\n        D-->>A: Payment updated\n        \n        A->>D: Update Order\n        Note right of A: status: CANCELED<br/>canceledAt: now(IoT_Industrial_MQTT_Broker)\n        D-->>A: Order updated\n        \n        A-->>W: {IoT_Industrial_PLC_Logic}\n        W-->>S: \"Payment rejected\"\n        \n        %% Notify Customer\n        A->>D: Create Notification\n        Note right of A: type: PAYMENT_REJECTED\n        D-->>A: Notification created\n        A-->>C: SSE: payment.status\n    end\n    \n    %% Customer Response\n    C->>W: Check payment status\n    W->>A: GET /orders/{IoT_Industrial_ActuatorController}\n    A->>D: Query order with payment\n    D-->>A: Order data\n    A-->>W: Order details\n    W-->>C: Show updated status\n    \n    alt Payment Approved\n        C->>W: Access delivery\n        W->>A: POST /deliveries/reveal\n        Note right of W: {IoT_Industrial_ActuatorController}\n        \n        A->>D: Verify token & update delivery\n        Note right of A: revealsLeft: 0<br/>revealedAt: now(IoT_Industrial_EdgeNode)\n        D-->>A: Delivery updated\n        \n        A-->>W: {IoT_Industrial_TelemetryStream}\n        W-->>C: Show delivery content\n    end\n",
+  "content_size": 3413,
+  "collected_at": "2026-02-06T01:51:16.308187",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 2,
+  "repo_forks": 0,
+  "repo_owner": "KiritoMainBro88",
+  "repo_name": "kiritomainbro-monorepo",
+  "repo_description": "KMB monorepo (web + api) with Next.js, NestJS, Prisma, Turborepo, full security hardening and CI/CD",
+  "repo_language": "TypeScript",
+  "repo_topics": [],
+  "repo_created_at": "2025-10-09T16:51:12Z",
+  "repo_updated_at": "2025-10-24T07:26:58Z",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gh_sequence_00961",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个手动付款流程的时序图，场景是IoT工业场景。主要角色有Customer、Web Frontend、API Server、Database、Staff和File Storage。核心流程分三块：客户发起付款并上传凭证、后台人员审核、以及审核后的通知和交付。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Staff",
+        "File Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下参与者的排列顺序：从左到右是Customer、Web Frontend、API Server、Database，然后Staff和File Storage放在右侧？另外这个IoT工业场景里的MQTT Broker、EdgeNode这些组件，是作为注释标注还是实际参与者？",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Staff",
+        "File Storage",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "参与者顺序对的。MQTT Broker、EdgeNode、ActuatorController、TelemetryStream、PLC Logic这些不是独立参与者，而是标注在Note里的技术栈标记，用来表示不同环节使用的IoT组件。比如客户点击支付时，Web Frontend到API Server的请求要标注MQTT Broker。",
+      "elements_involved": [
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出第一阶段：Customer点击Pay Now，Web Frontend向API Server发送POST /payments/manual/start，这里我标注了MQTT Broker。然后API Server创建Payment记录，状态为PENDING，返回给Web Frontend时标注EdgeNode，最后Web Frontend展示支付指引给客户。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Click Pay Now",
+        "POST /payments/manual/start",
+        "IoT_Industrial_MQTT_Broker",
+        "Create Payment record",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是上传凭证阶段。客户上传付款证明，Web Frontend用multipart/form-data发给API Server，这里标注ActuatorController。API Server把文件存到File Storage，同时更新Payment状态为UNDER_REVIEW。返回给前端时标注TelemetryStream。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "File Storage",
+        "Upload payment proof",
+        "POST /payments/manual/proof",
+        "IoT_Industrial_ActuatorController",
+        "Store proof file",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "上传凭证部分已添加。现在进入Staff审核阶段：Staff登录后台，Web Frontend向API Server请求GET /admin/payments/pending，API Server查询Database返回待审核列表，Staff查看详情和凭证后，这里需要分支处理——批准或拒绝。",
+      "elements_involved": [
+        "Staff",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Login to admin panel",
+        "GET /admin/payments/pending",
+        "List of pending payments",
+        "alt Payment Approved",
+        "else Payment Rejected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "对，批准分支里：Staff点击Approve，Web Frontend发送POST /payments/manual/review，标注EdgeNode。API Server更新Payment为SUCCEEDED，同时更新Order为PAID，还要创建Delivery生成token。这三个数据库操作后，通知客户用SSE推送。",
+      "elements_involved": [
+        "Staff",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Click Approve",
+        "POST /payments/manual/review",
+        "IoT_Industrial_EdgeNode",
+        "Update Payment",
+        "Update Order",
+        "Create Delivery",
+        "SSE: payment.status"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我注意到拒绝分支的标注需要调整。Staff点击Reject时，Web Frontend到API Server的请求应该标注MQTT Broker，而不是和批准分支一样用EdgeNode。另外拒绝时更新Order状态为CANCELED，最后返回给Staff的响应要标注PLC Logic。",
+      "elements_involved": [
+        "Staff",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Click Reject",
+        "IoT_Industrial_MQTT_Broker",
+        "Update Order",
+        "status: CANCELED",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "修正正确。最后还有客户查询和交付部分：客户查询订单状态，如果已批准，可以访问交付内容。访问时Web Frontend发送POST /deliveries/reveal，标注ActuatorController，API Server验证token并更新delivery，返回时标注TelemetryStream，最后展示交付内容。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Check payment status",
+        "GET /orders",
+        "Access delivery",
+        "POST /deliveries/reveal",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下：交付揭示环节，API Server更新delivery时，revealsLeft设为0，revealedAt记录当前时间，这个更新操作需要标注EdgeNode吗？还是只在响应Web Frontend时标注？",
+      "elements_involved": [
+        "API Server",
+        "Database",
+        "Verify token & update delivery",
+        "revealsLeft: 0",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "只在响应Web Frontend时标注EdgeNode，数据库操作本身不需要额外标注。另外整个流程最上方加个总标题Note：Manual Payment Flow，覆盖所有参与者。",
+      "elements_involved": [
+        "Note over C,F",
+        "Manual Payment Flow",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成。整个手动付款流程已绘制完毕：从客户发起支付、上传凭证，到Staff审核的分支处理（批准或拒绝），再到最终的客户查询和交付揭示。所有IoT组件标注都已按位置放置——MQTT Broker在启动和拒绝环节，EdgeNode在批准和揭示环节，ActuatorController在上传和揭示请求，TelemetryStream在状态返回，PLC Logic在拒绝响应。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Staff",
+        "File Storage",
+        "Manual Payment Flow",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 12,
+    "repair_count": 1,
+    "grounding_acts_count": 12,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 42844.9349,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

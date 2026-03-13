@@ -1,0 +1,339 @@
+{
+  "id": "gh_ind_bce5e3f0de",
+  "source": "github_industrial",
+  "repo": "OnceApp/Analytics",
+  "license": "mit",
+  "code": "sequenceDiagram\nparticipant M as Some module\nparticipant E as MyEvent(record)\nparticipant R as RecordsSupervisor\nparticipant PS as ProducerSupervisor\nparticipant P as Producer\nparticipant CD as ConsumerDynamicSupervisor\nparticipant CS as ConsumerSupervisor\nparticipant C as Consumer\nparticipant T as Task\nparticipant K as Kinesis\nM->>+E: record(event)\n\nopt MyEvent server not running\nE->>+R: start_child\nR->>+E: init\nE->>E: New ets table\nE->>E: create_or_get_queue\n\nE->>+PS: start_child(MyEvent)\nPS->>+P: init(MyEvent)\nP->>+CD: start_child(MyEvent, pid)\nCD->>+CS: init({MyEvent, pid})\nCS-->>-CD: {:ok, pid}\nCD-->>-P: {:ok, pid}\nP->>+E: create_or_get_queue\nE-->>-P: queue\nP-->>-PS: {:producer, {{queue, 0}, MyEvent}}\nPS-->>-E: {:ok, pid}\nE-->>-R: {:ok, nil}\nR-->>-E: {:ok pid}\nend\n\nE->>E: add(event)\n\nE-->>-M: :ok\n\nloop Every tick\nC->>+E: create_batches_and_flush\nE-->>-C: batch of events\nC->>C: Append batches to the current batches queue\n\nopt When there is enough batches to dispatch\nC->>C: dispatch batches\nend\nend\n\nopt When a new batch is dispatched\nCS->>+C: start_link(MyEvent, events)\nC->>+T: start_link\nT->>E: handle_event(events)\nE->>K: send_data(events)\nT->>-C: :ok\nC-->>-CS: {:ok, pid}\nend\n",
+  "diagram_type": "size:1000..1500",
+  "collected_at": "2026-02-27T03:26:12.409371",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个事件流处理系统，核心是用ETS表做本地缓冲，然后批量发送到Kinesis。先画一下整体流程？",
+      "elements_involved": [
+        "ETS表",
+        "Kinesis",
+        "事件流"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，那入口模块是Some module对吧？它产生record事件，然后交给MyEvent处理？",
+      "elements_involved": [
+        "Some module",
+        "MyEvent",
+        "record"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，MyEvent是个gen_server，包装了record。如果它还没启动，需要通过RecordsSupervisor来拉起。",
+      "elements_involved": [
+        "MyEvent",
+        "RecordsSupervisor",
+        "gen_server"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "那MyEvent初始化时要创建ETS表和队列，同时启动Producer。ProducerSupervisor来管Producer的生命周期？",
+      "elements_involved": [
+        "MyEvent",
+        "ETS表",
+        "队列",
+        "Producer",
+        "ProducerSupervisor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Producer启动后还要通过ConsumerDynamicSupervisor来管理消费者侧。ConsumerDynamicSupervisor下面挂ConsumerSupervisor。",
+      "elements_involved": [
+        "Producer",
+        "ConsumerDynamicSupervisor",
+        "ConsumerSupervisor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ConsumerDynamicSupervisor启动ConsumerSupervisor时，需要传入{MyEvent, pid}这个元组作为参数？",
+      "elements_involved": [
+        "ConsumerDynamicSupervisor",
+        "ConsumerSupervisor",
+        "MyEvent",
+        "pid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，这样ConsumerSupervisor知道要消费哪个MyEvent的队列。Producer那边也要调用create_or_get_queue获取队列引用。",
+      "elements_involved": [
+        "ConsumerSupervisor",
+        "MyEvent",
+        "队列",
+        "Producer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我把初始化流程画完整了：从Some module调用record(event)开始，经过supervisor层级启动，最后Producer向MyEvent注册自己。",
+      "elements_involved": [
+        "Some module",
+        "record",
+        "supervisor层级",
+        "Producer",
+        "MyEvent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是消费循环。每个Consumer要定期从MyEvent拉取批次，用create_batches_and_flush。",
+      "elements_involved": [
+        "Consumer",
+        "MyEvent",
+        "create_batches_and_flush",
+        "批次"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Consumer拿到batch of events后，是追加到本地的batches queue，攒够了再dispatch？",
+      "elements_involved": [
+        "Consumer",
+        "batch of events",
+        "batches queue",
+        "dispatch"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，有个loop Every tick的循环，内部有个opt条件判断：当批次足够时才执行dispatch batches。",
+      "elements_involved": [
+        "loop",
+        "tick",
+        "opt",
+        "dispatch batches"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "dispatch的时候，ConsumerSupervisor要负责启动新的Consumer进程？还是走start_link？",
+      "elements_involved": [
+        "ConsumerSupervisor",
+        "Consumer",
+        "start_link"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "这里有个细节要修正：不是ConsumerSupervisor直接启动Consumer，而是当新批次需要dispatch时，ConsumerSupervisor调用start_link(MyEvent, events)启动的是Task。Task才是真正干活的。",
+      "elements_involved": [
+        "ConsumerSupervisor",
+        "start_link",
+        "MyEvent",
+        "events",
+        "Task"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，Task启动后调用handle_event(events)处理事件，然后发送到Kinesis。Task是短生命周期的？",
+      "elements_involved": [
+        "Task",
+        "handle_event",
+        "events",
+        "Kinesis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Task处理完就退出，返回:ok给Consumer，Consumer再回复{:ok, pid}给ConsumerSupervisor。",
+      "elements_involved": [
+        "Task",
+        "Consumer",
+        "ConsumerSupervisor",
+        ":ok",
+        "pid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我把整个时序补全了：从Some module到MyEvent的同步调用，supervisor树初始化，Producer注册，Consumer循环拉取，Task异步发送Kinesis。",
+      "elements_involved": [
+        "Some module",
+        "MyEvent",
+        "supervisor树",
+        "Producer",
+        "Consumer",
+        "Task",
+        "Kinesis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查下MyEvent返回给Some module的是:ok对吧？还有Producer向MyEvent注册时，返回的是queue？",
+      "elements_involved": [
+        "MyEvent",
+        "Some module",
+        ":ok",
+        "Producer",
+        "queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，E---M返回:ok，E---P返回queue。Producer最终向ProducerSupervisor上报{:producer, {{queue, 0}, MyEvent}}。",
+      "elements_involved": [
+        "MyEvent",
+        "Some module",
+        "Producer",
+        "queue",
+        "ProducerSupervisor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ConsumerDynamicSupervisor和ConsumerSupervisor之间的返回是{:ok, pid}，这个pid是ConsumerSupervisor的？",
+      "elements_involved": [
+        "ConsumerDynamicSupervisor",
+        "ConsumerSupervisor",
+        "pid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我调整一下：ConsumerSupervisor init完成后返回{:ok, pid}给ConsumerDynamicSupervisor，然后ConsumerDynamicSupervisor再返回{:ok, pid}给Producer。这个pid其实是ConsumerSupervisor的pid。",
+      "elements_involved": [
+        "ConsumerSupervisor",
+        "ConsumerDynamicSupervisor",
+        "Producer",
+        "pid"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这样Producer就持有ConsumerSupervisor的引用，可以后续通信。最后检查下ETS表是在MyEvent init时创建的。",
+      "elements_involved": [
+        "Producer",
+        "ConsumerSupervisor",
+        "ETS表",
+        "MyEvent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部确认：MyEvent-E: New ets table，然后是create_or_get_queue。整个时序图应该完整了，从事件录入到Kinesis发送的全链路。",
+      "elements_involved": [
+        "MyEvent",
+        "ETS表",
+        "create_or_get_queue",
+        "Kinesis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个设计保证了背压控制：Producer独立缓冲，Consumer动态扩容，Task隔离IO。可以定稿了。",
+      "elements_involved": [
+        "Producer",
+        "缓冲",
+        "Consumer",
+        "Task",
+        "背压控制"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 23,
+    "repair_count": 2,
+    "grounding_acts_count": 23,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 43894.1591,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 23
+  }
+}

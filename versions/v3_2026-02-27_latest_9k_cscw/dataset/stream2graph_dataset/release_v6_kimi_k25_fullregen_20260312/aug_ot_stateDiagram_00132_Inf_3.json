@@ -1,0 +1,373 @@
+{
+  "id": "aug_ot_stateDiagram_00132_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Three-Rivers-Tech/finance_feedback_engine/blob/414c209b886adbac796e1d4ceea68c4cf81baebc/docs/diagrams/agent_state_machine.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Three-Rivers-Tech/finance_feedback_engine",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_WorkerNode] --> STARTUP\n\n    STARTUP --> POSITION_RECOVERY: Initialize Agent\n\n    state POSITION_RECOVERY {Infra_WorkerNode] --> QueryPlatform\n        QueryPlatform --> ExtractPositions: get_portfolio_breakdown\n        ExtractPositions --> GenerateSyntheticDecisions: Found N positions\n        GenerateSyntheticDecisions --> RebuildMemory: Create decision records\n        RebuildMemory --> AssociateMonitor: Populate PortfolioMemoryEngine\n        AssociateMonitor --> [Infra_IngressController]: Mark startup_complete\n\n        QueryPlatform --> RetryBackoff: Failure\n        RetryBackoff --> QueryPlatform: Exponential delay\n        QueryPlatform --> ForceComplete: Max retries\n        ForceComplete --> [Infra_RedisCache]: Continue with empty state\n    }\n\n    POSITION_RECOVERY --> IDLE: Recovery Complete\n\n    state IDLE {Infra_RedisCache] --> WaitInterval\n        WaitInterval --> [Infra_LoadBalancer]: After analysis_frequency_seconds\n    }\n\n    IDLE --> LEARNING: Timer Expires\n\n    state LEARNING {Infra_LoadBalancer] --> FetchClosedTrades\n        FetchClosedTrades --> ProcessOutcomes: get_closed_trades\n        ProcessOutcomes --> RecordMemory: PortfolioMemoryEngine\n        RecordMemory --> [Infra_WorkerNode]: Update experience\n    }\n\n    LEARNING --> PERCEPTION\n\n    state PERCEPTION {Infra_LoadBalancer] --> FetchPortfolio\n        FetchPortfolio --> KillSwitchCheck: get_portfolio_breakdown\n        KillSwitchCheck --> DailyReset: P&L within limits\n        DailyReset --> [Infra_IngressController]: Reset trade count\n\n        KillSwitchCheck --> HALT: P&L breached\n    }\n\n    PERCEPTION --> REASONING\n\n    state REASONING {Infra_LoadBalancer] --> LoopAssets\n        LoopAssets --> AnalyzeAsset: For each asset\n        AnalyzeAsset --> RetryLogic: generate_decision\n        RetryLogic --> CheckAction: Success\n        CheckAction --> NextAsset: HOLD\n        CheckAction --> [Infra_IngressController]: BUY/SELL\n\n        RetryLogic --> ExponentialBackoff: Failure\n        ExponentialBackoff --> AnalyzeAsset: Retry\n        ExponentialBackoff --> MarkFailure: Max retries\n        MarkFailure --> NextAsset: Skip\n\n        NextAsset --> LoopAssets: More assets\n        NextAsset --> [Infra_LoadBalancer]: All processed\n    }\n\n    REASONING --> RISK_CHECK: Actionable\n    REASONING --> IDLE: No Action\n\n    state RISK_CHECK {Infra_LoadBalancer] --> GetMonitoringContext\n        GetMonitoringContext --> ValidateTrade: RiskGatekeeper\n        ValidateTrade --> [Infra_LoadBalancer]: Approved\n        ValidateTrade --> [Infra_LoadBalancer]: Denied\n    }\n\n    RISK_CHECK --> EXECUTION: Approved\n    RISK_CHECK --> PERCEPTION: Rejected\n\n    state EXECUTION {Infra_RedisCache] --> SendOrder\n        SendOrder --> AssociateDecision: execute_trade\n        AssociateDecision --> IncrementCounter: TradeMonitor\n        IncrementCounter --> [Infra_IngressController]: daily_trade_count++\n\n        SendOrder --> LogFailure: Error\n        LogFailure --> EXECUTION_FAILED\n    }\n\n    EXECUTION --> LEARNING: Executed\n    EXECUTION_FAILED --> PERCEPTION: Retry\n\n    state HALT {Infra_LoadBalancer] --> StopAgent\n        StopAgent --> [Infra_RedisCache]: is_running = False\n    }\n\n    HALT --> [Infra_RedisCache]: Agent Stopped\n\n    style STARTUP fill:#00BCD4,stroke:#006064,color:#fff\n    style POSITION_RECOVERY fill:#00BCD4,stroke:#006064,color:#fff\n    style IDLE fill:#9E9E9E,stroke:#424242,color:#fff\n    style LEARNING fill:#4CAF50,stroke:#2E7D32,color:#fff\n    style PERCEPTION fill:#2196F3,stroke:#0D47A1,color:#fff\n    style REASONING fill:#FF9800,stroke:#E65100,color:#fff\n    style RISK_CHECK fill:#FFC107,stroke:#F57C00,color:#333\n    style EXECUTION fill:#9C27B0,stroke:#4A148C,color:#fff\n    style HALT fill:#F44336,stroke:#C62828,color:#fff\n    style EXECUTION_FAILED fill:#F44336,stroke:#C62828,color:#fff\n",
+  "content_size": 3556,
+  "collected_at": "2026-02-06T10:38:16.459971",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 1,
+  "repo_owner": "Three-Rivers-Tech",
+  "repo_name": "finance_feedback_engine",
+  "repo_description": "Finance feedback engine is an automated portfolio simulation tool using the LLM models of your choice.",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2025-11-19T00:29:36Z",
+  "repo_updated_at": "2026-01-22T19:46:09Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00132",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为Agent设计一个完整的状态机，核心是WorkerNode启动后的生命周期。首先有个STARTUP阶段，然后进入POSITION_RECOVERY来恢复持仓状态。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "STARTUP",
+        "POSITION_RECOVERY",
+        "Initialize Agent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，POSITION_RECOVERY是一个复合状态对吧？里面需要包含查询平台、提取持仓、生成决策记录这些步骤。我注意到有个RetryBackoff的分支，是处理查询失败的情况？",
+      "elements_involved": [
+        "POSITION_RECOVERY",
+        "QueryPlatform",
+        "ExtractPositions",
+        "RetryBackoff"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，QueryPlatform失败时走RetryBackoff，用指数退避重试。如果超过最大次数，就ForceComplete，带着空状态继续，把空状态写入RedisCache。",
+      "elements_involved": [
+        "QueryPlatform",
+        "RetryBackoff",
+        "Exponential delay",
+        "ForceComplete",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，POSITION_RECOVERY内部结构我画好了：QueryPlatform正常路径到ExtractPositions，再到GenerateSyntheticDecisions，然后RebuildMemory，最后AssociateMonitor标记启动完成。失败分支也加上了。",
+      "elements_involved": [
+        "ExtractPositions",
+        "GenerateSyntheticDecisions",
+        "RebuildMemory",
+        "AssociateMonitor",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "恢复完成后进入IDLE状态，这里比较简单，就是等待分析周期。用RedisCache作为入口，等analysis_frequency_seconds后由LoadBalancer触发下一步。",
+      "elements_involved": [
+        "IDLE",
+        "Infra_RedisCache",
+        "WaitInterval",
+        "Infra_LoadBalancer",
+        "After analysis_frequency_seconds"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "IDLE画好了，定时器到期后进入LEARNING阶段。这个LEARNING也是复合状态，主要是获取已平仓交易来处理结果对吧？",
+      "elements_involved": [
+        "IDLE",
+        "LEARNING",
+        "Timer Expires",
+        "FetchClosedTrades"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，LEARNING里FetchClosedTrades获取closed trades，ProcessOutcomes处理结果，然后RecordMemory更新PortfolioMemoryEngine，最后把经验更新回WorkerNode。",
+      "elements_involved": [
+        "FetchClosedTrades",
+        "ProcessOutcomes",
+        "RecordMemory",
+        "PortfolioMemoryEngine",
+        "Infra_WorkerNode",
+        "Update experience"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "LEARNING之后进入PERCEPTION，我理解这是感知当前市场状态的阶段。需要包含KillSwitchCheck来做风控检查？",
+      "elements_involved": [
+        "LEARNING",
+        "PERCEPTION",
+        "FetchPortfolio",
+        "KillSwitchCheck"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，PERCEPTION里先FetchPortfolio获取组合情况，然后KillSwitchCheck检查P&L。如果在限制内就DailyReset重置交易计数，如果 breached 就直接HALT停机。",
+      "elements_involved": [
+        "PERCEPTION",
+        "FetchPortfolio",
+        "KillSwitchCheck",
+        "DailyReset",
+        "HALT",
+        "P&L within limits",
+        "P&L breached"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "PERCEPTION结构完成了。正常路径到DailyReset后通知IngressController，异常路径到HALT。接下来是REASONING阶段？",
+      "elements_involved": [
+        "DailyReset",
+        "Infra_IngressController",
+        "HALT",
+        "REASONING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，REASONING是最复杂的。LoopAssets循环每个资产，AnalyzeAsset生成决策，有RetryLogic处理失败，用ExponentialBackoff重试。成功的话CheckAction判断是HOLD还是BUY/SELL。",
+      "elements_involved": [
+        "REASONING",
+        "LoopAssets",
+        "AnalyzeAsset",
+        "RetryLogic",
+        "ExponentialBackoff",
+        "CheckAction",
+        "HOLD",
+        "BUY/SELL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我理一下：RetryLogic失败时走ExponentialBackoff，重试AnalyzeAsset；如果超过最大次数就MarkFailure跳过这个资产。CheckAction的BUY/SELL直接到IngressController，HOLD则NextAsset继续循环？",
+      "elements_involved": [
+        "RetryLogic",
+        "ExponentialBackoff",
+        "AnalyzeAsset",
+        "MarkFailure",
+        "NextAsset",
+        "CheckAction",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。所有资产处理完后回到LoadBalancer。REASONING有两个出口：有可执行动作时到RISK_CHECK，没有动作时直接回IDLE。",
+      "elements_involved": [
+        "NextAsset",
+        "LoopAssets",
+        "Infra_LoadBalancer",
+        "RISK_CHECK",
+        "IDLE",
+        "Actionable",
+        "No Action"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "REASONING画好了。RISK_CHECK也是复合状态，GetMonitoringContext获取监控上下文，ValidateTrade由RiskGatekeeper审批，有Approved和Denied两个出口。",
+      "elements_involved": [
+        "RISK_CHECK",
+        "GetMonitoringContext",
+        "ValidateTrade",
+        "RiskGatekeeper",
+        "Approved",
+        "Denied"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Approved进入EXECUTION，Denied回到PERCEPTION重新感知。EXECUTION里SendOrder执行交易，成功的话AssociateDecision关联决策，IncrementCounter更新TradeMonitor的daily_trade_count。",
+      "elements_involved": [
+        "RISK_CHECK",
+        "EXECUTION",
+        "PERCEPTION",
+        "SendOrder",
+        "AssociateDecision",
+        "IncrementCounter",
+        "TradeMonitor",
+        "daily_trade_count++"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "EXECUTION失败的情况呢？我看到有EXECUTION_FAILED状态。",
+      "elements_involved": [
+        "EXECUTION",
+        "EXECUTION_FAILED",
+        "Error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SendOrder失败时LogFailure，进入EXECUTION_FAILED，然后回到PERCEPTION重试。EXECUTION成功的话进入LEARNING，形成闭环。",
+      "elements_involved": [
+        "SendOrder",
+        "LogFailure",
+        "EXECUTION_FAILED",
+        "PERCEPTION",
+        "LEARNING",
+        "Executed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "HALT状态我也补充一下：StopAgent设置is_running为False，最终状态指向RedisCache。",
+      "elements_involved": [
+        "HALT",
+        "StopAgent",
+        "Infra_RedisCache",
+        "is_running = False"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后给各个状态加上颜色区分。STARTUP和POSITION_RECOVERY用青色，IDLE灰色，LEARNING绿色，PERCEPTION蓝色，REASONING橙色，RISK_CHECK黄色，EXECUTION紫色，HALT和EXECUTION_FAILED红色。",
+      "elements_involved": [
+        "STARTUP",
+        "POSITION_RECOVERY",
+        "IDLE",
+        "LEARNING",
+        "PERCEPTION",
+        "REASONING",
+        "RISK_CHECK",
+        "EXECUTION",
+        "HALT",
+        "EXECUTION_FAILED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "颜色都加上了。我检查一下整体流程：WorkerNode启动→恢复持仓→空闲等待→学习更新→感知市场→推理决策→风险检查→执行交易→回到学习，形成完整闭环。异常路径也都覆盖了。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "STARTUP",
+        "POSITION_RECOVERY",
+        "IDLE",
+        "LEARNING",
+        "PERCEPTION",
+        "REASONING",
+        "RISK_CHECK",
+        "EXECUTION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "有个细节，REASONING里的ExponentialBackoff和POSITION_RECOVERY里的RetryBackoff都是指数退避，但前者是重试AnalyzeAsset，后者是重试QueryPlatform，不要搞混了。",
+      "elements_involved": [
+        "REASONING",
+        "ExponentialBackoff",
+        "AnalyzeAsset",
+        "POSITION_RECOVERY",
+        "RetryBackoff",
+        "QueryPlatform"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，两个指数退避的作用域不同，已经正确标注。整个状态机完成了，所有基础设施组件的交互也都体现出来了。",
+      "elements_involved": [
+        "ExponentialBackoff",
+        "RetryBackoff",
+        "Infra_LoadBalancer",
+        "Infra_IngressController",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 22,
+    "repair_count": 0,
+    "grounding_acts_count": 22,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 38798.0127,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 22
+  }
+}

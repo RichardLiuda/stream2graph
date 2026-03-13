@@ -1,0 +1,830 @@
+{
+  "id": "aug_gl_packet-beta_00439_Ret_8",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/ARG_OSCI_SEQ_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    actor User\n    participant Main\n    participant Initializer\n    participant SetupScreen\n    participant SetupService\n    participant NetworkInfoService\n    participant ModeSelectionScreen\n    participant GraphScreen\n    participant UserSettings\n    participant DataAcqProvider\n    participant DataAcqService\n    participant SocketIsolate\n    participant ProcessingIsolate\n    participant OscilloChartProvider\n    participant FFTChartProvider\n    participant OscilloChart\n    participant FFTChart\n    participant ChartPainter\n\n    %% Application Initialization\n    User->>Main: Launch application\n    Main->>Initializer: init(Retail_OrderManagement)\n    Note over Initializer: Configure system dependencies\n    Initializer->>Initializer: ensureInitialized(Retail_OrderManagement)\n    Initializer->>Initializer: Register configurations (Retail_CustomerLoyalty)\n    Initializer->>Initializer: Register services (Retail_PointOfSale)\n    Initializer->>Initializer: Register providers (Retail_PointOfSale)\n    Initializer-->>Main: Initialization complete\n    Main->>SetupScreen: Navigate to setup screen\n    \n    %% Device Connection Flow\n    SetupScreen->>User: Display connection options\n    User->>SetupScreen: Select connection mode\n    \n    alt External AP Selected\n        SetupScreen->>SetupService: connectToLocalAP(Retail_PointOfSale)\n        SetupService->>NetworkInfoService: Connect to ESP32 access point\n        NetworkInfoService->>NetworkInfoService: connectWithRetries(Retail_OrderManagement)\n        NetworkInfoService-->>SetupService: Connection established\n        SetupService->>SetupService: scanForWiFiNetworks(Retail_Inventory)\n        SetupService->>SetupService: Fetch public key from device\n        SetupService-->>SetupScreen: Return available networks\n        SetupScreen->>User: Show WiFi network selection\n        User->>SetupScreen: Select network & enter password\n        SetupScreen->>SetupService: connectToWiFi(Retail_Inventory)\n        SetupService->>SetupService: encriptWithPublicKey(Retail_PointOfSale)\n        SetupService->>SetupService: Send credentials to device\n        SetupService->>SetupService: waitForNetworkChange(Retail_PointOfSale)\n        SetupService->>SetupService: handleNetworkChangeAndConnect(Retail_CustomerLoyalty)\n        SetupService->>SetupService: Test connection with encrypted challenge\n        SetupService->>SetupService: fetchDeviceConfig(Retail_CustomerLoyalty)\n        SetupService-->>SetupScreen: Connection successful\n    else Internal AP Selected\n        SetupScreen->>SetupService: selectMode(Retail_CouponSystem)\n        SetupService->>SetupService: initializeGlobalHttpConfig(Retail_CustomerLoyalty)\n        SetupService->>SetupService: initializeGlobalSocketConnection(Retail_Inventory)\n        SetupService->>SetupService: fetchDeviceConfig(Retail_Inventory)\n        SetupService-->>SetupScreen: Configuration successful\n    end\n    \n    SetupScreen->>ModeSelectionScreen: Navigate to mode selection\n    \n    %% Mode Selection\n    ModeSelectionScreen->>User: Display oscilloscope modes\n    User->>ModeSelectionScreen: Select mode (Retail_Inventory)\n    ModeSelectionScreen->>GraphScreen: navigateToMode(Retail_CustomerLoyalty)\n    \n    %% Graph Screen Initialization\n    GraphScreen->>DataAcqProvider: stopAcquisition(Retail_OrderManagement) (Retail_PointOfSale)\n    GraphScreen->>GraphScreen: Initialize controller\n    GraphScreen->>UserSettings: Set mode (Retail_CouponSystem)\n    \n    %% Start Data Acquisition\n    GraphScreen->>DataAcqProvider: startAcquisition(Retail_PointOfSale)\n    DataAcqProvider->>DataAcqService: fetchData(Retail_Inventory)\n    DataAcqService->>DataAcqService: initialize(Retail_PointOfSale)\n    \n    %% Create Isolates\n    DataAcqService->>ProcessingIsolate: Create processing isolate\n    ProcessingIsolate-->>DataAcqService: Return SendPort\n    DataAcqService->>SocketIsolate: Create socket isolate\n    SocketIsolate->>SocketIsolate: Connect to device\n    \n    %% Data Processing Workflow\n    loop Data Acquisition\n        SocketIsolate->>SocketIsolate: Receive binary data packet\n        SocketIsolate->>ProcessingIsolate: Send raw data\n        ProcessingIsolate->>ProcessingIsolate: Parse binary data\n        ProcessingIsolate->>ProcessingIsolate: Apply trigger logic\n        ProcessingIsolate->>ProcessingIsolate: Process signal based on config\n        ProcessingIsolate->>DataAcqService: Send processed data points\n        DataAcqService->>DataAcqProvider: Update data streams\n        \n        alt Oscilloscope Mode\n            DataAcqProvider->>OscilloChartProvider: Update time domain data\n            OscilloChartProvider->>OscilloChart: Refresh chart display\n            OscilloChart->>ChartPainter: Draw waveform\n        else FFT Mode\n            DataAcqProvider->>FFTChartProvider: Update frequency domain data\n            FFTChartProvider->>FFTChart: Refresh chart display\n            FFTChart->>ChartPainter: Draw spectrum\n        end\n    end\n    \n    %% User Settings Interaction\n    User->>UserSettings: Change settings (Retail_PointOfSale)\n    UserSettings->>DataAcqProvider: Update configuration\n    DataAcqProvider->>DataAcqService: updateConfig(Retail_PointOfSale)\n    DataAcqService->>ProcessingIsolate: Send UpdateConfigMessage\n    ProcessingIsolate->>ProcessingIsolate: Apply new configuration\n    \n    %% Chart Interaction\n    User->>OscilloChart: Zoom/Pan gesture\n    OscilloChart->>OscilloChartProvider: handleZoom(Retail_CouponSystem)/setHorizontalOffset(Retail_CouponSystem)\n    OscilloChartProvider->>OscilloChart: Update display parameters\n    \n    %% Mode Switching\n    User->>GraphScreen: Request mode change\n    GraphScreen->>UserSettings: setMode(Retail_Inventory)\n    UserSettings->>DataAcqProvider: Pause current acquisition\n    UserSettings->>GraphScreen: Update chart display\n    GraphScreen->>DataAcqProvider: Resume acquisition with new mode\n    \n    %% Error Handling Flow\n    alt Connection Error\n        SocketIsolate->>DataAcqService: Report connection error\n        DataAcqService->>DataAcqService: _handleConnectionError(Retail_OrderManagement)\n        DataAcqService->>DataAcqService: Attempt reconnection\n        \n        alt Reconnection Failed\n            DataAcqService->>DataAcqProvider: handleCriticalError(Retail_CouponSystem)\n            DataAcqProvider->>SetupScreen: Navigate back to setup\n        end\n    end",
+  "content_size": 5996,
+  "collected_at": "2026-02-06T14:09:45.143092",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Retail",
+  "seed_id": "gl_packet-beta_00439",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为这个示波器应用设计一个完整的启动流程，从用户打开应用到最终显示波形。先考虑用户启动应用后的初始化阶段。",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。用户启动应用后，Main模块需要调用Initializer来完成系统配置。这里Initializer需要处理哪些具体的注册工作？",
+      "elements_involved": [
+        "Main",
+        "Initializer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Initializer内部要确保系统依赖就绪，然后注册配置、服务和Provider。特别是要针对零售场景，注册CustomerLoyalty相关的配置，还有PointOfSale的服务和Provider。",
+      "elements_involved": [
+        "Initializer",
+        "Retail_CustomerLoyalty",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，Initializer完成初始化后返回Main，然后导航到SetupScreen。设备连接部分需要支持两种模式对吧？",
+      "elements_involved": [
+        "Initializer",
+        "Main",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，外部AP模式和内部AP模式。外部AP模式需要用户先连接ESP32的热点，再配置WiFi。SetupScreen要先展示连接选项给用户。",
+      "elements_involved": [
+        "SetupScreen",
+        "User",
+        "ESP32"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SetupScreen向用户展示连接选项，用户选择外部AP模式后，SetupScreen调用SetupService的connectToLocalAP方法，传入PointOfSale相关参数。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SetupService需要调用NetworkInfoService来实际连接ESP32的AP。NetworkInfoService内部要有重试机制，确保连接稳定。",
+      "elements_involved": [
+        "SetupService",
+        "NetworkInfoService",
+        "ESP32"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "重试逻辑用connectWithRetries方法实现，传入OrderManagement参数。连接成功后，SetupService要扫描WiFi网络并获取设备公钥？",
+      "elements_involved": [
+        "NetworkInfoService",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，scanForWiFiNetworks用Inventory参数，然后获取公钥用于后续加密。扫描结果返回给SetupScreen展示给用户选择。",
+      "elements_involved": [
+        "SetupService",
+        "Retail_Inventory",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "用户选择网络和输入密码后，SetupScreen调用connectToWiFi，SetupService用公钥加密凭证，发送给设备，然后等待网络变更。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里需要handleNetworkChangeAndConnect处理网络切换，用CustomerLoyalty参数。之后测试加密挑战，获取设备配置。",
+      "elements_involved": [
+        "SetupService",
+        "Retail_CustomerLoyalty"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "外部AP流程完成。那内部AP模式呢？用户选择后直接初始化配置？",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "内部AP模式调用selectMode传入CouponSystem参数，然后初始化全局HTTP配置和Socket连接，用CustomerLoyalty和Inventory参数，最后获取设备配置。",
+      "elements_involved": [
+        "SetupService",
+        "Retail_CouponSystem",
+        "Retail_CustomerLoyalty",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两种模式都完成后，SetupScreen导航到ModeSelectionScreen。用户在这里选择示波器模式，比如Inventory模式。",
+      "elements_involved": [
+        "SetupScreen",
+        "ModeSelectionScreen",
+        "User",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "选择模式后导航到GraphScreen，GraphScreen需要先停止当前采集，初始化控制器，并通过UserSettings设置模式为CouponSystem。",
+      "elements_involved": [
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "stopAcquisition需要传入OrderManagement和PointOfSale两个参数？然后GraphScreen开始数据采集流程？",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "Retail_OrderManagement",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的。然后GraphScreen调用startAcquisition启动采集，DataAcqProvider通知DataAcqService获取数据，用Inventory参数。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "DataAcqService",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "DataAcqService初始化PointOfSale配置，然后创建ProcessingIsolate和SocketIsolate两个隔离区。",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ProcessingIsolate创建后返回SendPort给DataAcqService，SocketIsolate负责连接设备。然后进入数据采集循环。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "DataAcqService",
+        "Device"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "循环内SocketIsolate接收二进制数据包，发送给ProcessingIsolate解析，应用触发逻辑，处理信号，然后把处理后的数据点发回DataAcqService？",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。DataAcqService更新数据流给DataAcqProvider，然后根据模式分发：示波器模式给OscilloChartProvider，FFT模式给FFTChartProvider。",
+      "elements_involved": [
+        "DataAcqService",
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "FFTChartProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "OscilloChartProvider更新OscilloChart，OscilloChart调用ChartPainter绘制波形。FFT模式类似，FFTChartProvider更新FFTChart，绘制频谱。",
+      "elements_involved": [
+        "OscilloChartProvider",
+        "OscilloChart",
+        "FFTChartProvider",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要考虑用户交互。用户可以在UserSettings中修改设置，这会触发配置更新流程。另外图表支持缩放和平移手势。",
+      "elements_involved": [
+        "User",
+        "UserSettings",
+        "OscilloChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "用户修改设置后，UserSettings通知DataAcqProvider更新配置，DataAcqService发送UpdateConfigMessage给ProcessingIsolate应用新配置？",
+      "elements_involved": [
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，PointOfSale参数贯穿这个流程。图表交互方面，用户在OscilloChart上的手势会触发handleZoom或setHorizontalOffset，用CouponSystem参数。",
+      "elements_involved": [
+        "User",
+        "OscilloChart",
+        "OscilloChartProvider",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "OscilloChartProvider更新显示参数后刷新图表。模式切换方面，用户请求切换时GraphScreen通过UserSettings设置新模式为Inventory。",
+      "elements_involved": [
+        "OscilloChartProvider",
+        "GraphScreen",
+        "UserSettings",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "模式切换时要先暂停当前采集，更新图表显示，然后用新模式恢复采集。还需要考虑错误处理，特别是连接错误的情况。",
+      "elements_involved": [
+        "UserSettings",
+        "DataAcqProvider",
+        "GraphScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "SocketIsolate报告连接错误给DataAcqService，DataAcqService调用_handleConnectionError处理，传入OrderManagement参数，然后尝试重连？",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的。如果重连失败，调用handleCriticalError传入CouponSystem，DataAcqProvider导航回SetupScreen让用户重新配置。",
+      "elements_involved": [
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "整体流程已经清晰了。我检查一下初始化部分：Initializer的ensureInitialized方法需要明确处理OrderManagement的依赖配置。",
+      "elements_involved": [
+        "Initializer",
+        "Retail_OrderManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Initializer内部的Note说明要标注清楚：Configure system dependencies。另外，网络连接的重试逻辑connectWithRetries需要详细说明。",
+      "elements_involved": [
+        "Initializer",
+        "NetworkInfoService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，我会加上Note。DataAcqService创建两个Isolate的顺序有要求吗？先ProcessingIsolate后SocketIsolate？",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "顺序很重要，先创建ProcessingIsolate获取SendPort，再创建SocketIsolate连接设备。这样SocketIsolate收到数据后能立即发送给ProcessingIsolate。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "SendPort"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了。数据循环中的alt分支，Oscilloscope Mode和FFT Mode是互斥的，根据当前模式选择更新对应的ChartProvider。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "FFTChartProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ChartPainter是共用的吗？OscilloChart和FFTChart都调用同一个ChartPainter来绘制？",
+      "elements_involved": [
+        "OscilloChart",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，ChartPainter统一处理绘制，但传入的数据类型不同：波形数据或频谱数据。这样设计可以复用绘制逻辑。",
+      "elements_involved": [
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：外部AP模式中，SetupService的waitForNetworkChange和handleNetworkChangeAndConnect是两个连续步骤，要确保时序正确。",
+      "elements_involved": [
+        "SetupService",
+        "waitForNetworkChange",
+        "handleNetworkChangeAndConnect"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "时序已标注。内部AP模式的initializeGlobalSocketConnection用Inventory参数，和外部AP的公钥加密形成对比，两种安全级别。",
+      "elements_involved": [
+        "SetupService",
+        "Retail_Inventory",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "fetchDeviceConfig在两种AP模式下都会调用，但参数不同：外部AP用CustomerLoyalty，内部AP用Inventory。这会影响获取的配置内容吗？",
+      "elements_involved": [
+        "SetupService",
+        "Retail_CustomerLoyalty",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "参数差异会影响配置解析方式，但核心设备配置结构相同。我注意到GraphScreen初始化时stopAcquisition传了两个参数，这是特殊处理？",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "Retail_OrderManagement",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，停止采集需要同时指定订单管理和销售点上下文，确保跨模块的数据流正确关闭。这是防止数据残留的关键设计。",
+      "elements_involved": [
+        "stopAcquisition",
+        "Retail_OrderManagement",
+        "Retail_PointOfSale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ProcessingIsolate内的处理步骤：Parse binary data → Apply trigger logic → Process signal based on config，三步顺序执行。",
+      "elements_involved": [
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "触发逻辑很重要，决定哪些数据点被保留。配置来自设备初始化的fetchDeviceConfig，ProcessingIsolate需要动态响应配置变更。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "fetchDeviceConfig",
+        "UpdateConfigMessage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "UpdateConfigMessage是异步发送的吗？ProcessingIsolate可能在处理数据时收到配置更新，需要保证一致性。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "UpdateConfigMessage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是异步的，ProcessingIsolate内部队列管理消息，Apply new configuration在合适的时机执行，不中断当前数据处理。",
+      "elements_involved": [
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "错误处理的嵌套alt结构已添加：Connection Error → Attempt reconnection → 嵌套Reconnection Failed → Navigate back to setup。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "导航回SetupScreen是最后的降级方案，用户需要重新走完整的设备连接流程。平时应该尽量避免走到这一步。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "SetupScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "重试机制在_handleConnectionError中实现，可以配置重试次数和间隔。OscilloChart的交互方法handleZoom和setHorizontalOffset都带CouponSystem参数，有什么特殊含义？",
+      "elements_involved": [
+        "OscilloChart",
+        "Retail_CouponSystem",
+        "handleZoom",
+        "setHorizontalOffset"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CouponSystem参数控制缩放行为的计费策略，比如高频缩放操作可能触发不同的资源配额。这是零售集成的一部分。",
+      "elements_involved": [
+        "Retail_CouponSystem",
+        "OscilloChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "了解了。UserSettings在多个场景出现：初始化设置模式、用户主动修改、模式切换时更新。它是状态管理的核心。",
+      "elements_involved": [
+        "UserSettings",
+        "GraphScreen",
+        "ModeSelectionScreen",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "setMode方法在不同调用点参数不同：初始化用CouponSystem，模式切换用Inventory。这个设计是否一致？",
+      "elements_involved": [
+        "UserSettings",
+        "setMode",
+        "Retail_CouponSystem",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我检查一下，发现GraphScreen初始化时setMode用CouponSystem，但用户从ModeSelectionScreen选择的模式是Inventory。这里应该统一用用户选择的模式。",
+      "elements_involved": [
+        "GraphScreen",
+        "UserSettings",
+        "Retail_Inventory"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "你说得对，初始化设置应该跟随用户选择的模式。修正为：ModeSelectionScreen选择Inventory模式后，GraphScreen通过UserSettings设置模式为Inventory。",
+      "elements_involved": [
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "UserSettings",
+        "Retail_Inventory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。现在检查整体流程的闭环：SetupScreen → ModeSelectionScreen → GraphScreen → (错误时) → SetupScreen。循环完整。",
+      "elements_involved": [
+        "SetupScreen",
+        "ModeSelectionScreen",
+        "GraphScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：DataAcqProvider的startAcquisition和stopAcquisition是成对出现的，但stop在初始化时调用，start在初始化完成后调用，确保状态干净。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "startAcquisition",
+        "stopAcquisition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "stopAcquisition在GraphScreen初始化时调用，防止之前有残留的数据采集。startAcquisition在一切准备就绪后才调用，时序正确。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SocketIsolate连接设备的具体实现需要设备地址，这个地址从fetchDeviceConfig获取。配置流程要确保地址信息完整。",
+      "elements_involved": [
+        "SocketIsolate",
+        "fetchDeviceConfig",
+        "Device"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SocketIsolate的Connect to device步骤已关联到fetchDeviceConfig的返回值。数据包接收是阻塞式的，在loop中持续执行。",
+      "elements_involved": [
+        "SocketIsolate",
+        "loop",
+        "Receive binary data packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "loop的终止条件是什么？用户退出GraphScreen时如何优雅地停止数据采集？",
+      "elements_involved": [
+        "loop",
+        "GraphScreen",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "需要补充dispose流程：GraphScreen销毁时调用DataAcqProvider.stopAcquisition，通知DataAcqService停止Isolate，SocketIsolate断开连接，ProcessingIsolate退出。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "DataAcqService",
+        "SocketIsolate",
+        "ProcessingIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这个销毁流程很重要，防止内存泄漏和Isolate残留。虽然当前图中没有详细展开，但实现时必须考虑。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "ProcessingIsolate",
+        "SocketIsolate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有关键流程已覆盖。最后确认一下零售相关参数的分布：OrderManagement、CustomerLoyalty、PointOfSale、Inventory、CouponSystem贯穿整个系统。",
+      "elements_involved": [
+        "Retail_OrderManagement",
+        "Retail_CustomerLoyalty",
+        "Retail_PointOfSale",
+        "Retail_Inventory",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这些参数标识了不同零售子系统的上下文，确保示波器应用能与现有的零售基础设施集成。每个参数选择都对应特定的业务场景。",
+      "elements_involved": [
+        "Retail_OrderManagement",
+        "Retail_CustomerLoyalty",
+        "Retail_PointOfSale",
+        "Retail_Inventory",
+        "Retail_CouponSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "完整序列图已确认，涵盖应用初始化、设备连接、模式选择、数据采集、用户交互和错误处理六个主要阶段。可以开始实现了。",
+      "elements_involved": [
+        "sequenceDiagram",
+        "Application Initialization",
+        "Device Connection Flow",
+        "Mode Selection",
+        "Graph Screen Initialization",
+        "Data Acquisition",
+        "User Settings Interaction",
+        "Chart Interaction",
+        "Mode Switching",
+        "Error Handling Flow"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 1,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 92863.3103,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 66
+  }
+}

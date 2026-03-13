@@ -1,0 +1,182 @@
+{
+  "id": "aug_ot_stateDiagram_00240_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/nostr-notifications/notification-state-machine.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [HealthTech_DiagnosticEngine] --> Initializing: App starts\n\n    Initializing --> Loading: Load cached notifications\n    Loading --> Subscribing: Cache loaded\n    Loading --> Error: Load failed\n\n    Subscribing --> Active: Subscriptions ready\n    Subscribing --> Error: Subscription failed\n\n    Active --> Active: New notification arrives\n    Active --> Processing: User interaction\n    Active --> Updating: Mark as read\n\n    Processing --> Active: Interaction complete\n    Updating --> Active: Update complete\n\n    Active --> Cleanup: 30 days passed\n    Cleanup --> Active: Old notifications removed\n\n    Error --> Retrying: Retry after delay\n    Retrying --> Subscribing: Retry attempt\n    Retrying --> Failed: Max retries reached\n\n    Failed --> [HealthTech_PatientRecords]: Unrecoverable error\n\n    state Active {HealthTech_DiagnosticEngine] --> Unread\n        Unread --> Read: Mark as read\n        Read --> Archived: Archive\n        Archived --> Deleted: Delete\n        Deleted --> [HealthTech_EMR_Sync]\n    }\n\n    note right of Active\n        Notification lifecycle:\n        - Arrives as Unread\n        - User marks as Read\n        - Auto-archived after 7 days\n        - Deleted after 30 days\n    end note",
+  "content_size": 1147,
+  "collected_at": "2026-02-06T10:39:34.042337",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "ot_stateDiagram_00240",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个通知中心的状态图，核心是从DiagnosticEngine启动开始，经过初始化、加载缓存，最终进入Active状态。Active状态内部还要细分未读、已读、归档、删除这几个子状态。",
+      "elements_involved": [
+        "HealthTech_DiagnosticEngine",
+        "Initializing",
+        "Loading",
+        "Active",
+        "Unread",
+        "Read",
+        "Archived",
+        "Deleted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，我注意到Active内部有个嵌套结构。那从Loading到Active之间，是不是需要一个中间状态？比如缓存加载完成后要先订阅消息服务？",
+      "elements_involved": [
+        "Loading",
+        "Active",
+        "Subscribing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，加上Subscribing状态。缓存加载成功就进入Subscribing，订阅准备好才进Active。另外加载失败要走到Error状态，支持重试机制。",
+      "elements_involved": [
+        "Loading",
+        "Subscribing",
+        "Active",
+        "Error",
+        "Retrying"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主线画出来：Initializing到Loading，Loading分两支到Subscribing和Error，Subscribing再到Active。Error那边我加上Retrying，重试成功回Subscribing，失败则进入Failed。",
+      "elements_involved": [
+        "Initializing",
+        "Loading",
+        "Subscribing",
+        "Active",
+        "Error",
+        "Retrying",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Active状态内部，Unread到Read是用户手动标记，Read到Archived是自动的，7天后触发。Archived到Deleted也是自动，30天后清理。删除后的数据要同步到EMR。",
+      "elements_involved": [
+        "Active",
+        "Unread",
+        "Read",
+        "Archived",
+        "Deleted",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下：Active本身也有自循环吧？新通知到达时应该停留在Active。还有用户交互时有个Processing状态，这个和Active内部的Unread/Read是并行的吗？",
+      "elements_involved": [
+        "Active",
+        "Processing",
+        "Unread",
+        "Read"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Active自循环处理新通知。Processing是临时的，交互完成就回到Active。另外还有个Updating状态，专门处理标记已读的操作。这两个都是Active的并行行为，不是子状态。",
+      "elements_involved": [
+        "Active",
+        "Processing",
+        "Updating"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我加上Processing和Updating，都从Active进出。另外Active层级还有个Cleanup状态，30天无操作后进入，清理旧通知再返回Active。最后Failed状态要指向PatientRecords记录不可恢复错误。",
+      "elements_involved": [
+        "Processing",
+        "Updating",
+        "Cleanup",
+        "Active",
+        "Failed",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "Cleanup的流向不对，应该是Active进入Cleanup，清理完成后返回Active，而不是指向Deleted。Deleted只在Archived之后触发。",
+      "elements_involved": [
+        "Cleanup",
+        "Active",
+        "Archived",
+        "Deleted"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，Cleanup现在是从Active进入，清理旧通知后返回Active。我再加个注释说明Active内部的生命周期：未读→已读→7天自动归档→30天自动删除→同步EMR。",
+      "elements_involved": [
+        "Cleanup",
+        "Active",
+        "Unread",
+        "Read",
+        "Archived",
+        "Deleted",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 30147.6614,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 5
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "id": "aug_ot_stateDiagram_00110_Log_9",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Three-Rivers-Tech/finance_feedback_engine/blob/414c209b886adbac796e1d4ceea68c4cf81baebc/docs/diagrams/circuit_breaker_state.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Three-Rivers-Tech/finance_feedback_engine",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Logistics_DeliveryRoute] --> CLOSED\n\n    state CLOSED {Logistics_StockLevel] --> Normal\n        Normal --> IncrementFailures: execute_trade fails\n        IncrementFailures --> CheckThreshold: failure_count++\n        CheckThreshold --> Normal: count < 3\n        CheckThreshold --> [Logistics_Warehouse]: count >= 3\n\n        Normal --> ResetCount: execute_trade succeeds\n        ResetCount --> Normal: failure_count = 0\n    }\n\n    CLOSED --> OPEN: Threshold Reached 3 failures\n\n    state OPEN {Logistics_DeliveryRoute] --> BlockCalls\n        BlockCalls --> CheckTimeout: All calls raise CircuitBreakerError\n        CheckTimeout --> BlockCalls: elapsed < 60s\n        CheckTimeout --> [Logistics_TrackingNumber]: elapsed >= 60s\n    }\n\n    OPEN --> HALF_OPEN: Recovery Timeout Expired\n\n    state HALF_OPEN {Logistics_FleetManagement] --> TestRecovery\n        TestRecovery --> EvaluateResult: Allow ONE test call\n        EvaluateResult --> [Logistics_StockLevel]: Success\n        EvaluateResult --> ReOpen: Failure\n\n        ReOpen --> [Logistics_FleetManagement]\n    }\n\n    HALF_OPEN --> CLOSED: Test Call Succeeds\n    HALF_OPEN --> OPEN: Test Call Fails\n\n    style CLOSED fill:#4CAF50,stroke:#2E7D32,color:#fff\n    style OPEN fill:#F44336,stroke:#C62828,color:#fff\n    style HALF_OPEN fill:#FFC107,stroke:#F57C00,color:#333",
+  "content_size": 1199,
+  "collected_at": "2026-02-06T10:38:00.530796",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 1,
+  "repo_owner": "Three-Rivers-Tech",
+  "repo_name": "finance_feedback_engine",
+  "repo_description": "Finance feedback engine is an automated portfolio simulation tool using the LLM models of your choice.",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2025-11-19T00:29:36Z",
+  "repo_updated_at": "2026-01-22T19:46:09Z",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Logistics",
+  "seed_id": "ot_stateDiagram_00110",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为物流系统画一个熔断器状态图。核心场景是DeliveryRoute调用，当StockLevel服务连续失败时触发熔断。整体分成三个主状态：CLOSED正常态、OPEN熔断态、HALF_OPEN半开恢复态。",
+      "elements_involved": [
+        "CLOSED",
+        "OPEN",
+        "HALF_OPEN",
+        "Logistics_DeliveryRoute",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。CLOSED态内部需要细化吗？比如失败计数和阈值判断的逻辑？",
+      "elements_involved": [
+        "CLOSED",
+        "CheckThreshold",
+        "IncrementFailures"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，CLOSED里面要有Normal子状态。execute_trade失败时走IncrementFailures，计数加一后进入CheckThreshold判断。小于3次回Normal，等于3次就触发熔断，跳转到Warehouse节点然后进入OPEN态。成功的话走ResetCount清零。",
+      "elements_involved": [
+        "Normal",
+        "IncrementFailures",
+        "CheckThreshold",
+        "ResetCount",
+        "Logistics_Warehouse"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，CLOSED态内部结构画好了。OPEN态我理解为完全阻断，所有调用直接抛CircuitBreakerError？",
+      "elements_involved": [
+        "OPEN",
+        "BlockCalls",
+        "CheckTimeout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，OPEN态里用BlockCalls拦截，同时CheckTimeout计时。60秒内保持阻断，超时后进入TrackingNumber节点，然后过渡到HALF_OPEN。",
+      "elements_involved": [
+        "BlockCalls",
+        "CheckTimeout",
+        "Logistics_TrackingNumber",
+        "HALF_OPEN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "HALF_OPEN态的恢复逻辑怎么设计？只放行一个测试调用？",
+      "elements_involved": [
+        "HALF_OPEN",
+        "TestRecovery"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，HALF_OPEN里用TestRecovery只允许一个测试调用，然后EvaluateResult判断结果。成功就回到StockLevel节点并关闭熔断；失败走ReOpen重新打开，回到FleetManagement节点。另外两个主状态之间的跳转也要标清楚：HALF_OPEN成功回CLOSED，失败回OPEN。",
+      "elements_involved": [
+        "TestRecovery",
+        "EvaluateResult",
+        "ReOpen",
+        "Logistics_StockLevel",
+        "Logistics_FleetManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "状态流转都画完了。最后给三个主状态上色区分吧？CLOSED用绿色，OPEN用红色，HALF_OPEN用黄色？",
+      "elements_involved": [
+        "CLOSED",
+        "OPEN",
+        "HALF_OPEN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，颜色方案就这样。CLOSED绿色表示健康，OPEN红色表示熔断，HALF_OPEN黄色表示警戒恢复状态。整个图完成了。",
+      "elements_involved": [
+        "CLOSED",
+        "OPEN",
+        "HALF_OPEN"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 0,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 34507.699,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 9
+  }
+}

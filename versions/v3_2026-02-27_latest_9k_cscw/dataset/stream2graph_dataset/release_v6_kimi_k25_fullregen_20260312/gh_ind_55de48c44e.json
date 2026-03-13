@@ -1,0 +1,624 @@
+{
+  "id": "gh_ind_55de48c44e",
+  "source": "github_industrial",
+  "repo": "macgyver13/silent-payments-hub",
+  "license": "mit",
+  "code": "---\nconfig:\n  diagramMarginY: 100\n  noteMargin: 20\n  noteAlign: center\n  mirrorActors: true\n---\n%%{init: {'themeVariables': {\n  'noteBkgColor':'#333',\n  'noteTextColor': '#cccccc',\n  'fontSize': '30px',\n  'noteFontSize': '30px',\n  'fontFamily': 'verdana'\n}}}%%\n\nsequenceDiagram\n%% autonumber\n  actor Sender\n  actor User\n  participant Wallet as Wallet (Client)\n  participant MyScanServer as Scan Server (Own)\n  participant Bitcoin as Bitcoin Network\n  participant HostedScanServer as Scan Server (Hosted)\n  actor Recipient\n\n  Note over User, Wallet: Wallet Setup\n  User->>Wallet: Generate Scan Secret + Spend Key\n  Wallet->>Wallet: Derive Silent Payment Address\n  Wallet-->>User: Share SP Address (public)\n\n  Note over Sender: Sender sends BTC to SP address\n  Sender->>Wallet: Sender computes recipient address for this transaction (tweak key)\n  Wallet->>Bitcoin: Broadcast transaction\n  \n  Note over User, Wallet: Receiving Funds\n  rect rgb(55,55,55)\n  alt Wallet Scanner (Private)\n  Note over User, MyScanServer: Wallet does all the work <br>(Least complex, Most compute)\n    Wallet->>Bitcoin: Fetch block data (All or Block Filter?)\n    Wallet->>Wallet: Scan for tweaked outputs (Scan Key)\n  else Own Scanner (Private / Fast)  \n    rect rgb(75,55,55)\n      Note over User, MyScanServer: Least wallet development requried <br> (\"Prefered\" Balance Privacy + UX, Distributed compute)\n      rect rgb(55,55,75)\n        Note over User, Wallet: Scanner Registration - one time\n        Wallet->>MyScanServer: Register Scan key\n        loop For Each Block\n          MyScanServer-->>MyScanServer: Scan for tweaked outputs (Scan Key)\n        end\n      end\n      rect rgb(55,55,95)\n        Note over User, Wallet: Typical Wallet UX\n        User->>Wallet: Check Balance\n        Wallet->>MyScanServer: Fetch new UTXOs\n        MyScanServer->>Wallet: Return matching UTXOs\n        Wallet-->>Wallet: Update Balance\n        Wallet-->>User: Show updated balance (UTXOs found)\n      end\n    end\n  else Outsourced Scanner (Fast / Trust Required)\n    rect rgb(40, 62, 53)\n      Note over User, MyScanServer: More wallet development requried <br> (Best UX for Light Clients, Least Private )\n      Bitcoin->>HostedScanServer: New Block\n      loop For Each Block\n        HostedScanServer-->>HostedScanServer: Index all tweaks that meet BIP352 spec <br> ? discard spent?\n      end\n      rect rgb(55,75,55)\n        alt Subscribe or Bulk Download?\n          rect rgb(55,75,75)\n            Wallet->>HostedScanServer: Request all tweaks from last block checked for a given Scan Key\n            HostedScanServer->>Wallet: Return matching UTXOs\n          end\n        else\n          rect rgb(75,75,55)\n            Wallet->>HostedScanServer: Request tweaks for block or range of blocks (more privacy/more data) <br> ? Should this be supported?\n            HostedScanServer->>Wallet: Return all tweaks for range\n          end\n        end\n      end\n    end\n  end\n  end\n\n  Note over User, Wallet: Spending Funds\n  Wallet->>Wallet: Derive tweak from Spend key\n  Wallet->>Bitcoin: Broadcast transaction\n  Bitcoin->>Recipient: Funds arrive (standard output)\n\nNote over Wallet: Wallet Recovery? <br> scan all taproot outputs since wallet birthday\n",
+  "diagram_type": "actor size:>1500",
+  "collected_at": "2026-02-27T03:39:25.973649",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个Silent Payments的完整交互流程图，重点展示三种扫描模式：钱包本地扫描、自建扫描服务器、以及托管扫描服务。",
+      "elements_involved": [
+        "Wallet (Client)",
+        "Scan Server (Own)",
+        "Scan Server (Hosted)",
+        "Bitcoin Network"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，先从用户设置开始？需要包含生成扫描密钥和花费密钥的步骤吗？",
+      "elements_involved": [
+        "User",
+        "Wallet (Client)",
+        "Generate Scan Secret + Spend Key"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，设置阶段要有。用户生成Scan Secret和Spend Key，然后钱包派生出Silent Payment地址，最后把SP地址公开分享出去。",
+      "elements_involved": [
+        "User",
+        "Wallet (Client)",
+        "Derive Silent Payment Address",
+        "Share SP Address (public)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先把设置部分画出来：User到Wallet是生成密钥，Wallet内部做派生，然后Wallet返回给用户SP地址。",
+      "elements_involved": [
+        "User",
+        "Wallet (Client)",
+        "Generate Scan Secret + Spend Key",
+        "Derive Silent Payment Address",
+        "Share SP Address (public)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是发送方部分。Sender需要计算这次交易的recipient address，用到tweak key，然后广播交易到比特币网络。",
+      "elements_involved": [
+        "Sender",
+        "Wallet (Client)",
+        "Bitcoin Network",
+        "tweak key"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Sender计算recipient address这一步，是Sender直接和Wallet交互，还是Sender自己算？",
+      "elements_involved": [
+        "Sender",
+        "Wallet (Client)",
+        "tweak key"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Sender和Wallet交互，Wallet帮Sender计算这次交易特定的recipient address。然后Wallet把交易广播到Bitcoin Network。",
+      "elements_involved": [
+        "Sender",
+        "Wallet (Client)",
+        "Bitcoin Network",
+        "Broadcast transaction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加发送流程。现在进入接收资金部分，这里要展开三种扫描模式，用alt分支对吧？",
+      "elements_involved": [
+        "Receiving Funds",
+        "alt Wallet Scanner (Private)",
+        "Own Scanner (Private / Fast)",
+        "Outsourced Scanner (Fast / Trust Required)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，三种模式作为alt分支。第一种是Wallet Scanner，钱包自己做所有工作，最简单但计算量最大。",
+      "elements_involved": [
+        "Wallet Scanner (Private)",
+        "Least complex, Most compute",
+        "All or Block Filter?"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "第一种模式里，Wallet从Bitcoin Network获取区块数据，这里要标注是获取全部数据还是用区块过滤器吗？",
+      "elements_involved": [
+        "Wallet (Client)",
+        "Bitcoin Network",
+        "All or Block Filter?",
+        "Fetch block data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "要标注，写\"All or Block Filter?\"，表示两种数据获取方式都可以。然后Wallet用Scan Key扫描找tweaked outputs。",
+      "elements_involved": [
+        "Wallet (Client)",
+        "Scan Key",
+        "Scan for tweaked outputs",
+        "All or Block Filter?"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第一种模式完成了。第二种Own Scanner，描述是\"Least wallet development required\"，平衡隐私和UX？",
+      "elements_involved": [
+        "Own Scanner (Private / Fast)",
+        "Prefered balance privacy + ux",
+        "Distributed compute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，写\"'Prefered' Balance Privacy + UX\"，注意prefered是故意这么拼的。还有Distributed compute，计算分散在服务器和钱包之间。",
+      "elements_involved": [
+        "Own Scanner (Private / Fast)",
+        "Prefered balance privacy + ux",
+        "Distributed compute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Own Scanner需要先有Scanner Registration步骤，是一次性的对吧？然后进入循环扫描区块。",
+      "elements_involved": [
+        "Scanner Registration",
+        "Wallet (Client)",
+        "Scan Server (Own)",
+        "Register Scan key"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Registration是一次性的。Wallet把Scan Key注册到Own Scan Server。然后服务器循环扫描每个区块找tweaked outputs。",
+      "elements_involved": [
+        "Scanner Registration - one time",
+        "Register Scan key",
+        "For Each Block",
+        "Scan for tweaked outputs (Scan Key)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "注册和扫描循环已加。接下来是Typical Wallet UX部分，用户查余额的流程？",
+      "elements_involved": [
+        "Typical Wallet UX",
+        "User",
+        "Wallet (Client)",
+        "Scan Server (Own)",
+        "Check Balance"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，用户Check Balance，Wallet去Own Scan Server取新的UTXOs，服务器返回匹配的UTXOs，Wallet更新余额后展示给用户。",
+      "elements_involved": [
+        "Check Balance",
+        "Fetch new UTXOs",
+        "Return matching UTXOs",
+        "Update Balance",
+        "Show updated balance (UTXOs found)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Own Scanner模式完成。第三种Outsourced Scanner，用托管服务器，特点是Fast但Trust Required？",
+      "elements_involved": [
+        "Outsourced Scanner (Fast / Trust Required)",
+        "Hosted Scan Server (Hosted)",
+        "Best UX for Light Clients",
+        "Least Private"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，\"Best UX for Light Clients\"但\"Least Private\"。需要更多钱包开发工作，托管服务器索引所有符合BIP352规范的tweaks。",
+      "elements_involved": [
+        "Outsourced Scanner (Fast / Trust Required)",
+        "More wallet development required",
+        "Best UX for Light Clients",
+        "Least Private",
+        "Index all tweaks that meet BIP352 spec"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "托管服务器这里有个问题：索引tweaks时要标注\"discard spent?\"吗？还有触发条件是Bitcoin Network有新块？",
+      "elements_involved": [
+        "Bitcoin Network",
+        "Hosted Scan Server (Hosted)",
+        "New Block",
+        "discard spent?"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Bitcoin Network有新块时触发，服务器循环处理。标注\"? discard spent?\"表示待确认是否丢弃已花费的。",
+      "elements_involved": [
+        "Bitcoin Network",
+        "Hosted Scan Server (Hosted)",
+        "New Block",
+        "Index all tweaks that meet BIP352 spec",
+        "discard spent?"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "托管服务器的索引循环已加。接下来是钱包获取数据的部分，这里有个alt分支：Subscribe or Bulk Download？",
+      "elements_involved": [
+        "Subscribe or Bulk Download?",
+        "Wallet (Client)",
+        "Hosted Scan Server (Hosted)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，两种获取方式。第一种是请求某个Scan Key从上一次检查以来的所有tweaks，服务器返回匹配的UTXOs。",
+      "elements_involved": [
+        "Subscribe or Bulk Download?",
+        "Request all tweaks from last block checked for a given Scan Key",
+        "Return matching UTXOs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "第二种方式是请求特定区块或区块范围，标注\"more privacy/more data\"，还要写\"Should this be supported?\"？",
+      "elements_involved": [
+        "Request tweaks for block or range of blocks",
+        "more privacy/more data",
+        "Should this be supported?"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，范围查询隐私更好但数据量更大。标注问号表示这个功能是否需要支持还不确定。",
+      "elements_involved": [
+        "Request tweaks for block or range of blocks",
+        "more privacy/more data",
+        "Should this be supported?",
+        "Return all tweaks for range"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "三种扫描模式的alt分支都完成了。最后是Spending Funds部分？",
+      "elements_involved": [
+        "Spending Funds",
+        "Wallet (Client)",
+        "Bitcoin Network",
+        "Recipient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，花费资金。Wallet从Spend key派生tweak，然后广播交易到Bitcoin Network，最后资金以standard output到达Recipient。",
+      "elements_involved": [
+        "Spending Funds",
+        "Derive tweak from Spend key",
+        "Broadcast transaction",
+        "standard output",
+        "Recipient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "花费流程已加。最后还有个Wallet Recovery的注释？",
+      "elements_involved": [
+        "Wallet Recovery",
+        "scan all taproot outputs since wallet birthday"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，恢复钱包需要扫描自钱包创建以来的所有taproot输出。现在整体结构有了，但需要调整一些颜色区分不同区域。",
+      "elements_involved": [
+        "color coding",
+        "rect rgb"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "颜色方案：整个接收资金部分用rgb(55,55,55)深色背景？然后Own Scanner用rgb(75,55,55)，里面Registration用rgb(55,55,75)，Typical UX用rgb(55,55,95)？",
+      "elements_involved": [
+        "rgb(55,55,55)",
+        "rgb(75,55,55)",
+        "rgb(55,55,75)",
+        "rgb(55,55,95)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Own Scanner整体是偏红的75,55,55，里面Registration偏蓝55,55,75，Typical UX更亮55,55,95。Outsourced Scanner用绿色系。",
+      "elements_involved": [
+        "rgb(75,55,55)",
+        "rgb(55,55,75)",
+        "rgb(55,55,95)",
+        "rgb(40, 62, 53)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Outsourced Scanner主体用rgb(40, 62, 53)深绿，Subscribe/Bulk Download部分用rgb(55,75,55)，里面两个分支分别用rgb(55,75,75)和rgb(75,75,55)？",
+      "elements_involved": [
+        "rgb(40, 62, 53)",
+        "rgb(55,75,55)",
+        "rgb(55,75,75)",
+        "rgb(75,75,55)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。颜色区分后层次更清晰。我注意到你拼写检查：requirement在Outsourced Scanner里拼成了requried，要保留这个错误吗？",
+      "elements_involved": [
+        "Least wallet development requried",
+        "typo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "等等，我检查一下...原文确实是\"requried\"，但这是拼写错误，应该改成\"required\"吧？",
+      "elements_involved": [
+        "Least wallet development requried",
+        "Least wallet development required"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不，保留原样。这是原始设计文档里的写法，我们要忠实还原，包括prefered也是故意保留的拼写。",
+      "elements_involved": [
+        "requried",
+        "prefered",
+        "intentional typo"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，保留原始拼写。另外检查下所有Note的换行，有些用<br，比如\"Least complex, Most compute\"前面有换行。",
+      "elements_involved": [
+        "Note over",
+        "<br",
+        "line break"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Note里的描述用<br换行。还有BIP352 spec后面有个\"? discard spent?\"，问号位置对吗？",
+      "elements_involved": [
+        "BIP352 spec",
+        "? discard spent?",
+        "punctuation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我看到原文是\"<br ? discard spent?\"，问号在br标签后面，这看起来像是格式问题，应该是\"<br? discard spent?\"吧？",
+      "elements_involved": [
+        "<br ? discard spent?",
+        "punctuation placement"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "按原始代码保留\"<br ? discard spent?\"，虽然看起来奇怪，但可能是特定渲染需求。同样\"more privacy/more data\"后面的\"<br ? Should this be supported?\"也保留。",
+      "elements_involved": [
+        "<br ? discard spent?",
+        "<br ? Should this be supported?",
+        "preserve original format"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已按原始格式保留。再确认下参与者声明：Sender, User, Wallet (Client), Scan Server (Own), Bitcoin Network, Scan Server (Hosted), Recipient，共7个。",
+      "elements_involved": [
+        "Sender",
+        "User",
+        "Wallet (Client)",
+        "Scan Server (Own)",
+        "Bitcoin Network",
+        "Scan Server (Hosted)",
+        "Recipient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，7个参与者。配置部分diagramMarginY: 100, noteMargin: 20, noteAlign: center, mirrorActors: true都要保留。",
+      "elements_involved": [
+        "diagramMarginY: 100",
+        "noteMargin: 20",
+        "noteAlign: center",
+        "mirrorActors: true"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "配置和主题变量都设置好了，字体用verdana，note背景色#333，文字色#cccccc，字号30px。整体结构检查完毕。",
+      "elements_involved": [
+        "config",
+        "themeVariables",
+        "verdana",
+        "#333",
+        "#cccccc",
+        "30px"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后确认：autonumber注释掉了，要保留吗？还有loop和rect的嵌套层次都正确？",
+      "elements_involved": [
+        "%% autonumber",
+        "loop",
+        "rect",
+        "nesting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "autonumber保留注释状态。loop和rect嵌套检查：每个rect和loop都有正确闭合，alt分支的else和end也都配对。",
+      "elements_involved": [
+        "%% autonumber",
+        "loop end",
+        "rect end",
+        "alt else end"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "很好。最后加个细节：在\"All or Block Filter?\"旁边，其实暗示了钱包可以选择全量同步或者用BIP158区块过滤器，这个选择会影响带宽和隐私权衡。",
+      "elements_involved": [
+        "All or Block Filter?",
+        "BIP158",
+        "bandwidth",
+        "privacy trade-off"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解，这个设计细节很重要。整个图完整展示了Silent Payments从设置、发送、三种接收扫描模式到花费的全流程，颜色区分清晰，注释完整。",
+      "elements_involved": [
+        "Wallet Setup",
+        "Sender sends BTC",
+        "Receiving Funds",
+        "Spending Funds",
+        "Wallet Recovery"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 46,
+    "repair_count": 4,
+    "grounding_acts_count": 46,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 120014.0872,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 46
+  }
+}

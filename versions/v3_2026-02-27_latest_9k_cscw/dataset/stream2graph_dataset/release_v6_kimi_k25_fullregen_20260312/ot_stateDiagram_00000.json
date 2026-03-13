@@ -1,0 +1,183 @@
+{
+  "id": "ot_stateDiagram_00000",
+  "source": "other",
+  "source_url": "https://github.com/mrmidi/ASFireWire/blob/1b2dc823fe5b65d27bd90632fb2e11ba8d0c6914/documentation/stateDiagram-v2.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "mrmidi/ASFireWire",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    direction LR\n\n    %% Compact, readable bus-reset state machine: R0 left, R1 center, T0 right\n\n    powerReset: powerReset\n    resetDetected: resetDetected\n    ibrCond: ibr && !(phyResponse || immediatePhyRequest)\n    maxArbStateTimeout: maxArbStateTimeout()\n\n    R0: R0 — Reset Start\\nresetStartActions()\n    R1: R1 — Reset Wait\\nresetWaitActions()\n    T0: T0 — Tree ID Start\n\n    %% Triggers to R0 (left side)\n    powerReset --> R0: arbPowerReset()\n    resetDetected --> R0: initiatedReset = FALSE\n    ibrCond --> R0: initiatedReset = TRUE / resetDuration = RESET_TIME\n    maxArbStateTimeout --> R0: initiatedReset = TRUE / resetDuration = RESET_TIME; PH_EVENT_INDICATION\n\n    %% Core transitions\n    R0 --> R1: arbTimer >= resetDuration / resetStartActions()\n    R1 --> T0: resetComplete() / arbTimer = 0\n\n    %% Back-transition and timeout\n    R1 --> R0: arbTimer >= resetDuration + RESET_WAIT / resetDuration = RESET_TIME\n\n    note left of R0\n      External triggers to R0:\\n• powerReset (arbPowerReset())\\n• resetDetected (initiatedReset = FALSE)\\n• ibr && !(phyResponse || immediatePhyRequest) (initiatedReset = TRUE)\\n• maxArbStateTimeout() (initiatedReset = TRUE; resetDuration = RESET_TIME)\\n• from TX: Transmit → -TX:R0\n    end note\n\n    note right of R1\n      Timeout/Recovery:\\n• R1→R0 sets resetDuration = RESET_TIME\\n• R1→T0 on resetComplete() sets arbTimer = 0\n    end note",
+  "content_size": 1407,
+  "collected_at": "2026-02-06T10:36:36.652880",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个总线复位状态机，核心有三个状态：R0作为复位起点，R1是等待阶段，T0进入树ID识别。方向从左到右，R0放左边，T0放右边。",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "T0",
+        "stateDiagram-v2",
+        "direction LR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，R0、R1、T0横向排列。那进入R0的触发条件有哪些？我注意到有外部信号和内部超时都可能触发复位。",
+      "elements_involved": [
+        "R0",
+        "powerReset",
+        "resetDetected",
+        "ibrCond",
+        "maxArbStateTimeout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，R0的入口比较复杂。powerReset通过arbPowerReset()触发；resetDetected时initiatedReset设为false；还有ibr条件——当ibr为真且没有phyResponse或immediatePhyRequest时，initiatedReset要置true，同时resetDuration赋值为RESET_TIME。",
+      "elements_involved": [
+        "powerReset",
+        "arbPowerReset()",
+        "resetDetected",
+        "initiatedReset = false",
+        "ibrCond",
+        "phyResponse",
+        "immediatePhyRequest",
+        "initiatedReset = true",
+        "resetDuration = RESET_TIME"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "ibr条件是ibr && !(phyResponse || immediatePhyRequest)，然后设置initiatedReset=true和resetDuration。那maxArbStateTimeout()这个超时触发呢？",
+      "elements_involved": [
+        "ibrCond",
+        "maxArbStateTimeout()",
+        "initiatedReset = true",
+        "resetDuration = RESET_TIME"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "maxArbStateTimeout()触发时同样设置initiatedReset=true和resetDuration=RESET_TIME，但还要额外发出PH_EVENT_INDICATION事件。另外R0到R1的转移条件是arbTimer达到resetDuration，执行resetStartActions()。",
+      "elements_involved": [
+        "maxArbStateTimeout()",
+        "initiatedReset = true",
+        "resetDuration = RESET_TIME",
+        "PH_EVENT_INDICATION",
+        "R0",
+        "R1",
+        "arbTimer = resetDuration",
+        "resetStartActions()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把左侧入口和R0→R1画好。R1到T0是resetComplete()触发，然后把arbTimer清零对吧？",
+      "elements_involved": [
+        "R0",
+        "R1",
+        "T0",
+        "resetComplete()",
+        "arbTimer = 0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。但R1还有一个回退到R0的路径——当arbTimer达到resetDuration加上RESET_WAIT时，要回到R0，并且把resetDuration重新设为RESET_TIME。这是超时恢复机制。",
+      "elements_involved": [
+        "R1",
+        "R0",
+        "arbTimer = resetDuration + RESET_WAIT",
+        "resetDuration = RESET_TIME"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "R1→R0的超时回退我记下了。状态标签需要显示动作吗？比如R0标注\"Reset Start\"和resetStartActions()。",
+      "elements_involved": [
+        "R0 — Reset Start",
+        "resetStartActions()",
+        "R1 — Reset Wait",
+        "resetWaitActions()",
+        "T0 — Tree ID Start"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，R0显示Reset Start和resetStartActions()，R1显示Reset Wait和resetWaitActions()，T0简单点，Tree ID Start就行。另外加两个注释：R0左侧汇总所有外部触发条件，R1右侧说明超时恢复和arbTimer清零的逻辑。",
+      "elements_involved": [
+        "note left of R0",
+        "note right of R1",
+        "External triggers to R0",
+        "Timeout/Recovery"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成了。左侧注释包含powerReset、resetDetected、ibr条件、maxArbStateTimeout，还有来自TX的Transmit→R0路径。右侧注释标注R1→R0设置resetDuration=RESET_TIME，以及R1→T0时arbTimer=0。整个图采用紧凑布局，方向从左到右。",
+      "elements_involved": [
+        "note left of R0",
+        "note right of R1",
+        "compact",
+        "direction LR"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 0,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:43Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:27Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:27Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 30140.9013,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 9
+  }
+}

@@ -1,0 +1,202 @@
+{
+  "id": "gh_sequence_00276",
+  "source": "github",
+  "source_url": "https://github.com/DamienReichhart/DockerWebInterface/blob/d5f29f636f5667b7f66c8963826694cea2309dab/documentation/technique/diagrammes/sequence/docker_security_sequence.mmd",
+  "github_repo": "DamienReichhart/DockerWebInterface",
+  "github_file_path": "documentation/technique/diagrammes/sequence/docker_security_sequence.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    title Docker Security Implementation Sequence\n    \n    participant Client as Client\n    participant Apache as Apache Container\n    participant Crowdsec as Crowdsec Agent\n    participant Firewall as Firewall Bouncer\n    participant PHP as PHP-FPM Container\n    participant DB as MariaDB Container\n    participant DinD as Docker-in-Docker\n    \n    Note over Client, DinD: Network Security\n    \n    Client->>Apache: HTTP/HTTPS Request\n    \n    %% Crowdsec Security Flow\n    Apache->>Crowdsec: Log request for analysis\n    Crowdsec->>Crowdsec: Parse and analyze logs\n    \n    alt Malicious Request Detected\n        Crowdsec->>Firewall: Add client IP to blocklist\n        Firewall->>Client: Block future requests\n        Apache->>Client: Return 403 Forbidden\n    else Request Allowed\n        Apache->>PHP: Forward request via Unix socket\n    end\n    \n    %% Container Isolation\n    Note over Apache, DB: Container Security Isolation\n    \n    %% User permission security\n    Apache->>Apache: Run as non-root user (apache:apache)\n    PHP->>PHP: Run as non-root user (php:php)\n    DB->>DB: Run with limited privileges\n    \n    %% Volume permissions\n    Note over Apache, DB: Volume Security\n    Apache->>Apache: Access socket with specific permissions\n    PHP->>PHP: Access socket with specific permissions\n    \n    %% HTTPS communication\n    Client->>Apache: HTTPS Request\n    Apache->>Apache: SSL Termination with server.crt/key\n    Apache->>PHP: Internal communication over Unix socket\n    \n    %% Security Headers\n    PHP->>Apache: Response with generated content\n    Apache->>Apache: Add security headers\n    Apache->>Client: Response with security headers\n    \n    %% DinD Security\n    Note over DinD: Docker-in-Docker Security\n    DinD->>DinD: Run with privileged mode\n    DinD->>DinD: SSH access with authentication ",
+  "content_size": 1836,
+  "collected_at": "2026-02-06T01:30:05.170890",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个Docker安全架构的时序图，核心是展示Crowdsec怎么保护整个容器栈。从Client发起请求开始，经过Apache容器，Crowdsec Agent做实时分析，然后才能访问后面的PHP-FPM和MariaDB。",
+      "elements_involved": [
+        "Client",
+        "Apache Container",
+        "Crowdsec Agent",
+        "PHP-FPM Container",
+        "MariaDB Container"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，Crowdsec Agent是独立部署的还是以sidecar形式运行？另外检测到恶意请求后，阻断动作是由谁执行的？",
+      "elements_involved": [
+        "Crowdsec Agent",
+        "Firewall Bouncer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Crowdsec Agent独立运行，它分析完日志后，如果发现恶意请求，会通知Firewall Bouncer去封禁IP。Firewall Bouncer直接作用于网络层，Client后续的请求会被直接阻断，Apache返回403。正常请求则通过Unix socket转发给PHP-FPM。",
+      "elements_involved": [
+        "Crowdsec Agent",
+        "Firewall Bouncer",
+        "Client",
+        "Apache Container",
+        "PHP-FPM Container"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主流程画出来：Client到Apache的HTTPS请求，Apache把日志发给Crowdsec分析，然后用alt分支处理两种结果——恶意请求走Crowdsec→Firewall→封禁Client的链路，正常请求走Apache→PHP-FPM的Unix socket。",
+      "elements_involved": [
+        "Client",
+        "Apache Container",
+        "Crowdsec Agent",
+        "Firewall Bouncer",
+        "PHP-FPM Container"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "容器安全层面也要体现。Apache和PHP-FPM都要以非root用户运行，分别是apache:apache和php:php。MariaDB也要有限权限。另外它们之间的socket访问要有严格的权限控制。",
+      "elements_involved": [
+        "Apache Container",
+        "PHP-FPM Container",
+        "MariaDB Container",
+        "non root user"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，我加上三个容器的自调用：Apache以apache:apache运行，PHP-FPM以php:php运行，MariaDB有限权限。还有Volume Security部分，Apache和PHP-FPM对socket的特定权限访问。",
+      "elements_involved": [
+        "Apache Container",
+        "PHP-FPM Container",
+        "MariaDB Container",
+        "Volume Security"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "HTTPS通信细节补充一下：Client到Apache做SSL终止，证书是server.crt和key，然后Apache到PHP-FPM走内部Unix socket。最后PHP返回内容给Apache，Apache要加上安全响应头再返回给Client。",
+      "elements_involved": [
+        "Client",
+        "Apache Container",
+        "PHP-FPM Container",
+        "HTTPS",
+        "SSL Termination",
+        "security headers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：Client-Apache的HTTPS请求，Apache内部SSL终止，Apache-PHP的Unix socket通信，然后PHP-Apache返回内容，Apache自调用添加安全头，最后Apache-Client带安全头的响应。",
+      "elements_involved": [
+        "Client",
+        "Apache Container",
+        "PHP-FPM Container",
+        "HTTPS",
+        "security headers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "差点忘了，还有个Docker-in-Docker组件。它要以特权模式运行，并且SSH访问需要认证。这个放在最右边，单独一个安全说明区域。",
+      "elements_involved": [
+        "Docker-in-Docker",
+        "privileged mode",
+        "SSH access"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。DinD放在MariaDB右边，加上自调用的特权模式和SSH认证。整体标题是\"Docker Security Implementation Sequence\"，顶部有Network Security的覆盖说明，中间有Container Security Isolation的标注。",
+      "elements_involved": [
+        "Docker-in-Docker",
+        "MariaDB Container",
+        "Container Security Isolation",
+        "Network Security"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "检查一下，Apache到Crowdsec的日志传输是单向的，Crowdsec分析是内部处理，Firewall阻断后Apache才返回403，这个顺序没错吧？",
+      "elements_involved": [
+        "Apache Container",
+        "Crowdsec Agent",
+        "Firewall Bouncer",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。流程是：Apache先发日志给Crowdsec，Crowdsec内部解析分析，alt分支里如果是恶意请求，Crowdsec通知Firewall封禁IP，然后Firewall阻断Client，同时Apache返回403。顺序正确。",
+      "elements_involved": [
+        "Apache Container",
+        "Crowdsec Agent",
+        "Firewall Bouncer",
+        "Client"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 12,
+    "repair_count": 0,
+    "grounding_acts_count": 12,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 34693.9878,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

@@ -1,0 +1,204 @@
+{
+  "id": "aug_gl_block-beta_00233_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/consensus-shipyard/ipc/blob/a2c2faeb4ac75564d2b4e3236066f1458eeb85b8/ipld/resolver/docs/diagrams/ipld_resolver.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "consensus-shipyard/ipc",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Host as Host\n    participant Client as Client\n    participant Service as Service\n    participant SubnetProvidersCache as SubnetProvidersCache\n    participant BitswapStore as BitswapStore\n    participant Content as Content (Infra_WorkerNode)\n    participant Membership as Membership (Infra_LoadBalancer)\n    participant Discovery as Discovery (Infra_LoadBalancer)\n    participant Identify as Identify\n    participant Remote as Remote\n\n    %% Initialization\n    Host->>+Service: new\n    Service->>Identify: create\n    Service->>Discovery: create\n    Service->>Membership: create\n    Service->>Content: create\n    Service->>-Host: (Infra_RedisCache)\n\n    Host->>+Service: run\n\n    %% Bootstrapping\n    Note over Host, Remote: Bootstrapping\n\n    Membership->>Remote: subscribe to membership topic\n    Service->>+Discovery: bootstrap from seed peers\n    Discovery->>Remote: find neighbours\n    Remote->>Discovery: peer addresses\n\n    Discovery->>Discovery: add address\n    Discovery->>+Service: peer routable\n    Service->>-Membership: peer routable\n\n    Host->>+Client: set provided subnets\n    Client->>+Service: set provided subnets\n    Service->>+Membership: set provided subnets\n    Membership->>-Remote: publish subnets to membership topic\n\n    Discovery->>-Service: bootstrap finished\n\n    Remote->>Identify: listening address\n    Identify->>+Service: listening address\n    Service->>+Discovery: add address\n    Discovery->>-Service: peer routable\n    Service->>-Membership: peer routable\n\n    %% Gossiping\n    Note over Host, Remote: Gossiping\n\n    loop Continuous Gossiping\n        alt publish interval tick\n            Membership->>Remote: publish SignedProviderRecord\n            Membership->>SubnetProvidersCache: prune expired records\n        else\n            Remote->>+Membership: SignedProviderRecord\n            alt if peer routable\n                Membership->>-SubnetProvidersCache: add provider\n            end\n        end\n    end\n\n    %% Resolution\n    Note over Host, Remote: Resolution\n\n    Host->>+Client: resolve CID from subnet\n    Client->>+Service: resolve CID from subnet\n    Service->>Membership: get providers of subnet\n    Service->>Service: prioritize peers, connected first\n\n    loop Resolution Attempts\n        Service->>+Content: resolve CID from first N peers\n        Content->>BitswapStore: get missing blocks of root CID\n\n        loop while has missing CID\n            loop for each peer\n                Content->>Remote: want-have CID\n                Remote->>Content: have-block true/false\n                Note left of Content: Gather peers who can be asked.\n            end\n\n            loop until have block or no more peers to try\n                Content->>Remote: want-block CID\n                alt block is received\n                    Remote->>Content: block\n                    Content->>BitswapStore: insert block\n                    Content->>BitswapStore: get missing blocks of retrieved CID\n                end\n            end\n        end\n\n        Content->>-Service: resolution result\n        alt if failed to resolve but has fallback peers\n            Service->>Service: pick next N peers\n        else\n            Service->>-Client: resolution result\n        end\n    end\n    Client->>-Host: resolution result\n\n    alt if succeeded\n        Host->>BitswapStore: retrieve content by CID\n    end",
+  "content_size": 3342,
+  "collected_at": "2026-02-06T14:05:02.751036",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 52,
+  "repo_forks": 47,
+  "repo_owner": "consensus-shipyard",
+  "repo_name": "ipc",
+  "repo_description": "🌳 Spawn multi-level trees of customized, scalable, EVM-compatible networks with IPC. L2++ powered by FVM, Wasm, libp2p, IPFS/IPLD, and CometBFT.",
+  "repo_language": "Rust",
+  "repo_topics": [
+    "blockchain",
+    "consensus",
+    "evm",
+    "wasm"
+  ],
+  "repo_created_at": "2023-12-06T14:10:39Z",
+  "repo_updated_at": "2026-01-28T14:08:56Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_block-beta_00233",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的Bitswap服务启动和解析流程。核心是从Host开始，Service负责协调，下面挂Membership、Discovery、Identify这些模块，还有Content和BitswapStore做实际的数据获取。",
+      "elements_involved": [
+        "Host",
+        "Service",
+        "Membership",
+        "Discovery",
+        "Identify",
+        "Content",
+        "BitswapStore"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，Service是中心节点。那初始化阶段，Host创建Service之后，Service要依次创建Identify、Discovery、Membership、Content这几个子模块对吧？还有我看到备注里有个Infra_RedisCache，这个怎么体现？",
+      "elements_involved": [
+        "Host",
+        "Service",
+        "Identify",
+        "Discovery",
+        "Membership",
+        "Content",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，Service创建完这些模块后，要把RedisCache的引用回传给Host，表示基础设施依赖。然后Host调用run启动服务。接下来是Bootstrap阶段，Membership要先订阅远程的membership topic。",
+      "elements_involved": [
+        "Service",
+        "Host",
+        "Infra_RedisCache",
+        "Membership",
+        "Remote"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Bootstrap部分我梳理一下：Service让Discovery从种子节点开始bootstrap，Discovery找Remote要邻居地址，拿到后添加到自己的路由表，然后通知Service和Membership说peer可路由了。同时Host通过Client把提供的subnets设置下去，最终Membership把这些subnets发布到membership topic。",
+      "elements_involved": [
+        "Service",
+        "Discovery",
+        "Remote",
+        "Host",
+        "Client",
+        "Membership"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，还有Identify的部分别忘了——Remote把自己的监听地址告诉Identify，Identify再转给Service，Service让Discovery添加这个地址，形成闭环。接下来Gossiping阶段是个持续循环：Membership定期发布SignedProviderRecord，同时清理SubnetProvidersCache里的过期记录；也能接收Remote发来的记录，如果peer可路由就加到缓存里。",
+      "elements_involved": [
+        "Remote",
+        "Identify",
+        "Service",
+        "Discovery",
+        "Membership",
+        "SubnetProvidersCache",
+        "SignedProviderRecord"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Gossiping我理解了，用loop和alt来表达定时发布和接收两种分支。那Resolution阶段呢？Host要解析CID，这个流程比较长。",
+      "elements_involved": [
+        "Host",
+        "Gossiping",
+        "Resolution"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Resolution是重点。Host通过Client把请求发到Service，Service先从Membership拿该subnet的providers，优先选已连接的peer。然后Service让Content去解析，Content查BitswapStore看缺哪些block。对于每个missing CID，先广播want-have问哪些peer有，再挑有block的peer发want-block请求。拿到block后插入BitswapStore，继续查还缺什么，循环直到完整。",
+      "elements_involved": [
+        "Host",
+        "Client",
+        "Service",
+        "Membership",
+        "Content",
+        "BitswapStore",
+        "missing CID",
+        "Remote",
+        "want-have",
+        "want-block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "流程清楚了：Content内部有嵌套循环，外层处理missing CID，内层先收集有block的peer，再逐个尝试want-block直到成功。如果当前N个peer都失败了，Service要换一批fallback peers重试。最后Content把结果返回Service，再一路回到Host，成功的话Host就能从BitswapStore取内容了。",
+      "elements_involved": [
+        "Content",
+        "Service",
+        "fallback peers",
+        "Host",
+        "BitswapStore"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，fallback peers那里需要修正一下——不是Content换peer，是Service自己决定换下一批N个peer，然后重新调用Content去解析。还有Content和Remote的交互，want-have和want-block要区分清楚，前者是探测，后者是真正请求数据。",
+      "elements_involved": [
+        "Service",
+        "fallback peers",
+        "Content",
+        "Remote",
+        "want-have",
+        "want-block"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整：Service负责peer选择和重试策略，Content专注于和Remote的Bitswap协议交互。整个Resolution用loop套loop表达，最外层是resolution attempts，中间是missing CID循环，里面是peer交互的双层循环。最后加个alt判断成功或失败分支。",
+      "elements_involved": [
+        "Service",
+        "Content",
+        "Remote",
+        "Resolution Attempts",
+        "missing CID"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 30306.1748,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

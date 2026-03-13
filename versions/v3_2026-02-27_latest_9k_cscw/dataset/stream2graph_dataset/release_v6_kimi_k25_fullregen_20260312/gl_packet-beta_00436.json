@@ -1,0 +1,238 @@
+{
+  "id": "gl_packet-beta_00436",
+  "source": "gitlab",
+  "source_url": "https://github.com/sean-galloway/RTLDesignSherpa/blob/47f8a16641658f570a69c3af3c9724b29ea39187/projects/components/stream/docs/stream_mas/assets/mermaid/01_architecture_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sean-galloway/RTLDesignSherpa",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant SW as Software\n    participant APB as APB Config\n    participant DESC as Descriptor Engine\n    participant SCHED as Scheduler\n    participant RD as Read Engine\n    participant SRAM as SRAM Controller\n    participant WR as Write Engine\n    participant MEM as Memory\n\n    SW->>APB: Write CH0_CTRL = 0x1000_0000\n    APB->>DESC: Kickoff descriptor fetch\n    DESC->>MEM: AR: fetch descriptor @ 0x1000_0000\n    MEM-->>DESC: R: descriptor data (256-bit)\n    DESC->>SCHED: descriptor_packet\n\n    SCHED->>RD: datard_valid + src_addr\n    RD->>SRAM: Check space_free >= 2x burst\n    SRAM-->>RD: Space OK\n    RD->>SRAM: Allocate 16 beats\n    RD->>MEM: AR: read 16 beats @ src_addr\n    MEM-->>RD: R: 16 beats of data\n    RD->>SRAM: Write data (16 beats)\n    RD->>SCHED: done_strobe (16 beats)\n\n    par Concurrent Read/Write\n        RD->>SRAM: Continue reading...\n    and\n        SCHED->>WR: datawr_valid + dst_addr\n        WR->>SRAM: Check data_avail >= burst\n        SRAM-->>WR: Data OK\n        WR->>SRAM: Reserve 16 beats\n        WR->>MEM: AW: write 16 beats @ dst_addr\n        SRAM->>WR: W: 16 beats of data\n        MEM-->>WR: B: write response\n        WR->>SCHED: done_strobe (16 beats)\n    end\n\n    SCHED->>SCHED: Both counters reach 0\n    SCHED->>DESC: Check next_descriptor_ptr\n    alt More descriptors\n        DESC->>MEM: Fetch next descriptor\n    else Chain complete\n        SCHED->>APB: Transfer complete IRQ\n    end\n",
+  "content_size": 1446,
+  "collected_at": "2026-02-06T14:09:41.035873",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 8,
+  "repo_forks": 1,
+  "repo_owner": "sean-galloway",
+  "repo_name": "RTLDesignSherpa",
+  "repo_description": "This site is hopefully a springboard for others to learn about coding in System Verilog and experimenting with FPGAs.",
+  "repo_language": "C++",
+  "repo_topics": [
+    "amba-apb",
+    "amba-axi",
+    "cocotb",
+    "crossbar",
+    "dma"
+  ],
+  "repo_created_at": "2023-06-15T21:56:48Z",
+  "repo_updated_at": "2026-02-06T00:19:01Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个DMA传输的完整时序图。核心思路是：Software通过APB Config下发配置，然后Descriptor Engine去Memory取描述符，Scheduler协调读写双引擎，最后通过SRAM Controller做中转。整个流程要体现256-bit描述符和16 beats的数据搬运。",
+      "elements_involved": [
+        "Software",
+        "APB Config",
+        "Descriptor Engine",
+        "Memory",
+        "Scheduler",
+        "Read Engine",
+        "Write Engine",
+        "SRAM Controller",
+        "256 bit",
+        "16 beats"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下参与者的层级关系：SW在最上层控制，APB Config负责把配置转成内部kickoff信号，DESC和SCHED是调度中枢，RD和WR是两个独立的引擎，SRAM Controller是它们共享的中转站，最后MEM是外部内存。这样理解对吗？",
+      "elements_involved": [
+        "Software",
+        "APB Config",
+        "Descriptor Engine",
+        "Scheduler",
+        "Read Engine",
+        "Write Engine",
+        "SRAM Controller",
+        "Memory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，就是这个结构。特别要注意一点：RD和WR不是顺序执行，而是可以并发的。Scheduler给RD发datard_valid之后，RD读SRAM的同时，SCHED就可以给WR发datawr_valid了，两边通过SRAM Controller做流水。",
+      "elements_involved": [
+        "Scheduler",
+        "Read Engine",
+        "Write Engine",
+        "SRAM Controller",
+        "datard_valid",
+        "datawr_valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把基础框架搭出来：八个参与者从左到右排开，SW→APB→DESC→SCHED→RD→SRAM→WR→MEM。然后第一步画SW写CH0_CTRL到APB，APB给DESC发kickoff。",
+      "elements_involved": [
+        "Software",
+        "APB Config",
+        "Descriptor Engine",
+        "CH0_CTRL",
+        "kickoff"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来DESC要去Memory取描述符。这里用AR/R握手，地址就是刚才写的0x1000_0000，返回的是256-bit的完整描述符。然后DESC把解析后的descriptor_packet交给SCHED。",
+      "elements_involved": [
+        "Descriptor Engine",
+        "Memory",
+        "AR",
+        "R",
+        "256 bit",
+        "0x1000_0000",
+        "Scheduler",
+        "descriptor_packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "DESC到MEM的AR/R画好了，256-bit数据返回。然后DESC→SCHED的descriptor_packet也连上了。现在SCHED启动，给RD发datard_valid和src_addr。这里我需要画RD先检查SRAM的space_free，确认有2x burst空间才继续。",
+      "elements_involved": [
+        "Descriptor Engine",
+        "Memory",
+        "Scheduler",
+        "Read Engine",
+        "SRAM Controller",
+        "datard_valid",
+        "src_addr",
+        "space_free",
+        "2x burst"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查space_free的细节要保留，但注意是RD主动查SRAM，SRAM回复Space OK之后，RD才Allocate 16 beats。然后RD向MEM发AR读16 beats，数据回来再写进SRAM。最后RD给SCHED回done_strobe。",
+      "elements_involved": [
+        "Read Engine",
+        "SRAM Controller",
+        "Memory",
+        "space_free",
+        "Space OK",
+        "Allocate",
+        "16 beats",
+        "AR",
+        "done_strobe"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RD的完整流程画完了：查空间→分配→读MEM→写SRAM→回done。现在处理并发部分。我画一个par块，上面分支RD继续读后续数据，下面分支SCHED同时启动WR。WR的流程也要检查SRAM，这次是查data_avail。",
+      "elements_involved": [
+        "Read Engine",
+        "Scheduler",
+        "Write Engine",
+        "SRAM Controller",
+        "par",
+        "Concurrent Read/Write",
+        "data_avail"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "WR的流程对的：查data_avail确认有burst数据，Reserve 16 beats，然后AW写MEM，SRAM把数据给WR，WR写完等B响应，最后给SCHED回done_strobe。注意这里是SRAM→WR的W通道，和RD的方向相反。",
+      "elements_involved": [
+        "Write Engine",
+        "SRAM Controller",
+        "Memory",
+        "data_avail",
+        "Reserve",
+        "16 beats",
+        "AW",
+        "W",
+        "B",
+        "done_strobe"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "par块里面的双向流程都画好了。现在收尾：SCHED内部等Both counters reach 0，然后DESC查next_descriptor_ptr。这里用alt分支，如果有更多描述符就继续fetch，否则走Chain complete给APB发Transfer complete IRQ。",
+      "elements_involved": [
+        "Scheduler",
+        "Descriptor Engine",
+        "next_descriptor_ptr",
+        "alt",
+        "More descriptors",
+        "Chain complete",
+        "APB Config",
+        "Transfer complete IRQ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整体结构没问题。最后确认一下：APB Config在开头接收SW配置，结尾收IRQ，形成闭环。256-bit描述符、16 beats数据宽度、并发读写、alt分支这些关键特征都体现出来了。可以定稿。",
+      "elements_involved": [
+        "APB Config",
+        "Software",
+        "Transfer complete IRQ",
+        "256 bit",
+        "16 beats",
+        "Concurrent Read/Write",
+        "alt"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 11,
+    "repair_count": 0,
+    "grounding_acts_count": 11,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 38987.6406,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 10
+  }
+}

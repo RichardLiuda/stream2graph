@@ -1,0 +1,179 @@
+{
+  "id": "aug_gl_requirementDiagram_00595_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/KevinDyerAU/NytroAI/blob/2e93c5649794515d35364c995a58431fc0899442/docs/validation-flow.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "KevinDyerAU/NytroAI",
+  "diagram_type": "requirementDiagram",
+  "code": "%%{HealthTech_EMR_Sync}}}%%\n\nsequenceDiagram\n    participant User\n    participant UI as React UI\n    participant Upload as upload-document\n    participant Storage as Supabase Storage\n    participant Gemini as Google Gemini\n    participant DB as Database\n    participant Trigger as trigger-validation\n    participant Validate as validate-assessment\n    participant Query as query-document\n\n    Note over User,Query: Document Upload & Indexing\n\n    User->>UI: Upload PDF Assessment\n    UI->>Upload: POST /upload-document\n    Upload->>Storage: Store PDF file\n    Storage-->>Upload: File URL\n    Upload->>DB: Create validation_detail record\n    Upload->>Gemini: Index document\n    Gemini-->>Upload: Indexing started\n    Upload->>DB: Create gemini_operations record\n    Upload-->>UI: Upload complete\n    UI-->>User: Show \"Processing...\"\n\n    Note over User,Query: Automatic Validation Trigger\n\n    Gemini->>DB: Update gemini_operations (HealthTech_PatientRecords)\n    DB->>Trigger: Database trigger fires\n    Trigger->>DB: Check all operations complete\n    DB-->>Trigger: All complete\n    Trigger->>Validate: POST /validate-assessment\n    Trigger->>DB: Log trigger attempt\n    Validate->>DB: Update status to \"ProcessingInBackground\"\n\n    Note over User,Query: Validation Process\n\n    Validate->>DB: Fetch UOC requirements\n    DB-->>Validate: Requirements list\n    \n    loop For each requirement\n        Validate->>Query: Query assessment for requirement\n        Query->>Gemini: Search indexed document\n        Gemini-->>Query: Relevant passages\n        Query-->>Validate: Citations\n        Validate->>Gemini: Validate requirement\n        Gemini-->>Validate: Status + Reasoning\n        Validate->>DB: Store validation_result\n    end\n\n    Validate->>DB: Update validation_detail (HealthTech_LabAnalyzer)\n    Validate-->>Trigger: Validation complete\n    DB->>UI: Real-time update (HealthTech_LabAnalyzer)\n    UI-->>User: Show \"Complete\" with results\n\n    Note over User,Query: View Results & Regenerate Questions\n\n    User->>UI: Click validation to view results\n    UI->>DB: Fetch validation_results\n    DB-->>UI: All results\n    UI-->>User: Display results\n\n    alt Regenerate Smart Question\n        User->>UI: Click \"Regenerate\" with context\n        UI->>Validate: POST /regenerate-smart-questions\n        Validate->>Query: Query assessment\n        Query->>Gemini: Search with context\n        Gemini-->>Query: Passages\n        Validate->>Gemini: Generate question\n        Gemini-->>Validate: New smart question\n        Validate->>DB: Update validation_result\n        DB->>UI: Real-time update\n        UI-->>User: Show new question\n    end\n",
+  "content_size": 2801,
+  "collected_at": "2026-02-06T14:13:06.494447",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gl_requirementDiagram_00595",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个电子病历同步流程，核心场景是：临床医生上传PDF评估报告后，系统能自动触发验证，并且用Google Gemini做文档索引和智能问答。我想从用户上传开始画起。",
+      "elements_involved": [
+        "User",
+        "React UI",
+        "upload-document",
+        "Google Gemini",
+        "Supabase Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。那上传后的存储和索引是同步进行的吗？我看到Supabase Storage存文件，同时Gemini开始建索引，这两个操作之间有没有依赖关系？",
+      "elements_involved": [
+        "Supabase Storage",
+        "Google Gemini",
+        "upload-document"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，存储拿到URL之后，upload-document服务会并行做两件事：创建validation_detail记录，以及调用Gemini开始索引。索引是异步的，所以UI这边先给用户显示\"Processing...\"状态。",
+      "elements_involved": [
+        "upload-document",
+        "Database",
+        "Google Gemini",
+        "React UI",
+        "validation_detail"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我理解了。那自动验证的触发机制呢？是定时任务还是事件驱动？",
+      "elements_involved": [
+        "trigger-validation",
+        "Database"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "用数据库触发器。Gemini索引完成后会更新gemini_operations表，我们有一个trigger-validation服务监听这个变更，等所有操作完成就自动POST到validate-assessment。这里要注意记录触发日志。",
+      "elements_involved": [
+        "Google Gemini",
+        "Database",
+        "trigger-validation",
+        "gemini_operations",
+        "validate-assessment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了触发部分。现在看验证流程本身——validate-assessment需要循环查询每个UOC要求，这里我画了一个loop结构，内部用query-document服务去Gemini检索相关段落，然后做验证。",
+      "elements_involved": [
+        "validate-assessment",
+        "query-document",
+        "Google Gemini",
+        "Database",
+        "UOC requirements"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，query-document和validate-assessment之间的交互我再确认下：是query-document返回citations给validate-assessment，然后validate-assessment再调Gemini做最终验证？",
+      "elements_involved": [
+        "query-document",
+        "validate-assessment",
+        "Google Gemini",
+        "citations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "没错，query-document负责检索，返回citations；validate-assessment拿着这些citations再去问Gemini做requirement级别的验证，拿到status和reasoning后存到validation_result。最后更新validation_detail标记HealthTech_LabAnalyzer完成。",
+      "elements_involved": [
+        "query-document",
+        "validate-assessment",
+        "Google Gemini",
+        "validation_result",
+        "validation_detail",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后还需要一个交互：用户查看结果时，可以点\"重新生成智能问题\"。这个要走validate-assessment，但用新的regenerate-smart-questions端点。",
+      "elements_involved": [
+        "User",
+        "React UI",
+        "validate-assessment",
+        "query-document",
+        "Google Gemini"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加alt分支。用户点击regenerate后，validate-assessment调query-document带上下文搜索，Gemini返回passages后生成new smart question，更新validation_result，最后实时推送到UI。整个流程画完了，您看看还有什么要调整的？",
+      "elements_involved": [
+        "User",
+        "React UI",
+        "validate-assessment",
+        "query-document",
+        "Google Gemini",
+        "validation_result"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 0,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 28278.0507,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

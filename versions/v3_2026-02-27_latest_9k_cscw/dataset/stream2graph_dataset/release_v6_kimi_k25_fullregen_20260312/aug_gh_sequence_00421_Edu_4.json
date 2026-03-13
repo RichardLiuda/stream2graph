@@ -1,0 +1,323 @@
+{
+  "id": "aug_gh_sequence_00421_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/lesleslie/opera-cloud-mcp/blob/978205b74f014e4fc66cb316c39f0803cb00d8d9/docs/diagrams/api-request-lifecycle.mmd",
+  "github_repo": "lesleslie/opera-cloud-mcp",
+  "github_file_path": "docs/diagrams/api-request-lifecycle.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Client as MCP Client\n    participant Tool as MCP Tool\n    participant APIClient as API Client\n    participant RateLimiter as Rate Limiter\n    participant CircuitBreaker as Circuit Breaker\n    participant BaseClient as BaseAPIClient\n    participant OAuth as OAuth2 Handler\n    participant OPERA as OPERA Cloud API\n\n    Client->>Tool: Invoke tool (Education_GradeSync)\n    activate Tool\n    Tool->>APIClient: Call API method\n    activate APIClient\n\n    APIClient->>RateLimiter: Check rate limit\n    activate RateLimiter\n\n    alt Rate limit exceeded\n        RateLimiter-->>APIClient: Throttled (Education_GradeSync)\n        APIClient->>APIClient: Calculate wait time\n        RateLimiter->>RateLimiter: Wait for token refill\n        RateLimiter-->>APIClient: Proceed\n    end\n\n    deactivate RateLimiter\n\n    APIClient->>CircuitBreaker: Check circuit state\n    activate CircuitBreaker\n\n    alt Circuit is OPEN\n        CircuitBreaker-->>APIClient: CircuitOpenException\n        APIClient-->>Tool: Error: Service temporarily unavailable\n    else Circuit is CLOSED/HALF-OPEN\n        CircuitBreaker-->>APIClient: Allow request\n    end\n\n    deactivate CircuitBreaker\n\n    APIClient->>BaseClient: Make HTTP request\n    activate BaseClient\n\n    BaseClient->>OAuth: Get access token\n    activate OAuth\n    OAuth-->>BaseClient: Bearer token\n    deactivate OAuth\n\n    BaseClient->>OPERA: GET /api/v1/reservations\n    Note over BaseClient,OPERA: Authorization: Bearer {Education_LMS_Portal}\n    activate OPERA\n\n    alt Success Response (Education_ClassroomService)\n        OPERA-->>BaseClient: 200 OK + JSON data\n        BaseClient->>CircuitBreaker: Record success\n        CircuitBreaker->>CircuitBreaker: Reset failure count\n        BaseClient->>RateLimiter: Record success\n        BaseClient->>BaseClient: Transform response\n        BaseClient-->>APIClient: Response(Education_GradeSync)\n    else Client Error (Education_ContentCDN)\n        OPERA-->>BaseClient: 400/404/401 etc.\n        BaseClient->>BaseClient: Classify error\n        BaseClient->>CircuitBreaker: Record failure\n        BaseClient-->>APIClient: Response(Education_GradeSync)\n    else Server Error (Education_StudentDB)\n        OPERA-->>BaseClient: 500/502/503 etc.\n        BaseClient->>BaseClient: Check retry eligibility\n        BaseClient->>CircuitBreaker: Record failure\n\n        alt Below failure threshold\n            BaseClient->>BaseClient: Calculate backoff (Education_StudentDB)\n            BaseClient->>BaseClient: Wait {Education_ContentCDN}ms\n            BaseClient->>OPERA: Retry request\n        else Exceeds failure threshold\n            CircuitBreaker->>CircuitBreaker: Trip to OPEN\n            BaseClient-->>APIClient: CircuitBreakerException\n        end\n    end\n\n    deactivate OPERA\n    deactivate BaseClient\n\n    APIClient->>APIClient: Update metrics\n    APIClient-->>Tool: Return result\n    deactivate APIClient\n\n    Tool-->>Client: Return formatted data\n    deactivate Tool\n",
+  "content_size": 2916,
+  "collected_at": "2026-02-06T01:32:05.791839",
+  "compilation_status": "success",
+  "license": "bsd-3-clause",
+  "license_name": "BSD 3-Clause \"New\" or \"Revised\" License",
+  "license_url": "https://api.github.com/licenses/bsd-3-clause",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "lesleslie",
+  "repo_name": "opera-cloud-mcp",
+  "repo_description": "Unofficial Opera Cloud API MCP Server",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2025-09-03T16:22:45Z",
+  "repo_updated_at": "2026-01-25T06:52:51Z",
+  "augmentation_domain": "Education",
+  "seed_id": "gh_sequence_00421",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为教育业务线设计一个完整的MCP工具调用流程图，核心场景是GradeSync成绩同步。我想从MCP Client发起调用开始，经过多层防护机制，最终落到OPERA Cloud API。",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool",
+        "Education_GradeSync",
+        "OPERA Cloud API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个典型的API调用链路。我注意到您提到了多层防护，是指Rate Limiter和Circuit Breaker这类组件吗？另外BaseAPIClient是作为底层HTTP客户端？",
+      "elements_involved": [
+        "Rate Limiter",
+        "Circuit Breaker",
+        "BaseAPIClient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，正是这三个核心防护层。RateLimiter做令牌桶限流，CircuitBreaker做熔断保护，BaseAPIClient统一处理OAuth2认证和实际HTTP请求。调用顺序应该是Tool先找APIClient，APIClient再串行经过RateLimiter和CircuitBreaker的检查。",
+      "elements_involved": [
+        "API Client",
+        "Rate Limiter",
+        "Circuit Breaker",
+        "BaseAPIClient",
+        "OAuth2 Handler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主链路：MCP Client→MCP Tool→API Client，然后API Client向下激活RateLimiter。这里RateLimiter有个分支场景，如果触发限流需要等待token refill，这个用alt块表达合适吗？",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool",
+        "API Client",
+        "Rate Limiter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "合适，RateLimiter的alt分支要体现Throttled状态和等待重试的逻辑。通过后RateLimiter deactivate，APIClient继续往下走CircuitBreaker。",
+      "elements_involved": [
+        "Rate Limiter",
+        "Throttled",
+        "API Client",
+        "Circuit Breaker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "CircuitBreaker我画了两个分支：OPEN状态直接抛CircuitOpenException返回错误；CLOSED或HALF-OPEN状态才放行到BaseAPIClient。这样符合预期吗？",
+      "elements_involved": [
+        "Circuit Breaker",
+        "CircuitOpenException",
+        "BaseAPIClient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，熔断器的状态判断是关键决策点。放行后BaseAPIClient需要先找OAuth2 Handler拿Bearer token，这里要标注是Education_LMS_Portal的授权上下文。",
+      "elements_involved": [
+        "BaseAPIClient",
+        "OAuth2 Handler",
+        "Bearer token",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "OAuth2流程已添加：BaseAPIClient activate OAuth获取token，拿到Bearer后deactivate OAuth，然后BaseAPIClient向OPERA Cloud API发起GET /api/v1/reservations请求。我在Note里标注了Authorization头部。",
+      "elements_involved": [
+        "BaseAPIClient",
+        "OAuth2 Handler",
+        "OPERA Cloud API",
+        "Bearer token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OPERA的响应处理比较复杂，需要三个分支场景：成功响应Education_ClassroomService、客户端错误Education_ContentCDN、服务端错误Education_StudentDB。每个分支的后续动作都不一样。",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "Education_ClassroomService",
+        "Education_ContentCDN",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第一个分支我画了200 OK返回JSON，然后BaseAPIClient通知CircuitBreaker记录成功并重置失败计数，同时通知RateLimiter记录成功，本地做response transform后返回给APIClient。这样完整吗？",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "BaseAPIClient",
+        "Circuit Breaker",
+        "Rate Limiter",
+        "API Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "基本对，但注意RateLimiter的记录成功应该是BaseAPIClient主动发起的，不是OPERA直接回的。第二个分支Education_ContentCDN的4xx错误需要分类后记录失败，但不需要重试。",
+      "elements_involved": [
+        "BaseAPIClient",
+        "Rate Limiter",
+        "Education_ContentCDN",
+        "Circuit Breaker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "明白了，我调整一下：BaseAPIClient在success分支里主动调用RateLimiter记录成功。Education_ContentCDN分支是BaseAPIClient本地classify error，然后通知CircuitBreaker record failure，直接返回response。",
+      "elements_involved": [
+        "BaseAPIClient",
+        "Rate Limiter",
+        "Circuit Breaker",
+        "Education_ContentCDN"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "修复正确。第三个分支Education_StudentDB的5xx错误最复杂，需要支持指数退避重试，但重试前要先检查CircuitBreaker的失败阈值。",
+      "elements_involved": [
+        "Education_StudentDB",
+        "BaseAPIClient",
+        "Circuit Breaker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Education_StudentDB分支我画了：收到500/502/503后，BaseAPIClient先check retry eligibility，然后record failure到CircuitBreaker。下面用alt分两种情况：未超阈值时calculate backoff，等待Education_ContentCDN毫秒后retry；超阈值时CircuitBreaker trip to OPEN，返回CircuitBreakerException。",
+      "elements_involved": [
+        "Education_StudentDB",
+        "BaseAPIClient",
+        "Circuit Breaker",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这里有个细节：等待时间标注为Education_ContentCDN ms会不会让人困惑？其实我想表达的是用ContentCDN配置里的退避参数，但字段名可能不够直观。",
+      "elements_involved": [
+        "Education_ContentCDN",
+        "BaseAPIClient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确实容易误解。我调整为显式标注Wait {Education_ContentCDN}ms，并在Note里说明这是从配置中心读取的退避时间。这样读者能理解是引用配置项而不是ContentCDN服务本身。",
+      "elements_involved": [
+        "Education_ContentCDN",
+        "BaseAPIClient"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。最后收尾部分：OPERA和BaseAPIClient都要deactivate，APIClient更新metrics后返回结果给Tool，Tool再返回给MCP Client。整个流程要体现Education_GradeSync的上下文传递。",
+      "elements_involved": [
+        "OPERA Cloud API",
+        "BaseAPIClient",
+        "API Client",
+        "MCP Tool",
+        "MCP Client",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "收尾已完成。我检查了所有activate/deactivate配对：Tool、APIClient、RateLimiter、CircuitBreaker、BaseAPIClient、OAuth、OPERA都正确闭合了。APIClient的Update metrics和Return result都标注了Education_GradeSync上下文。",
+      "elements_involved": [
+        "MCP Tool",
+        "API Client",
+        "Rate Limiter",
+        "Circuit Breaker",
+        "BaseAPIClient",
+        "OAuth2 Handler",
+        "OPERA Cloud API",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "整体结构没问题。但我注意到CircuitBreaker在success分支里的Reset failure count是自环，这个要画在CircuitBreaker自己身上，不是和BaseAPIClient的交互对吧？",
+      "elements_involved": [
+        "Circuit Breaker",
+        "Reset failure count"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "是的，这是CircuitBreaker的内部状态变更，应该是CircuitBreaker→CircuitBreaker的自环消息。我修正了，同时Trip to OPEN也改为自环表达。现在所有内部状态变更都用自环，跨组件交互才用实线箭头。",
+      "elements_involved": [
+        "Circuit Breaker",
+        "Reset failure count",
+        "Trip to OPEN"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个序列图完整展现了教育业务线从MCP工具调用到OPERA API的全链路，包括限流、熔断、认证、错误分类和重试策略。可以定稿了。",
+      "elements_involved": [
+        "MCP Client",
+        "MCP Tool",
+        "API Client",
+        "Rate Limiter",
+        "Circuit Breaker",
+        "BaseAPIClient",
+        "OAuth2 Handler",
+        "OPERA Cloud API"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 21,
+    "repair_count": 3,
+    "grounding_acts_count": 21,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 57119.5123,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 21
+  }
+}

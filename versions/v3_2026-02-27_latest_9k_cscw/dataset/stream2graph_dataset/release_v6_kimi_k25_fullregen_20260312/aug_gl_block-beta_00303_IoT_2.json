@@ -1,0 +1,295 @@
+{
+  "id": "aug_gl_block-beta_00303_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_FIRMWARE/blob/615cebd32230a26c23013f1c75381475e12c0b93/diagrams/ACQ_AND_TRANSMIT_EXTERNAL.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_FIRMWARE",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client\n    participant DataTrans as data_transmission.c\n    participant Acquisition as acquisition.c\n    \n    Client->>DataTrans: Connect to data socket\n    activate DataTrans\n    \n    Note over DataTrans,Acquisition: External ADC already initialized during startup\n    \n    alt mode == 0 (IoT_Industrial_TelemetryStream)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(IoT_Industrial_ActuatorController)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Client: non_blocking_send(IoT_Industrial_PLC_Logic) buffer\n            \n            opt Socket change detected\n                DataTrans->>DataTrans: Break acquisition loop\n            end\n        end\n    else mode == 1 (IoT_Industrial_MQTT_Broker)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(IoT_Industrial_TelemetryStream)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Acquisition: pcnt_unit_get_count(IoT_Industrial_EdgeNode)\n            Acquisition-->>DataTrans: Current counter state\n            \n            alt Edge detected (IoT_Industrial_ActuatorController)\n                DataTrans->>Client: non_blocking_send(IoT_Industrial_TelemetryStream) buffer\n            end\n        end\n    end\n    \n    Client->>DataTrans: Disconnect\n    DataTrans->>DataTrans: safe_close(IoT_Industrial_ActuatorController)\n    deactivate DataTrans",
+  "content_size": 1551,
+  "collected_at": "2026-02-06T14:06:49.098744",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_block-beta_00303",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个时序图，描述工业物联网场景下数据采集与传输的完整流程。核心是两个主要参与者：Client 和 data_transmission.c，还有一个 acquisition.c 负责底层硬件交互。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，data_transmission.c 作为中间层处理客户端连接，acquisition.c 负责 SPI 和计数器操作。首先 Client 要建立连接对吧？",
+      "elements_involved": [
+        "Client",
+        "DataTrans"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，第一步是 Client 连接到 data socket，然后激活 DataTrans 这个生命线。另外需要在 DataTrans 和 Acquisition 之间加一条注释，说明外部 ADC 在启动时已经初始化好了。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "Note over DataTrans,Acquisition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，连接和注释都加上了。接下来是主逻辑，我看到有两种工作模式？",
+      "elements_involved": [
+        "Client-DataTrans",
+        "Note over DataTrans,Acquisition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，用 alt 分支。第一种是 mode == 0，对应 IoT_Industrial_TelemetryStream 场景。这里需要循环直到客户端断开，循环内部先获取 spi_mutex，然后通过 SPI 与 IoT_Industrial_ActuatorController 通信。",
+      "elements_involved": [
+        "alt mode == 0",
+        "IoT_Industrial_TelemetryStream",
+        "loop",
+        "spi_mutex",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "SPI 传输是 polling 方式，完成后返回给 DataTrans。然后释放 mutex，再 non_blocking_send 把数据发给 Client，这里涉及 IoT_Industrial_PLC_Logic？",
+      "elements_involved": [
+        "spi_device_polling_transmit",
+        "SPI transaction complete",
+        "Release spi_mutex",
+        "non_blocking_send",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，buffer 里封装的是 PLC 逻辑数据。另外这个循环里还要有个 opt 可选分支：如果检测到 socket 变化，就 break 跳出采集循环。",
+      "elements_involved": [
+        "non_blocking_send",
+        "IoT_Industrial_PLC_Logic",
+        "opt Socket change detected",
+        "Break acquisition loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "mode 0 的分支画好了。现在处理 else 分支，mode == 1 对应 IoT_Industrial_MQTT_Broker 场景？",
+      "elements_involved": [
+        "else mode == 1",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，MQTT Broker 模式。循环结构类似，也是获取 spi_mutex，但 SPI 传输对象是 IoT_Industrial_TelemetryStream 而不是 ActuatorController。",
+      "elements_involved": [
+        "loop Until client disconnects",
+        "Take spi_mutex",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "SPI 完成后释放 mutex，然后多了一个 pcnt_unit_get_count 操作，获取 IoT_Industrial_EdgeNode 的计数器状态？",
+      "elements_involved": [
+        "Release spi_mutex",
+        "pcnt_unit_get_count",
+        "IoT_Industrial_EdgeNode",
+        "Current counter state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，这是边缘节点的脉冲计数。然后有个嵌套的 alt：如果检测到 Edge，也就是 IoT_Industrial_ActuatorController 触发，才执行 non_blocking_send，而且发送的是 IoT_Industrial_TelemetryStream 数据。",
+      "elements_involved": [
+        "alt Edge detected",
+        "IoT_Industrial_ActuatorController",
+        "non_blocking_send",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "MQTT 分支完成了。两个 alt 分支都闭合后，最后是客户端断开连接和清理操作？",
+      "elements_involved": [
+        "end",
+        "end"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Client 发起 Disconnect，然后 DataTrans 执行 safe_close 清理 IoT_Industrial_ActuatorController 资源，最后 deactivate DataTrans 生命线。",
+      "elements_involved": [
+        "Client-DataTrans",
+        "Disconnect",
+        "safe_close",
+        "IoT_Industrial_ActuatorController",
+        "deactivate DataTrans"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "整个时序图已经画完了。我检查一下：两种模式都用了 spi_mutex 保护，mode 0 是定时上报 PLC 数据，mode 1 是边缘触发上报 Telemetry 数据，逻辑清晰。",
+      "elements_involved": [
+        "spi_mutex",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，mode 1 的 SPI 传输对象我刚才说的是 IoT_Industrial_TelemetryStream，但让我再确认一下——应该是从 IoT_Industrial_EdgeNode 读取数据，SPI 设备还是 ActuatorController？不对，这里需要修正。",
+      "elements_involved": [
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "明白，mode 1 的 SPI 传输目标确实是 IoT_Industrial_TelemetryStream，因为 EdgeNode 是脉冲计数器不是 SPI 设备。当前图示是正确的，spi_device_polling_transmit 的对象是 TelemetryStream，pcnt_unit_get_count 才是读取 EdgeNode。",
+      "elements_involved": [
+        "spi_device_polling_transmit",
+        "IoT_Industrial_TelemetryStream",
+        "pcnt_unit_get_count",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认无误。另外确认一下 opt 分支的位置：Socket change detected 的 break 只在 mode 0 里，mode 1 没有提前退出的逻辑，对吗？",
+      "elements_involved": [
+        "opt Socket change detected",
+        "Break acquisition loop",
+        "mode 0",
+        "mode 1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对的，mode 1 的循环只依赖客户端断开，没有 socket 变更检测。图示已经准确反映了这一点。",
+      "elements_involved": [
+        "loop Until client disconnects",
+        "mode 1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好的，最后确认所有参与者标签：Client、data_transmission.c、acquisition.c，以及涉及的工业组件 ActuatorController、PLC_Logic、TelemetryStream、EdgeNode、MQTT_Broker 都正确映射了。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部确认完毕。时序图完整展示了工业物联网双模式数据采集流程，SPI 互斥、条件分支、循环控制和资源清理都已正确表达。",
+      "elements_involved": [
+        "sequenceDiagram",
+        "activate DataTrans",
+        "deactivate DataTrans"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 20,
+    "repair_count": 2,
+    "grounding_acts_count": 20,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 50021.6081,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 20
+  }
+}

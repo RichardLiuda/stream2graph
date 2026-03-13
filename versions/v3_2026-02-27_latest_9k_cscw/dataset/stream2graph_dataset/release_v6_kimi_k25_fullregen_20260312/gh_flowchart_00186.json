@@ -1,0 +1,898 @@
+{
+  "id": "gh_flowchart_00186",
+  "source": "github",
+  "source_url": "https://github.com/edx/commerce-coordinator/blob/25bb739e9ccaba9407808c494cd3461172fd1fa3/docs/decisions/arch-diagrams/mobile-ecomm-architecture.mmd",
+  "github_repo": "edx/commerce-coordinator",
+  "github_file_path": "docs/decisions/arch-diagrams/mobile-ecomm-architecture.mmd",
+  "diagram_type": "flowchart",
+  "code": "flowchart TD\n    %% User and App\n    User[\"👤 User\"] --> MobileApp[\"📱 Mobile App (iOS/Android)\"]\n    MobileApp --> CTBackend[\"CT Backend Server\"]\n\n    %% Customer Handling with Commercetools\n    CTBackend --> GetCustomer[\"Get CT customer by LMS user ID\"]\n    GetCustomer -->|Customer not found| CreateCustomer[\"Create customer with user info\"]\n    CreateCustomer --> CoCo\n    CoCo --> ReturnNewCustomer[\"Return newly created customer\"]\n    ReturnNewCustomer --> CTBackend\n\n    GetCustomer -->|Customer exists| UpdateCustomer[\"Update customer if needed\"]\n    UpdateCustomer --> CoCo\n    CoCo --> ReturnUpdatedCustomer[\"Return updated customer\"]\n    ReturnUpdatedCustomer --> CTBackend\n\n    %% Cart Flow\n    CTBackend --> CheckCart[\"Check if cart exists\"]\n    CheckCart -->|Exists| DeleteCart[\"Delete existing cart\"]\n    CheckCart -->|Not found| CreateCart[\"Create new cart with course & price\"]\n    CreateCart --> CoCo[\"Commercetools (CoCo)\"]\n\n    %% IAP Token Validation\n    CTBackend --> IAPValidator[\"Validate Token (IAPValidator)\"]\n    IAPValidator --> GooglePlay[\"Google Play\"]\n    IAPValidator --> AppleStore[\"Apple App Store\"]\n    IAPValidator --> CheckTokenReuse[\"Check if token already used\"]\n\n    CheckTokenReuse -->|Used| ErrorDuplicate[\"❌ Duplicate token\"]\n    ErrorDuplicate --> DeleteCart --> MobileApp\n\n    CheckTokenReuse -->|Valid| ProceedPayment[\"Proceed with payment\"]\n\n    %% Payment Creation\n    ProceedPayment --> CreatePayment[\"Create Payment Object in CoCo\"]\n    CreatePayment --> UpdateCustomField[\"Add usdCentAmount (USD price)\"]\n    UpdateCustomField --> AttachPayment[\"Attach payment to cart\"]\n    AttachPayment -->|Fail| PaymentError[\"❌ Payment attach failed\"]\n    PaymentError --> MobileApp\n\n    AttachPayment --> CreateOrder[\"Create Order from Cart\"]\n    CreateOrder -->|Fail| OrderFail[\"❌ Order creation failed\"]\n    OrderFail --> MobileApp\n\n    CreateOrder --> UpdateItemStates[\"Mark items as ready for delivery\"]\n    UpdateItemStates -->|Fail| StateFail[\"❌ State update failed\"]\n    StateFail --> MobileApp\n\n    UpdateItemStates --> FinalOrder[\"✅ Order complete\"]\n    FinalOrder --> MobileApp\n\n    %% Events\n    CTBackend --> EventCheckout[\"Event: Checkout started\"]\n    CTBackend --> EventAddToCart[\"Event: Item added\"]\n    CTBackend --> EventPayment[\"Event: Payment used\"]\n    FinalOrder --> EventOrderComplete[\"Event: Order completed\"]\n\n    %% Refunds - Android (Manual via Admin or Mobile Trigger)\n    MobileApp --> AndroidRefund[\"Android Refund View\"]\n    Admin[\"🧑‍💼 Admin\"] --> AndroidRefund\n    AndroidRefund --> GoogleVoided[\"Google Voided Purchases API\"]\n    AndroidRefund --> AndroidBridge[\"Send EventBridge Signal\"]\n    AndroidBridge --> CoCoordinator[\"Commerce Coordinator\"]\n    CoCoordinator --> RefundUpdateCT[\"Update refund status in CoCo\"]\n    RefundUpdateCT --> MobileApp\n\n    %% Refunds - iOS (Push from Apple)\n    AppleServer[\"🍎 Apple Server\"] --> AppleNotification[\"Apple Refund Notification\"]\n    AppleNotification --> ParseNotif[\"Parse & verify notification\"]\n    ParseNotif --> CheckProcessed[\"Already processed?\"]\n    CheckProcessed -->|Yes| SkipNotif[\"Skip duplicate\"]\n    CheckProcessed -->|No| ExtractRefund[\"Extract refund info\"]\n    ExtractRefund --> AppleBridge[\"Send EventBridge Signal\"]\n    AppleBridge --> CoCoordinator\n    CoCoordinator --> RefundUpdateCTiOS[\"Update refund status in CoCo\"]\n    RefundUpdateCTiOS --> MobileApp\n\n    %% Styling\n    classDef logic fill:#fff8e1,stroke:#fdd835,stroke-width:1px;\n    classDef store fill:#e1f5fe,stroke:#4fc3f7,stroke-width:1px;\n    classDef error fill:#ffebee,stroke:#e57373,stroke-width:1px;\n    classDef event fill:#e8f5e9,stroke:#81c784,stroke-width:1px;\n\n    class CheckCart,DeleteCart,CreateCart,ProceedPayment,CreatePayment,UpdateCustomField,AttachPayment,CreateOrder,UpdateItemStates,FinalOrder,GetCustomer,CreateCustomer,UpdateCustomer logic;\n    class GooglePlay,AppleStore,GoogleVoided,AppleServer,CoCo store;\n    class ErrorDuplicate,PaymentError,OrderFail,StateFail,SkipNotif error;\n    class EventCheckout,EventAddToCart,EventPayment,EventOrderComplete,AndroidBridge,AppleBridge event;\n",
+  "content_size": 4110,
+  "collected_at": "2026-02-06T01:42:30.383608",
+  "compilation_status": "success",
+  "license": "agpl-3.0",
+  "license_name": "GNU Affero General Public License v3.0",
+  "license_url": "https://api.github.com/licenses/agpl-3.0",
+  "repo_stars": 11,
+  "repo_forks": 7,
+  "repo_owner": "edx",
+  "repo_name": "commerce-coordinator",
+  "repo_description": "A controller to manage commerce workflows and services",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2021-10-01T19:08:54Z",
+  "repo_updated_at": "2026-01-14T15:27:30Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为移动应用内购流程画一个完整的流程图，涵盖从用户打开应用到订单完成的整个链路，还有退款处理。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，我先确认一下：用户是通过iOS还是Android应用进入？后端用的是Commercetools对吧？",
+      "elements_involved": [
+        "MobileApp",
+        "CTBackend",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，双端都支持。后端我们叫CT Backend Server，Commercetools简称CoCo。先把用户节点和移动应用放上去。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，已添加User节点和Mobile App节点，连线到CT Backend。接下来处理客户信息部分？",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "客户这块逻辑比较复杂。我们需要用LMS user ID去CoCo查客户，不存在就创建，存在就更新。",
+      "elements_involved": [
+        "GetCustomer",
+        "CreateCustomer",
+        "UpdateCustomer",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了，GetCustomer分出两条分支：Customer not found走CreateCustomer，Customer exists走UpdateCustomer，最后都回到CTBackend。",
+      "elements_involved": [
+        "GetCustomer",
+        "CreateCustomer",
+        "UpdateCustomer",
+        "CoCo",
+        "ReturnNewCustomer",
+        "ReturnUpdatedCustomer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是购物车流程。每次下单前要检查有没有遗留的购物车，有就删掉，然后新建一个。",
+      "elements_involved": [
+        "CheckCart",
+        "DeleteCart",
+        "CreateCart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "CheckCart的分支条件我标注为Exists和Not found可以吗？DeleteCart之后直接连到CreateCart还是回到CTBackend？",
+      "elements_involved": [
+        "CheckCart",
+        "DeleteCart",
+        "CreateCart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Exists走DeleteCart，然后也要CreateCart；Not found直接CreateCart。CreateCart要调用CoCo创建带课程和价格的购物车。",
+      "elements_involved": [
+        "CheckCart",
+        "DeleteCart",
+        "CreateCart",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "购物车流程已完成。现在到IAP令牌验证环节了，这里需要对接Google Play和Apple Store两个商店。",
+      "elements_involved": [
+        "CheckCart",
+        "DeleteCart",
+        "CreateCart",
+        "IAPValidator",
+        "GooglePlay",
+        "AppleStore"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，IAPValidator要验证令牌，还要检查CheckTokenReuse，防止一个令牌被重复使用。",
+      "elements_involved": [
+        "IAPValidator",
+        "CheckTokenReuse",
+        "GooglePlay",
+        "AppleStore"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "CheckTokenReuse如果显示Used，应该报错返回对吧？Valid的话才继续支付流程。",
+      "elements_involved": [
+        "CheckTokenReuse",
+        "ErrorDuplicate",
+        "ProceedPayment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Used要走到ErrorDuplicate，这是一个错误节点，然后要通知移动端删除购物车。Valid才走ProceedPayment。",
+      "elements_involved": [
+        "CheckTokenReuse",
+        "ErrorDuplicate",
+        "ProceedPayment",
+        "DeleteCart",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "令牌验证部分画好了。支付流程接下来是CreatePayment，然后要更新自定义字段添加美元金额。",
+      "elements_involved": [
+        "ProceedPayment",
+        "CreatePayment",
+        "UpdateCustomField",
+        "AttachPayment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，UpdateCustomField要加usdCentAmount字段，然后是AttachPayment把支付绑定到购物车。这里有个失败分支要注意。",
+      "elements_involved": [
+        "UpdateCustomField",
+        "AttachPayment",
+        "PaymentError"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "AttachPayment失败走PaymentError返回移动端，成功的话继续CreateOrder创建订单。",
+      "elements_involved": [
+        "AttachPayment",
+        "PaymentError",
+        "CreateOrder",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CreateOrder也可能失败，要有OrderFail分支。成功之后还要UpdateItemStates标记商品为待交付状态。",
+      "elements_involved": [
+        "CreateOrder",
+        "OrderFail",
+        "UpdateItemStates",
+        "StateFail",
+        "FinalOrder"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "订单流程完成，包括StateFail错误分支和最终的FinalOrder成功节点。现在需要补充事件埋点部分吗？",
+      "elements_involved": [
+        "CreateOrder",
+        "OrderFail",
+        "UpdateItemStates",
+        "StateFail",
+        "FinalOrder",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，CTBackend要发出几个关键事件：Checkout started、Item added、Payment used，还有订单完成时的Order completed。",
+      "elements_involved": [
+        "EventCheckout",
+        "EventAddToCart",
+        "EventPayment",
+        "EventOrderComplete",
+        "CTBackend",
+        "FinalOrder"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "四个事件节点都添加好了。现在进入退款部分，Android和iOS的处理方式不一样对吧？",
+      "elements_involved": [
+        "EventCheckout",
+        "EventAddToCart",
+        "EventPayment",
+        "EventOrderComplete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Android退款比较特殊，可以是用户从移动端触发，也可以是Admin后台手动操作，都要走到AndroidRefundView。",
+      "elements_involved": [
+        "AndroidRefund",
+        "MobileApp",
+        "Admin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "AndroidRefund之后要调Google的API吗？还是直接发事件？",
+      "elements_involved": [
+        "AndroidRefund",
+        "GoogleVoided",
+        "AndroidBridge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "AndroidRefund要调GoogleVoidedPurchasesAPI验证，然后通过AndroidBridge发EventBridge信号给Commerce Coordinator。",
+      "elements_involved": [
+        "AndroidRefund",
+        "GoogleVoided",
+        "AndroidBridge",
+        "CoCoordinator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Android退款链路完成，CoCoordinator更新CoCo的退款状态后通知移动端。iOS退款是另一套机制？",
+      "elements_involved": [
+        "AndroidBridge",
+        "CoCoordinator",
+        "RefundUpdateCT",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "iOS是Push from Apple，苹果服务器主动推退款通知过来，我们被动接收处理。",
+      "elements_involved": [
+        "AppleServer",
+        "AppleNotification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到AppleNotification后要先解析验证，然后检查是否已经处理过，避免重复处理对吧？",
+      "elements_involved": [
+        "AppleNotification",
+        "ParseNotif",
+        "CheckProcessed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，CheckProcessed如果Already就Skip duplicate，否则Extract refund info，再走AppleBridge发给CoCoordinator。",
+      "elements_involved": [
+        "CheckProcessed",
+        "SkipNotif",
+        "ExtractRefund",
+        "AppleBridge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "iOS退款流程也画完了，最后更新CoCo状态并通知移动端。整个主流程应该完整了，需要调整样式吗？",
+      "elements_involved": [
+        "AppleBridge",
+        "CoCoordinator",
+        "RefundUpdateCTiOS",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，业务逻辑节点用浅黄色，外部存储用浅蓝色，错误节点用浅红色，事件和桥接用浅绿色。",
+      "elements_involved": [
+        "logic",
+        "store",
+        "error",
+        "event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下样式定义：logic是#fff8e1配#fdd835，store是#e1f5fe配#4fc3f7，error是#ffebee配#e57373，event是#e8f5e9配#81c784。",
+      "elements_involved": [
+        "logic",
+        "store",
+        "error",
+        "event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，logic类包括所有Check、Create、Update、Proceed、Attach、FinalOrder这些业务步骤。",
+      "elements_involved": [
+        "CheckCart",
+        "DeleteCart",
+        "CreateCart",
+        "ProceedPayment",
+        "CreatePayment",
+        "UpdateCustomField",
+        "AttachPayment",
+        "CreateOrder",
+        "UpdateItemStates",
+        "FinalOrder",
+        "GetCustomer",
+        "CreateCustomer",
+        "UpdateCustomer",
+        "logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "logic类节点已着色。store类包括GooglePlay、AppleStore、GoogleVoided、AppleServer和CoCo对吧？",
+      "elements_involved": [
+        "GooglePlay",
+        "AppleStore",
+        "GoogleVoided",
+        "AppleServer",
+        "CoCo",
+        "store"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，error类是所有带❌的失败节点：ErrorDuplicate、PaymentError、OrderFail、StateFail、SkipNotif。",
+      "elements_involved": [
+        "ErrorDuplicate",
+        "PaymentError",
+        "OrderFail",
+        "StateFail",
+        "SkipNotif",
+        "error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "error类已应用。event类包括四个事件节点和两个Bridge：AndroidBridge、AppleBridge。",
+      "elements_involved": [
+        "EventCheckout",
+        "EventAddToCart",
+        "EventPayment",
+        "EventOrderComplete",
+        "AndroidBridge",
+        "AppleBridge",
+        "event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我再看一下，CoCoordinator应该也是store类吧？它是我们的核心系统。",
+      "elements_involved": [
+        "CoCoordinator",
+        "store"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "您说得对，CoCoordinator我刚才漏掉了，现在把它加到store类里。还有RefundUpdateCT和RefundUpdateCTiOS需要特殊样式吗？",
+      "elements_involved": [
+        "CoCoordinator",
+        "RefundUpdateCT",
+        "RefundUpdateCTiOS",
+        "store"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "那两个RefundUpdate节点也是logic类，属于业务操作。另外ParseNotif和ExtractRefund也是logic。",
+      "elements_involved": [
+        "RefundUpdateCT",
+        "RefundUpdateCTiOS",
+        "ParseNotif",
+        "ExtractRefund",
+        "logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修复，所有节点样式都正确应用了。我再检查一下流程完整性，IAPValidator到GooglePlay和AppleStore是双向还是单向？",
+      "elements_involved": [
+        "IAPValidator",
+        "GooglePlay",
+        "AppleStore"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是IAPValidator分别调用两个商店，单向的。不过实际验证时可能是异步回调，但流程图上用单向表示请求即可。",
+      "elements_involved": [
+        "IAPValidator",
+        "GooglePlay",
+        "AppleStore"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白，保持单向。我发现ReturnNewCustomer和ReturnUpdatedCustomer这两个节点没有应用logic样式，需要补上吗？",
+      "elements_involved": [
+        "ReturnNewCustomer",
+        "ReturnUpdatedCustomer",
+        "logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，补上。还有CheckTokenReuse也是logic类。",
+      "elements_involved": [
+        "ReturnNewCustomer",
+        "ReturnUpdatedCustomer",
+        "CheckTokenReuse",
+        "logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充。再看一下ErrorDuplicate的流向，它连到DeleteCart然后到MobileApp，这个DeleteCart和前面的DeleteCart是同一个节点吗？",
+      "elements_involved": [
+        "ErrorDuplicate",
+        "DeleteCart",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不是，ErrorDuplicate之后的DeleteCart是另一个清理操作，我应该命名区分开，就叫DeleteCart吧，但上下文不同。或者叫ClearCart？",
+      "elements_involved": [
+        "ErrorDuplicate",
+        "DeleteCart",
+        "MobileApp"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "保持DeleteCart也可以，因为是同一个业务动作。但PaymentError、OrderFail、StateFail都是直接回MobileApp，没有清理购物车？",
+      "elements_involved": [
+        "PaymentError",
+        "OrderFail",
+        "StateFail",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "那些错误前端自己处理状态，不需要特别清理。只有ErrorDuplicate是令牌重复，必须清购物车。",
+      "elements_involved": [
+        "PaymentError",
+        "OrderFail",
+        "StateFail",
+        "ErrorDuplicate",
+        "DeleteCart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "AndroidRefund同时接收MobileApp和Admin的输入，这两个是并行的入口对吧？",
+      "elements_involved": [
+        "AndroidRefund",
+        "MobileApp",
+        "Admin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，manual via admin or mobile trigger，两个来源。Admin节点用🧑‍💼图标。",
+      "elements_involved": [
+        "AndroidRefund",
+        "MobileApp",
+        "Admin"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Admin图标已添加。AppleServer用🍎，User用👤，MobileApp用📱。所有图标都正确了。",
+      "elements_involved": [
+        "Admin",
+        "AppleServer",
+        "User",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再看一下CTBackend到CoCo的连线，GetCustomer、CreateCustomer、UpdateCustomer都经过CoCo，但CreateCart也是，会不会太乱？",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "GetCustomer",
+        "CreateCustomer",
+        "UpdateCustomer",
+        "CreateCart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "目前布局是合理的，CoCo作为中心存储出现在多个位置是正常设计。我可以调整一下视觉布局让连线更清晰。",
+      "elements_involved": [
+        "CoCo",
+        "layout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好的。还有个点：FinalOrder要发出EventOrderComplete事件，这个连线有了吗？",
+      "elements_involved": [
+        "FinalOrder",
+        "EventOrderComplete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现漏掉了，FinalOrder到EventOrderComplete的连线现在补上。EventOrderComplete是独立节点还是放在CTBackend下面？",
+      "elements_involved": [
+        "FinalOrder",
+        "EventOrderComplete",
+        "CTBackend"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "独立节点，但由FinalOrder触发。其他三个事件是CTBackend直接发的。",
+      "elements_involved": [
+        "FinalOrder",
+        "EventOrderComplete",
+        "CTBackend",
+        "EventCheckout",
+        "EventAddToCart",
+        "EventPayment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修复，FinalOrder指向EventOrderComplete。整个流程图现在完整了，我再最终检查一遍所有分支条件。",
+      "elements_involved": [
+        "FinalOrder",
+        "EventOrderComplete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "CheckCart的两个分支：Exists和Not found，文字没问题吧？",
+      "elements_involved": [
+        "CheckCart",
+        "Exists",
+        "Not found"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认是Exists和Not found。GetCustomer的分支是Customer not found和Customer exists，大小写一致。",
+      "elements_involved": [
+        "CheckCart",
+        "GetCustomer",
+        "Customer not found",
+        "Customer exists"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "CheckTokenReuse的分支是Used和Valid，CheckProcessed是Already processed?的Yes和No，对吧？",
+      "elements_involved": [
+        "CheckTokenReuse",
+        "Used",
+        "Valid",
+        "CheckProcessed",
+        "Already processed?",
+        "Yes",
+        "No"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对的，CheckTokenReuse分支是Used和Valid；CheckProcessed显示Already processed?，Yes走SkipNotif，No走ExtractRefund。",
+      "elements_involved": [
+        "CheckTokenReuse",
+        "CheckProcessed",
+        "SkipNotif",
+        "ExtractRefund"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "AttachPayment和CreateOrder的失败分支标注为Fail，UpdateItemStates也是。这些错误节点都连回MobileApp。",
+      "elements_involved": [
+        "AttachPayment",
+        "CreateOrder",
+        "UpdateItemStates",
+        "Fail",
+        "PaymentError",
+        "OrderFail",
+        "StateFail",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有错误分支都已确认正确。样式类应用也检查完毕：logic、store、error、event四类都覆盖到位。",
+      "elements_involved": [
+        "logic",
+        "store",
+        "error",
+        "event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "RefundUpdateCT和RefundUpdateCTiOS这两个节点名字有点长，但意思清楚，Android和iOS分开处理。",
+      "elements_involved": [
+        "RefundUpdateCT",
+        "RefundUpdateCTiOS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，虽然名字长但语义清晰。CoCoordinator统一处理两个来源的退款，最后分别更新到CoCo。",
+      "elements_involved": [
+        "CoCoordinator",
+        "RefundUpdateCT",
+        "RefundUpdateCTiOS",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体流程应该完整了，从用户打开应用到订单完成，加上Android和iOS两套退款机制，所有关键事件埋点都有了。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "FinalOrder",
+        "AndroidRefund",
+        "AppleNotification",
+        "EventCheckout",
+        "EventAddToCart",
+        "EventPayment",
+        "EventOrderComplete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。流程图包含：用户端到后端交互、Commercetools客户与购物车管理、IAP令牌验证、支付订单状态机、事件追踪、双平台退款处理，以及完整的错误处理分支和视觉样式分类。可以定稿了。",
+      "elements_involved": [
+        "flowchart",
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "CoCo",
+        "IAPValidator",
+        "FinalOrder",
+        "AndroidRefund",
+        "AppleNotification",
+        "EventOrderComplete"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 3,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:40Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:24Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:24Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 113560.7815,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 98
+  }
+}

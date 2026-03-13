@@ -1,0 +1,481 @@
+{
+  "id": "gh_sequence_00475",
+  "source": "github",
+  "source_url": "https://github.com/DamienReichhart/ChatApp/blob/c4cc2ad171949d92ad0d8e0f12a4ddf246c319f3/documentation/uml/sequence/sequence-text-messaging-flow.mmd",
+  "github_repo": "DamienReichhart/ChatApp",
+  "github_file_path": "documentation/uml/sequence/sequence-text-messaging-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    %% Participants\n    participant ClientUI as Client UI\n    participant ChatController as Chat Controller\n    participant WebSocketSvc as WebSocketService\n    participant WebSocketHandler as WebSocketHandler\n    participant MsgProcessor as WebSocketMessageProcessor\n    participant StompSession as STOMP Session\n    participant ClientDB as Client Database\n    participant MessageDAO as Message DAO\n    participant ServerEndpoint as Server WebSocket Endpoint\n    participant ServerController as Message Controller\n    participant SessionService as Chat Session Service\n\n    %% Sending a Text Message\n    ClientUI->>ChatController: sendMessage()\n    ChatController->>MessageDAO: create(message)\n    MessageDAO->>ClientDB: INSERT INTO messages\n    ClientDB-->>MessageDAO: message.id\n    MessageDAO-->>ChatController: savedMessage\n    \n    ChatController->>WebSocketSvc: sendMessage(savedMessage)\n    WebSocketSvc->>WebSocketHandler: sendMessage(savedMessage)\n    WebSocketHandler->>MsgProcessor: sendMessage(savedMessage)\n    \n    MsgProcessor->>MsgProcessor: Create WebSocketMessageDTO\n    MsgProcessor->>StompSession: send(chatTopic + \"/message\", messageDTO)\n    StompSession->>ServerEndpoint: /app/chat/{chatId}/message\n    \n    ServerEndpoint->>ServerController: sendChatMessage(chatId, message)\n    ServerController->>ServerController: validateMessage(message, chatId, true)\n    Note over ServerController: Check if user is a participant<br/>in session registry\n    \n    alt Valid Message\n        ServerController->>SessionService: getUsersInChat(chatId)\n        ServerController->>ServerEndpoint: send to /topic/chat/{chatId}/message\n        \n        %% Message broadcast to all subscribers (including sender)\n        ServerEndpoint-->>StompSession: broadcast message\n        StompSession-->>MsgProcessor: handleFrame(frame)\n        MsgProcessor->>MsgProcessor: processChatMessage(dto)\n        MsgProcessor->>WebSocketHandler: notifyMessageReceived(message)\n        WebSocketHandler->>WebSocketSvc: onMessageReceived(message)\n        WebSocketSvc->>ChatController: notify message listeners\n        ChatController->>ClientUI: update UI with new message\n    else Invalid Message\n        ServerController->>ServerController: Create error message\n        ServerController->>ServerEndpoint: return error message\n        ServerEndpoint-->>StompSession: send error\n        StompSession-->>MsgProcessor: handleFrame(error)\n        MsgProcessor->>WebSocketHandler: notifyError(errorMessage)\n        WebSocketHandler->>WebSocketSvc: onError(errorMessage)\n        WebSocketSvc->>ChatController: notify error listeners\n        ChatController->>ClientUI: display error\n    end\n",
+  "content_size": 2685,
+  "collected_at": "2026-02-06T01:32:50.165849",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的聊天消息发送流程图，从客户端UI点击发送，一直到服务器广播给其他用户。核心是要体现WebSocket的双向通信机制。",
+      "elements_involved": [
+        "ClientUI",
+        "ServerEndpoint",
+        "WebSocketSvc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先梳理一下参与者：客户端有Client UI、Chat Controller、WebSocketService这些模块，服务端需要WebSocketHandler、Message Processor、STOMP Session，还有数据库层。这样分层对吗？",
+      "elements_involved": [
+        "ClientUI",
+        "ChatController",
+        "WebSocketSvc",
+        "WebSocketHandler",
+        "MsgProcessor",
+        "StompSession"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，但服务端还少了几个关键角色。需要Server WebSocket Endpoint作为入口，Message Controller处理业务逻辑，Chat Session Service管理会话状态，还有Message DAO和Client Database做持久化。",
+      "elements_involved": [
+        "ServerEndpoint",
+        "ServerController",
+        "SessionService",
+        "MessageDAO",
+        "ClientDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把这些参与者都加上去了。现在从Client UI开始，用户点击发送后，调用ChatController的sendMessage方法，这个我理解是本地先存一份？",
+      "elements_involved": [
+        "ClientUI",
+        "ChatController",
+        "sendMessage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，本地要先持久化。ChatController调用MessageDAO的create方法，MessageDAO执行INSERT INTO messages到Client Database，数据库返回message.id，然后MessageDAO把savedMessage回传给ChatController。",
+      "elements_involved": [
+        "ChatController",
+        "MessageDAO",
+        "ClientDB",
+        "savedMessage",
+        "message.id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "本地存储链路画好了。接下来ChatController把savedMessage交给WebSocketService，这里开始走网络层对吧？",
+      "elements_involved": [
+        "ChatController",
+        "WebSocketSvc",
+        "savedMessage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，WebSocketService传给WebSocketHandler，再到WebSocketMessageProcessor，这里要创建一个WebSocketMessageDTO，然后通过STOMP Session发送。",
+      "elements_involved": [
+        "WebSocketSvc",
+        "WebSocketHandler",
+        "MsgProcessor",
+        "WebSocketMessageDTO",
+        "StompSession"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "STOMP Session发送的目标地址是chatTopic + \"/message\"吗？还有服务器端的订阅路径怎么设计？",
+      "elements_involved": [
+        "StompSession",
+        "chatTopic",
+        "message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，客户端发到chatTopic + \"/message\"，服务器端Server WebSocket Endpoint的接收路径是/app/chat/{chatId}/message，然后转发给Message Controller的sendChatMessage方法。",
+      "elements_involved": [
+        "StompSession",
+        "ServerEndpoint",
+        "ServerController",
+        "chatId",
+        "message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "服务器入口画好了。Message Controller收到后要验证消息吧？我看到你提到了validateMessage。",
+      "elements_involved": [
+        "ServerController",
+        "validateMessage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，ServerController要调用validateMessage(message, chatId, true)，第三个参数true表示需要检查用户是否在会话中。这里要加一个注释说明：检查session registry确认用户是参与者。",
+      "elements_involved": [
+        "ServerController",
+        "validateMessage",
+        "chatId",
+        "true"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "验证通过和失败要分开画吧？用alt分支？",
+      "elements_involved": [
+        "ServerController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，用alt分成Valid Message和Invalid Message两个分支。先画Valid的情况：ServerController调用Chat Session Service的getUsersInChat(chatId)获取在线用户，然后让Server Endpoint发送到/topic/chat/{chatId}/message。",
+      "elements_involved": [
+        "ServerController",
+        "SessionService",
+        "ServerEndpoint",
+        "chatId",
+        "getUsersInChat"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "广播链路我画上了。这里有个细节：发送者自己也会收到这条消息吗？",
+      "elements_involved": [
+        "ServerEndpoint",
+        "broadcast message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "会收到，注释里要说明including sender。Server Endpoint广播后，STOMP Session收到frame，调用handleFrame，然后WebSocketMessageProcessor执行processChatMessage(dto)。",
+      "elements_involved": [
+        "ServerEndpoint",
+        "StompSession",
+        "MsgProcessor",
+        "handleFrame",
+        "processChatMessage",
+        "dto",
+        "frame",
+        "including sender"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "客户端回调链路：MsgProcessor通知WebSocketHandler，再到WebSocketService的onMessageReceived，然后ChatController通知UI更新。这样对吗？",
+      "elements_involved": [
+        "MsgProcessor",
+        "WebSocketHandler",
+        "WebSocketSvc",
+        "ChatController",
+        "ClientUI",
+        "onMessageReceived"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，ChatController最后调用ClientUI更新界面显示新消息。现在画Invalid Message分支：验证失败时ServerController创建error message，通过Server Endpoint返回。",
+      "elements_involved": [
+        "ServerController",
+        "error",
+        "error message",
+        "ServerEndpoint"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "错误分支我加上了。STOMP Session收到error后同样走handleFrame，但后面是notifyError路径。",
+      "elements_involved": [
+        "StompSession",
+        "MsgProcessor",
+        "handleFrame",
+        "error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，MsgProcessor通知WebSocketHandler，调用notifyError(errorMessage)，然后WebSocketService的onError，ChatController通知error listeners，最后ClientUI显示错误。",
+      "elements_involved": [
+        "MsgProcessor",
+        "WebSocketHandler",
+        "WebSocketSvc",
+        "ChatController",
+        "ClientUI",
+        "notifyError",
+        "errorMessage",
+        "onError"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完整的双向流程都画好了。我检查一下：本地存储、DTO封装、STOMP传输、服务端验证、广播回调、错误处理，这些环节都覆盖到了。",
+      "elements_involved": [
+        "ClientDB",
+        "WebSocketMessageDTO",
+        "StompSession",
+        "validateMessage",
+        "broadcast message",
+        "error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "WebSocketMessageProcessor那里，DTO创建是在内部完成的，不需要显示调用其他参与者对吧？",
+      "elements_involved": [
+        "MsgProcessor",
+        "WebSocketMessageDTO"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对的，我用自循环表示MsgProcessor自己创建DTO。还有processChatMessage也是内部处理，同样用自循环。",
+      "elements_involved": [
+        "MsgProcessor",
+        "Create WebSocketMessageDTO",
+        "processChatMessage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ServerController的validateMessage和创建error message也是自循环，这些内部逻辑不需要外部参与者。",
+      "elements_involved": [
+        "ServerController",
+        "validateMessage",
+        "Create error message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都调整好了。我再看一下消息流向：客户端sendMessage是实线，数据库返回message.id是虚线，savedMessage回传也是虚线，这些异步回调用虚线箭头正确吧？",
+      "elements_involved": [
+        "sendMessage",
+        "message.id",
+        "savedMessage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。还有服务器广播后的所有回调都是虚线：broadcast message、handleFrame、notifyMessageReceived这些返回路径都用虚线。",
+      "elements_involved": [
+        "broadcast message",
+        "handleFrame",
+        "notifyMessageReceived",
+        "onMessageReceived"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "错误分支里的send error和handleFrame也是虚线吗？",
+      "elements_involved": [
+        "send error",
+        "handleFrame"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，从ServerEndpoint到StompSession的send error是虚线，后面StompSession到MsgProcessor的handleFrame也是虚线。整个错误回调链都是异步的。",
+      "elements_involved": [
+        "ServerEndpoint",
+        "StompSession",
+        "MsgProcessor",
+        "send error",
+        "handleFrame"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有箭头样式都核对完成了。最后确认一下参与者名称：ClientUI、ChatController、WebSocketSvc、WebSocketHandler、MsgProcessor、StompSession、ClientDB、MessageDAO、ServerEndpoint、ServerController、SessionService，一共11个。",
+      "elements_involved": [
+        "ClientUI",
+        "ChatController",
+        "WebSocketSvc",
+        "WebSocketHandler",
+        "MsgProcessor",
+        "StompSession",
+        "ClientDB",
+        "MessageDAO",
+        "ServerEndpoint",
+        "ServerController",
+        "SessionService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "WebSocketSvc的显示名应该是WebSocketService，MsgProcessor是WebSocketMessageProcessor，SessionService是Chat Session Service，这样更清晰。另外ClientDB的显示名用Client Database。",
+      "elements_involved": [
+        "WebSocketSvc",
+        "MsgProcessor",
+        "SessionService",
+        "ClientDB",
+        "WebSocketService",
+        "WebSocketMessageProcessor",
+        "Chat Session Service",
+        "Client Database"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修复所有显示名称。现在WebSocketSvc显示为WebSocketService，MsgProcessor显示为WebSocketMessageProcessor，SessionService显示为Chat Session Service，ClientDB显示为Client Database。",
+      "elements_involved": [
+        "WebSocketService",
+        "WebSocketMessageProcessor",
+        "Chat Session Service",
+        "Client Database"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。整个流程图完整呈现了：本地持久化、DTO封装、STOMP传输、服务端验证、广播分发、回调更新、错误处理的全链路。可以定稿了。",
+      "elements_involved": [
+        "ClientDB",
+        "WebSocketMessageDTO",
+        "StompSession",
+        "validateMessage",
+        "broadcast message",
+        "error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，最终版本已确认。序列图完整覆盖了聊天消息从发送到接收的生命周期，包括正常流程和异常分支的所有关键环节。",
+      "elements_involved": [
+        "ClientUI",
+        "ServerEndpoint",
+        "ChatController",
+        "WebSocketService",
+        "WebSocketMessageProcessor",
+        "StompSession",
+        "Chat Session Service",
+        "Message DAO",
+        "Client Database",
+        "Message Controller",
+        "Server WebSocket Endpoint"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 32,
+    "repair_count": 1,
+    "grounding_acts_count": 32,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 70647.7172,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 32
+  }
+}

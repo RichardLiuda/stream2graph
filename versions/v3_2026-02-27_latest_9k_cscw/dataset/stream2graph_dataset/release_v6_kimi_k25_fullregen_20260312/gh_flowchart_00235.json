@@ -1,0 +1,880 @@
+{
+  "id": "gh_flowchart_00235",
+  "source": "github",
+  "source_url": "https://github.com/JanDuchscherer104/NBV/blob/d39856848579411ee062f2e0a1dca498f7100a56/docs/diagrams/oracle_rri/mermaid/candidate_depth_renderer.mmd",
+  "github_repo": "JanDuchscherer104/NBV",
+  "github_file_path": "docs/diagrams/oracle_rri/mermaid/candidate_depth_renderer.mmd",
+  "diagram_type": "flowchart",
+  "code": "flowchart LR\n  %% Stage: CandidateDepthRenderer (candidate_depth_renderer.py)\n  %% Expanded view (includes pytorch3d_depth_renderer.py internals)\n  %%\n  %% Symbols:\n  %% - N: rendered candidates\n  %% - H,W: render resolution\n  %% - V,F: mesh vertices / faces\n  %%\n  %% Frames:\n  %% - w: world frame\n  %% - r: reference rig frame\n  %% - q: candidate camera frame\n\n  sample[\"Input: EfmSnippetView<br/>\\(\\mathcal{M}_{GT}=(\\mathbf{V}^w,\\mathcal{F}_{GT})\\)\"]\n  cand[\"Input: CandidateSamplingResult<br/>\\(\\texttt{views}:\\texttt{CameraTW}^{N}\\)<br/>\\(\\mathbf{T}_{r}^{w}\\in\\mathrm{SE}(3)\\)\"]\n\n  sel[\"Select candidate subset<br/>\\(\\texttt{\\_select\\_candidate\\_views}\\)<br/>\\(\\texttt{candidate\\_indices}\\)\"]\n  posew[\"Derive cam2world poses<br/>\\(\\mathbf{T}_{q}^{w}=\\mathbf{T}_{r}^{w}(\\mathbf{T}_{r}^{q})^{-1}\\)\"]\n  scale[\"Optional resolution scaling<br/>\\(C_q\\leftarrow \\texttt{CameraTW.scale\\_to\\_size}\\)\"]\n\n  p3d[\"Build PyTorch3D cameras<br/>\\(\\texttt{PerspectiveCameras}(R,T,C_q)\\)\"]\n  rast[\"Rasterize mesh<br/>\\(\\texttt{MeshRasterizer}(\\mathcal{M}_{GT})\\Rightarrow (\\texttt{zbuf},\\texttt{pix\\_to\\_face})\\)\"]\n  valid[\"Valid pixels<br/>\\(\\texttt{valid}=(\\texttt{pix\\_to\\_face}\\ge 0)\\wedge(z\\in[z_{near},z_{far}])\\)\"]\n\n  out[\"Output: CandidateDepths<br/>\\(D_q\\in\\mathbb{R}^{N\\times H\\times W}\\)<br/>\\(\\texttt{p3d\\_cameras}\\Rightarrow C_q\\) + \\(\\texttt{valid}\\)\"]\n\n  %% Dataflow\n  cand -->|\"\\(\\texttt{views}:\\texttt{CameraTW}^{N}\\)\"| sel\n  cand -->|\"\\(\\mathbf{T}_{r}^{w}\\)\"| posew\n  sel -->|\"\\(\\mathbf{T}_{r}^{q}=\\texttt{views.T\\_camera\\_rig}\\Rightarrow (\\mathbf{T}_{r}^{q})^{-1}=\\mathbf{T}_{q}^{r}\\)\"| posew\n  posew -->|\"\\(\\mathbf{T}_{q}^{w}\\)\"| scale\n  sel -->|\"\\(C_q\\)\"| scale\n\n  sample -->|\"\\(\\mathcal{M}_{GT}\\)\"| rast\n  scale -->|\"\\(C_q\\)\"| p3d\n  posew -->|\"\\(\\mathbf{T}_{q}^{w}\\)\"| p3d\n  p3d -->|\"\\(\\texttt{PerspectiveCameras}\\)\"| rast\n  rast -->|\"\\(\\texttt{zbuf}\\equiv D_q,\\ \\texttt{pix\\_to\\_face}\\)\"| valid\n  valid -->|\"\\(D_q,\\ \\texttt{valid}\\)\"| out\n\n  %% Styling\n  classDef input fill:#d5e8d4,stroke:#82b366,stroke-width:2px;\n  classDef compute fill:#e1d5e7,stroke:#9673a6,stroke-width:2px;\n  classDef neutral fill:#f5f5f5,stroke:#666666,stroke-width:2px;\n  classDef output fill:#fff2cc,stroke:#d6b656,stroke-width:2px;\n\n  class sample,cand input;\n  class sel,posew,scale neutral;\n  class p3d,rast,valid compute;\n  class out output;\n",
+  "content_size": 2333,
+  "collected_at": "2026-02-06T01:42:50.442179",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为CandidateDepthRenderer画一个详细的流程图，这个类负责把候选相机位姿渲染成深度图。核心输入有两个：EfmSnippetView里的GT mesh，还有CandidateSamplingResult里的一组候选相机。",
+      "elements_involved": [
+        "sample",
+        "cand",
+        "CandidateDepthRenderer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这个模块是expanded view，要暴露pytorch3d_depth_renderer.py的内部细节。我先确认一下整体流向：从左到右，输入节点→处理节点→输出节点？",
+      "elements_involved": [
+        "flowchart direction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，用LR横向布局。开头放两个输入节点，sample和cand。sample是EfmSnippetView，包含GT mesh的顶点和面；cand是CandidateSamplingResult，有N个CameraTW和rig到world的变换。",
+      "elements_involved": [
+        "sample",
+        "cand",
+        "EfmSnippetView",
+        "CandidateSamplingResult",
+        "CameraTW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把两个输入框画出来，用绿色填充表示input类型。sample节点我标注M_GT=(V^w, F_GT)，cand节点标注views: CameraTW^N和T_r^w。",
+      "elements_involved": [
+        "sample",
+        "cand",
+        "input class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来需要select candidate subset这一步，从N个候选里选一部分。实际代码里是_select_candidate_views函数，输出candidate_indices。",
+      "elements_involved": [
+        "sel",
+        "_select_candidate_views",
+        "candidate_indices"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "sel节点应该放在什么位置？它只从cand接收输入吗？还是需要sample的信息？",
+      "elements_involved": [
+        "sel",
+        "cand",
+        "sample"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "sel只从cand拿views: CameraTW^N，暂时不需要mesh信息。选完之后，sel要把T_r^q传给后面的pose推导。",
+      "elements_involved": [
+        "sel",
+        "cand",
+        "T_r^q"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加sel节点，用neutral样式。我画一条从cand到sel的边，标注views: CameraTW^N。",
+      "elements_involved": [
+        "sel",
+        "cand",
+        "neutral class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后是derive cam2world poses，关键的一步。我们有T_r^w从cand来，有T_r^q从sel来，要算出T_q^w = T_r^w @ (T_r^q)^{-1}。",
+      "elements_involved": [
+        "posew",
+        "T_r^w",
+        "T_r^q",
+        "T_q^w"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有两个输入源：cand提供T_r^w，sel提供T_r^q。posew节点需要画两条入边？",
+      "elements_involved": [
+        "posew",
+        "cand",
+        "sel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。sel到posew的边要标注清楚：T_r^q就是views.T_camera_rig，取逆之后变成T_q^r。",
+      "elements_involved": [
+        "posew",
+        "sel",
+        "T_r^q",
+        "views.T_camera_rig"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "posew节点已添加，neutral样式。画了cand→posew（T_r^w）和sel→posew（T_r^q = views.T_camera_rig ⇒ (T_r^q)^{-1} = T_q^r）两条边。",
+      "elements_involved": [
+        "posew",
+        "cand",
+        "sel",
+        "neutral class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是optional resolution scaling。有时候需要把相机分辨率缩放到指定尺寸，用CameraTW.scale_to_size。",
+      "elements_involved": [
+        "scale",
+        "CameraTW.scale_to_size"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "scale的输入来自哪里？posew的T_q^w？还有sel的原始相机C_q？",
+      "elements_involved": [
+        "scale",
+        "posew",
+        "sel",
+        "C_q"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，scale有两个输入：posew来的T_q^w（其实这里主要是相机参数C_q需要缩放），还有sel来的原始C_q。输出是缩放后的C_q。",
+      "elements_involved": [
+        "scale",
+        "posew",
+        "sel",
+        "C_q",
+        "T_q^w"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "scale节点已添加，neutral样式。画了posew→scale（T_q^w）和sel→scale（C_q）两条入边。",
+      "elements_involved": [
+        "scale",
+        "posew",
+        "sel",
+        "neutral class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后是build PyTorch3D cameras，用PerspectiveCameras类，输入是旋转R、平移T和相机参数C_q。",
+      "elements_involved": [
+        "p3d",
+        "PerspectiveCameras",
+        "R",
+        "T",
+        "C_q"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "p3d的R和T来自posew的T_q^w吧？C_q来自scale？",
+      "elements_involved": [
+        "p3d",
+        "posew",
+        "scale",
+        "T_q^w",
+        "C_q"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。posew提供T_q^w分解出的R和T，scale提供缩放后的C_q。这个节点用compute样式，因为是核心计算。",
+      "elements_involved": [
+        "p3d",
+        "posew",
+        "scale",
+        "compute class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "p3d节点已添加，compute样式（紫色）。画了scale→p3d（C_q）和posew→p3d（T_q^w）两条边，节点内标注PerspectiveCameras(R,T,C_q)。",
+      "elements_involved": [
+        "p3d",
+        "scale",
+        "posew",
+        "compute class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是rasterize mesh，用MeshRasterizer对GT mesh做光栅化，输出zbuf和pix_to_face。",
+      "elements_involved": [
+        "rast",
+        "MeshRasterizer",
+        "zbuf",
+        "pix_to_face",
+        "M_GT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "rast需要mesh输入，来自sample节点？还需要相机，来自p3d？",
+      "elements_involved": [
+        "rast",
+        "sample",
+        "p3d",
+        "M_GT",
+        "PerspectiveCameras"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。sample提供M_GT，p3d提供PerspectiveCameras。输出是zbuf（等价于D_q）和pix_to_face。",
+      "elements_involved": [
+        "rast",
+        "sample",
+        "p3d",
+        "zbuf",
+        "D_q",
+        "pix_to_face"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "rast节点已添加，compute样式。画了sample→rast（M_GT）和p3d→rast（PerspectiveCameras）两条边。",
+      "elements_involved": [
+        "rast",
+        "sample",
+        "p3d",
+        "compute class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后是valid pixels判断，筛选有效的像素。条件是pix_to_face ≥ 0 且深度在[z_near, z_far]范围内。",
+      "elements_involved": [
+        "valid",
+        "pix_to_face",
+        "z",
+        "z_near",
+        "z_far"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "valid只从rast接收输入？需要zbuf和pix_to_face两者？",
+      "elements_involved": [
+        "valid",
+        "rast",
+        "zbuf",
+        "pix_to_face"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，valid从rast拿zbuf（即D_q）和pix_to_face，做布尔判断。这个也是compute节点。",
+      "elements_involved": [
+        "valid",
+        "rast",
+        "zbuf",
+        "D_q",
+        "pix_to_face",
+        "compute class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "valid节点已添加，compute样式。画了rast→valid的边，标注zbuf ≡ D_q, pix_to_face。",
+      "elements_involved": [
+        "valid",
+        "rast",
+        "compute class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后是输出节点CandidateDepths，包含D_q（N×H×W的深度图）、p3d_cameras（即C_q）和valid掩码。",
+      "elements_involved": [
+        "out",
+        "CandidateDepths",
+        "D_q",
+        "p3d_cameras",
+        "C_q",
+        "valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "out的输入只有valid？还是需要其他信息？",
+      "elements_involved": [
+        "out",
+        "valid",
+        "D_q",
+        "C_q"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "主要是valid来的D_q和valid掩码，还有C_q信息。画一条valid→out的边，标注D_q, valid。输出节点用黄色output样式。",
+      "elements_involved": [
+        "out",
+        "valid",
+        "D_q",
+        "C_q",
+        "output class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "out节点已添加，output样式（黄色）。画了valid→out的边，标注D_q, valid。节点内标注D_q ∈ R^{N×H×W}和p3d_cameras ⇒ C_q + valid。",
+      "elements_involved": [
+        "out",
+        "valid",
+        "output class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在检查整体数据流。我发现有个问题：scale节点输出的C_q应该直接给p3d，但p3d还需要T_q^w，这部分没问题。不过让我再确认一下posew到scale的边。",
+      "elements_involved": [
+        "posew",
+        "scale",
+        "p3d",
+        "C_q",
+        "T_q^w"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "当前posew→scale的边标注的是T_q^w，但scale主要是处理相机参数C_q的分辨率缩放，T_q^w在scale这里只是透传？",
+      "elements_involved": [
+        "posew",
+        "scale",
+        "T_q^w",
+        "C_q"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不对，我搞混了。scale节点其实不需要T_q^w作为输入，它只需要sel来的C_q做缩放。T_q^w应该直接从posew到p3d。让我修正这个连接关系。",
+      "elements_involved": [
+        "posew",
+        "scale",
+        "p3d",
+        "T_q^w",
+        "C_q"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，我重新调整：scale只从sel接收C_q，输出缩放后的C_q到p3d；posew直接输出T_q^w到p3d。这样p3d有两条入边：scale→p3d（C_q）和posew→p3d（T_q^w）。",
+      "elements_involved": [
+        "posew",
+        "scale",
+        "p3d",
+        "sel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这样才对。scale是optional的，如果不需要缩放，C_q可以直接从sel到p3d，但流程图上我们还是保留scale节点，标注optional。",
+      "elements_involved": [
+        "scale",
+        "sel",
+        "p3d",
+        "C_q"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正连接。现在scale只有sel→scale（C_q）一条入边，posew有cand→posew（T_r^w）和sel→posew（T_r^q）两条入边，p3d有scale→p3d（C_q）和posew→p3d（T_q^w）两条入边。",
+      "elements_involved": [
+        "posew",
+        "scale",
+        "p3d",
+        "sel",
+        "cand"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "检查一下符号定义，我们需要在注释里说明：N是rendered candidates数量，H,W是render resolution，V,F是mesh vertices和faces。还有坐标系：w是world frame，r是reference rig frame，q是candidate camera frame。",
+      "elements_involved": [
+        "N",
+        "H",
+        "W",
+        "V",
+        "F",
+        "w",
+        "r",
+        "q"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已在顶部注释添加Symbols和Frames说明。现在检查样式类：input（sample,cand绿色）、compute（p3d,rast,valid紫色）、neutral（sel,posew,scale灰色）、output（out黄色）。",
+      "elements_involved": [
+        "class definitions",
+        "input class",
+        "compute class",
+        "neutral class",
+        "output class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "valid节点我确认一下，它输出的是valid掩码，但D_q本身是从rast来的zbuf。out节点需要同时有D_q和valid，这条边标注对吗？",
+      "elements_involved": [
+        "valid",
+        "rast",
+        "out",
+        "D_q",
+        "zbuf",
+        "valid mask"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "当前valid→out的边标注是\"D_q, valid\"，意思是valid节点把D_q和valid掩码一起传给out。但严格来说D_q是rast产生的，valid只是做筛选。需要调整标注吗？",
+      "elements_involved": [
+        "valid",
+        "out",
+        "D_q",
+        "valid mask"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "标注可以保留\"D_q, valid\"，因为实际代码中valid返回的是筛选后的D_q和valid掩码。但让我再想想，rast→valid的边应该明确zbuf就是D_q。当前标注是\"zbuf ≡ D_q, pix_to_face\"，这个是对的。",
+      "elements_involved": [
+        "rast",
+        "valid",
+        "zbuf",
+        "D_q",
+        "pix_to_face"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认rast→valid的边标注为\"zbuf ≡ D_q, pix_to_face\"，valid→out的边标注为\"D_q, valid\"。这样逻辑通顺：rast输出深度和face索引，valid筛选后输出有效深度和掩码。",
+      "elements_involved": [
+        "rast",
+        "valid",
+        "out"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再看一下sel节点的输出。sel输出candidate_indices给后续，但在posew这里，我们需要的是T_r^q。这个关系要在边上表达清楚：sel→posew的边要说明T_r^q来自views.T_camera_rig。",
+      "elements_involved": [
+        "sel",
+        "posew",
+        "candidate_indices",
+        "T_r^q",
+        "views.T_camera_rig"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "当前sel→posew的边标注是\"T_r^q = views.T_camera_rig ⇒ (T_r^q)^{-1} = T_q^r\"，这表示从CameraTW里取T_camera_rig属性，然后取逆。需要简化吗？",
+      "elements_involved": [
+        "sel",
+        "posew",
+        "edge label"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这个标注是准确的，保留。它说明了数学运算：T_r^q取逆得到T_q^r，然后和T_r^w组合成T_q^w。",
+      "elements_involved": [
+        "sel",
+        "posew",
+        "T_r^q",
+        "T_q^r",
+        "T_q^w"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我注意到cand节点有两条出边：到sel和到posew。到sel的是views: CameraTW^N，到posew的是T_r^w。这样设计对吗？",
+      "elements_involved": [
+        "cand",
+        "sel",
+        "posew",
+        "views",
+        "T_r^w"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，cand包含两部分信息：N个候选相机（给sel做筛选）和rig到world的变换（给posew做坐标转换）。这两条边都是必要的。",
+      "elements_involved": [
+        "cand",
+        "sel",
+        "posew",
+        "CameraTW",
+        "T_r^w"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认cand→sel标注\"views: CameraTW^N\"，cand→posew标注\"T_r^w\"。两条边都已正确绘制。",
+      "elements_involved": [
+        "cand",
+        "sel",
+        "posew"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "out节点的输出内容我再确认一下：D_q是N×H×W的张量，还有p3d_cameras（也就是C_q）和valid掩码。节点内的文字表述准确吗？",
+      "elements_involved": [
+        "out",
+        "D_q",
+        "p3d_cameras",
+        "C_q",
+        "valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "当前out节点内文字是：\"Output: CandidateDepths<br/D_q ∈ R^{N×H×W}<br/p3d_cameras ⇒ C_q + valid\"。需要调整最后一部分的表述吗？",
+      "elements_involved": [
+        "out",
+        "node text"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "最后一部分改成\"valid, p3d_cameras\"更清晰，表示输出包含valid掩码和相机参数。箭头⇒有点歧义。",
+      "elements_involved": [
+        "out",
+        "valid",
+        "p3d_cameras",
+        "C_q"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修改out节点文字为：\"Output: CandidateDepths<br/D_q ∈ R^{N×H×W}<br/p3d_cameras, valid\"。",
+      "elements_involved": [
+        "out"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后整体检查一遍节点顺序：从左到右应该是sample/cand → sel → posew → scale → p3d → rast → valid → out。但sample直接到rast，这个交叉需要处理好。",
+      "elements_involved": [
+        "sample",
+        "cand",
+        "sel",
+        "posew",
+        "scale",
+        "p3d",
+        "rast",
+        "valid",
+        "out"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "当前布局：第一行是sample和cand两个输入；第二行是sel、posew、scale；第三行是p3d；第四行是rast、valid、out。sample→rast的边会跨行，这在LR布局中是正常的。",
+      "elements_involved": [
+        "layout",
+        "sample",
+        "rast"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "posew和scale在同一行吗？posew输出到scale和p3d，scale输出到p3d，这个层级关系对吗？",
+      "elements_involved": [
+        "posew",
+        "scale",
+        "p3d",
+        "layout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，posew和scale在同一层级（neutral类），然后都指向p3d。p3d在下一层级（compute类）。这样数据流清晰：posew的T_q^w和scale的C_q汇合到p3d。",
+      "elements_involved": [
+        "posew",
+        "scale",
+        "p3d",
+        "neutral class",
+        "compute class"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "确认所有边：cand→sel，cand→posew，sel→posew，sel→scale，posew→scale（已移除），posew→p3d，scale→p3d，sample→rast，p3d→rast，rast→valid，valid→out。等等，我需要再检查posew→scale。",
+      "elements_involved": [
+        "edges",
+        "posew",
+        "scale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "根据之前的修复，posew→scale的边已经移除。当前posew只有到p3d的出边，scale只有sel→scale和scale→p3d的连接。让我最终确认边列表。",
+      "elements_involved": [
+        "posew",
+        "scale",
+        "edges"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "最终边列表：cand→sel（views: CameraTW^N），cand→posew（T_r^w），sel→posew（T_r^q），sel→scale（C_q），posew→p3d（T_q^w），scale→p3d（C_q），sample→rast（M_GT），p3d→rast（PerspectiveCameras），rast→valid（zbuf, pix_to_face），valid→out（D_q, valid）。",
+      "elements_involved": [
+        "all edges"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认所有10条边已正确绘制，标注完整。样式类应用：sample/cand为input（#d5e8d4），sel/posew/scale为neutral（#f5f5f5），p3d/rast/valid为compute（#e1d5e7），out为output（#fff2cc）。",
+      "elements_involved": [
+        "edges",
+        "classes",
+        "styling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "流程图完成。顶部注释包含Stage说明（CandidateDepthRenderer, candidate_depth_renderer.py, expanded view）、Symbols（N,H,W,V,F）和Frames（w,r,q）。所有数学符号用LaTeX格式正确标注。",
+      "elements_involved": [
+        "comments",
+        "LaTeX",
+        "symbols"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "流程图最终确认完成。共9个节点，10条边，4个样式类，完整表达了CandidateDepthRenderer的数据流：从EfmSnippetView和CandidateSamplingResult输入，经过候选选择、位姿推导、分辨率缩放、PyTorch3D相机构建、mesh光栅化、有效像素筛选，最终输出CandidateDepths。",
+      "elements_involved": [
+        "final diagram",
+        "CandidateDepthRenderer",
+        "complete flow"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 3,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:40Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:24Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:24Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 144452.4281,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 114
+  }
+}

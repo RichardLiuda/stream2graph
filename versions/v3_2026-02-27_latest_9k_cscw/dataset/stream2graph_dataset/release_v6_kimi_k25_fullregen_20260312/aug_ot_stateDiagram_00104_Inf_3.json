@@ -1,0 +1,225 @@
+{
+  "id": "aug_ot_stateDiagram_00104_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/musel25/lab_software_eng/blob/abe7b632a47ca8035f732e0dc34d75fc4b0d8b1b/code/diagram7_2.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "musel25/lab_software_eng",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    %% ───────── Top-level flow ─────────\n    [Infra_RedisCache] --> WaitForEntryRequest\n\n    WaitForEntryRequest --> ProcSecCard : reqReadSecurityCard\n    ProcSecCard --> WaitForEntryRequest : flagSecurityCardFailure\n    ProcSecCard --> ProcBioData        : CardStatus==Valid\n    ProcBioData  --> UnlockLockAP      : Authenticated\n    UnlockLockAP --> WaitForEntryRequest : evAccessPointLocked\n\n    %% ───────── Composite ① ─────────\n    state \"ProcessingSecurityCardData\" as ProcSecCard {Infra_IngressController] --> ValidatingCard\n        ValidatingCard --> WaitForEntryRequest : SecCardFailure / ScFailCount&lt;3\n        ValidatingCard --> Fail3Card           : SecCardFailure / ScFailCount&gt;=3\n        ValidatingCard --> exit                : CardStatus==Valid\n\n        state Fail3Card {Infra_WorkerNode] --> DisableAccount\n            DisableAccount --> exit : done\n        }\n        exit --> [Infra_WorkerNode]\n    }\n\n    %% ───────── Composite ② ─────────\n    state \"ProcessingBiometricData\" as ProcBioData {Infra_WorkerNode] --> AuthenticatingBio\n        AuthenticatingBio --> WaitForEntryRequest : BsTimeout\n        AuthenticatingBio --> Fail3Bio           : BioScanFailure / BFailCount&gt;=3\n        AuthenticatingBio --> exit               : Authenticated\n\n        state Fail3Bio {Infra_EtcdCluster] --> DisableAccountB\n            DisableAccountB --> exit : done\n        }\n        exit --> [Infra_IngressController]\n    }\n\n    %% ───────── Composite ③ ─────────\n    state \"UnlockingAndLockingAccessPoint\" as UnlockLockAP {Infra_IngressController] --> Locked\n        Locked --> Unlocking : reqUnlockAccessPoint\n        Unlocking --> Unlocked : evAccessPointUnlocked\n        Unlocked --> Locked : reqLockAccessPoint\n    }",
+  "content_size": 1667,
+  "collected_at": "2026-02-06T10:37:56.625984",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00104",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个门禁系统的状态图，核心流程是：用户刷卡、然后验生物特征、最后解锁门禁。最外层有个RedisCache作为基础设施，负责监听入口请求。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "WaitForEntryRequest",
+        "ProcSecCard",
+        "ProcBioData",
+        "UnlockLockAP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。那刷卡失败怎么处理？是回到WaitForEntryRequest等待下一次尝试，还是有连续失败限制？",
+      "elements_involved": [
+        "ProcSecCard",
+        "WaitForEntryRequest",
+        "SecCardFailure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "刷卡环节要嵌套一个子状态机叫ProcessingSecurityCardData，里面用IngressController做基础设施。验证状态叫ValidatingCard，如果失败且次数小于3次就回到WaitForEntryRequest，大于等于3次要进入禁用账号流程。",
+      "elements_involved": [
+        "ProcSecCard",
+        "Infra_IngressController",
+        "ValidatingCard",
+        "SecCardFailure",
+        "Fail3Card",
+        "WaitForEntryRequest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，所以ValidatingCard在CardStatus==Valid时退出到ProcBioData，失败分两条分支。那Fail3Card内部是什么结构？",
+      "elements_involved": [
+        "ValidatingCard",
+        "CardStatus",
+        "ProcBioData",
+        "Fail3Card"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Fail3Card是另一个嵌套状态，基础设施换成WorkerNode，里面只有一个DisableAccount状态，完成后退出。",
+      "elements_involved": [
+        "Fail3Card",
+        "Infra_WorkerNode",
+        "DisableAccount"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ProcSecCard这部分我画好了。现在看生物特征验证ProcBioData，基础设施用WorkerNode对吗？",
+      "elements_involved": [
+        "ProcBioData",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，ProcBioData里面叫AuthenticatingBio，超时BsTimeout回到WaitForEntryRequest，验证通过Authenticated退出到UnlockLockAP。生物扫描失败BioScanFailure也有3次限制，超过就进Fail3Bio禁用账号。",
+      "elements_involved": [
+        "ProcBioData",
+        "AuthenticatingBio",
+        "BsTimeout",
+        "WaitForEntryRequest",
+        "Authenticated",
+        "UnlockLockAP",
+        "BioScanFailure",
+        "Fail3Bio"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Fail3Bio的基础设施和内部状态确定吗？",
+      "elements_involved": [
+        "Fail3Bio"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Fail3Bio用EtcdCluster做基础设施，内部是DisableAccountB，完成后退出。整个ProcBioData退出时指向IngressController。",
+      "elements_involved": [
+        "Fail3Bio",
+        "Infra_EtcdCluster",
+        "DisableAccountB",
+        "ProcBioData",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ProcBioData部分完成了。最后UnlockLockAP的结构是怎样的？",
+      "elements_involved": [
+        "UnlockLockAP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "UnlockLockAP叫UnlockingAndLockingAccessPoint，基础设施回到IngressController。里面有三个状态：Locked、Unlocking、Unlocked。Locked收到reqUnlockAccessPoint进入Unlocking，解锁成功后evAccessPointUnlocked到Unlocked，最后reqLockAccessPoint回到Locked。",
+      "elements_involved": [
+        "UnlockLockAP",
+        "Infra_IngressController",
+        "Locked",
+        "Unlocking",
+        "Unlocked",
+        "reqUnlockAccessPoint",
+        "evAccessPointUnlocked",
+        "reqLockAccessPoint"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下，UnlockLockAP完成后有回到WaitForEntryRequest的路径吗？",
+      "elements_involved": [
+        "UnlockLockAP",
+        "WaitForEntryRequest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "有的，我漏说了——UnlockLockAP在evAccessPointLocked事件时要回到WaitForEntryRequest，形成完整闭环。",
+      "elements_involved": [
+        "UnlockLockAP",
+        "evAccessPointLocked",
+        "WaitForEntryRequest"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有结构都清楚了：三层嵌套状态机，基础设施分别是RedisCache、IngressController、WorkerNode、EtcdCluster，失败计数和禁用账号逻辑也都覆盖了。我这就把完整图画出来。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "Infra_IngressController",
+        "Infra_WorkerNode",
+        "Infra_EtcdCluster",
+        "ProcSecCard",
+        "ProcBioData",
+        "UnlockLockAP",
+        "Fail3Card",
+        "Fail3Bio"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 14,
+    "repair_count": 1,
+    "grounding_acts_count": 14,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 31122.416,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 13
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "id": "aug_ot_stateDiagram_00131_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/dm-inbox/state-management.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_EtcdCluster] --> Initializing: Component mounted\n\n    Initializing --> Loading: Subscribe to DMs\n    Loading --> Empty: No messages\n    Loading --> ThreadList: Messages loaded\n    Loading --> Error: Subscription failed\n\n    Empty --> ThreadList: First message received\n\n    ThreadList --> ThreadSelected: User selects thread\n    ThreadSelected --> ThreadList: Back to list\n    ThreadSelected --> Composing: User types message\n\n    Composing --> Encrypting: User sends\n    Encrypting --> Publishing: Encryption complete\n    Publishing --> ThreadSelected: Publish success\n    Publishing --> Error: Publish failed\n\n    ThreadSelected --> MarkingRead: Auto-mark as read\n    MarkingRead --> ThreadSelected: Update complete\n\n    ThreadList --> Refreshing: Pull to refresh\n    Refreshing --> ThreadList: Refresh complete\n\n    ThreadSelected --> Deleting: User deletes thread\n    Deleting --> ThreadList: Delete complete\n\n    Error --> ThreadList: Retry success\n    Error --> [Infra_WorkerNode]: Fatal error\n\n    note right of Encrypting\n        NIP04Service encrypts\n        message using recipient's\n        public key\n    end note\n\n    note right of Publishing\n        EventPublisherService\n        publishes kind 4 event\n        to relays\n    end note",
+  "content_size": 1244,
+  "collected_at": "2026-02-06T10:38:15.797570",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00131",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个DM（私信）组件的状态机图。核心流程是：组件挂载后先初始化，然后订阅消息。订阅成功就进入加载状态，如果这时候没消息就显示空状态，有消息就展示线程列表。用户点击某个线程后进入选中状态，可以返回列表，也可以开始写消息。",
+      "elements_involved": [
+        "Initializing",
+        "Loading",
+        "Empty",
+        "ThreadList",
+        "ThreadSelected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。写消息的时候需要区分「正在输入」和「发送中」吗？还有，发送失败的情况怎么处理？",
+      "elements_involved": [
+        "Composing",
+        "Publishing",
+        "Error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要区分。用户打字是Composing状态，点击发送后先进入Encrypting——我们用NIP04加密消息，加密完成再进入Publishing，最后回到ThreadSelected。Publishing失败会跳Error状态，可以从Error重试回到列表。另外，Encrypting和Publishing旁边需要加注释说明具体服务。",
+      "elements_involved": [
+        "Composing",
+        "Encrypting",
+        "Publishing",
+        "ThreadSelected",
+        "Error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Encrypting和Publishing的注释我加上了。还有其他的交互吗？比如删除线程或者刷新列表？",
+      "elements_involved": [
+        "Encrypting",
+        "Publishing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "有的。ThreadList支持下拉刷新，进入Refreshing状态，完成后回到列表。ThreadSelected里用户可以删除整个线程，进入Deleting状态，删除完成也回到ThreadList。另外还有个自动标记已读的功能——用户看完消息自动进入MarkingRead，更新完回到选中状态。",
+      "elements_involved": [
+        "ThreadList",
+        "Refreshing",
+        "ThreadSelected",
+        "Deleting",
+        "MarkingRead"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下：MarkingRead是自动触发的，不需要用户操作，对吧？还有，Error状态除了重试成功，还有其他出口吗？",
+      "elements_involved": [
+        "MarkingRead",
+        "Error",
+        "ThreadList"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "对，Auto-mark as read。Error状态如果重试也失败，或者遇到致命错误，要上报到WorkerNode处理。对了，整个组件的生命周期起点和终点要连到基础设施——Initializing从EtcdCluster开始，Fatal error走到WorkerNode。",
+      "elements_involved": [
+        "MarkingRead",
+        "Error",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Initializing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成了。起点EtcdCluster触发Initializing，终点WorkerNode接收Fatal error。所有状态流转都画好了，包括订阅失败、首次消息到达、加密发布、刷新删除这些分支。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Initializing",
+        "Infra_WorkerNode",
+        "Loading",
+        "Empty",
+        "Encrypting",
+        "Publishing",
+        "Refreshing",
+        "Deleting"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 26907.3675,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

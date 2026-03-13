@@ -1,0 +1,829 @@
+{
+  "id": "gl_flowchart_00724",
+  "source": "gitlab",
+  "source_url": "https://github.com/IrfanMusthofa/veripass/blob/22c4b762707548cfdc7305441f00632cbc960b27/docs/diagrams/architecture-overview.mmd",
+  "source_note": "collected_from_github_final",
+  "github_repo": "IrfanMusthofa/veripass",
+  "diagram_type": "flowchart",
+  "code": "%%{init: {\n  'theme': 'base',\n  'themeVariables': {\n    'primaryColor': '#003366',\n    'primaryTextColor': '#ffffff',\n    'primaryBorderColor': '#002244',\n    'secondaryColor': '#4a90d9',\n    'secondaryTextColor': '#ffffff',\n    'tertiaryColor': '#f0f4f8',\n    'tertiaryTextColor': '#333333',\n    'lineColor': '#003366',\n    'fontFamily': 'Inter, system-ui, sans-serif',\n    'fontSize': '14px'\n  }\n}}%%\n\nflowchart TB\n    subgraph USER[\"👤 User Layer\"]\n        direction LR\n        BROWSER[\"🌐 Web Browser\"]\n        WALLET[\"🦊 MetaMask / Web3 Wallet\"]\n    end\n\n    subgraph FRONTEND[\"⚛️ Frontend (React + Vite)\"]\n        direction TB\n\n        subgraph PROVIDERS[\"Providers\"]\n            WEB3P[\"Web3Provider<br/><i>wagmi + RainbowKit</i>\"]\n            AUTHP[\"AuthProvider<br/><i>JWT State</i>\"]\n            TOASTP[\"ToastProvider\"]\n        end\n\n        subgraph PAGES[\"Pages\"]\n            HOME[\"HomePage\"]\n            PASSPORTS[\"PassportsPage\"]\n            MINT[\"MintPage\"]\n            DETAILS[\"PassportDetailsPage\"]\n        end\n\n        subgraph HOOKS[\"Hooks\"]\n            API_HOOKS[\"📡 /hooks/api/<br/><i>TanStack Query</i>\"]\n            CONTRACT_HOOKS[\"⛓️ /hooks/contracts/<br/><i>wagmi hooks</i>\"]\n        end\n\n        subgraph COMPONENTS[\"Components\"]\n            PASSPORT_COMP[\"PassportCard<br/>MintForm<br/>TransferForm\"]\n            EVENT_COMP[\"EventTimeline<br/>RecordEventForm\"]\n            VERIFY_COMP[\"VerificationBadge<br/>VerificationDetails\"]\n        end\n    end\n\n    subgraph BACKEND[\"🖥️ Backend (Hono.js)\"]\n        direction TB\n\n        subgraph MIDDLEWARE[\"Middleware\"]\n            CORS[\"CORS\"]\n            AUTH_MW[\"authMiddleware<br/><i>JWT Verify</i>\"]\n            FLEX_MW[\"flexibleAuthMiddleware<br/><i>JWT or Oracle Key</i>\"]\n        end\n\n        subgraph ROUTES[\"REST API Routes\"]\n            AUTH_R[\"/api/auth<br/><i>nonce, verify, me</i>\"]\n            ASSET_R[\"/api/assets<br/><i>CRUD operations</i>\"]\n            EVIDENCE_R[\"/api/evidence<br/><i>hash, create, query</i>\"]\n            PROVIDER_R[\"/api/provider<br/><i>service records</i>\"]\n        end\n\n        subgraph SERVICES[\"Services\"]\n            AUTH_S[\"AuthService\"]\n            ASSET_S[\"AssetService\"]\n            EVIDENCE_S[\"EvidenceService\"]\n            HASH_S[\"HashService<br/><i>keccak256</i>\"]\n        end\n    end\n\n    subgraph DATABASE[\"🗄️ PostgreSQL\"]\n        direction LR\n        ASSETS_T[(\"assets\")]\n        EVIDENCE_T[(\"evidence\")]\n        SERVICE_T[(\"service_records<br/>_provider_a\")]\n        PROCESSED_T[(\"processed_<br/>service_records\")]\n        NONCES_T[(\"auth_nonces\")]\n    end\n\n    subgraph ORACLE[\"🔮 Oracle Worker\"]\n        direction TB\n        POLLER[\"Polling Service<br/><i>every 15-30s</i>\"]\n        VERIFIER[\"Verifier<br/><i>validate & sign</i>\"]\n        BC_CLIENT[\"Blockchain Client<br/><i>ethers.js</i>\"]\n    end\n\n    subgraph BLOCKCHAIN[\"⛓️ Ethereum Blockchain\"]\n        direction TB\n\n        subgraph CONTRACTS[\"Smart Contracts\"]\n            PASSPORT_C[\"📜 AssetPassport<br/><i>ERC-721 NFT</i>\"]\n            REGISTRY_C[\"📜 EventRegistry<br/><i>Lifecycle Events</i>\"]\n        end\n\n        subgraph ON_CHAIN[\"On-Chain Data\"]\n            NFT_DATA[\"Token Ownership<br/>Metadata Hash<br/>Mint Timestamp\"]\n            EVENT_DATA[\"Event Records<br/>Data Hashes<br/>Oracle Signatures\"]\n        end\n    end\n\n    subgraph SHARED[\"📦 shared/\"]\n        ABI[\"Contract ABIs<br/><i>AssetPassport.json</i><br/><i>EventRegistry.json</i>\"]\n        TYPES[\"TypeScript Types<br/><i>AssetInfo, EventType</i>\"]\n    end\n\n    %% User connections\n    BROWSER <--> FRONTEND\n    WALLET <--> WEB3P\n\n    %% Frontend internal\n    PROVIDERS --> PAGES\n    PAGES --> COMPONENTS\n    COMPONENTS --> HOOKS\n\n    %% Frontend to Backend\n    API_HOOKS <-->|\"REST API<br/>JWT Auth\"| ROUTES\n\n    %% Frontend to Blockchain\n    CONTRACT_HOOKS <-->|\"JSON-RPC<br/>Web3\"| CONTRACTS\n\n    %% Backend internal\n    MIDDLEWARE --> ROUTES\n    ROUTES --> SERVICES\n\n    %% Backend to Database\n    SERVICES <-->|\"Drizzle ORM\"| DATABASE\n\n    %% Oracle connections\n    POLLER -->|\"Poll unprocessed\"| DATABASE\n    POLLER --> VERIFIER\n    VERIFIER -->|\"Sign & Submit\"| BC_CLIENT\n    BC_CLIENT <-->|\"recordVerifiedEvent\"| REGISTRY_C\n    BC_CLIENT -->|\"Update status\"| PROCESSED_T\n\n    %% Blockchain internal\n    PASSPORT_C --> NFT_DATA\n    REGISTRY_C --> EVENT_DATA\n    PASSPORT_C <-.->|\"validates asset\"| REGISTRY_C\n\n    %% Shared usage\n    SHARED -.->|\"import\"| CONTRACT_HOOKS\n    SHARED -.->|\"import\"| BC_CLIENT\n\n    %% Styling\n    classDef userStyle fill:#e8f4fd,stroke:#003366,stroke-width:2px,color:#003366\n    classDef frontendStyle fill:#4a90d9,stroke:#003366,stroke-width:2px,color:#fff\n    classDef backendStyle fill:#2d6a4f,stroke:#1b4332,stroke-width:2px,color:#fff\n    classDef dbStyle fill:#7c3aed,stroke:#5b21b6,stroke-width:2px,color:#fff\n    classDef oracleStyle fill:#d97706,stroke:#92400e,stroke-width:2px,color:#fff\n    classDef blockchainStyle fill:#003366,stroke:#001a33,stroke-width:2px,color:#fff\n    classDef sharedStyle fill:#6b7280,stroke:#374151,stroke-width:2px,color:#fff\n\n    class USER userStyle\n    class FRONTEND,PROVIDERS,PAGES,HOOKS,COMPONENTS frontendStyle\n    class BACKEND,MIDDLEWARE,ROUTES,SERVICES backendStyle\n    class DATABASE,ASSETS_T,EVIDENCE_T,SERVICE_T,PROCESSED_T,NONCES_T dbStyle\n    class ORACLE,POLLER,VERIFIER,BC_CLIENT oracleStyle\n    class BLOCKCHAIN,CONTRACTS,ON_CHAIN,PASSPORT_C,REGISTRY_C,NFT_DATA,EVENT_DATA blockchainStyle\n    class SHARED,ABI,TYPES sharedStyle\n",
+  "content_size": 5461,
+  "collected_at": "2026-02-06T14:19:28.419678",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 1,
+  "repo_owner": "IrfanMusthofa",
+  "repo_name": "veripass",
+  "repo_description": "A decentralized asset passport enabling authenticity, ownership provenance, and verifiable lifecycle events for resale markets.",
+  "repo_language": "TypeScript",
+  "repo_topics": [],
+  "repo_created_at": "2025-12-26T08:52:11Z",
+  "repo_updated_at": "2026-01-14T09:33:01Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为这个数字护照系统画一个完整的架构图。用户通过Web浏览器和MetaMask钱包接入，前端用React，后端用Hono.js，还有独立的Oracle Worker和链上合约。",
+      "elements_involved": [
+        "BROWSER",
+        "WALLET",
+        "FRONTEND",
+        "BACKEND",
+        "ORACLE",
+        "BLOCKCHAIN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先确认一下层级结构：最上层是User Layer，包含浏览器和钱包两个节点，对吗？钱包直接连到前端的Web3Provider？",
+      "elements_involved": [
+        "USER",
+        "BROWSER",
+        "WALLET",
+        "WEB3P"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，WALLET要连到Web3Provider，用wagmi和RainbowKit。BROWSER连整个Frontend层。",
+      "elements_involved": [
+        "WALLET",
+        "WEB3P",
+        "BROWSER",
+        "FRONTEND"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先把User Layer和Frontend的大框画出来，Frontend内部先分Providers、Pages、Hooks、Components四个子区域。",
+      "elements_involved": [
+        "USER",
+        "FRONTEND",
+        "PROVIDERS",
+        "PAGES",
+        "HOOKS",
+        "COMPONENTS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Providers里面除了Web3Provider，还要有AuthProvider做JWT状态管理，以及ToastProvider做通知。",
+      "elements_involved": [
+        "PROVIDERS",
+        "WEB3P",
+        "AUTHP",
+        "TOASTP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加三个Provider。Pages这边我列了HomePage、PassportsPage、MintPage、PassportDetailsPage，业务上够吗？",
+      "elements_involved": [
+        "PAGES",
+        "HOME",
+        "PASSPORTS",
+        "MINT",
+        "DETAILS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，这四个页面覆盖核心流程。Hooks要分两类：api目录下用TanStack Query，contracts目录下用wagmi hooks。",
+      "elements_involved": [
+        "HOOKS",
+        "API_HOOKS",
+        "CONTRACT_HOOKS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Hooks画好了。Components这边我打算放PassportCard、MintForm、TransferForm，还有EventTimeline、RecordEventForm，以及验证相关的组件。",
+      "elements_involved": [
+        "COMPONENTS",
+        "PASSPORT_COMP",
+        "EVENT_COMP",
+        "VERIFY_COMP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Components到Hooks的依赖关系要标出来，还有Providers到Pages、Pages到Components的流向。",
+      "elements_involved": [
+        "PROVIDERS",
+        "PAGES",
+        "COMPONENTS",
+        "HOOKS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加内部依赖箭头。现在画Backend层，用Hono.js，内部结构我想分成Middleware、Routes、Services三层。",
+      "elements_involved": [
+        "BACKEND",
+        "MIDDLEWARE",
+        "ROUTES",
+        "SERVICES"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Middleware需要CORS，还有authMiddleware做JWT验证，另外有个flexibleAuthMiddleware支持JWT或Oracle Key两种验证方式。",
+      "elements_involved": [
+        "MIDDLEWARE",
+        "CORS",
+        "AUTH_MW",
+        "FLEX_MW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Middleware画好了。Routes我规划了四个：/api/auth处理登录，/api/assets做CRUD，/api/evidence处理哈希和存证，/api/provider管服务记录。",
+      "elements_involved": [
+        "ROUTES",
+        "AUTH_R",
+        "ASSET_R",
+        "EVIDENCE_R",
+        "PROVIDER_R"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，每个Route对应一个Service：AuthService、AssetService、EvidenceService，还有HashService用keccak256做哈希。",
+      "elements_involved": [
+        "SERVICES",
+        "AUTH_S",
+        "ASSET_S",
+        "EVIDENCE_S",
+        "HASH_S"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Backend内部结构完成。现在画Database层，用PostgreSQL，表结构需要哪些？",
+      "elements_involved": [
+        "DATABASE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要assets表存护照资产，evidence表存证据，service_records_provider_a表存原始服务记录，processed_service_records表存已处理记录，还有auth_nonces表防重放攻击。",
+      "elements_involved": [
+        "ASSETS_T",
+        "EVIDENCE_T",
+        "SERVICE_T",
+        "PROCESSED_T",
+        "NONCES_T"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "五张表都画好了。Backend到Database用Drizzle ORM连接，我标一下。",
+      "elements_involved": [
+        "SERVICES",
+        "DATABASE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是Oracle Worker，独立的服务，负责把链下数据公证上链。内部有Polling Service定时轮询，Verifier做验证签名，Blockchain Client用ethers.js。",
+      "elements_involved": [
+        "ORACLE",
+        "POLLER",
+        "VERIFIER",
+        "BC_CLIENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Polling Service的轮询频率有要求吗？需要标在图上吗？",
+      "elements_involved": [
+        "POLLER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "标一下，每15-30秒轮询一次。Poller从Database的processed_service_records表查未处理记录。",
+      "elements_involved": [
+        "POLLER",
+        "PROCESSED_T"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加15-30s标注。Poller连到Verifier，Verifier再连Blockchain Client，最后Client调用链上合约。",
+      "elements_involved": [
+        "POLLER",
+        "VERIFIER",
+        "BC_CLIENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Blockchain层分两部分：Smart Contracts和On-Chain Data。合约有AssetPassport是ERC-721 NFT，EventRegistry记录生命周期事件。",
+      "elements_involved": [
+        "BLOCKCHAIN",
+        "CONTRACTS",
+        "PASSPORT_C",
+        "REGISTRY_C",
+        "ON_CHAIN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "合约画好了。On-Chain Data包括Token Ownership、Metadata Hash、Mint Timestamp，还有Event Records、Data Hashes、Oracle Signatures。",
+      "elements_involved": [
+        "NFT_DATA",
+        "EVENT_DATA"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "两个合约之间有关系，AssetPassport要验证资产时得查EventRegistry，用虚线表示这种验证依赖。",
+      "elements_involved": [
+        "PASSPORT_C",
+        "REGISTRY_C"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加虚线标注validates asset。还需要shared目录放公共代码，比如Contract ABIs和TypeScript Types。",
+      "elements_involved": [
+        "SHARED",
+        "ABI",
+        "TYPES"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，ABIs包括AssetPassport.json和EventRegistry.json，类型定义有AssetInfo、EventType这些。shared被Frontend的contract hooks和Oracle的Blockchain Client引用。",
+      "elements_involved": [
+        "SHARED",
+        "ABI",
+        "TYPES",
+        "CONTRACT_HOOKS",
+        "BC_CLIENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "shared的引用关系用虚线标好了。现在检查跨层连接：Frontend的API Hooks到Backend Routes用REST API加JWT Auth，对吗？",
+      "elements_involved": [
+        "API_HOOKS",
+        "ROUTES"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。另外Frontend的Contract Hooks直接连Blockchain的Contracts，走JSON-RPC/Web3。",
+      "elements_involved": [
+        "CONTRACT_HOOKS",
+        "CONTRACTS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加两条跨层连接。Oracle的Blockchain Client调用EventRegistry的recordVerifiedEvent方法，这个要标出来。",
+      "elements_involved": [
+        "BC_CLIENT",
+        "REGISTRY_C"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有，Client更新完链上状态后要回写Database的processed_service_records表，标Update status。",
+      "elements_involved": [
+        "BC_CLIENT",
+        "PROCESSED_T"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "回写关系加上了。现在检查整体流向：Poller从Database读未处理记录，处理后上链，再更新状态，闭环了。",
+      "elements_involved": [
+        "POLLER",
+        "DATABASE",
+        "BLOCKCHAIN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，Poller查的是processed_service_records表，但这个表名有点歧义，实际是存待处理还是已处理的？",
+      "elements_involved": [
+        "POLLER",
+        "PROCESSED_T"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我检查一下...表名是processed_service_records，但Poller是poll unprocessed，逻辑上应该是先读未处理记录，处理完后再更新到这个表标记为已处理。我确认一下标注：Poller到Database的箭头标Poll unprocessed，Client回写标Update status，这样逻辑通顺。",
+      "elements_involved": [
+        "POLLER",
+        "PROCESSED_T",
+        "BC_CLIENT"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，就是这样。service_records_provider_a存原始数据，processed_service_records存处理状态和结果。",
+      "elements_involved": [
+        "SERVICE_T",
+        "PROCESSED_T"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，两个表的关系我理清了。现在加样式区分不同层级：User用浅蓝，Frontend用蓝色，Backend用绿色，Database用紫色，Oracle用橙色，Blockchain用深蓝，shared用灰色。",
+      "elements_involved": [
+        "USER",
+        "FRONTEND",
+        "BACKEND",
+        "DATABASE",
+        "ORACLE",
+        "BLOCKCHAIN",
+        "SHARED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Frontend内部的子节点也要统一用frontendStyle，包括Providers、Pages、Hooks、Components。",
+      "elements_involved": [
+        "PROVIDERS",
+        "PAGES",
+        "HOOKS",
+        "COMPONENTS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已统一Frontend内部样式。Backend的Middleware、Routes、Services也统一用backendStyle。",
+      "elements_involved": [
+        "MIDDLEWARE",
+        "ROUTES",
+        "SERVICES"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Database的五张表都要用dbStyle。Oracle的三个组件用oracleStyle。Blockchain的合约和数据都用blockchainStyle。",
+      "elements_involved": [
+        "ASSETS_T",
+        "EVIDENCE_T",
+        "SERVICE_T",
+        "PROCESSED_T",
+        "NONCES_T",
+        "POLLER",
+        "VERIFIER",
+        "BC_CLIENT",
+        "PASSPORT_C",
+        "REGISTRY_C",
+        "NFT_DATA",
+        "EVENT_DATA"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有样式已应用。我再看一下箭头方向：Backend Services到Database是双向的，因为既要读也要写。",
+      "elements_involved": [
+        "SERVICES",
+        "DATABASE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Drizzle ORM支持读写。Frontend到Backend也是双向，请求和响应。但Frontend到Blockchain的Contract Hooks，wagmi主要是调用合约，返回事件监听，也算双向。",
+      "elements_involved": [
+        "API_HOOKS",
+        "ROUTES",
+        "CONTRACT_HOOKS",
+        "CONTRACTS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "连接方式都确认好了。shared目录的引用是虚线，表示代码层面的import，不是运行时连接。",
+      "elements_involved": [
+        "SHARED",
+        "CONTRACT_HOOKS",
+        "BC_CLIENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下Oracle的流向：Poller轮询Database，交给Verifier验证，Verifier调用Blockchain Client上链，Client再更新Database。Verifier到Client的箭头方向对吗？",
+      "elements_involved": [
+        "VERIFIER",
+        "BC_CLIENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Verifier到Blockchain Client标的是Sign & Submit，是Verifier调用Client，方向正确。",
+      "elements_involved": [
+        "VERIFIER",
+        "BC_CLIENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有个小细节：Contract Hooks到Contracts的连接要强调是JSON-RPC/Web3，API Hooks到Routes是REST API/JWT Auth，这些标注要清晰。",
+      "elements_involved": [
+        "CONTRACT_HOOKS",
+        "CONTRACTS",
+        "API_HOOKS",
+        "ROUTES"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "连接标注已加强。我数一下节点数量：User层2个，Frontend内部10个，Backend内部10个，Database 5个，Oracle 3个，Blockchain 6个，shared 2个，总共38个节点，结构完整。",
+      "elements_involved": [
+        "所有节点"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Frontend的Providers、Pages、Hooks、Components四个子图的方向都是TB吗？User Layer和Database是LR？",
+      "elements_involved": [
+        "FRONTEND",
+        "USER",
+        "DATABASE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，Frontend整体TB，内部Providers也是TB，Pages TB，Hooks TB，Components TB。User Layer是LR横向排列浏览器和钱包。Database也是LR横向排列五张表。",
+      "elements_involved": [
+        "FRONTEND",
+        "USER",
+        "DATABASE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Backend的子图方向也确认一下：整体TB，Middleware TB，Routes TB，Services TB。Oracle整体TB。Blockchain整体TB，Contracts TB，On-Chain TB。",
+      "elements_involved": [
+        "BACKEND",
+        "ORACLE",
+        "BLOCKCHAIN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有子图方向已确认并设置。现在看文字标签：Web3Provider下面要标wagmi + RainbowKit，AuthProvider标JWT State。",
+      "elements_involved": [
+        "WEB3P",
+        "AUTHP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，还有API Hooks标TanStack Query，Contract Hooks标wagmi hooks。authMiddleware标JWT Verify，flexibleAuthMiddleware标JWT or Oracle Key。",
+      "elements_involved": [
+        "API_HOOKS",
+        "CONTRACT_HOOKS",
+        "AUTH_MW",
+        "FLEX_MW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "技术栈标注都加上了。Routes下面的操作也标了：auth是nonce/verify/me，assets是CRUD operations，evidence是hash/create/query，provider是service records。",
+      "elements_involved": [
+        "AUTH_R",
+        "ASSET_R",
+        "EVIDENCE_R",
+        "PROVIDER_R"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "HashService标keccak256，Polling Service标every 15-30s，Verifier标validate & sign，Blockchain Client标ethers.js。",
+      "elements_involved": [
+        "HASH_S",
+        "POLLER",
+        "VERIFIER",
+        "BC_CLIENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有技术细节标注完成。Contract ABIs要列出两个文件：AssetPassport.json和EventRegistry.json。",
+      "elements_involved": [
+        "ABI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，TypeScript Types列AssetInfo和EventType。最后检查一下主题色：primaryColor #003366，secondaryColor #4a90d9，字体Inter。",
+      "elements_involved": [
+        "TYPES"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "主题变量已配置。我再看一眼箭头有没有遗漏：Frontend内部Providers→Pages→Components→Hooks，这条链完整。",
+      "elements_involved": [
+        "PROVIDERS",
+        "PAGES",
+        "COMPONENTS",
+        "HOOKS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Backend内部Middleware→Routes→Services，也完整。Oracle的Poller→Verifier→BC_Client，完整。",
+      "elements_involved": [
+        "MIDDLEWARE",
+        "ROUTES",
+        "SERVICES",
+        "POLLER",
+        "VERIFIER",
+        "BC_CLIENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "内部流向都确认无误。Blockchain内部PASSPORT_C→NFT_DATA，REGISTRY_C→EVENT_DATA，还有两者之间的虚线验证关系。",
+      "elements_involved": [
+        "PASSPORT_C",
+        "REGISTRY_C",
+        "NFT_DATA",
+        "EVENT_DATA"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体布局再优化一下：五个主层从上到下排列，User、Frontend、Backend、Database、Oracle、Blockchain，shared放在右侧作为辅助。",
+      "elements_involved": [
+        "整体布局"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "布局已调整为TB流向，shared放在右侧独立区域。所有节点的emoji图标也保留：👤 User、🌐 Browser、🦊 Wallet、⚛️ Frontend、📡 Hooks、⛓️ Contract Hooks、🖥️ Backend、🗄️ Database、🔮 Oracle、⛓️ Blockchain、📦 shared、📜 Contracts。",
+      "elements_involved": [
+        "所有节点"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Components里的PassportCard、MintForm、TransferForm是并列的，EventTimeline、RecordEventForm也是，VerificationBadge、VerificationDetails也是，用换行分开。",
+      "elements_involved": [
+        "PASSPORT_COMP",
+        "EVENT_COMP",
+        "VERIFY_COMP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "组件内部用<br/换行分隔多个元素。Database的表名processed_service_records比较长，用<br/折行显示为processed_<br/service_records。",
+      "elements_involved": [
+        "PASSPORT_COMP",
+        "EVENT_COMP",
+        "VERIFY_COMP",
+        "PROCESSED_T"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这样显示更紧凑。最后确认所有classDef样式应用正确：userStyle、frontendStyle、backendStyle、dbStyle、oracleStyle、blockchainStyle、sharedStyle。",
+      "elements_involved": [
+        "classDef样式"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有样式类已应用到对应节点。图例完整，结构清晰，跨层连接正确，技术标注详细。我生成最终版本。",
+      "elements_involved": [
+        "完整图表"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个架构图涵盖了数字护照系统的完整技术栈：从用户接入、前端交互、后端API、数据持久化，到Oracle公证上链，流程闭环。可以定稿了。",
+      "elements_involved": [
+        "完整系统"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "定稿完成。图表包含6个主层级、38个节点、15条主要连接，完整呈现Asset Passport系统的协作架构。",
+      "elements_involved": [
+        "最终图表"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 1,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 99455.5247,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 118
+  }
+}

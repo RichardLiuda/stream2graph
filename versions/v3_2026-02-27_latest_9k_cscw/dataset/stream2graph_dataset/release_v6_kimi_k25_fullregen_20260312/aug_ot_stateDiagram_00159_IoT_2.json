@@ -1,0 +1,158 @@
+{
+  "id": "aug_ot_stateDiagram_00159_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/hispafox/260922-MicroserviciosNET-001/blob/ba7ec3b191746e569c359fdee8add32a5bedc43d/Test1/src/Demo.Api/Diagramas/Diagrama%20de%20estados%20de%20la%20Saga.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "hispafox/260922-MicroserviciosNET-001",
+  "diagram_type": "stateDiagram",
+  "code": "﻿stateDiagram-v2\ndirection LR\n\n[IoT_Industrial_PLC_Logic] --> OrderSubmitted\nOrderSubmitted --> PaymentProcessing : ProcessPaymentCommand\nPaymentProcessing --> StockReserving : PaymentProcessedEvent\nPaymentProcessing --> OrderFailed : PaymentFailedEvent / CancelOrder\nPaymentProcessing --> OrderFailed : PaymentTimeoutEvent / CancelPayment + CancelOrder\n\nStockReserving --> ShipmentCreating : StockReservedEvent\nStockReserving --> OrderFailed : StockReservationFailedEvent / RefundPayment + CancelOrder\nStockReserving --> OrderFailed : StockTimeoutEvent / CancelOrder\n\nShipmentCreating --> OrderCompleted : ShipmentCreatedEvent / OrderCompletedEvent\nShipmentCreating --> OrderFailed : ShipmentFailedEvent / ReleaseStock + RefundPayment + CancelOrder\n\nOrderCompleted --> [IoT_Industrial_PLC_Logic]\nOrderFailed --> [IoT_Industrial_ActuatorController]\n\nnote right of PaymentProcessing\n  Timeout: 5 min\n  Reintentos: exponencial (IoT_Industrial_TelemetryStream)\nend note\n\nnote right of StockReserving\n  Timeout: 2 min\n  Compensación si falla:\n  - RefundPayment\n  - CancelOrder\nend note\n",
+  "content_size": 980,
+  "collected_at": "2026-02-06T10:38:34.705447",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00159",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为这个工业物联网订单系统画一个状态图。核心是从PLC逻辑触发，经过提交、支付、库存、发货几个阶段，最后要么完成要么失败。方向我想从左到右展开。",
+      "elements_involved": [
+        "IoT_Industrial_PLC_Logic",
+        "OrderSubmitted",
+        "OrderCompleted",
+        "OrderFailed",
+        "direction LR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，横向布局。那支付环节如果超时怎么处理？工业场景下网络可能不稳定。",
+      "elements_involved": [
+        "PaymentProcessing",
+        "PaymentTimeoutEvent",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "支付阶段设5分钟超时，重试策略用指数退避， telemetry流会监控这个过程。超时后触发PaymentTimeoutEvent，要同时取消支付和订单。另外支付失败本身也要走CancelOrder。",
+      "elements_involved": [
+        "PaymentProcessing",
+        "PaymentTimeoutEvent",
+        "CancelPayment",
+        "CancelOrder",
+        "PaymentFailedEvent",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，支付节点和两条失败分支我加上了。那支付成功之后是进入库存预留对吧？",
+      "elements_involved": [
+        "PaymentProcessing",
+        "StockReserving",
+        "PaymentProcessedEvent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，StockReserving阶段。这里超时时间设2分钟，如果预留失败或者超时，都要退款并取消订单。我需要把补偿动作写清楚。",
+      "elements_involved": [
+        "StockReserving",
+        "StockReservationFailedEvent",
+        "StockTimeoutEvent",
+        "RefundPayment",
+        "CancelOrder"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "库存节点的注释我补上了。预留成功后进入发货创建，这里如果失败要释放库存、退款、取消订单，动作比较多。",
+      "elements_involved": [
+        "StockReserving",
+        "ShipmentCreating",
+        "StockReservedEvent",
+        "ShipmentFailedEvent",
+        "ReleaseStock",
+        "RefundPayment",
+        "CancelOrder"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "发货成功的话，触发ShipmentCreatedEvent，同时发出OrderCompletedEvent，然后流程回到PLC逻辑闭环。失败的情况你刚才说的那些补偿动作没错，但最终要指向OrderFailed，然后由ActuatorController去执行物理动作。",
+      "elements_involved": [
+        "ShipmentCreating",
+        "OrderCompleted",
+        "ShipmentCreatedEvent",
+        "OrderCompletedEvent",
+        "IoT_Industrial_PLC_Logic",
+        "OrderFailed",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "检查一遍：起点PLC_Logic，经过提交、支付、库存、发货，完成回到PLC，失败走到ActuatorController。支付5分钟超时指数重试，库存2分钟超时，各失败分支的补偿动作都齐了。这样结构可以吗？",
+      "elements_involved": [
+        "IoT_Industrial_PLC_Logic",
+        "OrderSubmitted",
+        "PaymentProcessing",
+        "StockReserving",
+        "ShipmentCreating",
+        "OrderCompleted",
+        "OrderFailed",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 17013.413,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

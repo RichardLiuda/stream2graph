@@ -1,0 +1,215 @@
+{
+  "id": "aug_gh_sequence_00849_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/atoxfy/kikwiflow/blob/50f543c2bc2f5bbf3a389f97aba094843e707314/docs/mongo-uow-seq.mmd",
+  "github_repo": "atoxfy/kikwiflow",
+  "github_file_path": "docs/mongo-uow-seq.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Core as \"kikwi-core<br>(Infra_WorkerNode)\"\n    participant UoW as \"UnitOfWork (Infra_LoadBalancer)\"\n    participant Repository as \"ProcessExecutionRepository\"\n    participant MongoDB as \"MongoDB\"\n    participant Publisher as \"EventPublisher (Infra_EtcdCluster)\"\n\n    Core->>Core: Executa tarefas síncronas...\n    Core->>UoW: new UnitOfWork(Infra_IngressController)\n    Core->>UoW: Acumula alterações (Infra_LoadBalancer)\n\n    Note over Core: Fim do bloco síncrono.\n\n    Core->>+Repository: commit(Infra_RedisCache)\n\n    Repository->>+MongoDB: INICIAR TRANSAÇÃO\n    MongoDB->>MongoDB: 1. Atualiza ProcessInstance\n    MongoDB->>MongoDB: 2. Cria/Apaga ExecutableTasks\n    MongoDB->>MongoDB: 3. Insere 'criticalEvents' na 'event_outbox'\n    MongoDB-->>-Repository: COMMIT TRANSAÇÃO\n    Repository-->>-Core: Commit bem-sucedido\n\n    Core->>+Publisher: publishEvents(Infra_LoadBalancer))\n    Publisher-->>-Core: Retorno Imediato",
+  "content_size": 936,
+  "collected_at": "2026-02-06T01:49:55.467287",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 14,
+  "repo_forks": 0,
+  "repo_owner": "atoxfy",
+  "repo_name": "kikwiflow",
+  "repo_description": "The next gen process engine. ",
+  "repo_language": "Java",
+  "repo_topics": [
+    "automation",
+    "engine",
+    "flow",
+    "hyperautomation",
+    "java"
+  ],
+  "repo_created_at": "2025-07-29T22:51:16Z",
+  "repo_updated_at": "2026-01-07T08:47:34Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "gh_sequence_00849",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个流程，描述kikwi-core在WorkerNode上怎么处理任务提交。核心逻辑是：先同步执行，然后批量提交到MongoDB，最后异步发事件。",
+      "elements_involved": [
+        "kikwi-core",
+        "Infra_WorkerNode",
+        "MongoDB",
+        "EventPublisher"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。那UnitOfWork的角色是什么？我看代码里它好像承载了LoadBalancer的职责，同时还需要引用IngressController？",
+      "elements_involved": [
+        "UnitOfWork",
+        "Infra_LoadBalancer",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，UoW本身部署在LoadBalancer上，但它初始化时要感知IngressController来做流量入口管理。重点是它负责累积变更，不立即写库。",
+      "elements_involved": [
+        "UnitOfWork",
+        "Infra_LoadBalancer",
+        "Infra_IngressController",
+        "Acumula alterações"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先画出Core、UoW、Repository和MongoDB的主链路。Core自己有个自循环表示同步任务执行，然后new UoW，再调用commit到Repository。",
+      "elements_involved": [
+        "Core",
+        "UoW",
+        "Repository",
+        "MongoDB",
+        "Executa tarefas síncronas",
+        "new UnitOfWork",
+        "commit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "commit的时候需要展开细节：Repository要开启MongoDB事务，里面三步操作——更新ProcessInstance、处理ExecutableTasks、最后把criticalEvents写入event_outbox。",
+      "elements_involved": [
+        "Repository",
+        "MongoDB",
+        "Atualiza ProcessInstance",
+        "Cria/Apaga ExecutableTasks",
+        "Insere 'criticalEvents'",
+        "event_outbox"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "event_outbox是MongoDB里的集合吗？还有，事务边界怎么画——是Repository调用MongoDB开启，还是MongoDB自己管理？",
+      "elements_involved": [
+        "Repository",
+        "MongoDB",
+        "INICIAR TRANSAÇÃO",
+        "COMMIT TRANSAÇÃO",
+        "event_outbox"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "event_outbox是MongoDB的集合。事务由Repository发起，MongoDB执行具体步骤，最后返回给Repository确认提交成功。",
+      "elements_involved": [
+        "Repository",
+        "MongoDB",
+        "INICIAR TRANSAÇÃO",
+        "COMMIT TRANSAÇÃO"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已加上事务细节。现在补最后一步：commit成功后，Core要调EventPublisher发事件。Publisher部署在EtcdCluster上，对吧？",
+      "elements_involved": [
+        "Core",
+        "EventPublisher",
+        "Infra_EtcdCluster",
+        "publishEvents"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Publisher在EtcdCluster上。而且注意它是异步的——publishEvents调用后立刻返回，不等待实际投递。",
+      "elements_involved": [
+        "EventPublisher",
+        "Infra_EtcdCluster",
+        "publishEvents",
+        "Retorno Imediato"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "publishEvents的参数我看代码里又写了Infra_LoadBalancer，这是笔误还是确实要传LoadBalancer的上下文？",
+      "elements_involved": [
+        "publishEvents",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "是笔误，应该是Infra_EtcdCluster，和Publisher的部署位置一致。另外括号也多了一个，麻烦修正。",
+      "elements_involved": [
+        "publishEvents",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正参数为Infra_EtcdCluster，并调整括号。整个序列现在完整了：Core同步执行→UoW累积→Repository事务提交三步→异步publish，结构清晰。",
+      "elements_involved": [
+        "Core",
+        "UoW",
+        "Repository",
+        "MongoDB",
+        "EventPublisher",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 12,
+    "repair_count": 1,
+    "grounding_acts_count": 12,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 32745.3649,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

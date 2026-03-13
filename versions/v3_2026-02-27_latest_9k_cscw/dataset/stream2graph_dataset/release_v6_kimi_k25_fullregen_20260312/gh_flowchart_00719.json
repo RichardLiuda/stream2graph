@@ -1,0 +1,839 @@
+{
+  "id": "gh_flowchart_00719",
+  "source": "github",
+  "source_url": "https://github.com/timothywarner/az305/blob/f1dac63440bdff4359294c400acb349c6f12671c/images/hub-spoke-network.mmd",
+  "github_repo": "timothywarner/az305",
+  "github_file_path": "images/hub-spoke-network.mmd",
+  "diagram_type": "flowchart",
+  "code": "%% AZ-305 Domain 4: Hub-Spoke Network Topology\n%% Reference: Azure Architecture Center hub-spoke pattern, CAF networking\n%% Exam Focus: VNet peering, Azure Firewall, ExpressRoute, VPN\n\nflowchart TB\n    subgraph ONPREM[\"On-Premises Network\"]\n        direction TB\n        ONPREM_DC[\"Corporate Datacenter<br/>10.100.0.0/16\"]\n        ONPREM_USERS[\"Enterprise Users\"]\n        ONPREM_APPS[\"Legacy Applications\"]\n    end\n\n    subgraph HYBRID_CONN[\"Hybrid Connectivity\"]\n        direction TB\n\n        ER[\"ExpressRoute Circuit<br/>Private Peering<br/>1-10 Gbps\"]\n        ER_GW[\"ExpressRoute Gateway<br/>ErGw2AZ (Zone-redundant)\"]\n\n        VPN[\"Site-to-Site VPN<br/>IPsec/IKE<br/>Backup connectivity\"]\n        VPN_GW[\"VPN Gateway<br/>VpnGw2AZ\"]\n    end\n\n    subgraph HUB[\"Hub Virtual Network (10.0.0.0/16)\"]\n        direction TB\n\n        subgraph HUB_SUBNETS[\"Hub Subnets\"]\n            GW_SUBNET[\"GatewaySubnet<br/>10.0.1.0/24<br/>ER + VPN Gateways\"]\n            FW_SUBNET[\"AzureFirewallSubnet<br/>10.0.2.0/24<br/>Min /26 required\"]\n            BASTION_SUBNET[\"AzureBastionSubnet<br/>10.0.3.0/24<br/>Secure RDP/SSH\"]\n            MGMT_SUBNET[\"Management Subnet<br/>10.0.4.0/24<br/>Jump boxes, tools\"]\n        end\n\n        subgraph SHARED_SERVICES[\"Shared Services\"]\n            FIREWALL[\"Azure Firewall<br/>Premium SKU<br/>IDPS, TLS inspection\"]\n            BASTION[\"Azure Bastion<br/>Standard SKU<br/>Native RDP/SSH\"]\n            DNS[\"Private DNS Zones<br/>privatelink.*.azure.net<br/>Custom domains\"]\n            KV[\"Shared Key Vault<br/>Certificates, secrets\"]\n        end\n\n        FW_POLICY[\"Firewall Policy<br/>Network rules<br/>Application rules<br/>DNAT rules\"]\n    end\n\n    subgraph SPOKE1[\"Spoke 1 - Production (10.1.0.0/16)\"]\n        direction TB\n\n        SPOKE1_WEB[\"Web Tier Subnet<br/>10.1.1.0/24\"]\n        SPOKE1_APP[\"App Tier Subnet<br/>10.1.2.0/24\"]\n        SPOKE1_DATA[\"Data Tier Subnet<br/>10.1.3.0/24\"]\n\n        SPOKE1_NSG[\"NSG: Deny Inbound<br/>Allow via Firewall\"]\n        SPOKE1_UDR[\"UDR: 0.0.0.0/0<br/>-> Azure Firewall\"]\n\n        SPOKE1_PEP[\"Private Endpoints<br/>Storage, SQL, KV\"]\n    end\n\n    subgraph SPOKE2[\"Spoke 2 - Development (10.2.0.0/16)\"]\n        direction TB\n\n        SPOKE2_DEV[\"Dev Environment<br/>10.2.1.0/24\"]\n        SPOKE2_TEST[\"Test Environment<br/>10.2.2.0/24\"]\n\n        SPOKE2_NSG[\"NSG: Segmentation\"]\n        SPOKE2_UDR[\"UDR: Route to Hub\"]\n    end\n\n    subgraph SPOKE3[\"Spoke 3 - DMZ (10.3.0.0/16)\"]\n        direction TB\n\n        SPOKE3_DMZ[\"DMZ Subnet<br/>10.3.1.0/24\"]\n        APP_GW[\"Application Gateway<br/>WAF_v2 SKU<br/>Public IP\"]\n        SPOKE3_UDR[\"UDR: Internet via<br/>Azure Firewall\"]\n    end\n\n    subgraph SPOKE4[\"Spoke 4 - Shared Services (10.4.0.0/16)\"]\n        direction TB\n\n        SPOKE4_AD[\"AD DS Subnet<br/>Domain Controllers\"]\n        SPOKE4_MGMT[\"Management Tools<br/>SCCM, WSUS\"]\n    end\n\n    subgraph INTERNET[\"Internet\"]\n        USERS[\"External Users\"]\n        PARTNERS[\"Partner Networks\"]\n    end\n\n    %% On-premises connectivity\n    ONPREM_DC --> ER\n    ONPREM_DC --> VPN\n    ER --> ER_GW\n    VPN --> VPN_GW\n    ER_GW --> GW_SUBNET\n    VPN_GW --> GW_SUBNET\n\n    %% Hub-Spoke peering\n    HUB <-->|VNet Peering<br/>Allow Gateway Transit| SPOKE1\n    HUB <-->|VNet Peering<br/>Use Remote Gateway| SPOKE2\n    HUB <-->|VNet Peering| SPOKE3\n    HUB <-->|VNet Peering| SPOKE4\n\n    %% Traffic flows through firewall\n    SPOKE1 --> FIREWALL\n    SPOKE2 --> FIREWALL\n    SPOKE3 --> FIREWALL\n    SPOKE4 --> FIREWALL\n\n    FIREWALL --> INTERNET\n    FIREWALL --> ONPREM_DC\n\n    %% Application Gateway to backend\n    USERS --> APP_GW\n    APP_GW --> SPOKE1_WEB\n\n    %% Firewall policy\n    FW_POLICY --> FIREWALL\n\n    %% DNS resolution\n    DNS -.-> SPOKE1_PEP\n\n    %% Exam decision points\n    NOTE1[\"**EXAM TIP**: VNet peering is<br/>non-transitive - spokes cannot<br/>communicate directly without<br/>Firewall or NVA routing\"]\n    NOTE2[\"**EXAM TIP**: Use Gateway Transit<br/>on hub peering to share<br/>ExpressRoute/VPN with spokes\"]\n    NOTE3[\"**EXAM TIP**: Azure Firewall needs<br/>dedicated /26 subnet minimum<br/>named 'AzureFirewallSubnet'\"]\n    NOTE4[\"**EXAM TIP**: UDRs required to<br/>force traffic through Firewall<br/>Default route 0.0.0.0/0 -> FW\"]\n\n    %% Styling\n    classDef onpremStyle fill:#78909c,stroke:#455a64,color:#fff\n    classDef connectStyle fill:#ab47bc,stroke:#7b1fa2,color:#fff\n    classDef hubStyle fill:#1565c0,stroke:#0d47a1,color:#fff\n    classDef subnetStyle fill:#e3f2fd,stroke:#1976d2,color:#000\n    classDef serviceStyle fill:#ffca28,stroke:#ff8f00,color:#000\n    classDef spokeStyle fill:#66bb6a,stroke:#388e3c,color:#fff\n    classDef spoke2Style fill:#4fc3f7,stroke:#0288d1,color:#000\n    classDef dmzStyle fill:#ef5350,stroke:#c62828,color:#fff\n    classDef sharedStyle fill:#7e57c2,stroke:#512da8,color:#fff\n    classDef internetStyle fill:#90a4ae,stroke:#546e7a,color:#fff\n    classDef noteStyle fill:#fff9c4,stroke:#fbc02d,color:#000,stroke-dasharray: 5 5\n\n    class ONPREM_DC,ONPREM_USERS,ONPREM_APPS onpremStyle\n    class ER,ER_GW,VPN,VPN_GW connectStyle\n    class GW_SUBNET,FW_SUBNET,BASTION_SUBNET,MGMT_SUBNET subnetStyle\n    class FIREWALL,BASTION,DNS,KV,FW_POLICY serviceStyle\n    class SPOKE1_WEB,SPOKE1_APP,SPOKE1_DATA,SPOKE1_NSG,SPOKE1_UDR,SPOKE1_PEP spokeStyle\n    class SPOKE2_DEV,SPOKE2_TEST,SPOKE2_NSG,SPOKE2_UDR spoke2Style\n    class SPOKE3_DMZ,APP_GW,SPOKE3_UDR dmzStyle\n    class SPOKE4_AD,SPOKE4_MGMT sharedStyle\n    class USERS,PARTNERS internetStyle\n    class NOTE1,NOTE2,NOTE3,NOTE4 noteStyle\n",
+  "content_size": 5501,
+  "collected_at": "2026-02-06T01:47:12.036127",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 90,
+  "repo_forks": 81,
+  "repo_owner": "timothywarner",
+  "repo_name": "az305",
+  "repo_description": "AZ-305: Designing Microsoft Azure Infrastructure Solutions Crash Course",
+  "repo_language": "Bicep",
+  "repo_topics": [
+    "architecture",
+    "arm-templates",
+    "az-305",
+    "azure",
+    "bicep"
+  ],
+  "repo_created_at": "2022-02-06T16:34:03Z",
+  "repo_updated_at": "2026-02-02T23:11:57Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为AZ-305考试设计一个Hub-Spoke网络拓扑图，重点是展示混合连接和流量管控。先确定整体结构：左侧放本地数据中心，中间是Hub网络，右侧辐射多个Spoke。",
+      "elements_involved": [
+        "ONPREM",
+        "HUB",
+        "SPOKE1",
+        "SPOKE2",
+        "SPOKE3",
+        "SPOKE4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，考试场景。Hub的地址空间规划为10.0.0.0/16，四个Spoke分别用10.1到10.4的网段对吗？另外本地数据中心用什么网段区分？",
+      "elements_involved": [
+        "HUB",
+        "SPOKE1",
+        "SPOKE2",
+        "SPOKE3",
+        "SPOKE4",
+        "ONPREM_DC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，本地用10.100.0.0/16，和Azure网段明显区分。Hub里面要包含GatewaySubnet、AzureFirewallSubnet、AzureBastionSubnet和管理子网四个关键子网。",
+      "elements_involved": [
+        "ONPREM_DC",
+        "GW_SUBNET",
+        "FW_SUBNET",
+        "BASTION_SUBNET",
+        "MGMT_SUBNET"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在Hub内部先画出四个子网。GatewaySubnet用10.0.1.0/24，AzureFirewallSubnet用10.0.2.0/24，Bastion子网10.0.3.0/24，管理子网10.0.4.0/24。",
+      "elements_involved": [
+        "HUB_SUBNETS",
+        "GW_SUBNET",
+        "FW_SUBNET",
+        "BASTION_SUBNET",
+        "MGMT_SUBNET"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "混合连接部分需要ExpressRoute和VPN双链路。ExpressRoute用ErGw2AZ支持可用区冗余，VPN作为备份。两条线路都终结到GatewaySubnet。",
+      "elements_involved": [
+        "ER",
+        "ER_GW",
+        "VPN",
+        "VPN_GW",
+        "GW_SUBNET"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加混合连接区域，包含ExpressRoute Circuit和ExpressRoute Gateway，以及Site-to-Site VPN和VPN Gateway。都指向GatewaySubnet。",
+      "elements_involved": [
+        "HYBRID_CONN",
+        "ER",
+        "ER_GW",
+        "VPN",
+        "VPN_GW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Hub的核心是Azure Firewall Premium SKU，要支持IDPS和TLS检查。防火墙需要独立的策略对象，包含网络规则、应用规则和DNAT规则。",
+      "elements_involved": [
+        "FIREWALL",
+        "FW_POLICY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下，Firewall Policy是单独的一个框，通过关联指向Azure Firewall？还是直接画在防火墙内部？",
+      "elements_involved": [
+        "FIREWALL",
+        "FW_POLICY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "单独画，用虚线或箭头关联。这是考试重点，策略可以复用到多个防火墙实例。另外Shared Services还要包含Bastion、Private DNS和Key Vault。",
+      "elements_involved": [
+        "FW_POLICY",
+        "BASTION",
+        "DNS",
+        "KV"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成Shared Services区域：Azure Firewall Premium、Azure Bastion Standard、Private DNS Zones、Shared Key Vault，以及独立的Firewall Policy对象。",
+      "elements_involved": [
+        "SHARED_SERVICES",
+        "FIREWALL",
+        "BASTION",
+        "DNS",
+        "KV",
+        "FW_POLICY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第一个Spoke是生产环境，10.1.0.0/16，需要三层架构：Web层、App层、Data层。还要显示NSG和UDR的配置逻辑。",
+      "elements_involved": [
+        "SPOKE1",
+        "SPOKE1_WEB",
+        "SPOKE1_APP",
+        "SPOKE1_DATA"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SPOKE1已添加：Web Tier 10.1.1.0/24、App Tier 10.1.2.0/24、Data Tier 10.1.3.0/24，加上NSG策略和UDR默认路由指向防火墙。",
+      "elements_involved": [
+        "SPOKE1_WEB",
+        "SPOKE1_APP",
+        "SPOKE1_DATA",
+        "SPOKE1_NSG",
+        "SPOKE1_UDR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "生产Spoke还要画Private Endpoints，连接到Storage、SQL和Key Vault，展示服务端点的安全访问模式。",
+      "elements_involved": [
+        "SPOKE1_PEP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Private Endpoints节点。DNS解析需要关联到Hub的Private DNS Zones，我画一条虚线表示解析关系？",
+      "elements_involved": [
+        "SPOKE1_PEP",
+        "DNS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，用虚线或点线。第二个Spoke是开发测试环境，10.2.0.0/16，结构简单些，Dev和Test两个子网就行，但同样要有NSG和UDR。",
+      "elements_involved": [
+        "SPOKE2",
+        "SPOKE2_DEV",
+        "SPOKE2_TEST"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SPOKE2完成：Dev Environment 10.2.1.0/24、Test Environment 10.2.2.0/24，加上NSG和指向Hub的UDR。",
+      "elements_involved": [
+        "SPOKE2_DEV",
+        "SPOKE2_TEST",
+        "SPOKE2_NSG",
+        "SPOKE2_UDR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第三个Spoke是DMZ，10.3.0.0/16，专门放Application Gateway。WAF_v2 SKU，有公网IP，后端指向生产Spoke的Web层。",
+      "elements_involved": [
+        "SPOKE3",
+        "SPOKE3_DMZ",
+        "APP_GW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Application Gateway在DMZ Spoke，但流量要回到SPOKE1的Web层？这个跨Spoke的流量怎么走？",
+      "elements_involved": [
+        "APP_GW",
+        "SPOKE1_WEB",
+        "SPOKE3"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "直接通过VNet Peering，DMZ Spoke到Hub的Peering要允许，然后Hub到SPOKE1也有Peering。但注意VNet Peering是非传递的，DMZ不能直接到SPOKE1，必须经过Hub防火墙或者UDR控制。",
+      "elements_involved": [
+        "HUB",
+        "SPOKE3",
+        "SPOKE1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "理解了。已添加DMZ Spoke：DMZ Subnet 10.3.1.0/24、Application Gateway WAF_v2、以及UDR配置。",
+      "elements_involved": [
+        "SPOKE3_DMZ",
+        "APP_GW",
+        "SPOKE3_UDR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第四个Spoke是共享服务，10.4.0.0/16，放AD DS域控和SCCM、WSUS这些管理工具。这个Spoke通常需要和其他Spoke都有通信。",
+      "elements_involved": [
+        "SPOKE4",
+        "SPOKE4_AD",
+        "SPOKE4_MGMT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SPOKE4已添加：AD DS Subnet放域控，Management Tools放SCCM和WSUS。",
+      "elements_involved": [
+        "SPOKE4_AD",
+        "SPOKE4_MGMT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画连接关系。首先是本地数据中心到混合连接：Corporate Datacenter同时连ExpressRoute和VPN。",
+      "elements_involved": [
+        "ONPREM_DC",
+        "ER",
+        "VPN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画两条线：ONPREM_DC到ER，ONPREM_DC到VPN。",
+      "elements_involved": [
+        "ONPREM_DC",
+        "ER",
+        "VPN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后ExpressRoute Circuit到ExpressRoute Gateway，VPN到VPN Gateway，两个Gateway都连到GatewaySubnet。",
+      "elements_involved": [
+        "ER",
+        "ER_GW",
+        "VPN",
+        "VPN_GW",
+        "GW_SUBNET"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成：ER到ER_GW，VPN到VPN_GW，ER_GW和VPN_GW都指向GW_SUBNET。",
+      "elements_involved": [
+        "ER_GW",
+        "VPN_GW",
+        "GW_SUBNET"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "关键的Hub-Spoke Peering关系。Hub和四个Spoke都要双向Peering，但要标注不同的属性：SPOKE1允许Gateway Transit，SPOKE2使用远程网关，SPOKE3和SPOKE4标准Peering。",
+      "elements_involved": [
+        "HUB",
+        "SPOKE1",
+        "SPOKE2",
+        "SPOKE3",
+        "SPOKE4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加四条双向Peering线，分别标注：SPOKE1是\"Allow Gateway Transit\"，SPOKE2是\"Use Remote Gateway\"，SPOKE3和SPOKE4标准Peering。",
+      "elements_involved": [
+        "HUB",
+        "SPOKE1",
+        "SPOKE2",
+        "SPOKE3",
+        "SPOKE4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "流量管控是核心考点。所有Spoke的出站流量都必须经过Azure Firewall。画四条线：SPOKE1到FIREWALL，SPOKE2到FIREWALL，SPOKE3到FIREWALL，SPOKE4到FIREWALL。",
+      "elements_involved": [
+        "SPOKE1",
+        "SPOKE2",
+        "SPOKE3",
+        "SPOKE4",
+        "FIREWALL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "四条Spoke到Firewall的线已画好。Firewall的出站呢？到Internet和回本地数据中心？",
+      "elements_involved": [
+        "FIREWALL",
+        "INTERNET",
+        "ONPREM_DC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Firewall到Internet，以及Firewall通过ExpressRoute/VPN网关回本地数据中心。这是强制隧道的概念。",
+      "elements_involved": [
+        "FIREWALL",
+        "INTERNET",
+        "ONPREM_DC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：FIREWALL到INTERNET，FIREWALL到ONPREM_DC。",
+      "elements_involved": [
+        "FIREWALL",
+        "INTERNET",
+        "ONPREM_DC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "外部用户访问路径：Internet上的Users和Partners，通过公网访问Application Gateway，然后App Gateway后端连到SPOKE1的Web层。",
+      "elements_involved": [
+        "USERS",
+        "PARTNERS",
+        "APP_GW",
+        "SPOKE1_WEB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成：USERS到APP_GW，PARTNERS也画在Internet区域，APP_GW到SPOKE1_WEB。",
+      "elements_involved": [
+        "USERS",
+        "PARTNERS",
+        "APP_GW",
+        "SPOKE1_WEB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "策略关联：FW_POLICY用箭头指向FIREWALL，表示策略应用。DNS到Private Endpoints的解析关系用虚线。",
+      "elements_involved": [
+        "FW_POLICY",
+        "FIREWALL",
+        "DNS",
+        "SPOKE1_PEP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：FW_POLICY到FIREWALL的关联线，DNS到SPOKE1_PEP的虚线。",
+      "elements_involved": [
+        "FW_POLICY",
+        "FIREWALL",
+        "DNS",
+        "SPOKE1_PEP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后加四个考试提示框，这是AZ-305备考图的关键。NOTE1讲VNet Peering非传递性，NOTE2讲Gateway Transit，NOTE3讲Firewall子网要求，NOTE4讲UDR强制路由。",
+      "elements_involved": [
+        "NOTE1",
+        "NOTE2",
+        "NOTE3",
+        "NOTE4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "四个考试提示已添加：NOTE1关于非传递性，NOTE2关于Gateway Transit共享，NOTE3关于AzureFirewallSubnet最小/26，NOTE4关于0.0.0.0/0路由。",
+      "elements_involved": [
+        "NOTE1",
+        "NOTE2",
+        "NOTE3",
+        "NOTE4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下子网大小。AzureFirewallSubnet你画的10.0.2.0/24，但考试提示说最小/26，这个要一致。/24包含/26，技术上可以，但会不会误导考生？",
+      "elements_involved": [
+        "FW_SUBNET",
+        "NOTE3"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确实，应该严格按最小要求标注。我把FW_SUBNET改为10.0.2.0/26，这样和NOTE3的提示完全一致，避免考生混淆。",
+      "elements_involved": [
+        "FW_SUBNET"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好，这样更准确。另外GatewaySubnet你用的是10.0.1.0/24，对于ErGw2AZ和VpnGw2AZ，/27其实就够了，但/24更常见，保持吧。",
+      "elements_involved": [
+        "GW_SUBNET"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "颜色区分需要调整吗？现在Hub用蓝色系，Spoke用不同绿色和红色区分。ONPREM用灰色，混合连接用紫色，Internet用蓝灰色。",
+      "elements_involved": [
+        "HUB",
+        "SPOKE1",
+        "SPOKE2",
+        "SPOKE3",
+        "SPOKE4",
+        "ONPREM",
+        "HYBRID_CONN",
+        "INTERNET"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "颜色方案可以。SPOKE1生产用绿色，SPOKE2开发用浅蓝色，SPOKE3 DMZ用红色突出风险，SPOKE4共享服务用紫色。考试提示用黄色虚线框。",
+      "elements_involved": [
+        "SPOKE1",
+        "SPOKE2",
+        "SPOKE3",
+        "SPOKE4",
+        "NOTE1",
+        "NOTE2",
+        "NOTE3",
+        "NOTE4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "颜色样式已应用：onpremStyle灰色，connectStyle紫色，hubStyle深蓝，subnetStyle浅蓝，serviceStyle黄色，spokeStyle绿色，spoke2Style浅蓝，dmzStyle红色，sharedStyle紫色，internetStyle蓝灰，noteStyle黄色虚线。",
+      "elements_involved": [
+        "class definitions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再看一下Spoke2的标注，你写的是\"Use Remote Gateway\"，这是从Spoke视角看Hub的Peering属性。但SPOKE1的\"Allow Gateway Transit\"是Hub视角的属性。需要明确标注方向吗？",
+      "elements_involved": [
+        "SPOKE1",
+        "SPOKE2",
+        "HUB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确实容易混淆。我调整标注：Hub到SPOKE1的线标注\"Allow Gateway Transit\"，SPOKE2到Hub的线标注\"Use Remote Gateway\"，这样方向更清晰。双向Peering其实是两条有向配置。",
+      "elements_involved": [
+        "HUB",
+        "SPOKE1",
+        "SPOKE2"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "本地数据中心部分再完善一下，除了Corporate Datacenter，还要显示Enterprise Users和Legacy Applications，体现完整的本地环境。",
+      "elements_involved": [
+        "ONPREM_USERS",
+        "ONPREM_APPS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加ONPREM_USERS和ONPREM_APPS到本地网络子图，和ONPREM_DC放在一起。",
+      "elements_involved": [
+        "ONPREM",
+        "ONPREM_DC",
+        "ONPREM_USERS",
+        "ONPREM_APPS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ExpressRoute的带宽范围是1-10 Gbps，这个要标注。VPN标注IPsec/IKE和Backup connectivity角色。",
+      "elements_involved": [
+        "ER",
+        "VPN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新标注：ER显示\"Private Peering, 1-10 Gbps\"，VPN显示\"IPsec/IKE, Backup connectivity\"。",
+      "elements_involved": [
+        "ER",
+        "VPN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Bastion的标注要强调Standard SKU和原生RDP/SSH能力。Private DNS要显示privatelink.azure.net后缀和自定义域支持。",
+      "elements_involved": [
+        "BASTION",
+        "DNS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新：BASTION标注\"Standard SKU, Native RDP/SSH\"，DNS标注\"privatelink.*.azure.net, Custom domains\"。",
+      "elements_involved": [
+        "BASTION",
+        "DNS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SPOKE1的NSG策略你写的是\"Deny Inbound, Allow via Firewall\"，这个描述准确吗？应该是默认拒绝入站，允许来自防火墙的流量？",
+      "elements_involved": [
+        "SPOKE1_NSG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我调整一下：\"Deny all inbound, Allow from Firewall\"更准确，强调流量源是防火墙的IP或子网。",
+      "elements_involved": [
+        "SPOKE1_NSG"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "UDR的标注统一用\"0.0.0.0/0 - Azure Firewall\"格式，SPOKE3的DMZ要特别标注Internet流量也走防火墙，虽然App GW有公网IP，但后端流量要管控。",
+      "elements_involved": [
+        "SPOKE1_UDR",
+        "SPOKE2_UDR",
+        "SPOKE3_UDR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已统一UDR标注格式。SPOKE3_UDR特别标注\"Internet via Azure Firewall\"，区分App Gateway的公网入站和子网的出站管控。",
+      "elements_involved": [
+        "SPOKE1_UDR",
+        "SPOKE2_UDR",
+        "SPOKE3_UDR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "整体布局检查：ONPREM在最左，HYBRID_CONN左中，HUB居中，四个SPOKE在右侧辐射排列，INTERNET在右下或底部？",
+      "elements_involved": [
+        "ONPREM",
+        "HYBRID_CONN",
+        "HUB",
+        "SPOKE1",
+        "SPOKE2",
+        "SPOKE3",
+        "SPOKE4",
+        "INTERNET"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "当前布局是TB（Top-Bottom）流向，ONPREM左上，HYBRID_CONN左中，HUB中心，四个SPOKE在右侧垂直排列，INTERNET在底部。需要改为LR（Left-Right）吗？",
+      "elements_involved": [
+        "flowchart direction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "TB布局可以，符合Hub-Spoke的星型辐射感。考试图通常也是上下分层：本地-混合-Hub-Spoke-外部。保持TB。",
+      "elements_involved": [
+        "flowchart TB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "最后确认所有元素：5个子图（ONPREM、HYBRID_CONN、HUB、4个SPOKE、INTERNET），HUB内有2个子图（HUB_SUBNETS、SHARED_SERVICES），所有连接关系完整，4个考试提示，颜色样式应用。还有其他遗漏吗？",
+      "elements_involved": [
+        "all elements"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Key Vault的连接关系需要检查。SPOKE1_PEP包含到KV的Private Endpoint，但KV本身在Hub的Shared Services。这个关联要清晰。",
+      "elements_involved": [
+        "KV",
+        "SPOKE1_PEP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SPOKE1_PEP的标注已包含KV，表示Private Endpoint连接到Hub中的Shared Key Vault。DNS解析通过Private DNS Zones完成，虚线已画。",
+      "elements_involved": [
+        "KV",
+        "SPOKE1_PEP",
+        "DNS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整体完成。这个图覆盖了AZ-305 Domain 4的核心考点：VNet Peering、Azure Firewall、ExpressRoute、VPN、UDR/NSG、Private Endpoint、Bastion。结构清晰，适合考试复习。",
+      "elements_involved": [
+        "all elements"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "最终图已确认：Hub-Spoke网络拓扑完整，包含混合连接、流量管控、安全访问全链路，四个考试提示突出关键考点，颜色区分清晰。可以输出最终Mermaid代码。",
+      "elements_involved": [
+        "all elements"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 3,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:40Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 122343.3216,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 96
+  }
+}

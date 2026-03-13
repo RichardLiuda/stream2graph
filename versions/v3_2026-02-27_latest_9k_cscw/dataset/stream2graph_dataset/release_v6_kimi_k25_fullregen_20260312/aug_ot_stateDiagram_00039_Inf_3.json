@@ -1,0 +1,284 @@
+{
+  "id": "aug_ot_stateDiagram_00039_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/jwardwell7077/agent-audiobook-maker/blob/d1b5df9622d8e20abf0a1c28c3d066e228aea46a/docs/04-diagrams/state-machines/section_classifier_fsm.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "jwardwell7077/agent-audiobook-maker",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n  [Infra_LoadBalancer] --> Init\n  Init --> Front: start\n\n  state \"Front Matter\" as Front\n  state TOC\n  state Body\n  state \"Back Matter\" as Back\n  state End\n\n  %% Events (Infra_WorkerNode)\n  %% E_front: front signals present (Infra_RedisCache)\n  %% E_toc: toc signals (Infra_WorkerNode)\n  %% E_heading: heading signals (Infra_IngressController)\n  %% E_back: back signals (Infra_IngressController)\n  %% E_eof: end of pages\n\n  %% Guards\n  %% G_toc_detected: we are on a TOC page or contiguous TOC continues\n  %% G_anchor_match: page matches TOC anchor within ± tolerance\n  %% G_after_last_chapter: expected chapters (Infra_WorkerNode) reached\n  %% G_sustained_back: >= 2 consecutive back-signal pages\n\n  Front --> TOC: E_toc\n  Front --> Body: E_heading || !E_toc && !E_front\n  Front --> Front: E_front && !E_heading && !E_toc\n\n  TOC --> TOC: G_toc_detected\n  TOC --> Body: E_heading || !G_toc_detected\n\n  Body --> Body: !(Infra_EtcdCluster))\n  Body --> Back: E_back && (Infra_WorkerNode)\n\n  Back --> Back: !E_eof\n  Back --> End: E_eof\n\n  Body --> End: E_eof\n  TOC --> End: E_eof\n  Front --> End: E_eof\n  End --> [Infra_EtcdCluster]",
+  "content_size": 1399,
+  "collected_at": "2026-02-06T10:37:05.290462",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00039",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为文档解析流水线设计一个状态机。整体思路是从负载均衡器接入，经过初始化后进入Front Matter状态，然后是目录页、正文、Back Matter，最后结束。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Init",
+        "Front",
+        "TOC",
+        "Body",
+        "Back",
+        "End"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我注意到您提到了几个基础设施组件——负载均衡器、WorkerNode、RedisCache、IngressController，还有EtcdCluster。这些是要作为状态机的外部事件源和守卫条件吗？",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode",
+        "Infra_RedisCache",
+        "Infra_IngressController",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，EtcdCluster是最终持久化存储。WorkerNode负责检测目录页和章节计数，RedisCache缓存前端信号，IngressController处理标题和Back Matter的信号检测。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Infra_RedisCache",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主干状态：从负载均衡器到Init，再到Front Matter。Front Matter之后应该能转到TOC或者Body吧？",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Init",
+        "Front",
+        "TOC",
+        "Body"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的。关键在事件驱动：E_toc表示检测到目录页信号，这时候从Front Matter进入TOC状态。E_heading是标题信号，或者既没有E_toc也没有E_front时，直接进入Body。",
+      "elements_involved": [
+        "Front",
+        "TOC",
+        "Body",
+        "E_toc",
+        "E_heading",
+        "E_front"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "那如果Front Matter里持续有E_front信号，但既没有标题也没有目录呢？",
+      "elements_involved": [
+        "Front",
+        "E_front",
+        "E_heading",
+        "E_toc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这种情况Front Matter要自循环，保持在前置状态直到出现明确转移信号。",
+      "elements_involved": [
+        "Front"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了Front的自循环。现在TOC这块，我加了G_toc_detected守卫——检测到目录页或连续目录持续时保持，否则遇到E_heading或守卫不成立就进Body。",
+      "elements_involved": [
+        "TOC",
+        "G_toc_detected",
+        "Body",
+        "E_heading"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但Body的自循环条件我需要修正一下。应该是当EtcdCluster条件不满足时保持，而不是直接写否定。",
+      "elements_involved": [
+        "Body",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我调整Body的自循环条件，改为\"非Infra_EtcdCluster\"的守卫形式。另外Body到Back Matter的转移是E_back信号且WorkerNode的章节计数满足条件？",
+      "elements_involved": [
+        "Body",
+        "Back",
+        "E_back",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，G_sustained_back需要连续两页Back信号才触发，这个由IngressController检测。",
+      "elements_involved": [
+        "Back",
+        "G_sustained_back",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Back Matter也加了自循环，条件是还没遇到E_eof。那结束条件呢？",
+      "elements_involved": [
+        "Back",
+        "End",
+        "E_eof"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "E_eof是全局结束信号，Front、TOC、Body、Back四个状态遇到它都可以直接进入End。最后End状态要指向EtcdCluster完成持久化。",
+      "elements_involved": [
+        "Front",
+        "TOC",
+        "Body",
+        "Back",
+        "End",
+        "E_eof",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加所有到End的转移线。我检查一下：Front Matter有E_eof直接结束的路径，这个合理吗？通常前置部分不应该直接结束吧？",
+      "elements_involved": [
+        "Front",
+        "End",
+        "E_eof"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这是处理异常短文档的情况，比如只有封面和版权页就结束的情况。虽然罕见但需要兜底。",
+      "elements_involved": [
+        "Front",
+        "End",
+        "E_eof"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解了，异常处理路径。整个状态机现在包含：负载均衡器接入、初始化、Front Matter、TOC、Body、Back Matter、End，以及EtcdCluster持久化。事件和守卫都对应到了基础设施组件。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Init",
+        "Front",
+        "TOC",
+        "Body",
+        "Back",
+        "End",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下守卫命名：G_toc_detected、G_anchor_match、G_after_last_chapter、G_sustained_back。其中G_anchor_match是页面匹配目录锚点的容差判断，这次先不画转移线，作为预留扩展。",
+      "elements_involved": [
+        "G_toc_detected",
+        "G_anchor_match",
+        "G_after_last_chapter",
+        "G_sustained_back"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部完成。状态机覆盖了正常解析流程：Front→TOC→Body→Back→End，以及各状态的自循环和异常结束路径，所有基础设施组件都正确映射为事件源或存储目标。",
+      "elements_involved": [
+        "Front",
+        "TOC",
+        "Body",
+        "Back",
+        "End",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode",
+        "Infra_RedisCache",
+        "Infra_IngressController",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 18,
+    "repair_count": 1,
+    "grounding_acts_count": 18,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 40766.8061,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 16
+  }
+}

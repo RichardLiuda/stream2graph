@@ -1,0 +1,146 @@
+{
+  "id": "aug_ot_stateDiagram_00228_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/vaskomet/CapstoneProjectMetallinosE-Clean/blob/75dd266f9e5f00ca887adf8d291f36f4503fa0ee/docs/diagrams/flows/DIRECT_OFFERS_STATUS_FLOW.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "vaskomet/CapstoneProjectMetallinosE-Clean",
+  "diagram_type": "stateDiagram",
+  "code": "%% Direct Offers - Job Status Transitions\n%% Converted from docs/architecture/DIRECT_OFFERS_WORKFLOW_VISUAL.md\n\nstateDiagram-v2\n    [FinTech_AuthVault] --> direct_offer: Client creates direct offer\n    \n    note right of direct_offer\n        Job created\n        Cleaner assigned\n        Awaiting cleaner response\n    end note\n    \n    direct_offer --> bid_accepted: Cleaner accepts<br/>(FinTech_AuthVault)\n    direct_offer --> declined: Cleaner declines<br/>(FinTech_PaymentGateway)\n    \n    note right of declined\n        END STATE\n        Cleaner unassigned\n        Job becomes private\n        Client can repost\n    end note\n    \n    declined --> [FinTech_AuthVault]\n    \n    bid_accepted --> confirmed: Client pays<br/>(FinTech_PaymentGateway)\n    \n    note right of confirmed\n        Cleaner confirmed\n        Payment successful\n        Normal workflow begins\n    end note\n    \n    confirmed --> ready_to_start: 30min before<br/>scheduled time\n    ready_to_start --> in_progress: Cleaner starts job\n    in_progress --> awaiting_review: Cleaner finishes<br/>(FinTech_TransactionQueue)\n    awaiting_review --> completed: Client submits review\n    \n    note right of completed\n        END STATE\n        Payout triggered\n        Job archived after 48h\n    end note\n    \n    completed --> [FinTech_PaymentGateway]\n    \n    direct_offer --> cancelled: Client/Admin<br/>cancels\n    bid_accepted --> cancelled: Client/Admin<br/>cancels\n    confirmed --> cancelled: Client/Admin<br/>cancels\n    ready_to_start --> cancelled: Client/Admin<br/>cancels\n    in_progress --> cancelled: Client/Admin<br/>cancels\n    \n    note right of cancelled\n        END STATE\n        Can happen at any stage\n        Refund if payment made\n    end note\n    \n    cancelled --> [FinTech_LedgerService]\n",
+  "content_size": 1691,
+  "collected_at": "2026-02-06T10:39:25.934964",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "ot_stateDiagram_00228",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要把直派订单（direct offer）的状态流转可视化出来。这个流程比较特殊，是客户直接指定清洁工，不走竞价。起点是AuthVault，客户创建直派订单后，清洁工有接受或拒绝两个分支。",
+      "elements_involved": [
+        "FinTech_AuthVault",
+        "direct_offer",
+        "bid_accepted",
+        "declined"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我注意到拒绝（declined）是个终态，需要回到AuthVault让客户端重新发布。那接受之后呢？是不是要进入支付环节？",
+      "elements_involved": [
+        "declined",
+        "FinTech_AuthVault",
+        "bid_accepted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，接受后客户通过PaymentGateway付款，状态变成confirmed。这里有个关键节点：付款成功后清洁工才算正式确认，然后进入常规工作流。",
+      "elements_involved": [
+        "bid_accepted",
+        "confirmed",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把confirmed到ready_to_start的过渡加上，标注\"预约时间前30分钟\"。然后清洁工开始作业，经过in_progress到awaiting_review，最后客户提交评价后完成。完成状态要连到PaymentGateway触发打款对吧？",
+      "elements_involved": [
+        "confirmed",
+        "ready_to_start",
+        "in_progress",
+        "awaiting_review",
+        "completed",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "稍等，awaiting_review到completed的触发条件写反了。是清洁工完成作业后进入awaiting_review，然后客户提交评价才到completed。另外completed的终态备注要加上\"48小时后归档\"。",
+      "elements_involved": [
+        "awaiting_review",
+        "completed"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，已修正。还有一个重要分支：取消操作。客户或管理员在哪些节点可以取消？",
+      "elements_involved": [
+        "cancelled"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "取消几乎贯穿全程——从direct_offer创建后一直到in_progress都可以取消。但awaiting_review之后就不能取消了，因为清洁工已经完工。取消后走LedgerService处理退款。",
+      "elements_involved": [
+        "direct_offer",
+        "bid_accepted",
+        "confirmed",
+        "ready_to_start",
+        "in_progress",
+        "cancelled",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部理清。我现在把declined、completed、cancelled三个终态的备注补全，特别是cancelled要注明\"已付款则触发退款\"。整个状态机从AuthVault出发，终态分别回到AuthVault、PaymentGateway或LedgerService，结构完整了。",
+      "elements_involved": [
+        "declined",
+        "completed",
+        "cancelled",
+        "FinTech_AuthVault",
+        "FinTech_PaymentGateway",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 20407.3944,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

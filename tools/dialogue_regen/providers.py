@@ -12,6 +12,25 @@ from typing import Any, Optional
 from tools.dialogue_regen.dataset import DialogueRegenSample, SYSTEM_PROMPT, build_messages
 
 
+def _resolve_api_key(env_name: str) -> str:
+    value = os.environ.get(env_name, "")
+    if value:
+        return value
+    if os.name != "nt":
+        return ""
+    try:
+        import winreg  # type: ignore
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            registry_value, _ = winreg.QueryValueEx(key, env_name)
+        if isinstance(registry_value, str) and registry_value:
+            os.environ[env_name] = registry_value
+            return registry_value
+    except OSError:
+        return ""
+    return ""
+
+
 @dataclass
 class DialogueGenerationResult:
     provider: str
@@ -111,7 +130,7 @@ class OpenAIResponsesGenerator(JSONHttpGenerator):
         self.max_output_tokens = int(config.get("max_output_tokens", 4096))
 
     def generate(self, sample: DialogueRegenSample) -> DialogueGenerationResult:
-        api_key = os.environ.get(self.api_key_env)
+        api_key = _resolve_api_key(self.api_key_env)
         if not api_key:
             return DialogueGenerationResult(
                 provider=self.provider,
@@ -184,7 +203,7 @@ class OpenAICompatibleChatGenerator(JSONHttpGenerator):
         self.extra_body = config.get("extra_body", {}) if isinstance(config.get("extra_body"), dict) else {}
 
     def generate(self, sample: DialogueRegenSample) -> DialogueGenerationResult:
-        api_key = os.environ.get(self.api_key_env)
+        api_key = _resolve_api_key(self.api_key_env)
         if not api_key:
             return DialogueGenerationResult(
                 provider=self.provider_name,
@@ -252,7 +271,7 @@ class AnthropicMessagesGenerator(JSONHttpGenerator):
         self.api_version = str(config.get("anthropic_version", "2023-06-01"))
 
     def generate(self, sample: DialogueRegenSample) -> DialogueGenerationResult:
-        api_key = os.environ.get(self.api_key_env)
+        api_key = _resolve_api_key(self.api_key_env)
         if not api_key:
             return DialogueGenerationResult(
                 provider=self.provider_name,
@@ -305,7 +324,7 @@ class GeminiGenerateContentGenerator(JSONHttpGenerator):
     def __init__(self, config: dict[str, Any]) -> None:
         api_key_env = str(config.get("api_key_env", "GOOGLE_API_KEY"))
         model_name = str(config["model"])
-        api_key = os.environ.get(api_key_env, "")
+        api_key = _resolve_api_key(api_key_env)
         configured_endpoint = str(config.get("endpoint", "")).strip()
         endpoint = configured_endpoint or (
             f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
@@ -320,7 +339,7 @@ class GeminiGenerateContentGenerator(JSONHttpGenerator):
         self.response_json_schema = config.get("response_json_schema")
 
     def generate(self, sample: DialogueRegenSample) -> DialogueGenerationResult:
-        api_key = os.environ.get(self.api_key_env)
+        api_key = _resolve_api_key(self.api_key_env)
         if not api_key and "key=" not in self.endpoint:
             return DialogueGenerationResult(
                 provider=self.provider,

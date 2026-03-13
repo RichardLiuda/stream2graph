@@ -1,0 +1,698 @@
+{
+  "id": "aug_gl_block-beta_00226_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/bsbodden/barudb/blob/dc97c4d833ff103d104f2e68bfec8fba50980d8e/final_report/diagrams/block_cache_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "bsbodden/barudb",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client Code\n    participant BlockCache as Block Cache\n    participant EvictionPolicy as Eviction Policy\n    participant TTLManager as TTL Manager\n    participant Storage as Storage Layer\n    \n    %% Define participant boxes with consistent colors\n    rect rgba(FinTech_FraudDetection)\n        note right of BlockCache: Cache components\n        note right of EvictionPolicy: Policy components\n        note right of TTLManager: TTL components\n    end\n    rect rgba(FinTech_AuthVault)\n        note right of Storage: Storage components\n    end\n    \n    %% Block cache operations\n    Client->>BlockCache: get_block(FinTech_LedgerService)\n    \n    %% Check if block is in cache\n    BlockCache->>BlockCache: lookup(FinTech_AuthVault)\n    \n    alt block found in cache\n        %% Update access statistics\n        BlockCache->>EvictionPolicy: record_access(FinTech_FraudDetection)\n        EvictionPolicy-->>BlockCache: updated_metadata\n        \n        %% Check if TTL expired\n        BlockCache->>TTLManager: is_expired(FinTech_LedgerService)\n        \n        alt block expired\n            TTLManager-->>BlockCache: true\n            BlockCache->>BlockCache: remove_from_cache(FinTech_FraudDetection)\n            \n            %% Load from storage\n            BlockCache->>Storage: read_block(FinTech_LedgerService)\n            Storage-->>BlockCache: block_data\n            \n            %% Insert back with refreshed TTL\n            BlockCache->>TTLManager: set_expiry(FinTech_AuthVault)\n            BlockCache->>EvictionPolicy: add_entry(FinTech_AuthVault)\n            \n            BlockCache-->>Client: block_data\n        else block not expired\n            TTLManager-->>BlockCache: false\n            BlockCache-->>Client: cached_block_data\n        end\n    else block not found in cache\n        %% Load from storage\n        BlockCache->>Storage: read_block(FinTech_LedgerService)\n        Storage-->>BlockCache: block_data\n        \n        %% Check if cache is full\n        BlockCache->>EvictionPolicy: is_cache_full(FinTech_AuthVault)\n        \n        alt cache full - need eviction\n            EvictionPolicy-->>BlockCache: true\n            \n            %% Policy determines what to evict\n            BlockCache->>EvictionPolicy: select_victim(FinTech_FraudDetection)\n            \n            alt using LRU policy\n                note right of EvictionPolicy: Least Recently Used block selected\n            else using LFU policy\n                note right of EvictionPolicy: Least Frequently Used block selected\n            else using TinyLFU policy\n                note right of EvictionPolicy: Frequency sketch determines victim\n            end\n            \n            EvictionPolicy-->>BlockCache: victim_block_id\n            \n            %% Evict the selected block\n            BlockCache->>BlockCache: evict_block(FinTech_PaymentGateway)\n            BlockCache->>TTLManager: remove_expiry(FinTech_FraudDetection)\n        else cache has space\n            EvictionPolicy-->>BlockCache: false\n        end\n        \n        %% Insert new block\n        BlockCache->>BlockCache: insert_block(FinTech_LedgerService)\n        BlockCache->>EvictionPolicy: add_entry(FinTech_PaymentGateway)\n        EvictionPolicy-->>BlockCache: success\n        BlockCache->>TTLManager: set_expiry(FinTech_FraudDetection)\n        TTLManager-->>BlockCache: success\n        \n        BlockCache-->>Client: block_data\n    end\n    \n    %% Periodic TTL cleanup (FinTech_TransactionQueue)\n    loop TTL cleanup interval\n        TTLManager->>TTLManager: check_expired_entries(FinTech_LedgerService)\n        \n        loop For each expired entry\n            TTLManager->>BlockCache: notify_expired(FinTech_TransactionQueue)\n            BlockCache->>BlockCache: remove_from_cache(FinTech_LedgerService)\n            BlockCache->>EvictionPolicy: remove_entry(FinTech_LedgerService)\n        end\n    end",
+  "content_size": 3655,
+  "collected_at": "2026-02-06T14:04:54.927677",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gl_block-beta_00226",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为金融科技系统画一个块缓存的序列图，核心是解决高频交易场景下的数据访问性能问题。主要参与者我想定五个：Client Code、Block Cache、Eviction Policy、TTL Manager，还有Storage Layer。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，五个参与者。我注意到您提到了FinTech相关的业务域，比如LedgerService、AuthVault这些，需要我在图里用不同色块区分业务域吗？",
+      "elements_involved": [
+        "FinTech_LedgerService",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，用rect框分一下。FraudDetection相关的组件放一起，包括Block Cache、Eviction Policy、TTL Manager，用rgba(FinTech_FraudDetection)着色。AuthVault单独放Storage Layer。",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "FinTech_AuthVault",
+        "rect",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把参与者定义好，然后加上两个rect分组。第一个rect包含Block Cache、Eviction Policy、TTL Manager，标记为Cache components、Policy components、TTL components；第二个rect放Storage，标记为Storage components。",
+      "elements_involved": [
+        "rect",
+        "note right of",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "主流程从Client Code发起get_block请求开始，目标是获取FinTech_LedgerService的数据块。",
+      "elements_involved": [
+        "Client Code",
+        "get_block",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：Client-BlockCache: get_block(FinTech_LedgerService)。接下来Block Cache要做什么？",
+      "elements_involved": [
+        "Client-BlockCache",
+        "get_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Block Cache先内部lookup，查FinTech_AuthVault相关的索引，看数据块在不在缓存里。这里要分两个分支：找到了和没找到。",
+      "elements_involved": [
+        "BlockCache-BlockCache",
+        "lookup",
+        "FinTech_AuthVault",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了BlockCache-BlockCache: lookup(FinTech_AuthVault)，然后开了alt分支，第一个分支是block found in cache。",
+      "elements_involved": [
+        "BlockCache-BlockCache",
+        "lookup",
+        "alt",
+        "block found in cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "命中缓存的话，先更新访问统计。Block Cache通知Eviction Policy做record_access，带上FraudDetection的上下文。",
+      "elements_involved": [
+        "BlockCache-EvictionPolicy",
+        "record_access",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画：BlockCache-EvictionPolicy: record_access(FinTech_FraudDetection)，然后Eviction Policy返回updated_metadata给Block Cache。",
+      "elements_involved": [
+        "BlockCache-EvictionPolicy",
+        "record_access",
+        "EvictionPolicy--BlockCache",
+        "updated_metadata"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接着要检查TTL是否过期。Block Cache问TTL Manager：is_expired，参数是FinTech_LedgerService。",
+      "elements_involved": [
+        "BlockCache-TTLManager",
+        "is_expired",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了，然后这里又需要嵌套alt吧？一个是block expired，一个是block not expired。",
+      "elements_involved": [
+        "BlockCache-TTLManager",
+        "is_expired",
+        "alt",
+        "block expired",
+        "block not expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。如果过期了，TTL Manager返回true，Block Cache把自己内部的缓存条目remove掉，然后要从Storage Layer重新读。",
+      "elements_involved": [
+        "TTLManager--BlockCache",
+        "true",
+        "BlockCache-BlockCache",
+        "remove_from_cache",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，过期分支：TTLManager--BlockCache: true，然后BlockCache-BlockCache: remove_from_cache(FinTech_FraudDetection)，接着BlockCache-Storage: read_block(FinTech_LedgerService)。",
+      "elements_involved": [
+        "TTLManager--BlockCache",
+        "BlockCache-BlockCache",
+        "remove_from_cache",
+        "BlockCache-Storage",
+        "read_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Storage返回block_data后，Block Cache要重新插入，这时候要刷新TTL。先调用set_expiry给FinTech_AuthVault，然后通知Eviction Policy做add_entry。",
+      "elements_involved": [
+        "Storage--BlockCache",
+        "block_data",
+        "BlockCache-TTLManager",
+        "set_expiry",
+        "BlockCache-EvictionPolicy",
+        "add_entry",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：Storage--BlockCache: block_data，BlockCache-TTLManager: set_expiry(FinTech_AuthVault)，BlockCache-EvictionPolicy: add_entry(FinTech_AuthVault)，最后BlockCache--Client: block_data。",
+      "elements_involved": [
+        "Storage--BlockCache",
+        "BlockCache-TTLManager",
+        "set_expiry",
+        "BlockCache-EvictionPolicy",
+        "add_entry",
+        "BlockCache--Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，这里add_entry的参数应该是FinTech_PaymentGateway，不是AuthVault。重新插入的是LedgerService的数据，但条目管理走的是PaymentGateway的索引策略。",
+      "elements_involved": [
+        "add_entry",
+        "FinTech_PaymentGateway",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正了，BlockCache-EvictionPolicy: add_entry(FinTech_PaymentGateway)。那没过期的情况呢？",
+      "elements_involved": [
+        "BlockCache-EvictionPolicy",
+        "add_entry",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没过期就简单，TTLManager返回false，BlockCache直接返回cached_block_data给Client。",
+      "elements_involved": [
+        "TTLManager--BlockCache",
+        "false",
+        "BlockCache--Client",
+        "cached_block_data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了else block not expired分支：TTLManager--BlockCache: false，BlockCache--Client: cached_block_data。",
+      "elements_involved": [
+        "TTLManager--BlockCache",
+        "false",
+        "BlockCache--Client",
+        "cached_block_data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在处理缓存未命中的情况。else分支里，Block Cache还是要去Storage Layer读数据，read_block参数是FinTech_LedgerService。",
+      "elements_involved": [
+        "else",
+        "block not found in cache",
+        "BlockCache-Storage",
+        "read_block",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：BlockCache-Storage: read_block(FinTech_LedgerService)，Storage--BlockCache: block_data。读回来后要检查缓存是不是满了。",
+      "elements_involved": [
+        "BlockCache-Storage",
+        "read_block",
+        "Storage--BlockCache",
+        "block_data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Block Cache问Eviction Policy：is_cache_full，用FinTech_AuthVault的配额信息。",
+      "elements_involved": [
+        "BlockCache-EvictionPolicy",
+        "is_cache_full",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了BlockCache-EvictionPolicy: is_cache_full(FinTech_AuthVault)，然后这里又要嵌套alt：cache full和cache has space。",
+      "elements_involved": [
+        "BlockCache-EvictionPolicy",
+        "is_cache_full",
+        "alt",
+        "cache full - need eviction",
+        "cache has space"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "满了的话，Eviction Policy返回true，然后Block Cache要让它select_victim，参数是FraudDetection，表示在高频交易场景下选淘汰目标。",
+      "elements_involved": [
+        "EvictionPolicy--BlockCache",
+        "true",
+        "BlockCache-EvictionPolicy",
+        "select_victim",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。select_victim这里是不是要展开具体的策略选择？我们系统支持LRU、LFU、TinyLFU三种。",
+      "elements_involved": [
+        "BlockCache-EvictionPolicy",
+        "select_victim",
+        "LRU",
+        "LFU",
+        "TinyLFU"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，用alt展开。第一种LRU，右边加note说明是Least Recently Used block selected。",
+      "elements_involved": [
+        "alt",
+        "using LRU policy",
+        "note right of",
+        "EvictionPolicy",
+        "Least Recently Used block selected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了：else using LFU policy，note right of EvictionPolicy: Least Frequently Used block selected。",
+      "elements_involved": [
+        "else using LFU policy",
+        "note right of",
+        "EvictionPolicy",
+        "Least Frequently Used block selected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "还有第三种：else using TinyLFU policy，note right of EvictionPolicy: Frequency sketch determines victim。",
+      "elements_involved": [
+        "else using TinyLFU policy",
+        "note right of",
+        "EvictionPolicy",
+        "Frequency sketch determines victim"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "策略选择完后，Eviction Policy返回victim_block_id，Block Cache执行evict_block，参数是FinTech_PaymentGateway，表示从支付网关相关的缓存分区淘汰。",
+      "elements_involved": [
+        "EvictionPolicy--BlockCache",
+        "victim_block_id",
+        "BlockCache-BlockCache",
+        "evict_block",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。淘汰后还要通知TTL Manager移除过期标记吧？",
+      "elements_involved": [
+        "BlockCache-TTLManager",
+        "remove_expiry",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，BlockCache-TTLManager: remove_expiry(FinTech_FraudDetection)。然后else分支，如果缓存没满，EvictionPolicy返回false，直接进入插入流程。",
+      "elements_involved": [
+        "BlockCache-TTLManager",
+        "remove_expiry",
+        "EvictionPolicy--BlockCache",
+        "false",
+        "cache has space"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了。现在处理新数据块的插入：BlockCache-BlockCache: insert_block(FinTech_LedgerService)。",
+      "elements_involved": [
+        "BlockCache-BlockCache",
+        "insert_block",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "插入后要更新Eviction Policy的条目，add_entry用FinTech_PaymentGateway，然后设置TTL。",
+      "elements_involved": [
+        "BlockCache-EvictionPolicy",
+        "add_entry",
+        "FinTech_PaymentGateway",
+        "BlockCache-TTLManager",
+        "set_expiry",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：BlockCache-EvictionPolicy: add_entry(FinTech_PaymentGateway)，EvictionPolicy--BlockCache: success，BlockCache-TTLManager: set_expiry(FinTech_FraudDetection)，TTLManager--BlockCache: success。",
+      "elements_involved": [
+        "BlockCache-EvictionPolicy",
+        "add_entry",
+        "EvictionPolicy--BlockCache",
+        "success",
+        "BlockCache-TTLManager",
+        "set_expiry",
+        "TTLManager--BlockCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "set_expiry的参数应该是FinTech_LedgerService，不是FraudDetection。LedgerService的数据块需要独立的TTL策略。",
+      "elements_involved": [
+        "set_expiry",
+        "FinTech_LedgerService",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 37,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正为BlockCache-TTLManager: set_expiry(FinTech_LedgerService)。最后返回数据给Client？",
+      "elements_involved": [
+        "BlockCache-TTLManager",
+        "set_expiry",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 38,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，BlockCache--Client: block_data。主流程结束了，但还要加一个后台的TTL清理循环。",
+      "elements_involved": [
+        "BlockCache--Client",
+        "block_data",
+        "loop",
+        "TTL cleanup interval"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了。loop TTL cleanup interval，里面TTLManager-TTLManager: check_expired_entries(FinTech_LedgerService)。",
+      "elements_involved": [
+        "loop",
+        "TTL cleanup interval",
+        "TTLManager-TTLManager",
+        "check_expired_entries",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "里面再套一个loop，For each expired entry，TTL Manager通知Block Cache有数据过期，用FinTech_TransactionQueue作为通知渠道。",
+      "elements_involved": [
+        "loop",
+        "For each expired entry",
+        "TTLManager-BlockCache",
+        "notify_expired",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：TTLManager-BlockCache: notify_expired(FinTech_TransactionQueue)。然后Block Cache移除缓存条目？",
+      "elements_involved": [
+        "TTLManager-BlockCache",
+        "notify_expired",
+        "BlockCache-BlockCache",
+        "remove_from_cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，BlockCache-BlockCache: remove_from_cache(FinTech_LedgerService)，同时通知Eviction Policy移除条目管理信息。",
+      "elements_involved": [
+        "BlockCache-BlockCache",
+        "remove_from_cache",
+        "FinTech_LedgerService",
+        "BlockCache-EvictionPolicy",
+        "remove_entry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了BlockCache-EvictionPolicy: remove_entry(FinTech_LedgerService)。两个loop都闭合了。",
+      "elements_involved": [
+        "BlockCache-EvictionPolicy",
+        "remove_entry",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，remove_entry的参数应该是FinTech_FraudDetection，因为条目管理是在FraudDetection的分区策略里，不是LedgerService。",
+      "elements_involved": [
+        "remove_entry",
+        "FinTech_FraudDetection",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 45,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正为BlockCache-EvictionPolicy: remove_entry(FinTech_FraudDetection)。现在整个图的结构应该完整了，我检查一下所有alt和loop的闭合。",
+      "elements_involved": [
+        "BlockCache-EvictionPolicy",
+        "remove_entry",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 46,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "再确认一下颜色分组。FraudDetection的rect要包含Block Cache、Eviction Policy、TTL Manager这三个的note。AuthVault的rect只包Storage。",
+      "elements_involved": [
+        "rect",
+        "rgba(FinTech_FraudDetection)",
+        "rgba(FinTech_AuthVault)",
+        "note right of"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "确认了，第一个rect rgba(FinTech_FraudDetection)包含三个note：Cache components、Policy components、TTL components。第二个rect rgba(FinTech_AuthVault)包含Storage components。",
+      "elements_involved": [
+        "rect",
+        "rgba(FinTech_FraudDetection)",
+        "rgba(FinTech_AuthVault)",
+        "Cache components",
+        "Policy components",
+        "TTL components",
+        "Storage components"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下所有的业务域标签：LedgerService用在get_block、is_expired、read_block、insert_block、check_expired_entries、remove_from_cache；AuthVault用在lookup、set_expiry、is_cache_full；FraudDetection用在record_access、remove_from_cache、select_victim、remove_expiry、set_expiry、add_entry、remove_entry；PaymentGateway用在evict_block、add_entry；TransactionQueue用在notify_expired。",
+      "elements_involved": [
+        "FinTech_LedgerService",
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection",
+        "FinTech_PaymentGateway",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部核对无误。序列图完整覆盖了缓存命中、缓存未命中、缓存淘汰、TTL过期清理四个核心场景，业务域颜色分组也清晰。可以定稿了。",
+      "elements_involved": [
+        "sequenceDiagram",
+        "participant",
+        "rect",
+        "alt",
+        "loop",
+        "note right of"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 49,
+    "repair_count": 6,
+    "grounding_acts_count": 49,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 63187.1428,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 49
+  }
+}

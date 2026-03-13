@@ -1,0 +1,272 @@
+{
+  "id": "aug_gl_requirementDiagram_00602_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ylmzunal/scalable-llm-over-kubernetes-deployment/blob/1b46a8e09526433e25151879ff4c084c2da2dd58/diagrams/deployment_sequence_diagram.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ylmzunal/scalable-llm-over-kubernetes-deployment",
+  "diagram_type": "requirementDiagram",
+  "code": "sequenceDiagram\n    participant DEV as Developer\n    participant GIT as Git Repository\n    participant DOCKER as Docker Build\n    participant AR as Artifact Registry\n    participant GKE as GKE Cluster\n    participant K8S as Kubernetes API\n    participant POD as Backend Pod\n    participant OL as Ollama Container\n    participant HPA as HPA Controller\n    \n    Note over DEV,HPA: CI/CD Deployment Pipeline\n    \n    DEV->>+GIT: git push (IoT_Industrial_MQTT_Broker)\n    GIT->>-DEV: Push confirmed\n    \n    DEV->>+DOCKER: ./deploy-gke.sh\n    DOCKER->>DOCKER: Validate Prerequisites\n    DOCKER->>DOCKER: Setup GCloud Auth\n    \n    Note over DOCKER,AR: Image Build Process\n    DOCKER->>+DOCKER: Build Ollama Image\n    Note over DOCKER: FROM ollama/ollama:latest<br/>RUN ollama pull tinyllama\n    DOCKER->>-DOCKER: Ollama Image Ready\n    \n    DOCKER->>+DOCKER: Build Backend Image\n    Note over DOCKER: FROM python:3.11<br/>COPY app/ requirements.txt\n    DOCKER->>-DOCKER: Backend Image Ready\n    \n    DOCKER->>+DOCKER: Build Frontend Image\n    Note over DOCKER: FROM node:18 (IoT_Industrial_PLC_Logic)<br/>FROM nginx:alpine (IoT_Industrial_EdgeNode)\n    DOCKER->>-DOCKER: Frontend Image Ready\n    \n    DOCKER->>+AR: Push Images\n    AR->>AR: Store Images with Tags\n    AR->>-DOCKER: Push Complete\n    \n    Note over DOCKER,HPA: Kubernetes Deployment\n    DOCKER->>+K8S: kubectl apply -f k8s/rbac.yaml\n    K8S->>-DOCKER: RBAC Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/configmap-cloud.yaml\n    K8S->>-DOCKER: ConfigMap Applied\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/backend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Backend Pods\n    \n    K8S->>+POD: Create Backend Pod\n    POD->>+AR: Pull Backend Image\n    AR->>-POD: Image Downloaded\n    POD->>+AR: Pull Ollama Image\n    AR->>-POD: Image Downloaded\n    \n    Note over POD,OL: Pod Startup Sequence\n    POD->>+OL: Start Ollama Container\n    OL->>OL: Initialize Ollama Server\n    OL->>OL: Load TinyLlama Model (IoT_Industrial_ActuatorController)\n    OL->>-POD: Ollama Ready (IoT_Industrial_PLC_Logic)\n    \n    POD->>+POD: Start FastAPI Container\n    POD->>POD: Initialize FastAPI App\n    POD->>+OL: Test Connection (IoT_Industrial_PLC_Logic)\n    OL->>-POD: Connection Successful\n    POD->>-POD: FastAPI Ready\n    \n    POD->>+K8S: Report Pod Ready\n    K8S->>-POD: Readiness Confirmed\n    K8S->>-DOCKER: Backend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/frontend-deployment-cloud.yaml\n    K8S->>K8S: Schedule Frontend Pods\n    K8S->>-DOCKER: Frontend Deployment Complete\n    \n    DOCKER->>+K8S: kubectl apply -f k8s/hpa-cloud.yaml\n    K8S->>+HPA: Create HPA Resources\n    HPA->>HPA: Monitor Backend Metrics\n    HPA->>-K8S: HPA Active\n    K8S->>-DOCKER: HPA Applied\n    \n    DOCKER->>+K8S: kubectl get services\n    K8S->>-DOCKER: External IP Available\n    DOCKER->>-DEV: Deployment Complete<br/>App URL: http://EXTERNAL-IP\n    \n    Note over DEV,HPA: Health Verification\n    DEV->>+GKE: curl http://EXTERNAL-IP/health\n    GKE->>+POD: Route Health Check\n    POD->>+OL: Verify Ollama Status\n    OL->>-POD: Status OK\n    POD->>-GKE: Health Check Passed\n    GKE->>-DEV: 200 OK\n    \n    Note over DEV,HPA: Auto-scaling Verification\n    HPA->>+POD: Monitor CPU/Memory\n    POD->>-HPA: Metrics: CPU 30%, Memory 40%\n    HPA->>HPA: Within Thresholds (IoT_Industrial_ActuatorController)\n    \n    Note over DEV,HPA: Rolling Update Process\n    DEV->>+DOCKER: Deploy New Version\n    DOCKER->>+AR: Push Updated Images\n    AR->>-DOCKER: Images Updated\n    \n    DOCKER->>+K8S: kubectl apply (IoT_Industrial_TelemetryStream)\n    K8S->>K8S: Rolling Update Strategy\n    K8S->>+POD: Create New Pod\n    POD->>POD: Start New Version\n    POD->>-K8S: New Pod Ready\n    K8S->>K8S: Terminate Old Pod\n    K8S->>-DOCKER: Rolling Update Complete\n    DOCKER->>-DEV: Update Successful",
+  "content_size": 3703,
+  "collected_at": "2026-02-06T14:13:15.259540",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_requirementDiagram_00602",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网场景设计一套完整的CI/CD部署流程图。核心是从开发者提交代码开始，一直到GKE集群上的HPA自动扩缩容验证。关键参与者包括Developer、Git仓库、Docker构建、Artifact Registry、GKE集群、Kubernetes API、Backend Pod、Ollama容器和HPA控制器。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster",
+        "Kubernetes API",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我注意到Ollama容器比较特殊，它需要预加载TinyLlama模型。这个启动序列和Backend Pod的关系是怎样的？是Sidecar模式还是Init Container模式？",
+      "elements_involved": [
+        "Ollama Container",
+        "Backend Pod",
+        "TinyLlama Model"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是同一个Pod内的两个容器。Ollama先启动并加载模型，然后FastAPI容器启动，最后FastAPI会主动测试与Ollama的连接。这个连接测试成功后才标记Pod Ready。另外，Frontend镜像构建有点复杂，它基于Node 18构建，但最终用nginx:alpine运行。",
+      "elements_involved": [
+        "Ollama Container",
+        "Backend Pod",
+        "FastAPI Container",
+        "Frontend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出整体框架。Developer推送代码到Git Repository，触发Docker Build。构建阶段包括Ollama镜像、Backend镜像和Frontend镜像三个并行构建，然后推送到Artifact Registry。接着通过kubectl apply部署到GKE集群。",
+      "elements_involved": [
+        "Developer",
+        "Git Repository",
+        "Docker Build",
+        "Artifact Registry",
+        "GKE Cluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "构建顺序是对的，但有个细节：Docker Build里要先验证前置条件和设置GCloud认证。另外Ollama镜像的Dockerfile要体现FROM ollama/ollama:latest和RUN ollama pull tinyllama这两步。",
+      "elements_involved": [
+        "Docker Build",
+        "Ollama Container",
+        "GCloud Auth"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加验证和认证步骤。现在画Kubernetes部署部分：先应用RBAC和ConfigMap，然后部署Backend Deployment。Kubernetes API调度创建Backend Pod，Pod从Artifact Registry拉取Backend和Ollama两个镜像。",
+      "elements_involved": [
+        "Kubernetes API",
+        "RBAC",
+        "ConfigMap",
+        "Backend Pod",
+        "Artifact Registry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Pod启动序列需要详细展开。Ollama容器先初始化服务器并加载TinyLlama模型，这时候状态要关联到IoT_Industrial_ActuatorController。然后FastAPI容器启动，初始化完成后主动测试与Ollama的连接，这个连接测试关联IoT_Industrial_PLC_Logic。",
+      "elements_involved": [
+        "Ollama Container",
+        "TinyLlama Model",
+        "IoT_Industrial_ActuatorController",
+        "FastAPI Container",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "连接测试成功后Pod向Kubernetes API报告Ready状态，然后Backend Deployment完成。接下来部署Frontend Deployment，最后应用HPA配置。HPA控制器开始监控Backend的指标。",
+      "elements_involved": [
+        "Backend Pod",
+        "Kubernetes API",
+        "Frontend Deployment",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "对，但健康验证部分也要体现。部署完成后Developer通过GKE的外部IP访问health端点，请求路由到Backend Pod，Pod再验证Ollama状态，全部通过才返回200。另外HPA的监控要显示具体的CPU和内存指标。",
+      "elements_involved": [
+        "Developer",
+        "GKE Cluster",
+        "Backend Pod",
+        "Ollama Container",
+        "HPA Controller",
+        "CPU",
+        "Memory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "健康验证流程已添加。HPA监控显示CPU 30%、内存40%，都在阈值内，这里标记IoT_Industrial_ActuatorController。我还需要加上滚动更新流程，当Developer部署新版本时的完整过程。",
+      "elements_involved": [
+        "HPA Controller",
+        "IoT_Industrial_ActuatorController",
+        "Developer",
+        "Rolling Update"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "滚动更新要体现IoT_Industrial_TelemetryStream的触发。流程是：推送更新镜像到Artifact Registry，kubectl apply触发Kubernetes的滚动更新策略，创建新Pod、启动新版本、新Pod Ready后终止旧Pod。",
+      "elements_involved": [
+        "IoT_Industrial_TelemetryStream",
+        "Artifact Registry",
+        "Kubernetes API",
+        "Backend Pod",
+        "Rolling Update"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我发现一个问题：之前Frontend镜像的构建描述里写了IoT_Industrial_PLC_Logic和IoT_Industrial_EdgeNode，但这两个标签在运行阶段没有对应体现。需要确认这些标签的使用位置是否正确？",
+      "elements_involved": [
+        "Frontend",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_EdgeNode",
+        "Docker Build"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "IoT_Industrial_PLC_Logic应该用在Ollama Ready的状态标记上，不是Frontend。Frontend构建阶段用Node 18对应IoT_Industrial_PLC_Logic，nginx运行阶段对应IoT_Industrial_EdgeNode。IoT_Industrial_MQTT_Broker是Developer首次git push的内容标识。",
+      "elements_involved": [
+        "IoT_Industrial_PLC_Logic",
+        "Ollama Container",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "Developer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正标签位置。现在整个流程完整了：从Developer推送IoT_Industrial_MQTT_Broker代码开始，经过Docker构建三个镜像（Ollama、Backend、Frontend），推送到Artifact Registry，Kubernetes依次部署RBAC、ConfigMap、Backend、Frontend和HPA，最后验证健康和自动扩缩容。",
+      "elements_involved": [
+        "Developer",
+        "IoT_Industrial_MQTT_Broker",
+        "Docker Build",
+        "Artifact Registry",
+        "Kubernetes API",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "检查一遍：Pod启动时Ollama加载TinyLlama标记为IoT_Industrial_ActuatorController，Ollama Ready标记为IoT_Industrial_PLC_Logic，FastAPI连接测试也用这个标记。HPA阈值判断再次使用IoT_Industrial_ActuatorController。滚动更新由IoT_Industrial_TelemetryStream触发。都对应上了。",
+      "elements_involved": [
+        "Ollama Container",
+        "TinyLlama Model",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream",
+        "HPA Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终图已完成。顶部有CI/CD Deployment Pipeline的总注释，构建阶段有Image Build Process注释，Kubernetes部署阶段有相应注释，还有Health Verification和Auto-scaling Verification、Rolling Update Process三个验证阶段的注释。所有参与者交互和工业物联网标签都已正确标注。",
+      "elements_involved": [
+        "CI/CD Deployment Pipeline",
+        "Image Build Process",
+        "Health Verification",
+        "Auto-scaling Verification",
+        "Rolling Update Process",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 16,
+    "repair_count": 1,
+    "grounding_acts_count": 16,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 50292.4006,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 16
+  }
+}

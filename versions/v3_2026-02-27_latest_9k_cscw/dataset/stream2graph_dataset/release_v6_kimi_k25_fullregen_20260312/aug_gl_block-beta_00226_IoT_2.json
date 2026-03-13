@@ -1,0 +1,657 @@
+{
+  "id": "aug_gl_block-beta_00226_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/bsbodden/barudb/blob/dc97c4d833ff103d104f2e68bfec8fba50980d8e/final_report/diagrams/block_cache_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "bsbodden/barudb",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client Code\n    participant BlockCache as Block Cache\n    participant EvictionPolicy as Eviction Policy\n    participant TTLManager as TTL Manager\n    participant Storage as Storage Layer\n    \n    %% Define participant boxes with consistent colors\n    rect rgba(IoT_Industrial_MQTT_Broker)\n        note right of BlockCache: Cache components\n        note right of EvictionPolicy: Policy components\n        note right of TTLManager: TTL components\n    end\n    rect rgba(IoT_Industrial_PLC_Logic)\n        note right of Storage: Storage components\n    end\n    \n    %% Block cache operations\n    Client->>BlockCache: get_block(IoT_Industrial_ActuatorController)\n    \n    %% Check if block is in cache\n    BlockCache->>BlockCache: lookup(IoT_Industrial_PLC_Logic)\n    \n    alt block found in cache\n        %% Update access statistics\n        BlockCache->>EvictionPolicy: record_access(IoT_Industrial_ActuatorController)\n        EvictionPolicy-->>BlockCache: updated_metadata\n        \n        %% Check if TTL expired\n        BlockCache->>TTLManager: is_expired(IoT_Industrial_MQTT_Broker)\n        \n        alt block expired\n            TTLManager-->>BlockCache: true\n            BlockCache->>BlockCache: remove_from_cache(IoT_Industrial_PLC_Logic)\n            \n            %% Load from storage\n            BlockCache->>Storage: read_block(IoT_Industrial_TelemetryStream)\n            Storage-->>BlockCache: block_data\n            \n            %% Insert back with refreshed TTL\n            BlockCache->>TTLManager: set_expiry(IoT_Industrial_PLC_Logic)\n            BlockCache->>EvictionPolicy: add_entry(IoT_Industrial_PLC_Logic)\n            \n            BlockCache-->>Client: block_data\n        else block not expired\n            TTLManager-->>BlockCache: false\n            BlockCache-->>Client: cached_block_data\n        end\n    else block not found in cache\n        %% Load from storage\n        BlockCache->>Storage: read_block(IoT_Industrial_TelemetryStream)\n        Storage-->>BlockCache: block_data\n        \n        %% Check if cache is full\n        BlockCache->>EvictionPolicy: is_cache_full(IoT_Industrial_TelemetryStream)\n        \n        alt cache full - need eviction\n            EvictionPolicy-->>BlockCache: true\n            \n            %% Policy determines what to evict\n            BlockCache->>EvictionPolicy: select_victim(IoT_Industrial_MQTT_Broker)\n            \n            alt using LRU policy\n                note right of EvictionPolicy: Least Recently Used block selected\n            else using LFU policy\n                note right of EvictionPolicy: Least Frequently Used block selected\n            else using TinyLFU policy\n                note right of EvictionPolicy: Frequency sketch determines victim\n            end\n            \n            EvictionPolicy-->>BlockCache: victim_block_id\n            \n            %% Evict the selected block\n            BlockCache->>BlockCache: evict_block(IoT_Industrial_TelemetryStream)\n            BlockCache->>TTLManager: remove_expiry(IoT_Industrial_TelemetryStream)\n        else cache has space\n            EvictionPolicy-->>BlockCache: false\n        end\n        \n        %% Insert new block\n        BlockCache->>BlockCache: insert_block(IoT_Industrial_TelemetryStream)\n        BlockCache->>EvictionPolicy: add_entry(IoT_Industrial_ActuatorController)\n        EvictionPolicy-->>BlockCache: success\n        BlockCache->>TTLManager: set_expiry(IoT_Industrial_PLC_Logic)\n        TTLManager-->>BlockCache: success\n        \n        BlockCache-->>Client: block_data\n    end\n    \n    %% Periodic TTL cleanup (IoT_Industrial_MQTT_Broker)\n    loop TTL cleanup interval\n        TTLManager->>TTLManager: check_expired_entries(IoT_Industrial_MQTT_Broker)\n        \n        loop For each expired entry\n            TTLManager->>BlockCache: notify_expired(IoT_Industrial_PLC_Logic)\n            BlockCache->>BlockCache: remove_from_cache(IoT_Industrial_PLC_Logic)\n            BlockCache->>EvictionPolicy: remove_entry(IoT_Industrial_MQTT_Broker)\n        end\n    end",
+  "content_size": 3655,
+  "collected_at": "2026-02-06T14:04:54.927677",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_block-beta_00226",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个工业物联网场景下的块缓存系统序列图。核心场景是：Client Code 向 Block Cache 请求数据，涉及缓存命中、失效、淘汰等完整流程。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。这个系统需要包含哪些核心组件？除了 Client Code 和 Block Cache，是否还需要处理存储层和策略管理？",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，需要五个参与者：Client Code、Block Cache、Eviction Policy、TTL Manager 和 Storage Layer。Eviction Policy 负责缓存淘汰策略，TTL Manager 处理过期时间。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已创建这五个参与者。为了让结构更清晰，我想用矩形框对组件进行分组标注。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "可以，把 Block Cache、Eviction Policy、TTL Manager 放在 IoT_Industrial_MQTT_Broker 的矩形框内，标注为 Cache components、Policy components、TTL components。Storage Layer 单独放在 IoT_Industrial_PLC_Logic 框内。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "分组完成。现在开始主流程：Client Code 发起 get_block 请求，目标对象是 IoT_Industrial_ActuatorController？",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Client Code 向 Block Cache 请求 get_block(IoT_Industrial_ActuatorController)。接下来 Block Cache 要做本地查找。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加该消息。Block Cache 的自调用 lookup 操作，查找对象是 IoT_Industrial_PLC_Logic？",
+      "elements_involved": [
+        "Block Cache",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。这里需要分两种情况：alt 分支，block found in cache 和 block not found in cache。先处理缓存命中的情况。",
+      "elements_involved": [
+        "Block Cache",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "创建了 alt 分支。在缓存命中路径中，Block Cache 需要更新访问统计，向 Eviction Policy 发送 record_access？",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，record_access(IoT_Industrial_ActuatorController)。Eviction Policy 返回 updated_metadata。然后要检查 TTL 是否过期。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Block Cache 向 TTL Manager 查询 is_expired(IoT_Industrial_MQTT_Broker)，这里需要嵌套 alt 分支处理过期和未过期两种情况。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的。如果过期（TTLManager 返回 true），Block Cache 要 remove_from_cache(IoT_Industrial_PLC_Logic)，然后从 Storage Layer 重新读取。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "Storage Layer",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加过期分支。Block Cache 向 Storage 发送 read_block(IoT_Industrial_TelemetryStream)，Storage 返回 block_data。",
+      "elements_involved": [
+        "Block Cache",
+        "Storage Layer",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据读回后，需要重新插入缓存并刷新 TTL。Block Cache 向 TTL Manager 发送 set_expiry(IoT_Industrial_PLC_Logic)，同时向 Eviction Policy 发送 add_entry(IoT_Industrial_PLC_Logic)。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "Eviction Policy",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。最后 Block Cache 把 block_data 返回给 Client Code。那未过期分支呢？",
+      "elements_involved": [
+        "Block Cache",
+        "Client Code",
+        "TTL Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "未过期就简单了：TTLManager 返回 false，Block Cache 直接返回 cached_block_data 给 Client Code。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "Client Code"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "缓存命中分支完成。现在处理 block not found in cache 的情况：Block Cache 需要从 Storage 读取数据。",
+      "elements_involved": [
+        "Block Cache",
+        "Storage Layer",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，同样是 read_block(IoT_Industrial_TelemetryStream)。但读回后要先检查缓存是否已满，可能需要触发淘汰。",
+      "elements_involved": [
+        "Block Cache",
+        "Storage Layer",
+        "Eviction Policy",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Block Cache 向 Eviction Policy 查询 is_cache_full(IoT_Industrial_TelemetryStream)，这里又需要 alt 分支。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "缓存满的情况：Eviction Policy 返回 true，然后 Block Cache 请求 select_victim(IoT_Industrial_MQTT_Broker) 来决定淘汰哪个块。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "select_victim 这里需要展示具体的淘汰策略吗？比如 LRU、LFU 这些？",
+      "elements_involved": [
+        "Eviction Policy",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，用 alt 展示三种策略：LRU、LFU 和 TinyLFU。每种策略右侧加 note 说明。",
+      "elements_involved": [
+        "Eviction Policy",
+        "LRU policy",
+        "LFU policy",
+        "TinyLFU policy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加三种策略分支及注释：Least Recently Used、Least Frequently Used、Frequency sketch determines victim。Eviction Policy 返回 victim_block_id 后呢？",
+      "elements_involved": [
+        "Eviction Policy",
+        "Block Cache",
+        "victim_block_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Block Cache 执行 evict_block(IoT_Industrial_TelemetryStream) 自调用，同时通知 TTL Manager 移除过期记录 remove_expiry(IoT_Industrial_TelemetryStream)。",
+      "elements_involved": [
+        "Block Cache",
+        "TTL Manager",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成淘汰流程。缓存未满的分支：Eviction Policy 返回 false，然后直接插入新块？",
+      "elements_involved": [
+        "Eviction Policy",
+        "Block Cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的。两种情况最终都走到插入逻辑：Block Cache 自调用 insert_block(IoT_Industrial_TelemetryStream)，然后向 Eviction Policy 发送 add_entry(IoT_Industrial_ActuatorController)。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Eviction Policy 返回 success，然后 Block Cache 向 TTL Manager 设置过期时间 set_expiry(IoT_Industrial_PLC_Logic)。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，TTL Manager 返回 success，最后 Block Cache 把 block_data 返回给 Client Code。主流程结束。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "Client Code"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "主流程完成。还需要补充什么吗？比如后台的定期清理机制？",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "非常重要！需要加一个 loop：TTL cleanup interval，由 IoT_Industrial_MQTT_Broker 触发。TTL Manager 定期检查过期条目。",
+      "elements_involved": [
+        "TTL Manager",
+        "IoT_Industrial_MQTT_Broker",
+        "TTL cleanup interval"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已创建外层 loop。TTL Manager 的自调用 check_expired_entries(IoT_Industrial_MQTT_Broker)，然后内层循环处理每个过期条目？",
+      "elements_involved": [
+        "TTL Manager",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，内层 loop：For each expired entry，TTL Manager 通知 Block Cache 的 notify_expired(IoT_Industrial_PLC_Logic)。",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Block Cache 收到通知后执行 remove_from_cache(IoT_Industrial_PLC_Logic) 自调用，然后通知 Eviction Policy 移除条目。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，remove_entry(IoT_Industrial_MQTT_Broker)。这样定期清理流程就完整了。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "整个序列图结构已完成。我检查一下：五个参与者、两个分组矩形、主流程的 alt 嵌套、三种淘汰策略、以及最后的定期清理 loop。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，我刚才注意到一个问题。在缓存过期重新加载的分支里，Block Cache 向 Eviction Policy 发送 add_entry 的参数是 IoT_Industrial_PLC_Logic，但返回给 Client 的数据应该是 ActuatorController 相关的吧？",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "您说得对，这里参数需要保持一致性。不过根据当前设计，add_entry 使用 IoT_Industrial_PLC_Logic 是为了与 lookup 时的查找键保持一致。您确认要调整吗？",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "让我再仔细看一下...实际上当前设计是合理的，因为 lookup 用的是 PLC_Logic 作为索引键，add_entry 保持一致即可。数据内容通过 block_data 传递，不需要修改。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "IoT_Industrial_PLC_Logic",
+        "block_data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，保持当前设计。还有一处需要确认：在缓存未命中的插入流程中，add_entry 的参数是 IoT_Industrial_ActuatorController，这与过期重建流程的 PLC_Logic 不同，这是有意设计的吗？",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "这是个问题！应该统一使用 IoT_Industrial_PLC_Logic 作为键。请把未命中流程中的 add_entry(IoT_Industrial_ActuatorController) 改为 add_entry(IoT_Industrial_PLC_Logic)。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正，统一为 add_entry(IoT_Industrial_PLC_Logic)。现在所有流程的键都保持一致了。还有其他需要调整的吗？",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再确认一下定期清理流程：notify_expired 和 remove_from_cache 都使用 IoT_Industrial_PLC_Logic，而 remove_entry 使用 IoT_Industrial_MQTT_Broker，这个差异是合理的吗？",
+      "elements_involved": [
+        "TTL Manager",
+        "Block Cache",
+        "Eviction Policy",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "根据当前设计，remove_entry 使用 MQTT_Broker 作为策略标识，而 PLC_Logic 是数据块键。这是两个不同层面的标识，保持现状可以吗？",
+      "elements_involved": [
+        "Eviction Policy",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，这样设计是合理的。MQTT_Broker 标识策略域，PLC_Logic 标识具体数据块。整个序列图逻辑完整了。",
+      "elements_involved": [
+        "Eviction Policy",
+        "TTL Manager",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终检查完成。序列图包含：5个参与者、2个分组矩形、主流程的嵌套 alt 分支（缓存命中/未命中）、3种淘汰策略展示、以及定期 TTL 清理的嵌套 loop。所有消息参数已统一。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。这个设计完整展示了工业物联网块缓存的核心机制：分层存储、TTL 过期管理、多种淘汰策略，以及后台清理。可以定稿了。",
+      "elements_involved": [
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到。最终序列图已生成，完整覆盖了 Client Code 的请求处理、Block Cache 的命中与失效处理、Eviction Policy 的淘汰决策、TTL Manager 的过期管理，以及 Storage Layer 的数据存取。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认无误。这个序列图能够清晰指导开发团队实现缓存系统的各个交互环节。",
+      "elements_involved": [
+        "Client Code",
+        "Block Cache",
+        "Eviction Policy",
+        "TTL Manager",
+        "Storage Layer"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 49,
+    "repair_count": 4,
+    "grounding_acts_count": 49,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 84299.8157,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 49
+  }
+}

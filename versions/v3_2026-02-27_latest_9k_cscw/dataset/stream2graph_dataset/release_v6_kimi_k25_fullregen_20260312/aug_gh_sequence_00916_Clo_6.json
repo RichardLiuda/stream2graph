@@ -1,0 +1,203 @@
+{
+  "id": "aug_gh_sequence_00916_Clo_6",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/luth9r/FitTracker/blob/c81958bfbd32229654cff70c18fdc0d6e0541f71/docs/google-oauth-login-flow.mmd",
+  "github_repo": "luth9r/FitTracker",
+  "github_file_path": "docs/google-oauth-login-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "%%{CloudNative_Serverless}}%%\nsequenceDiagram\n    participant C as Client\n    participant G as Google OAuth\n    participant AC as AuthController\n    participant GOS as GoogleOAuthService\n    participant GT as Google Token API\n    participant GV as Google Validator\n    participant UR as UserRepository\n    participant DB as PostgreSQL\n    participant JTG as JwtTokenGenerator\n\n    C->>C: Generate PKCE parameters\n    C->>G: Redirect to Google OAuth\n    G-->>C: Redirect with code\n    \n    C->>AC: POST /api/auth/google-login<br/>{CloudNative_K8sCluster}\n    AC->>GOS: ExchangeCodeForTokens(CloudNative_ServiceMesh)\n    GOS->>GT: POST https://oauth2.googleapis.com/token\n    GT-->>GOS: {CloudNative_Serverless}\n    GOS->>GV: ValidateAsync(CloudNative_HelmChart)\n    GV-->>GOS: {CloudNative_K8sCluster}\n    GOS-->>AC: GoogleTokenPayload\n    \n    AC->>UR: FindByGoogleProviderId(CloudNative_DockerImage)\n    UR->>DB: SELECT * FROM Users<br/>WHERE GoogleProviderId = ?\n    DB-->>UR: User found\n    UR-->>AC: user\n    \n    AC->>JTG: GenerateAuthToken(CloudNative_DockerImage)\n    JTG-->>AC: authToken\n    AC-->>C: 200 OK + Set-Cookie: auth-token\n",
+  "content_size": 1100,
+  "collected_at": "2026-02-06T01:50:43.764377",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 2,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "augmentation_domain": "CloudNative",
+  "seed_id": "gh_sequence_00916",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的Google OAuth登录流程，从客户端发起请求到最终下发JWT token。这个流程要体现我们云原生架构的特点，比如在K8s集群里部署，用Service Mesh做服务间通信。",
+      "elements_involved": [
+        "Client",
+        "Google OAuth",
+        "AuthController",
+        "GoogleOAuthService",
+        "JwtTokenGenerator",
+        "CloudNative_K8sCluster",
+        "CloudNative_ServiceMesh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，我先梳理一下参与者和调用顺序。客户端先跟Google交互拿到授权码，然后POST到我们后端的AuthController，之后内部会走到GoogleOAuthService去换token，再查数据库验证用户，最后生成JWT。这样理解对吗？",
+      "elements_involved": [
+        "Client",
+        "AuthController",
+        "GoogleOAuthService",
+        "Google Token API",
+        "UserRepository",
+        "PostgreSQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，但中间还有个关键步骤——Google Validator要校验token的合法性，然后UserRepository查PostgreSQL的时候要用GoogleProviderId去匹配。另外我们在Helm Chart里定义了这些服务的部署配置。",
+      "elements_involved": [
+        "Google Validator",
+        "UserRepository",
+        "PostgreSQL",
+        "CloudNative_HelmChart",
+        "FindByGoogleProviderId"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经把Client、Google OAuth、AuthController、GoogleOAuthService、Google Token API、Google Validator、UserRepository、PostgreSQL和JwtTokenGenerator这几个参与者都加进去了。从客户端生成PKCE参数开始，到重定向Google，再带着code回调，这条线先画出来了。",
+      "elements_involved": [
+        "Client",
+        "Generate PKCE parameters",
+        "Redirect to Google OAuth",
+        "Redirect with code"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来AuthController收到请求后，要标注一下是在K8s集群里处理的。然后调用GoogleOAuthService的ExchangeCodeForTokens方法，这里走Service Mesh，服务间调用要体现出来。",
+      "elements_involved": [
+        "AuthController",
+        "POST /api/auth/google-login",
+        "CloudNative_K8sCluster",
+        "GoogleOAuthService",
+        "ExchangeCodeForTokens",
+        "CloudNative_ServiceMesh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。AuthController到GoogleOAuthService的调用我标注了Service Mesh。然后GoogleOAuthService会去POST Google Token API换token，返回的结果我先用Serverless样式表示，因为这部分是外部服务响应。",
+      "elements_involved": [
+        "GoogleOAuthService",
+        "Google Token API",
+        "POST https://oauth2.googleapis.com/token",
+        "CloudNative_Serverless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，GoogleOAuthService拿到token后要先走Google Validator校验，这个校验逻辑我们在Helm Chart里有配置。校验通过返回的payload再回给AuthController。然后AuthController调UserRepository，这里要标注Docker Image，因为UserRepository是我们容器化的服务。",
+      "elements_involved": [
+        "GoogleOAuthService",
+        "Google Validator",
+        "ValidateAsync",
+        "CloudNative_HelmChart",
+        "GoogleTokenPayload",
+        "AuthController",
+        "UserRepository",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我调整一下。之前我把Google Validator漏掉了，现在补上：GoogleOAuthService调用Google Validator，标注Helm Chart，返回后再把GoogleTokenPayload给AuthController。然后AuthController到UserRepository的调用标注Docker Image。",
+      "elements_involved": [
+        "GoogleOAuthService",
+        "Google Validator",
+        "CloudNative_HelmChart",
+        "GoogleTokenPayload",
+        "AuthController",
+        "UserRepository",
+        "CloudNative_DockerImage"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。UserRepository去PostgreSQL查用户，用SELECT语句按GoogleProviderId匹配，找到用户后返回给AuthController。最后AuthController调JwtTokenGenerator生成token，这里也标注Docker Image，然后200 OK返回给客户端，带上Set-Cookie。",
+      "elements_involved": [
+        "UserRepository",
+        "PostgreSQL",
+        "SELECT * FROM Users",
+        "FindByGoogleProviderId",
+        "AuthController",
+        "JwtTokenGenerator",
+        "GenerateAuthToken",
+        "CloudNative_DockerImage",
+        "authToken",
+        "200 OK",
+        "Set-Cookie"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部完成了。整个流程从Client生成PKCE开始，经过Google OAuth授权、K8s集群处理、Service Mesh服务调用、Helm Chart配置的校验、Docker Image容器化的Repository和TokenGenerator，最后返回200 OK并设置Cookie。云原生架构的各个环节都体现出来了。",
+      "elements_involved": [
+        "Client",
+        "Google OAuth",
+        "CloudNative_K8sCluster",
+        "CloudNative_ServiceMesh",
+        "CloudNative_HelmChart",
+        "CloudNative_DockerImage",
+        "PostgreSQL",
+        "JwtTokenGenerator",
+        "200 OK",
+        "Set-Cookie"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 31346.998,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

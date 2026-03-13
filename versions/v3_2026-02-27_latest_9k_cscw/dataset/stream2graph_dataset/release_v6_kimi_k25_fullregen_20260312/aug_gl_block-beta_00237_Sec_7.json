@@ -1,0 +1,186 @@
+{
+  "id": "aug_gl_block-beta_00237_Sec_7",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/macgyver13/silent-payments-hub/blob/ce8edc54f51b8a5c7a5959909d1f6ee034f8a5ed/diagrams/dana-blindbit.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "macgyver13/silent-payments-hub",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Scanner as Dana Wallet\n    participant BP as Blindbit-Oracle\n    participant BC as Bitcoin Core Node\n\n\n    Scanner-->>+BP: subscribe new blocks\n\n    BC-->>BP: New Block\n    Note right of BP: compute tweak \n    Note right of BP: index unspent outputs\n    BP-->>BP: compute tweak\n    BP-->>BP: compute spent\n    BP-->>BP: build taproot GCS filter\n    BP-->>-Scanner: new block\n\n\n    Scanner->>+BP: Request tweaks & UTXOs for block(Security_Firewall)\n    BP-->>-Scanner: Tweaks & relevant UTXOs\n\n    Scanner->>+BP: Request filters\n\n    BP-->>-Scanner: utxo and outpoint filters\n    Scanner-->>Scanner: calculate UTXOs\n",
+  "content_size": 631,
+  "collected_at": "2026-02-06T14:05:07.049854",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Security",
+  "seed_id": "gl_block-beta_00237",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个Dana Wallet和Blindbit Oracle之间的交互流程。核心场景是轻钱包如何在不下载完整区块的情况下获取UTXO信息。Dana Wallet作为Scanner角色，首先要向Blindbit Oracle订阅新区块通知。",
+      "elements_involved": [
+        "Dana Wallet",
+        "Blindbit-Oracle",
+        "Scanner",
+        "subscribe new blocks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。那Bitcoin Core Node在这里是什么位置？是Oracle主动去取数据，还是Core推送过来？",
+      "elements_involved": [
+        "Bitcoin Core Node",
+        "Blindbit-Oracle",
+        "New Block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Core是推送机制。当Bitcoin Core Node产生新区块时，会主动发给Blindbit-Oracle。然后Oracle内部要做三件事：计算tweak、索引未花费输出、构建taproot GCS filter。这些我打算用Note标注在Oracle右侧。",
+      "elements_involved": [
+        "Bitcoin Core Node",
+        "Blindbit-Oracle",
+        "New Block",
+        "compute tweak",
+        "index unspent outputs",
+        "build taproot GCS filter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把基础骨架画出来：Scanner订阅BP，BC推送新区块给BP，BP内部三个处理步骤。不过我看到您提到\"compute tweak\"和\"compute spent\"，这两个都是Oracle内部消息吗？",
+      "elements_involved": [
+        "Scanner",
+        "Blindbit-Oracle",
+        "Bitcoin Core Node",
+        "compute tweak",
+        "compute spent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "\"compute spent\"这个表述不对，应该是\"build taproot GCS filter\"之后，Oracle才把新区块通知给Scanner。另外Oracle内部还有个自循环：compute tweak之后要再算一次tweak用于spent检测，然后才是build filter。让我重新理一下：BP收到新区块后，内部依次做compute tweak、index unspent、再compute tweak、compute spent、最后build filter。",
+      "elements_involved": [
+        "Blindbit-Oracle",
+        "compute tweak",
+        "index unspent outputs",
+        "compute spent",
+        "build taproot GCS filter",
+        "new block",
+        "Scanner"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "清楚了，Oracle内部是五步处理，然后推送给Scanner。接下来Scanner收到新区块后，会主动请求tweaks和UTXOs对吧？",
+      "elements_involved": [
+        "Scanner",
+        "Blindbit-Oracle",
+        "Request tweaks & UTXOs for block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，但这里有个安全细节：Scanner的请求需要经过Security Firewall验证。所以消息上要标注这个上下文。Oracle返回Tweaks和相关的UTXOs之后，Scanner还会再请求filters。",
+      "elements_involved": [
+        "Scanner",
+        "Blindbit-Oracle",
+        "Request tweaks & UTXOs for block",
+        "Security_Firewall",
+        "Tweaks & relevant UTXOs",
+        "Request filters"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "最后一步是Scanner本地计算UTXOs？还是Oracle返回utxo和outpoint filters之后Scanner再算？",
+      "elements_involved": [
+        "Scanner",
+        "utxo and outpoint filters",
+        "calculate UTXOs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "后者。Oracle返回utxo和outpoint filters，然后Scanner本地做calculate UTXOs。这样整个流程闭环：订阅→推送→内部处理→双向请求→本地计算。",
+      "elements_involved": [
+        "Blindbit-Oracle",
+        "Scanner",
+        "utxo and outpoint filters",
+        "calculate UTXOs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。我检查一遍：Scanner订阅BP，BC推新区块给BP，BP五步内部处理，BP推新区块给Scanner，Scanner经防火墙请求tweaks/UTXOs，BP返回，Scanner请求filters，BP返回utxo和outpoint filters，Scanner本地计算。所有消息流向和参与者都对应上了。",
+      "elements_involved": [
+        "Scanner",
+        "Blindbit-Oracle",
+        "Bitcoin Core Node",
+        "Security_Firewall",
+        "subscribe new blocks",
+        "New Block",
+        "new block",
+        "Request tweaks & UTXOs for block",
+        "Tweaks & relevant UTXOs",
+        "Request filters",
+        "utxo and outpoint filters",
+        "calculate UTXOs"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 30659.0703,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

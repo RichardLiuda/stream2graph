@@ -1,0 +1,810 @@
+{
+  "id": "gl_block-beta_00240",
+  "source": "gitlab",
+  "source_url": "https://github.com/IsaiahPressman/kaggle-lux-2024/blob/6f91e4eddddcbd0473b6948d23a384fda6b55768/media/model_architecture.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "IsaiahPressman/kaggle-lux-2024",
+  "diagram_type": "block-beta",
+  "code": "flowchart LR\n    subgraph input_encoder[Input Encoder]\n        direction TB\n        spatial_in[\"Spatial Observations\\n (N<sub>spatial</sub>, 24, 24)\"] --> conv_s1[\"3x3 Conv2D Projection\\n (D<sub>model</sub>, 24, 24)\"]\n        conv_s1 --> s_act[GELU]\n        s_act --> conv_s2[3x3 Conv2D]\n        conv_s2 --> in_sum[\"Sum (D<sub>model</sub>, 24, 24)\"]\n        global_in[\"Global Observations\\n (N<sub>global</sub>,)\"] --> lin_g1[\"Linear Projection\\n (D<sub>model</sub>,)\"]\n        lin_g1 --> g_act[GELU]\n        g_act --> lin_g2[Linear]\n        lin_g2 --> in_sum\n        in_sum --> core_model_in[Core Model Input]\n    end\n\n    subgraph conv_block[\"Convolutional Block (x8)\"]\n        direction TB\n        input[\"Input (D<sub>model</sub>, 24, 24)\"] --> conv_sum[Sum]\n        input --> conv1[3x3 Conv2D]\n        conv1 --> act1[GELU]\n        act1 --> conv2[3x3 Conv2D]\n        conv2 --> se[Squeeze Excitation]\n        se --> conv_sum\n        conv_sum --> act2[GELU]\n        act2 --> out_block[\"Output (D<sub>model</sub>, 24, 24)\"]\n    end\n\n    subgraph output_heads[Output Heads]\n        direction TB\n        subgraph actor_head[Actor Head]\n            direction TB\n            unit_energies[Unit Energies] --> actor_concat[\"Concatenate\\n (N<sub>units</sub>, D<sub>model</sub> + 1,)\"]\n            core_model_actor_out[\"Core Model Output\\n (D<sub>model</sub>, 24, 24)\"] --> actor_index[\"Index Unit Locations\\n (N<sub>units</sub>, D<sub>model</sub>,)\"]\n            actor_index --> actor_concat\n            actor_concat --> actor_lin1[\"Linear Projection\\n (N<sub>units</sub>, D<sub>model</sub>,)\"]\n            actor_lin1 --> main_actor_act[GELU]\n            main_actor_act --> actor_lin2[\"Linear Projection\\n (N<sub>units</sub>, N<sub>actions</sub>,)\"]\n            actor_lin2 --> main_actor_mask[Illegal Action Masking]\n            main_actor_mask --> main_actor_softmax[Softmax]\n            main_actor_softmax --> actions_output[Random Action Selection]\n\n            core_model_actor_out --> actor_conv1[3x3 Conv2D]\n            actor_conv1 --> sap_actor_act[GELU]\n            sap_actor_act --> actor_conv2[\"3x3 Conv2D Projection\\n (1, 24, 24)\"]\n            actor_conv2 --> sap_actor_expand[\"Expand (N<sub>units</sub>, 24, 24)\"]\n            sap_actor_expand --> sap_actor_mask[Illegal Action Masking]\n            sap_actor_mask --> sap_actor_softmax[Softmax]\n            sap_actor_softmax --> actions_output\n        end\n\n        subgraph critic_head[Critic Head]\n            direction TB\n            core_model_critic_out[\"Core Model Output\\n (D<sub>model</sub>, 24, 24)\"] --> critic_conv1[3x3 Conv2D]\n            critic_conv1 --> critic_act[GELU]\n            critic_act --> critic_conv2[\"3x3 Conv2D Projection\\n (1, 24, 24)\"]\n            critic_conv2 --> critic_mean[\"Spatial Mean (1,)\"]\n            critic_mean --> critic_post[Value Normalization]\n            critic_post --> critic_output[\"Estimated Win Probability\"]\n        end\n    end\n\n    input_encoder --> conv_block\n    conv_block --> output_heads\n",
+  "content_size": 2997,
+  "collected_at": "2026-02-06T14:05:11.369619",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个策略网络的架构图，用于处理24x24的空间观测数据。整体分为三个主要部分：输入编码器、卷积模块和输出头。",
+      "elements_involved": [
+        "input_encoder",
+        "conv_block",
+        "output_heads"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。输入编码器需要处理哪些类型的观测数据？是只有空间信息还是也包括全局特征？",
+      "elements_involved": [
+        "input_encoder"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "输入编码器要处理两种观测：空间观测（Spatial Observations）和全局观测（Global Observations）。空间观测的维度是(N_subspatial, 24, 24)，全局观测是(N_subglobal,)的向量。",
+      "elements_involved": [
+        "spatial_in",
+        "global_in"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在输入编码器子图中添加这两个输入节点。空间观测用spatial_in表示，全局观测用global_in表示。",
+      "elements_involved": [
+        "spatial_in",
+        "global_in"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "空间观测分支的处理流程是：先用3x3 Conv2D进行投影，输出维度变成(D_model, 24, 24)，然后通过GELU激活，再经过一个3x3 Conv2D，最后求和。",
+      "elements_involved": [
+        "conv_s1",
+        "s_act",
+        "conv_s2",
+        "in_sum"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加空间分支：conv_s1（3x3 Conv2D Projection）、s_act（GELU）、conv_s2（3x3 Conv2D），最后汇聚到in_sum节点。",
+      "elements_involved": [
+        "conv_s1",
+        "s_act",
+        "conv_s2",
+        "in_sum"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "全局观测分支类似：先用Linear Projection投影到D_model维度，GELU激活，再过一个Linear层，最后也汇入in_sum。两个分支在in_sum处融合。",
+      "elements_involved": [
+        "lin_g1",
+        "g_act",
+        "lin_g2",
+        "in_sum"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全局分支已添加：lin_g1（Linear Projection）、g_act（GELU）、lin_g2（Linear），汇入in_sum。融合后输出到core_model_in作为核心模型的输入。",
+      "elements_involved": [
+        "lin_g1",
+        "g_act",
+        "lin_g2",
+        "in_sum",
+        "core_model_in"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "输入编码器部分看起来正确。接下来是卷积模块，我们需要8个堆叠的残差卷积块。",
+      "elements_involved": [
+        "input_encoder",
+        "conv_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "卷积块内部的具体结构是什么？是标准的残差连接吗？",
+      "elements_involved": [
+        "conv_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "每个卷积块包含：输入直接连到求和节点（残差连接），同时经过3x3 Conv2D、GELU、另一个3x3 Conv2D，然后通过Squeeze Excitation模块，最后也汇入求和节点。",
+      "elements_involved": [
+        "input",
+        "conv_sum",
+        "conv1",
+        "act1",
+        "conv2",
+        "se"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已绘制卷积块结构：input节点分出两路，一路直连conv_sum，另一路经过conv1→act1→conv2→se→conv_sum，融合后经过act2（GELU）输出。",
+      "elements_involved": [
+        "input",
+        "conv_sum",
+        "conv1",
+        "act1",
+        "conv2",
+        "se",
+        "act2",
+        "out_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "卷积块结构正确。注意标注这是重复8次的模块。现在连接输入编码器和卷积块。",
+      "elements_involved": [
+        "input_encoder",
+        "conv_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加从input_encoder到conv_block的连接。接下来设计输出头部分？",
+      "elements_involved": [
+        "input_encoder",
+        "conv_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "输出头分为两个子部分：Actor Head（策略头）和Critic Head（价值头）。Actor Head负责输出动作概率，Critic Head估计胜率。",
+      "elements_involved": [
+        "output_heads",
+        "actor_head",
+        "critic_head"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已在output_heads下创建两个子图：actor_head和critic_head。先详细设计Actor Head？",
+      "elements_involved": [
+        "output_heads",
+        "actor_head",
+        "critic_head"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Actor Head有两个输出分支：主动作输出和SAP（Shift Attack Policy）动作输出。主动作分支需要处理单位能量和单位位置信息。",
+      "elements_involved": [
+        "actor_head",
+        "unit_energies",
+        "core_model_actor_out"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "单位能量和单位位置是如何结合的？需要索引操作吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的。从core_model_actor_out中通过actor_index索引出单位位置特征，维度变成(N_units, D_model,)，然后与unit_energies拼接，得到(N_units, D_model+1,)的向量。",
+      "elements_involved": [
+        "core_model_actor_out",
+        "actor_index",
+        "unit_energies",
+        "actor_concat"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：core_model_actor_out经过actor_index索引，与unit_energies在actor_concat处拼接。",
+      "elements_involved": [
+        "core_model_actor_out",
+        "actor_index",
+        "unit_energies",
+        "actor_concat"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "拼接后经过Linear Projection到(N_units, D_model,)，GELU激活，再投影到(N_units, N_actions,)，然后进行非法动作掩码和Softmax，最后随机选择动作。",
+      "elements_involved": [
+        "actor_concat",
+        "actor_lin1",
+        "main_actor_act",
+        "actor_lin2",
+        "main_actor_mask",
+        "main_actor_softmax",
+        "actions_output"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "主动作分支已完成：actor_concat→actor_lin1→main_actor_act→actor_lin2→main_actor_mask→main_actor_softmax→actions_output。",
+      "elements_involved": [
+        "actor_concat",
+        "actor_lin1",
+        "main_actor_act",
+        "actor_lin2",
+        "main_actor_mask",
+        "main_actor_softmax",
+        "actions_output"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SAP动作分支不同：从core_model_actor_out直接经过3x3 Conv2D、GELU、再3x3 Conv2D投影到(1, 24, 24)，然后扩展到(N_units, 24, 24)，再掩码和Softmax。",
+      "elements_involved": [
+        "core_model_actor_out",
+        "actor_conv1",
+        "sap_actor_act",
+        "actor_conv2",
+        "sap_actor_expand",
+        "sap_actor_mask",
+        "sap_actor_softmax"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "SAP分支已添加：core_model_actor_out→actor_conv1→sap_actor_act→actor_conv2→sap_actor_expand→sap_actor_mask→sap_actor_softmax→actions_output。",
+      "elements_involved": [
+        "core_model_actor_out",
+        "actor_conv1",
+        "sap_actor_act",
+        "actor_conv2",
+        "sap_actor_expand",
+        "sap_actor_mask",
+        "sap_actor_softmax",
+        "actions_output"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Actor Head结构正确。两个分支最终都输出到actions_output。现在设计Critic Head。",
+      "elements_involved": [
+        "actor_head",
+        "actions_output",
+        "critic_head"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "Critic Head应该是更简单的结构，用于估计状态价值？",
+      "elements_involved": [
+        "critic_head"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对。Critic Head从core_model_critic_out开始，经过3x3 Conv2D、GELU、3x3 Conv2D投影到(1, 24, 24)，然后空间平均池化到标量，再经过价值归一化，输出估计胜率。",
+      "elements_involved": [
+        "core_model_critic_out",
+        "critic_conv1",
+        "critic_act",
+        "critic_conv2",
+        "critic_mean",
+        "critic_post",
+        "critic_output"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Critic Head已完成：core_model_critic_out→critic_conv1→critic_act→critic_conv2→critic_mean→critic_post→critic_output（Estimated Win Probability）。",
+      "elements_involved": [
+        "core_model_critic_out",
+        "critic_conv1",
+        "critic_act",
+        "critic_conv2",
+        "critic_mean",
+        "critic_post",
+        "critic_output"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Critic Head正确。现在连接卷积块到输出头。",
+      "elements_involved": [
+        "conv_block",
+        "output_heads"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加从conv_block到output_heads的连接。整个架构的拓扑结构已完成，我检查一下各部分的标注是否准确。",
+      "elements_involved": [
+        "conv_block",
+        "output_heads"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下输入编码器中空间观测的维度标注，应该是(N_subspatial, 24, 24)，不是别的。",
+      "elements_involved": [
+        "spatial_in"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认spatial_in标注为\"Spatial Observations\\n (N<subspatial</sub, 24, 24)\"，下标格式正确。",
+      "elements_involved": [
+        "spatial_in"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "conv_s1的输出维度标注也要准确，应该是(D_model, 24, 24)。",
+      "elements_involved": [
+        "conv_s1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现conv_s1的标注有误，我修正为\"3x3 Conv2D Projection\\n (D<submodel</sub, 24, 24)\"。",
+      "elements_involved": [
+        "conv_s1"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。再检查全局观测的Linear Projection标注。",
+      "elements_involved": [
+        "lin_g1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "lin_g1标注为\"Linear Projection\\n (D<submodel</sub,)\"，正确。",
+      "elements_involved": [
+        "lin_g1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "卷积块的输入输出维度需要明确标注，都是(D_model, 24, 24)。",
+      "elements_involved": [
+        "input",
+        "out_block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正：input标注为\"Input (D<submodel</sub, 24, 24)\"，out_block标注为\"Output (D<submodel</sub, 24, 24)\"。",
+      "elements_involved": [
+        "input",
+        "out_block"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Actor Head中的actor_lin2输出维度是(N_units, N_actions,)，需要确认。",
+      "elements_involved": [
+        "actor_lin2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认actor_lin2标注为\"Linear Projection\\n (N<subunits</sub, N<subactions</sub,)\"，正确。",
+      "elements_involved": [
+        "actor_lin2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SAP分支的actor_conv2输出维度应该是(1, 24, 24)，不是(N_units, 24, 24)，这个在expand之后才变。",
+      "elements_involved": [
+        "actor_conv2",
+        "sap_actor_expand"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正actor_conv2标注为\"3x3 Conv2D Projection\\n (1, 24, 24)\"，expand操作单独标注为sap_actor_expand。",
+      "elements_involved": [
+        "actor_conv2",
+        "sap_actor_expand"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "SAP分支正确。检查Critic Head的critic_conv2输出维度。",
+      "elements_involved": [
+        "critic_conv2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "critic_conv2标注为\"3x3 Conv2D Projection\\n (1, 24, 24)\"，然后经过critic_mean空间平均到(1,)，正确。",
+      "elements_involved": [
+        "critic_conv2",
+        "critic_mean"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体架构看起来完整了。最后确认一下各子图的标题：Input Encoder、Convolutional Block (x8)、Output Heads，以及内部的Actor Head和Critic Head。",
+      "elements_involved": [
+        "input_encoder",
+        "conv_block",
+        "output_heads",
+        "actor_head",
+        "critic_head"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有子图标题已确认：input_encoder[Input Encoder]、conv_block[\"Convolutional Block (x8)\"]、output_heads[Output Heads]、actor_head[Actor Head]、critic_head[Critic Head]。",
+      "elements_involved": [
+        "input_encoder",
+        "conv_block",
+        "output_heads",
+        "actor_head",
+        "critic_head"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "in_sum节点的标注需要明确是Sum操作，输出维度(D_model, 24, 24)。",
+      "elements_involved": [
+        "in_sum"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正in_sum标注为\"Sum (D<submodel</sub, 24, 24)\"。",
+      "elements_involved": [
+        "in_sum"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "actor_concat的拼接操作标注需要清晰，显示输出维度。",
+      "elements_involved": [
+        "actor_concat"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正actor_concat标注为\"Concatenate\\n (N<subunits</sub, D<submodel</sub + 1,)\"，显示拼接后的维度变化。",
+      "elements_involved": [
+        "actor_concat"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。再确认一下critic_output的最终输出描述是\"Estimated Win Probability\"。",
+      "elements_involved": [
+        "critic_output"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认critic_output标注为\"Estimated Win Probability\"，表示估计的胜率。",
+      "elements_involved": [
+        "critic_output"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查actor_index的操作描述，应该是\"Index Unit Locations\"。",
+      "elements_involved": [
+        "actor_index"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正actor_index标注为\"Index Unit Locations\\n (N<subunits</sub, D<submodel</sub,)\"，明确索引操作和输出维度。",
+      "elements_involved": [
+        "actor_index"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "所有关键节点标注都已修正。最后整体浏览一遍数据流向。",
+      "elements_involved": [
+        "input_encoder",
+        "conv_block",
+        "output_heads"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "数据流总结：Input Encoder处理空间+全局观测→融合后输入→8层卷积块→分流到Actor Head（双分支动作输出）和Critic Head（价值估计）。是否完整？",
+      "elements_involved": [
+        "input_encoder",
+        "conv_block",
+        "output_heads",
+        "actor_head",
+        "critic_head"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "数据流描述准确。Actor Head的两个分支都最终输出到actions_output，这个合并点正确。",
+      "elements_involved": [
+        "actor_head",
+        "actions_output"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认actions_output接收来自main_actor_softmax和sap_actor_softmax两个输入，表示两种动作选择机制。",
+      "elements_involved": [
+        "actions_output",
+        "main_actor_softmax",
+        "sap_actor_softmax"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查所有GELU激活函数的标注是否统一使用\"GELU\"或\"act\"前缀。",
+      "elements_involved": [
+        "s_act",
+        "g_act",
+        "act1",
+        "act2",
+        "main_actor_act",
+        "sap_actor_act",
+        "critic_act"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有GELU节点已统一：s_act[GELU]、g_act[GELU]、act1[GELU]、act2[GELU]、main_actor_act[GELU]、sap_actor_act[GELU]、critic_act[GELU]。",
+      "elements_involved": [
+        "s_act",
+        "g_act",
+        "act1",
+        "act2",
+        "main_actor_act",
+        "sap_actor_act",
+        "critic_act"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "架构图已完成。最后确认方向设置：Input Encoder和卷积块内部都是TB（自上而下），整体流程是LR（从左到右）。",
+      "elements_involved": [
+        "input_encoder",
+        "conv_block",
+        "actor_head",
+        "critic_head"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "方向设置确认：整体flowchart LR，input_encoder内部TB，conv_block内部TB，actor_head内部TB，critic_head内部TB。所有子图方向正确。",
+      "elements_involved": [
+        "input_encoder",
+        "conv_block",
+        "actor_head",
+        "critic_head"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个架构图准确反映了我们策略网络的设计，可以用于论文和代码实现参考。",
+      "elements_involved": [
+        "input_encoder",
+        "conv_block",
+        "output_heads"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "架构图最终确认完成。所有节点、连接、维度标注和方向设置均已核实无误。",
+      "elements_involved": [
+        "input_encoder",
+        "conv_block",
+        "output_heads",
+        "actor_head",
+        "critic_head"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 6,
+    "grounding_acts_count": 63,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 111813.2589,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 95
+  }
+}

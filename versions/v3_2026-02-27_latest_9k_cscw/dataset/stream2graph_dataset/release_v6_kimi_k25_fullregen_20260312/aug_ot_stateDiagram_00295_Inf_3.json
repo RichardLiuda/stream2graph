@@ -1,0 +1,207 @@
+{
+  "id": "aug_ot_stateDiagram_00295_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/lagz0ne/design-skill/blob/d09a1cb6ea6ddb3f069588dafc864667a5748978/test-scenarios/ecommerce/with-skill/docs/design-catalog/data/state-order.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "lagz0ne/design-skill",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_WorkerNode] --> PENDING: Order Placed\n\n    PENDING --> PAID: Payment Authorized & Escrowed\n    PENDING --> CANCELLED: Payment Failed\n\n    PAID --> SHIPPED: Seller Ships Order\n    PAID --> CANCELLED: Seller Cancels\n\n    SHIPPED --> DELIVERED: Carrier Reports Delivery\n    SHIPPED --> CANCELLED: Delivery Failed\n\n    DELIVERED --> COMPLETED: Delivery Confirmed (Infra_WorkerNode)\n    DELIVERED --> DISPUTED: Customer Raises Dispute\n\n    DISPUTED --> COMPLETED: Dispute Resolved - Favor Seller\n    DISPUTED --> CANCELLED: Dispute Resolved - Favor Customer (Infra_RedisCache)\n\n    COMPLETED --> [Infra_IngressController]: Funds Released to Seller\n    CANCELLED --> [Infra_IngressController]: Funds Refunded to Customer\n\n    note right of PENDING\n        Data: order_id, total_amount\n        Escrow: Not yet created\n    end note\n\n    note right of PAID\n        Data: payment_id, escrow_id\n        Escrow: Funds held\n        Trigger: Seller notification sent\n    end note\n\n    note right of SHIPPED\n        Data: tracking_number, carrier\n        Escrow: Still held\n        Trigger: Customer notification sent\n    end note\n\n    note right of DELIVERED\n        Data: delivered_at timestamp\n        Escrow: Still held\n        Auto-confirm: Timer starts\n    end note\n\n    note right of COMPLETED\n        Data: confirmed_at timestamp\n        Escrow: Released to seller\n        Final state\n    end note\n\n    note right of DISPUTED\n        Data: dispute_reason, dispute_date\n        Escrow: Frozen until resolution\n        Manual: Admin intervention\n    end note\n\n    note right of CANCELLED\n        Data: cancelled_at, cancel_reason\n        Escrow: Refunded to customer\n        Final state\n    end note\n",
+  "content_size": 1647,
+  "collected_at": "2026-02-06T10:40:19.062354",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 1,
+  "repo_owner": "lagz0ne",
+  "repo_name": "design-skill",
+  "repo_description": "System design skill for Claude Code using EventStorming and Mermaid diagrams",
+  "repo_language": "Mermaid",
+  "repo_topics": [],
+  "repo_created_at": "2025-11-06T04:13:49Z",
+  "repo_updated_at": "2025-11-06T04:20:02Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00295",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个订单履约的状态机。核心流程是：用户下单后先到待支付，支付成功进入托管状态，然后卖家发货，物流送达，最后确认完成。另外要有取消和争议的分支。",
+      "elements_involved": [
+        "PENDING",
+        "PAID",
+        "SHIPPED",
+        "DELIVERED",
+        "COMPLETED",
+        "CANCELLED",
+        "DISPUTED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。几个细节想确认：支付失败和卖家主动取消都统一到CANCELLED状态吗？还有，托管资金释放和退款这两个终点，我理解为分别对应完成和取消，但技术上需要经过Infra_IngressController？",
+      "elements_involved": [
+        "PENDING",
+        "CANCELLED",
+        "COMPLETED",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，CANCELLED统一处理。资金释放确实要走IngressController，但WorkerNode负责状态流转本身。对了，DELIVERED到COMPLETED的确认动作是由WorkerNode自动处理的，这个要标注出来。",
+      "elements_involved": [
+        "CANCELLED",
+        "Infra_IngressController",
+        "Infra_WorkerNode",
+        "DELIVERED",
+        "COMPLETED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，主干画好了。PENDING接收WorkerNode的订单创建事件，然后分叉到PAID或CANCELLED。PAID之后到SHIPPED，这里我加了卖家发货的触发条件。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "PENDING",
+        "PAID",
+        "CANCELLED",
+        "SHIPPED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "争议流程需要补充：客户收货后可以发起争议，进入DISPUTED状态。这个状态下托管资金冻结，需要人工介入。争议解决后可能回到COMPLETED（卖家胜诉）或CANCELLED（客户胜诉）。",
+      "elements_involved": [
+        "DELIVERED",
+        "DISPUTED",
+        "COMPLETED",
+        "CANCELLED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "客户胜诉退款时，状态流转到CANCELLED，但资金动作还是走IngressController对吧？另外，DISPUTED到CANCELLED这条边的系统处理，是用RedisCache还是WorkerNode？",
+      "elements_involved": [
+        "DISPUTED",
+        "CANCELLED",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "客户胜诉走RedisCache处理，因为争议解决是异步回调，用缓存层解耦。其他状态流转基本都是WorkerNode实时处理。还有，每个状态右侧加上数据注释，说明托管状态和关键字段。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "Infra_WorkerNode",
+        "PENDING",
+        "PAID",
+        "SHIPPED",
+        "DELIVERED",
+        "COMPLETED",
+        "DISPUTED",
+        "CANCELLED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "注释都加上了。PENDING标注了order_id和total_amount，托管未创建；PAID有payment_id、escrow_id和资金已托管；SHIPPED加了tracking_number和carrier；DELIVERED写了delivered_at和自动确认计时器；COMPLETED和CANCELLED作为终态，分别标注资金释放和退款。",
+      "elements_involved": [
+        "PENDING",
+        "PAID",
+        "SHIPPED",
+        "DELIVERED",
+        "COMPLETED",
+        "CANCELLED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "SHIPPED到CANCELLED的分支漏了——配送失败也要能取消订单。另外DISPUTED的注释里加上dispute_reason和dispute_date字段，以及Manual标记说明需要人工介入。",
+      "elements_involved": [
+        "SHIPPED",
+        "CANCELLED",
+        "DISPUTED"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充。SHIPPED现在有三个出口：正常到DELIVERED、配送失败到CANCELLED、还有卖家在发货前取消的情况我之前已经连到PAID--CANCELLED了。DISPUTED注释也完善了，标注了资金冻结、人工介入、以及两个解决路径。",
+      "elements_involved": [
+        "SHIPPED",
+        "DELIVERED",
+        "CANCELLED",
+        "PAID",
+        "DISPUTED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题了。整个流程覆盖了正常履约、支付失败、卖家取消、配送异常、客户争议各种场景，资金托管状态也清晰。可以定稿。",
+      "elements_involved": [
+        "PENDING",
+        "PAID",
+        "SHIPPED",
+        "DELIVERED",
+        "COMPLETED",
+        "CANCELLED",
+        "DISPUTED"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 11,
+    "repair_count": 1,
+    "grounding_acts_count": 11,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:22Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:22Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 31996.5799,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 9
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "id": "gl_packet-beta_00367",
+  "source": "gitlab",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/TRIGGER_ALG_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant Queue as Raw Data Queue\n    participant Processor as ProcessingIsolate\n    participant TriggerAlgo as Trigger Detection Algorithm\n    participant Validator as Trigger Validator\n    participant Interpolator as Trigger Point Interpolator\n    participant DataService\n    \n    Queue->>Processor: Provide raw binary data packet\n    \n    %% Data extraction phase\n    Processor->>Processor: Extract data points from queue using _readDataFromQueue()\n    Processor->>Processor: Apply bit masks to separate data and channel\n    Processor->>Processor: Convert to voltage using scale factor\n    Processor->>Processor: Calculate max/min values of signal\n    \n    %% Prepare for trigger detection\n    Processor->>Processor: Calculate trigger sensitivity based on signal amplitude\n    Note over Processor: sensitivity = (maxValue - minValue) * 0.25\n    \n    %% Apply filter if needed\n    alt useLowPassFilter = true\n        Processor->>Processor: Apply low-pass filter to signal for trigger detection\n        Note over Processor: Creates filtered signal for stable triggering\n    else useLowPassFilter = false\n        Processor->>Processor: Use unfiltered signal values for trigger detection\n    end\n    \n    %% Main detection loop\n    loop For each adjacent point pair\n        Processor->>TriggerAlgo: Check for trigger condition\n        \n        %% First check for exact trigger level match\n        TriggerAlgo->>TriggerAlgo: Check if either point exactly matches trigger level\n        \n        alt No exact match\n            %% Check for level crossing\n            alt Trigger edge = Positive\n                TriggerAlgo->>TriggerAlgo: Check if prevY < triggerLevel && currentY >= triggerLevel\n                Note over TriggerAlgo: Rising edge detection\n            else Trigger edge = Negative\n                TriggerAlgo->>TriggerAlgo: Check if prevY > triggerLevel && currentY <= triggerLevel\n                Note over TriggerAlgo: Falling edge detection\n            end\n        end\n        \n        alt Potential trigger detected && not waitingForNextTrigger\n            %% Apply hysteresis if enabled\n            alt useHysteresis = true && not exact match\n                TriggerAlgo->>Validator: Verify trigger with hysteresis\n                Validator->>Validator: Calculate window size (up to 5 points)\n                Validator->>Validator: _calculateTrend() on signal segment\n                Note over Validator: Computes linear regression slope\n                \n                alt Trigger edge = Positive\n                    Validator->>TriggerAlgo: Valid if trend > 0 (actually rising)\n                else Trigger edge = Negative\n                    Validator->>TriggerAlgo: Valid if trend < 0 (actually falling)\n                end\n            else Simple validation\n                TriggerAlgo->>TriggerAlgo: Accept trigger candidate as valid\n            end\n            \n            %% Process valid trigger\n            alt Trigger is valid\n                TriggerAlgo->>TriggerAlgo: Create trigger marker\n                \n                alt Exact match at trigger level\n                    TriggerAlgo->>TriggerAlgo: Mark existing point as trigger\n                else Need interpolation\n                    TriggerAlgo->>Interpolator: Calculate precise trigger crossing\n                    Interpolator->>Interpolator: Calculate ratio using: (triggerLevel - y1) / (y2 - y1)\n                    Interpolator->>Interpolator: Find x at crossing: x1 + ratio * (x2 - x1)\n                    Interpolator->>TriggerAlgo: Return interpolated DataPoint with isTrigger=true\n                    TriggerAlgo->>TriggerAlgo: Replace point with interpolated trigger point\n                end\n                \n                alt First trigger found\n                    TriggerAlgo->>TriggerAlgo: Record firstTriggerX for alignment\n                    TriggerAlgo->>TriggerAlgo: Set foundFirstTrigger = true\n                end\n                \n                alt triggerMode = normal\n                    TriggerAlgo->>TriggerAlgo: Set waitingForNextTrigger = true\n                    Note over TriggerAlgo: Prevents multiple triggers until signal returns\n                else triggerMode = single\n                    TriggerAlgo->>TriggerAlgo: Keep waitingForNextTrigger = false\n                    Note over TriggerAlgo: Will capture only one triggered waveform\n                end\n            end\n        end\n        \n        %% Reset waiting state when signal moves away from trigger zone\n        alt waitingForNextTrigger = true && triggerMode = normal\n            alt triggerEdge = positive\n                TriggerAlgo->>TriggerAlgo: If currentY < (triggerLevel - sensitivity), reset waiting\n                Note over TriggerAlgo: Ensures signal must fall below threshold before next trigger\n            else triggerEdge = negative\n                TriggerAlgo->>TriggerAlgo: If currentY > (triggerLevel + sensitivity), reset waiting\n                Note over TriggerAlgo: Ensures signal must rise above threshold before next trigger\n            end\n        end\n    end\n    \n    %% Final alignment and output\n    alt foundFirstTrigger = true\n        TriggerAlgo->>Processor: Align all points to first trigger (x - firstTriggerX)\n        Note over Processor: Makes trigger point appear at x=0\n    end\n    \n    %% Return results\n    Processor->>DataService: Return processed points with trigger markers\n    \n    alt triggerMode = single && trigger found\n        Processor->>DataService: Send pause message\n        DataService->>DataService: Set pause = true\n        Note over DataService: Freezes acquisition after capturing single triggered waveform\n    end",
+  "content_size": 5688,
+  "collected_at": "2026-02-06T14:08:21.428771",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个示波器触发检测的完整流程图。核心是从Raw Data Queue拿到原始数据，经过ProcessingIsolate做预处理，然后进入触发检测算法。关键是要有精确的触发点插值，不能只用采样点。",
+      "elements_involved": [
+        "Raw Data Queue",
+        "ProcessingIsolate",
+        "Trigger Detection Algorithm",
+        "Trigger Point Interpolator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。那ProcessingIsolate内部需要展开哪些步骤？我看到有数据提取、电压转换，还有那个触发灵敏度计算——是用maxValue和minValue的差值乘以0.25吗？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "maxValue",
+        "minValue",
+        "trigger sensitivity"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，sensitivity = (maxValue - minValue) * 0.25。另外还要加一个条件分支：如果开了低通滤波，就用滤波后的信号做触发检测，否则用原始信号。这个很重要，否则噪声会导致误触发。",
+      "elements_involved": [
+        "useLowPassFilter",
+        "filtered signal",
+        "unfiltered signal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，ProcessingIsolate部分我画好了。现在处理Trigger Detection Algorithm的主循环——是遍历相邻点对检查触发条件对吧？触发边沿要支持上升沿和下降沿两种。",
+      "elements_involved": [
+        "Trigger Detection Algorithm",
+        "adjacent point pair",
+        "Trigger edge",
+        "Positive",
+        "Negative"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。但这里有个细节：如果两个点都不是精确的triggerLevel匹配，才需要做边沿检测。检测到候选触发后，如果开了hysteresis，要交给Trigger Validator验证——它用线性回归算斜率，确认是actually rising或actually falling，最多看5个点。",
+      "elements_involved": [
+        "triggerLevel",
+        "hysteresis",
+        "Trigger Validator",
+        "_calculateTrend()",
+        "up to 5 points",
+        "actually rising",
+        "actually falling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "验证通过后，触发点处理有两种情况：如果恰好有采样点落在triggerLevel上就直接标记，否则要Interpolator做线性插值算出精确交叉点。公式是ratio = (triggerLevel - y1) / (y2 - y1)，然后x = x1 + ratio * (x2 - x1)？",
+      "elements_involved": [
+        "Trigger Point Interpolator",
+        "triggerLevel",
+        "y1",
+        "y2",
+        "x1",
+        "x2",
+        "ratio"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。还有几个状态要处理：第一次触发要记录firstTriggerX用于后续对齐；normal模式下要设waitingForNextTrigger防止重复触发，信号必须离开触发带（考虑sensitivity）才能重置；single模式只抓一次就停。最后Processor要把所有点按firstTriggerX对齐，让触发点出现在x=0。",
+      "elements_involved": [
+        "firstTriggerX",
+        "waitingForNextTrigger",
+        "triggerMode",
+        "normal",
+        "single",
+        "sensitivity",
+        "alignment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都画好了。最后Processor把处理完的点返回给DataService，single模式下如果找到了触发还会发pause消息冻结采集。整个流程从Raw Data Queue到最终的对齐输出都串起来了，你看还有要调整的吗？",
+      "elements_involved": [
+        "Processor",
+        "DataService",
+        "pause",
+        "processed points",
+        "trigger markers"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 21925.6952,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

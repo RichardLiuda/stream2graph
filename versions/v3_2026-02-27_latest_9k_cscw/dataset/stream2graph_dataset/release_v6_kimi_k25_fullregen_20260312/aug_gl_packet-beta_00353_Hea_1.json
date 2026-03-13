@@ -1,0 +1,537 @@
+{
+  "id": "aug_gl_packet-beta_00353_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/SiliconLabs/wiseconnect/blob/dbddc46f86fab9728a390680290781b7d1ae8bb5/components/sli_queue_manager/queue_manager.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "SiliconLabs/wiseconnect",
+  "diagram_type": "packet-beta",
+  "code": "%%{HealthTech_LabAnalyzer} }%%\r\nsequenceDiagram\r\n    participant A as AppThread\r\n    participant E as EventThread\r\n    participant B as CommandEngine\r\n    participant R as RoutingUtility\r\n\r\n    Note over A: User calls API to send a command<br>A command packet is prepared with<br>all the command parameters\r\n    A->>A: Enter Critical Section\r\n    Note over A: Allocate unique packet id for the command<br>packet before it is being added to the queue\r\n    A->>A: Exit Critical Section\r\n    Note over A: Prepared command packet to be added<br>into respected command queue using<br>sli_queue_manager_enqueue(HealthTech_EMR_Sync)\r\n    Note left of A: Invoke the add to queue with atomic action API with<br>sli_queue_handle_t *handle<br>sl_slist_node_t *node<br>sli_queue_manager_action_handler_t action_handler\r\n\r\n    rect rgba(HealthTech_PatientRecords)\r\n        opt sli_queue_manager_enqueue(HealthTech_LabAnalyzer)\r\n            A->>A: Enter Critical Section\r\n\r\n            Note over A: This API facilitates user to perform an action<br>under the protection of queue's critical section\r\n            alt if handler is not NULL\r\n                A->>A: Invoke the handler with user specific data\r\n            end\r\n\r\n            A->>A: Add the command packet data to the queue\r\n            A->>A: Exit Critical Section\r\n        end\r\n    end\r\n\r\n    Note over A: Once the packet is queued in the respective command queue,<br>packet is dequeued in Command Engine and processed\r\n    A->>B: Trigger TX event to Command Engine\r\n\r\n    rect rgba(HealthTech_EMR_Sync)\r\n        B->>B: Check the status of the queues<br>using SLI_QUEUE_GET_STATUS(HealthTech_LabAnalyzer)\r\n\r\n        opt SLI_QUEUE_GET_STATUS(HealthTech_DiagnosticEngine)\r\n            B->>B: Return true if list is empty\r\n        end\r\n\r\n        Note over B: If the corresponding queue is not Empty, <br>then Command Engine will process the<br>comamnds in the commanmd queues\r\n    end\r\n\r\n    rect rgba(HealthTech_EMR_Sync)\r\n        Note over R: When the underlying HAL layer receives <br>a packet, it will forward it to command <br>engine through routing utility\r\n        R->>R: Add the packet to BUS RX queue\r\n\r\n        opt sli_queue_manager_enqueue(HealthTech_EMR_Sync)\r\n            R->>R: Enter Critical Section\r\n            R->>R: Add the command response <br>packet data to the queue\r\n            R->>R: Exit critical section\r\n        end\r\n\r\n        R->>B: Set BUS RX event for Command Engine\r\n    end\r\n\r\n    rect rgba(HealthTech_LabAnalyzer)\r\n        Note over B: When a command response or a asynchronous data<br>packet is received, Command Engine will add the packet<br>to either response queue or the notification queue\r\n\r\n        B->>B: Dequeue the RX Packet\r\n        opt sli_queue_manager_dequeue(HealthTech_DiagnosticEngine)\r\n            B->>B: Enter Critical Section\r\n            B->>B: Remove the BUS RX packet data from the queue head\r\n            B->>B: Exit Critical Section\r\n            B->>B: Return the data to Command Engine\r\n        end\r\n\r\n        opt sli_queue_manager_enqueue(HealthTech_DiagnosticEngine)\r\n            B->>B: Enter Critical Section\r\n            B->>B: Add the command response packet data to<br>the response or Async notification queue\r\n            B->>B: Exit critical section\r\n        end\r\n    end\r\n\r\n    B->>A: If the response is a synchronous command response<br>Trigger corresponding RX Event\r\n    rect rgba(HealthTech_LabAnalyzer)\r\n        A->>A: The thread waiting on the corresponding response wakes up\r\n        Note over A: After waking up from desired event, thread checks if<br>and dequeues the response for expected packet id<br>using sli_queue_manager_remove_node_from_queue(HealthTech_LabAnalyzer)\r\n\r\n        opt sli_queue_manager_remove_node_from_queue(HealthTech_LabAnalyzer)\r\n            A->>A: Enter Critical Section\r\n\r\n            alt if queue is empty\r\n                A->>A: Exit Critical Section\r\n                A->>A: Return SL_STATUS_EMPTY\r\n            end\r\n\r\n            loop Iterate through the nodes in the list\r\n                A->>A: Invoke the compare function to identify the node\r\n                Note over A: In this situation, packet_id identification<br>function is invoked\r\n            end\r\n\r\n            alt if comapre function returns true\r\n                A->>A: Remove node from list \r\n                A->>A: Exit Critical Section\r\n                A->>A: Return the response packet\r\n            else\r\n                A->>A: Exit Critical Section\r\n                A->>A: Return SL_STATUS_NOT_FOUND\r\n            end\r\n        end\r\n    end\r\n\r\n    rect rgba(HealthTech_LabAnalyzer)\r\n        alt if the received data packet is a Async data packet\r\n            B->>B: Add received data packet to corresponding<br>notification event queue\r\n            B->>E: Trigger Notification event to event handler thread\r\n\r\n            Note over E: Event thread will be waiting for<br>notification events to be triggered\r\n            Note over E: Once the Event is triggered, the<br> notification events are dequeued<br>from respective notification event queues<br>using sli_queue_manager_dequeue(HealthTech_LabAnalyzer)\r\n\r\n            opt sli_queue_manager_dequeue(HealthTech_DiagnosticEngine)\r\n                E->>E: Enter Critical Section\r\n                E->>E: Remove the Notification event packet data from the queue head\r\n                E->>E: Exit Critical Section\r\n                E->>E: Return the data to the application\r\n            end\r\n\r\n            Note over E: Invoke appropriate event handler with the event data\r\n        end\r\n    end",
+  "content_size": 5561,
+  "collected_at": "2026-02-06T14:08:07.626730",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "repo_stars": 23,
+  "repo_forks": 26,
+  "repo_owner": "SiliconLabs",
+  "repo_name": "wiseconnect",
+  "repo_description": "Next-generation Silicon Labs Wi-Fi API for SiWx91x chipset family.",
+  "repo_language": "C",
+  "repo_topics": [
+    "siwx917-dk2605a",
+    "siwx917-wireless-soc",
+    "wi-fi",
+    "wifi"
+  ],
+  "repo_created_at": "2023-06-06T16:26:11Z",
+  "repo_updated_at": "2026-01-22T17:46:41Z",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gl_packet-beta_00353",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为HealthTech LabAnalyzer系统画一个完整的时序图，核心是要展示命令包从AppThread发出，经过CommandEngine处理，再到异步事件通知的完整生命周期。",
+      "elements_involved": [
+        "AppThread",
+        "CommandEngine",
+        "EventThread",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这个系统涉及多个队列管理操作。我想确认一下参与者有哪些？目前我理解有AppThread、CommandEngine，还有处理异步事件的EventThread？",
+      "elements_involved": [
+        "AppThread",
+        "CommandEngine",
+        "EventThread"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，还有RoutingUtility，它负责底层HAL层收到包后转发给CommandEngine。另外我们用HealthTech_EMR_Sync、HealthTech_DiagnosticEngine这些队列标识来区分不同业务线。",
+      "elements_involved": [
+        "RoutingUtility",
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，那我先画出四个参与者：AppThread、EventThread、CommandEngine和RoutingUtility。AppThread这边用户调用API发送命令，需要准备命令包并分配唯一packet id，这个要在临界区里完成。",
+      "elements_involved": [
+        "AppThread",
+        "packet id",
+        "critical section"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，分配packet id必须在Enter Critical Section和Exit Critical Section之间完成。然后AppThread要把准备好的命令包通过sli_queue_manager_enqueue加入HealthTech_EMR_Sync对应的队列。",
+      "elements_involved": [
+        "AppThread",
+        "sli_queue_manager_enqueue",
+        "HealthTech_EMR_Sync",
+        "critical section"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在AppThread上加了一个note，说明调用add to queue的atomic action API，参数包括sli_queue_handle_t、sl_slist_node_t和action_handler。然后用rect把HealthTech_PatientRecords相关的逻辑框起来。",
+      "elements_involved": [
+        "AppThread",
+        "sli_queue_handle_t",
+        "HealthTech_PatientRecords",
+        "rect"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，这里有个细节：sli_queue_manager_enqueue的实际参数应该是HealthTech_LabAnalyzer，不是EMR_Sync。前面说的是队列归属，但入队操作本身是针对LabAnalyzer队列的。",
+      "elements_involved": [
+        "sli_queue_manager_enqueue",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我修正一下。把opt块里的条件改成sli_queue_manager_enqueue(HealthTech_LabAnalyzer)，然后在里面展示：进入临界区、如果handler不为NULL就调用handler、添加数据到队列、退出临界区。",
+      "elements_involved": [
+        "sli_queue_manager_enqueue",
+        "HealthTech_LabAnalyzer",
+        "handler",
+        "critical section"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，handler不为NULL时才调用，这是条件分支。接下来AppThread要触发TX事件给CommandEngine，让CommandEngine开始处理队列里的命令。",
+      "elements_involved": [
+        "AppThread",
+        "CommandEngine",
+        "TX event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画了A到B的Trigger TX event箭头。然后在CommandEngine这边用HealthTech_EMR_Sync的rect框起来，里面先检查队列状态用SLI_QUEUE_GET_STATUS(HealthTech_LabAnalyzer)。",
+      "elements_involved": [
+        "AppThread",
+        "CommandEngine",
+        "TX event",
+        "SLI_QUEUE_GET_STATUS",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查状态这里需要再细化：还有一个opt分支，用SLI_QUEUE_GET_STATUS检查HealthTech_DiagnosticEngine，如果列表为空就返回true。这是为了判断是否有待处理命令。",
+      "elements_involved": [
+        "SLI_QUEUE_GET_STATUS",
+        "HealthTech_DiagnosticEngine",
+        "empty",
+        "return true"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了。然后note说明如果对应队列不为Empty，CommandEngine就会处理command queues里的命令。接下来RoutingUtility的部分，我用另一个HealthTech_EMR_Sync的rect框起来。",
+      "elements_involved": [
+        "CommandEngine",
+        "RoutingUtility",
+        "HealthTech_EMR_Sync",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "RoutingUtility这边是：当HAL层收到包后，转发给CommandEngine。先Add the packet to BUS RX queue，然后通过sli_queue_manager_enqueue(HealthTech_EMR_Sync)进入临界区操作。",
+      "elements_involved": [
+        "RoutingUtility",
+        "HAL",
+        "BUS RX queue",
+        "sli_queue_manager_enqueue",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里我有点疑问：RoutingUtility的sli_queue_manager_enqueue参数是HealthTech_EMR_Sync，而之前AppThread的是HealthTech_LabAnalyzer，这是故意区分的吗？",
+      "elements_involved": [
+        "RoutingUtility",
+        "sli_queue_manager_enqueue",
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，RoutingUtility处理的是EMR_Sync业务线的响应包入队，而AppThread那边是LabAnalyzer业务线的命令包入队。两个业务队列分开管理。",
+      "elements_involved": [
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer",
+        "business line separation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了。RoutingUtility在临界区里添加command response packet data到队列，然后Set BUS RX event for CommandEngine，触发CommandEngine处理。",
+      "elements_involved": [
+        "RoutingUtility",
+        "CommandEngine",
+        "BUS RX event",
+        "critical section"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在到CommandEngine的核心处理逻辑。收到命令响应或异步数据包时，CommandEngine要把包加入response queue或notification queue。这里用HealthTech_LabAnalyzer的rect框起来。",
+      "elements_involved": [
+        "CommandEngine",
+        "response queue",
+        "notification queue",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画了CommandEngine先Dequeue the RX Packet，然后用opt sli_queue_manager_dequeue(HealthTech_DiagnosticEngine)进入临界区，从队列头移除BUS RX packet data。",
+      "elements_involved": [
+        "CommandEngine",
+        "sli_queue_manager_dequeue",
+        "HealthTech_DiagnosticEngine",
+        "BUS RX packet",
+        "critical section"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "移除后要把数据Return the data to CommandEngine。然后还有一个opt分支，用sli_queue_manager_enqueue把command response packet data加入response或Async notification queue。",
+      "elements_involved": [
+        "sli_queue_manager_dequeue",
+        "return",
+        "sli_queue_manager_enqueue",
+        "response queue",
+        "Async notification queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了。然后CommandEngine到AppThread的箭头：If the response is a synchronous command response, Trigger corresponding RX Event。",
+      "elements_involved": [
+        "CommandEngine",
+        "AppThread",
+        "synchronous command response",
+        "RX Event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，同步响应走这条路。AppThread这边用HealthTech_LabAnalyzer的rect框起来，等待响应的线程会wake up。",
+      "elements_involved": [
+        "AppThread",
+        "wake up",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我加了note说明线程醒来后，用sli_queue_manager_remove_node_from_queue(HealthTech_LabAnalyzer)检查并出队对应packet id的响应。",
+      "elements_involved": [
+        "AppThread",
+        "sli_queue_manager_remove_node_from_queue",
+        "HealthTech_LabAnalyzer",
+        "packet id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这个remove_node操作比较复杂，需要详细展开：先进入临界区，如果queue is empty就退出并返回SL_STATUS_EMPTY。",
+      "elements_involved": [
+        "sli_queue_manager_remove_node_from_queue",
+        "SL_STATUS_EMPTY",
+        "queue empty",
+        "critical section"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了alt分支处理empty情况。然后loop Iterate through the nodes in the list，调用compare function来识别目标节点。",
+      "elements_involved": [
+        "loop",
+        "iterate",
+        "compare function",
+        "node identification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，compare function就是packet_id identification function。然后alt分支：如果compare返回true，就remove node、退出临界区、return the response packet；否则退出临界区返回SL_STATUS_NOT_FOUND。",
+      "elements_involved": [
+        "packet_id identification",
+        "compare function",
+        "remove node",
+        "SL_STATUS_NOT_FOUND"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完整加上了这个复杂的opt块。现在处理最后的异步数据包分支：alt if the received data packet is a Async data packet。",
+      "elements_involved": [
+        "Async data packet",
+        "alt branch"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "异步包的处理：CommandEngine把收到的数据包加入对应的notification event queue，然后Trigger Notification event给EventThread。这里继续用HealthTech_LabAnalyzer的rect。",
+      "elements_involved": [
+        "CommandEngine",
+        "notification event queue",
+        "EventThread",
+        "Notification event",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画了B到E的Trigger Notification event箭头。EventThread这边加note说明它会等待notification events被触发。",
+      "elements_involved": [
+        "CommandEngine",
+        "EventThread",
+        "Notification event",
+        "waiting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "EventThread触发后，要从各自的notification event queues里用sli_queue_manager_dequeue(HealthTech_LabAnalyzer)出队。但注意，实际出队操作的参数是HealthTech_DiagnosticEngine。",
+      "elements_involved": [
+        "EventThread",
+        "sli_queue_manager_dequeue",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正了，opt块里的条件是sli_queue_manager_dequeue(HealthTech_DiagnosticEngine)。里面是：进入临界区、从队列头移除Notification event packet data、退出临界区、返回数据给application。",
+      "elements_involved": [
+        "sli_queue_manager_dequeue",
+        "HealthTech_DiagnosticEngine",
+        "Notification event packet",
+        "critical section"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "最后加上note：Invoke appropriate event handler with the event data。这样整个异步通知流程就完整了。",
+      "elements_involved": [
+        "EventThread",
+        "event handler",
+        "event data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我回顾一下整个流程：AppThread发命令入LabAnalyzer队列→CommandEngine处理→RoutingUtility收响应入EMR_Sync队列→CommandEngine分发→同步回AppThread或异步给EventThread。这样理解对吗？",
+      "elements_involved": [
+        "AppThread",
+        "CommandEngine",
+        "RoutingUtility",
+        "EventThread",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。还有几个关键API再确认下：sli_queue_manager_enqueue、sli_queue_manager_dequeue、sli_queue_manager_remove_node_from_queue，以及状态检查SLI_QUEUE_GET_STATUS。",
+      "elements_involved": [
+        "sli_queue_manager_enqueue",
+        "sli_queue_manager_dequeue",
+        "sli_queue_manager_remove_node_from_queue",
+        "SLI_QUEUE_GET_STATUS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有API和队列标识都已核对完毕。rect颜色块按业务线区分：HealthTech_PatientRecords、HealthTech_EMR_Sync、HealthTech_LabAnalyzer，逻辑清晰。",
+      "elements_involved": [
+        "HealthTech_PatientRecords",
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer",
+        "rect rgba"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，RoutingUtility那个rect的颜色应该是HealthTech_EMR_Sync，但我看到前面CommandEngine检查队列状态也是EMR_Sync，这样两个rect颜色一样，会不会混淆？",
+      "elements_involved": [
+        "RoutingUtility",
+        "CommandEngine",
+        "HealthTech_EMR_Sync",
+        "rect color"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "不会混淆，因为它们本来就是同一业务线的不同阶段：CommandEngine检查EMR_Sync队列状态，RoutingUtility处理EMR_Sync的响应入队，逻辑上是连贯的。如果分开颜色反而割裂了流程。",
+      "elements_involved": [
+        "CommandEngine",
+        "RoutingUtility",
+        "HealthTech_EMR_Sync",
+        "business flow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "说得对，保持EMR_Sync的统一颜色更能体现业务连贯性。整个时序图现在完整展示了命令包的生命周期：从AppThread准备、入队，到CommandEngine处理、RoutingUtility接收响应，最后同步返回或异步通知。可以定稿了。",
+      "elements_involved": [
+        "AppThread",
+        "CommandEngine",
+        "RoutingUtility",
+        "EventThread",
+        "packet lifecycle"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 37,
+    "repair_count": 4,
+    "grounding_acts_count": 37,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:33Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 68801.2271,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 37
+  }
+}

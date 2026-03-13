@@ -1,0 +1,185 @@
+{
+  "id": "aug_gh_sequence_00435_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/hs14m2b/tapocs/blob/ead9730e9f0b3c294ddeaccb48af5f994146edd8/barsvaccs/docs/vaccsApptBaRSSequence.mmd",
+  "github_repo": "hs14m2b/tapocs",
+  "github_file_path": "barsvaccs/docs/vaccsApptBaRSSequence.mmd",
+  "diagram_type": "sequence",
+  "code": "---\ntitle: BaRS Vaccination Appointment Booking Sequence\ndescription: Sequence diagram showing the process of booking a vaccination appointment using the BaRS system.\nauthor: Matthew Brown\ndate: 2025-08-01\ntags: [IoT_Industrial_TelemetryStream]\ndisplayMode: sequence\nconfig:\n  theme: default\n  look: handdrawn\n---\n\n\nsequenceDiagram\n    actor ICB\n    actor P as Patient\n    participant NHSA as NHS App\n    participant BP as BaRS Proxy\n    participant MYA as Manage Your Appt\n    participant NRL as National Record Locator\n    participant NHSN as NHS Notify\n    participant T as Tasking Service (IoT_Industrial_ActuatorController)\n    note over ICB: ICB has a list of patients<br />who need to be vaccinated\n    ICB->>+BP: Request vaccine using BaRS ServiceRequest\n    %% see https://simplifier.net/nhsbookingandreferrals/~resources?category=Example&exampletype=Bundle&sortBy=DisplayName for example messages\n    BP->>MYA: Request vaccine using BaRS ServiceRequest\n    MYA-->>BP: Acknowledge request\n    BP-->>-ICB: Acknowledge request\n    MYA->>T: Create Task for Patient to Book Appointment\n    T-->>MYA: Return Task id\n    MYA->>+NHSN: Inform patient of referral and need to book appt\n    NHSN->>-NHSA: Notify patient\n    NHSA->>P: Notify patient\n    P->>P: Reads notification\n    P->>NHSA: Launches NHS App\n    activate NHSA\n    NHSA<<->>T: Reads and shows patient outstanding tasks\n    P->>NHSA: Clicks \"Book Vaccine Appt\" generated from Task\n    NHSA->>+BP: Uses Task metadata to query Slots for HealthcareService\n    BP->>MYA: Query Slots\n    MYA-->>BP: Return Slots\n    BP-->>-NHSA: Return Slots\n    P->>NHSA: Choose Appointment Slot\n    NHSA->>+BP: Create Appt w/ Slot Details\n    BP->>MYA: Create Appt w/ Slot Details\n    MYA-->>MYA: Check ServiceRequest for patient eligibility\n    MYA--)T: Mark Task as Complete\n    MYA-->>BP: Confirm Appt Booked\n    Note over MYA:   Details on how <br /> Appointment is matched <br /> to ServiceRequest to be defined\n    BP-->>-NHSA: Confirm Appt Booked\n    NHSA-->>P: Show Appointment Confirmation\n    opt\n    MYA->>NHSN: Confirm Appointment Booked via message\n    end\n    deactivate NHSA\n    Note over MYA:  Inform NRL of Appointment<br />in background \n    MYA->>+BP: Create Appt Pointer with Datetime and Status\n    BP->>-NRL: Create Appt Pointer with Datetime and Status\n",
+  "content_size": 2317,
+  "collected_at": "2026-02-06T01:32:15.843272",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "hs14m2b",
+  "repo_name": "tapocs",
+  "repo_description": "repository for hosting random TA PoCs",
+  "repo_language": "JavaScript",
+  "repo_topics": [],
+  "repo_created_at": "2022-09-21T11:25:06Z",
+  "repo_updated_at": "2025-12-30T12:55:49Z",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gh_sequence_00435",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个BaRS疫苗预约的完整时序图。核心流程是：ICB机构有一批需要接种疫苗的患者名单，通过BaRS Proxy发起预约请求，最终患者能在NHS App上完成预约。另外我想加一个Tasking Service，它其实是我们IoT工业场景里的ActuatorController组件，用来管理任务状态。",
+      "elements_involved": [
+        "ICB",
+        "Patient",
+        "BaRS Proxy",
+        "NHS App",
+        "Tasking Service (IoT_Industrial_ActuatorController)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。所以ICB是发起方，但患者是最终操作者？还有这个Tasking Service——它具体做什么？是单纯创建任务，还是也要跟踪任务完成状态？",
+      "elements_involved": [
+        "ICB",
+        "Patient",
+        "Tasking Service (IoT_Industrial_ActuatorController)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，ICB发起，患者完成。Tasking Service负责创建任务、返回任务ID，最后当Manage Your Appt确认预约成功时，要把它标记为Complete。另外还需要NHS Notify来推送通知，以及National Record Locator来存储最终的预约指针。",
+      "elements_involved": [
+        "ICB",
+        "Patient",
+        "Tasking Service (IoT_Industrial_ActuatorController)",
+        "Manage Your Appt",
+        "NHS Notify",
+        "National Record Locator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我梳理一下参与者：ICB、Patient、NHS App、BaRS Proxy、Manage Your Appt、National Record Locator、NHS Notify，还有Tasking Service。流程上，ICB通过Proxy发ServiceRequest给MYA，MYA创建Task并通知患者，患者打开App后从Tasking Service读取待办任务，选择时段预约，最后MYA标记Task完成并同步NRL。这样对吗？",
+      "elements_involved": [
+        "ICB",
+        "Patient",
+        "NHS App",
+        "BaRS Proxy",
+        "Manage Your Appt",
+        "National Record Locator",
+        "NHS Notify",
+        "Tasking Service (IoT_Industrial_ActuatorController)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "基本正确，但有个细节：患者点击\"预约疫苗\"后，NHS App要用Task的元数据去查询可用时段，这个查询也是走BaRS Proxy到MYA。还有，MYA在确认预约前要先检查ServiceRequest里的患者资格。",
+      "elements_involved": [
+        "NHS App",
+        "Tasking Service (IoT_Industrial_ActuatorController)",
+        "BaRS Proxy",
+        "Manage Your Appt",
+        "ServiceRequest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "了解了，我正在画这个流程。在MYA内部我加了一个注释框，说明\"如何将Appointment与ServiceRequest匹配待定义\"，因为这是你们还没确定的业务规则。另外最后NRL的同步我做成后台异步的，在NHS App会话结束后单独触发。",
+      "elements_involved": [
+        "Manage Your Appt",
+        "ServiceRequest",
+        "Appointment",
+        "National Record Locator",
+        "NHS App"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，NHS Notify的确认消息是不是必须的？这个可能要看配置，有些场景不需要二次确认。",
+      "elements_involved": [
+        "NHS Notify",
+        "Manage Your Appt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "好，我把MYA到NHS Notify的\"Confirm Appointment Booked via message\"做成opt可选块，这样表示条件触发。还有别的要调整吗？",
+      "elements_involved": [
+        "MYA",
+        "NHS Notify",
+        "opt"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以了。最后在ICB旁边加一条注释，说明它维护的是待接种患者名单，这样读图的人一眼就知道上下文。",
+      "elements_involved": [
+        "ICB",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。所有参与者都就位了，异步消息和同步调用的箭头区分清楚，Tasking Service的IoT背景也在图标题的tag里做了标注。你可以检查一下最终版本。",
+      "elements_involved": [
+        "ICB",
+        "Patient",
+        "NHS App",
+        "BaRS Proxy",
+        "Manage Your Appt",
+        "National Record Locator",
+        "NHS Notify",
+        "Tasking Service (IoT_Industrial_ActuatorController)"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 27657.1224,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

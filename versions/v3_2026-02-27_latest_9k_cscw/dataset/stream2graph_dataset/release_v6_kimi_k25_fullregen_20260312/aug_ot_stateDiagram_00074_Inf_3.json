@@ -1,0 +1,162 @@
+{
+  "id": "aug_ot_stateDiagram_00074_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/clutch2sft/python_iw9165_log_parser/blob/01dfb62c97cbe7bec38d2e84f0a78bca51010636/diagrams/program_state.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "clutch2sft/python_iw9165_log_parser",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_WorkerNode] --> CIPNetworkLIstener : Receive commfault event\n    [Infra_LoadBalancer] --> MainSFTPServer : Listen for SFTP connection\n    CIPNetworkLIstener --> EventManager : Store event info in data structure\n    EventManager --> EventData: Store Event Data\n    EventManager --> CiscoDeviceManager : Use SSH to connect to device\n    CiscoDeviceManager --> RequestLogs : Request log data via SSH\n    RequestLogs --> MainSFTPServer : Send SFTP\n    MainSFTPServer --> StubSFTPHandle : Receive new file via SFTP\n    StubSFTPHandle --> file_received_callback : Notify app via callback\n    StubSFTPHandle --> VirtualFileSystem: Store Tar File\n    file_received_callback --> process_tar_file : Untar and prepare for analysis\n    process_tar_file --> TarFileExtractor\n    TarFileExtractor --> process_extracted_files : Parse log info based on event time window\n    process_extracted_files --> IwEventParser\n    VirtualFileSystem --> TarFileExtractor : Read\n    TarFileExtractor --> VirtualFileSystem : Store Extracted Data\n    IwEventParser --> ErrorCodeMapping : Notify Analyzer\n    IwEventParser --> SyslogSender : Send log window to syslog server\n    IwEventParser --> EventData: Attach Log Data\n    ErrorCodeMapping --> MatchErrorCode : Match against error codes\n    MatchErrorCode --> EventManager: Get Orignal Event Data\n    MatchErrorCode --> NoError : No error found\n    MatchErrorCode --> FoundError : No error found\n    FoundError --> CIPMessageSender : Send error data back to originator\n    NoError --> CIPMessageSender : Send no error data back to originator\n    CIPMessageSender --> EventCleanup\n    EventCleanup --> VirtualFileSystem: Remove Files\n    EventCleanup --> EventManager: Remove Event\n    EventCleanup --> [Infra_IngressController]: done",
+  "content_size": 1730,
+  "collected_at": "2026-02-06T10:37:32.765935",
+  "compilation_status": "success",
+  "license": "gpl-3.0",
+  "license_name": "GNU General Public License v3.0",
+  "license_url": "https://api.github.com/licenses/gpl-3.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "clutch2sft",
+  "repo_name": "python_iw9165_log_parser",
+  "repo_description": "parse iw9165 event logs",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2024-04-24T10:06:36Z",
+  "repo_updated_at": "2024-05-11T21:53:10Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00074",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的故障处理流程图。场景是这样的：WorkerNode上的CIPNetworkListener收到通信故障事件，然后EventManager去连CiscoDeviceManager取日志。日志通过SFTP传到MainSFTPServer，然后一路解析、匹配错误码，最后把结果发回去。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "CIPNetworkListener",
+        "EventManager",
+        "CiscoDeviceManager",
+        "MainSFTPServer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，SFTP这部分我有点疑问。MainSFTPServer收到文件后，是直接处理还是有个中间层？我看你提到了StubSFTPHandle和VirtualFileSystem。",
+      "elements_involved": [
+        "MainSFTPServer",
+        "StubSFTPHandle",
+        "VirtualFileSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，StubSFTPHandle是接收文件的句柄，它收到文件后存到VirtualFileSystem，同时触发file_received_callback通知应用层。然后process_tar_file开始解压，TarFileExtractor负责具体解压工作。",
+      "elements_involved": [
+        "StubSFTPHandle",
+        "VirtualFileSystem",
+        "file_received_callback",
+        "process_tar_file",
+        "TarFileExtractor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我把解压流程加上。解压后的文件交给IwEventParser解析，然后IwEventParser要同时做三件事：通知ErrorCodeMapping做错误码匹配、发syslog、还要把日志数据attach回EventData对吧？",
+      "elements_involved": [
+        "process_extracted_files",
+        "IwEventParser",
+        "ErrorCodeMapping",
+        "SyslogSender",
+        "EventData"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。ErrorCodeMapping调用MatchErrorCode去匹配，这里要分出两个分支：NoError和FoundError。无论哪个结果，最后都走CIPMessageSender把响应发回源头。",
+      "elements_involved": [
+        "ErrorCodeMapping",
+        "MatchErrorCode",
+        "NoError",
+        "FoundError",
+        "CIPMessageSender"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "MatchErrorCode需要回查原始事件数据吗？",
+      "elements_involved": [
+        "MatchErrorCode",
+        "EventManager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，MatchErrorCode要从EventManager获取原始事件数据来做上下文匹配。另外最后别忘了EventCleanup，它要清理VirtualFileSystem上的文件、从EventManager移除事件，然后通知IngressController整个流程结束。",
+      "elements_involved": [
+        "MatchErrorCode",
+        "EventManager",
+        "EventCleanup",
+        "VirtualFileSystem",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "检查一遍：WorkerNode和LoadBalancer作为基础设施层，CIPNetworkListener接收事件，EventManager协调，CiscoDeviceManager通过SSH取日志，SFTP传输，TarFileExtractor解压，IwEventParser解析，ErrorCodeMapping匹配，双分支结果经CIPMessageSender返回，最后EventCleanup清理并通知IngressController。结构完整了。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer",
+        "CIPNetworkListener",
+        "EventManager",
+        "CiscoDeviceManager",
+        "MainSFTPServer",
+        "TarFileExtractor",
+        "IwEventParser",
+        "ErrorCodeMapping",
+        "CIPMessageSender",
+        "EventCleanup",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 18716.9511,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

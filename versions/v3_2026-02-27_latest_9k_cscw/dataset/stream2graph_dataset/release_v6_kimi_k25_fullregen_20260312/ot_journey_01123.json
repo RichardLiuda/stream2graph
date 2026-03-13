@@ -1,0 +1,323 @@
+{
+  "id": "ot_journey_01123",
+  "source": "other",
+  "source_url": "https://github.com/vaskomet/CapstoneProjectMetallinosE-Clean/blob/75dd266f9e5f00ca887adf8d291f36f4503fa0ee/docs/diagrams/flows/PAYMENT_FLOW.mmd",
+  "source_type": "github_search",
+  "github_repo": "vaskomet/CapstoneProjectMetallinosE-Clean",
+  "diagram_type": "journey",
+  "code": "%% Payment Flow Sequence Diagram\n%% This diagram shows the complete payment journey from bid acceptance to job confirmation\n%% View in VS Code with Mermaid extension or paste into https://mermaid.live\n\nsequenceDiagram\n    participant Client as Client Browser\n    participant Frontend as React Frontend\n    participant Backend as Django Backend\n    participant Stripe as Stripe API\n    participant WS as WebSocket Server\n    participant Cleaner as Cleaner Browser\n\n    Note over Client,Cleaner: 1. CLIENT ACCEPTS BID & INITIATES PAYMENT\n\n    Client->>Frontend: Click \"Accept & Pay\" on bid\n    Frontend->>Frontend: Open PaymentModal\n    Frontend->>Frontend: CheckoutForm renders Stripe Elements\n    \n    Note over Frontend: Check if payment already created\n    Frontend->>Frontend: Check paymentIntentCreated.current\n    \n    Frontend->>Backend: POST /api/payments/create-intent/\n    Note right of Backend: Create PaymentIntent<br/>Amount: bid amount<br/>Client: user ID<br/>Cleaner: bid owner\n    \n    Backend->>Stripe: Create PaymentIntent\n    Stripe-->>Backend: Return client_secret\n    Backend->>Backend: Save Payment record<br/>status='pending'<br/>payment_reference=UUID\n    Backend-->>Frontend: Return {client_secret, payment_reference}\n    \n    Frontend->>Frontend: Set paymentIntentCreated.current = true\n    Frontend->>Frontend: Render CardElement with client_secret\n\n    Note over Client,Cleaner: 2. CLIENT ENTERS CARD & CONFIRMS PAYMENT\n\n    Client->>Frontend: Enter card details\n    Client->>Frontend: Click \"Pay Now\"\n    \n    Frontend->>Frontend: Check payment guards<br/>(paymentSucceeded.current)\n    \n    Frontend->>Stripe: confirmCardPayment(client_secret, card)\n    Note right of Stripe: 3D Secure if needed<br/>Card validation<br/>Charge authorization\n    \n    Stripe-->>Frontend: PaymentIntent {status: 'succeeded', id}\n\n    Note over Frontend: Payment successful!\n    Frontend->>Frontend: Set paymentSucceeded.current = true\n\n    Note over Client,Cleaner: 3. BACKEND CONFIRMATION & JOB UPDATE\n\n    Frontend->>Backend: POST /api/payments/confirm/<br/>{payment_intent_id}\n    \n    Backend->>Stripe: Retrieve PaymentIntent details\n    Stripe-->>Backend: PaymentIntent full data\n    \n    Backend->>Backend: Validate payment_intent.status === 'succeeded'\n    Backend->>Backend: Validate client_id matches job.client\n    Backend->>Backend: Validate amount matches job.final_price\n    \n    alt Payment Valid\n        Backend->>Backend: Update Payment.status = 'succeeded'\n        Backend->>Backend: Update Payment.paid_at = now()\n        Backend->>Backend: Store payment_method details (last4, brand)\n        \n        Backend->>Backend: Update Job.status = 'confirmed'\n        Backend->>Backend: Update Job.final_price = payment.amount\n        Backend->>Backend: Accept JobBid (if bidding flow)\n        \n        Note over Backend: Create 4 notifications\n        Backend->>Backend: Create Notification<br/>client: \"Payment Confirmed\"<br/>content_type → Job\n        Backend->>Backend: Create Notification<br/>cleaner: \"Payment Received\"<br/>content_type → Job\n        Backend->>Backend: Create Notification<br/>client: \"Job Confirmed\"<br/>content_type → Job\n        Backend->>Backend: Create Notification<br/>cleaner: \"Job Confirmed\"<br/>content_type → Job\n\n        Note over Client,Cleaner: 4. REAL-TIME NOTIFICATIONS\n\n        Backend->>WS: Serialize notifications<br/>Push via Channels\n        WS->>Client: notifications_{client_id}<br/>\"Payment Confirmed\"<br/>\"Job Confirmed\"\n        WS->>Cleaner: notifications_{cleaner_id}<br/>\"Payment Received\"<br/>\"Job Confirmed\"\n\n        Client->>Frontend: Receive WebSocket message\n        Frontend->>Frontend: Add to notifications array\n        Frontend->>Frontend: Show toast notification\n        Frontend->>Frontend: Dispatch 'jobNotificationReceived'\n        \n        Cleaner->>Frontend: Receive WebSocket message\n        Frontend->>Frontend: Add to notifications array\n        Frontend->>Frontend: Show toast notification\n        Frontend->>Frontend: Dispatch 'jobNotificationReceived'\n        Frontend->>Frontend: Auto-refresh job data<br/>(CleaningJobsPool listener)\n\n        Backend-->>Frontend: 200 OK {payment, message}\n        Frontend->>Frontend: Close PaymentModal\n        Frontend->>Client: Show success toast<br/>\"Payment successful!\"\n        Frontend->>Frontend: Refresh job data (100ms delay)\n\n    else Payment Failed/Invalid\n        Backend-->>Frontend: 400 Bad Request<br/>{error message}\n        Frontend->>Client: Show error toast\n    end\n\n    Note over Client,Cleaner: 5. DUPLICATE PREVENTION\n\n    alt User triggers modal re-render\n        Frontend->>Frontend: useEffect runs again\n        Frontend->>Frontend: Check paymentIntentCreated.current<br/>→ Skip payment creation\n    end\n\n    alt React StrictMode double-render\n        Frontend->>Frontend: useEffect runs twice\n        Frontend->>Frontend: isCreatingPayment.current prevents race\n    end\n\n    alt Accidental double-submit\n        Frontend->>Backend: POST /api/payments/create-intent/\n        Backend-->>Frontend: 400 \"Job already confirmed\"\n        Frontend->>Frontend: Detect isAlreadyConfirmed error\n        Frontend->>Frontend: Set paymentSucceeded.current = true\n        Frontend->>Frontend: Skip error toast (expected behavior)\n    end\n\n    Note over Client,Cleaner: RESULT: Job confirmed, payment processed, both users notified in real-time!\n",
+  "content_size": 5384,
+  "collected_at": "2026-02-06T11:05:17.371380",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要梳理一下从客户点击\"接受报价并支付\"到最终订单确认的完整支付流程。这个流程涉及前端、Django后端、Stripe支付和WebSocket实时通知，我觉得用序列图最能表达清楚时序关系。",
+      "elements_involved": [
+        "Client Browser",
+        "React Frontend",
+        "Django Backend",
+        "Stripe API",
+        "WebSocket Server",
+        "Cleaner Browser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，这是一个端到端的支付旅程。我先确认一下参与者：客户浏览器、React前端、Django后端、Stripe API、WebSocket服务器，还有清洁工的浏览器，对吗？另外，流程起点是客户点击\"Accept & Pay\"按钮？",
+      "elements_involved": [
+        "Client Browser",
+        "React Frontend",
+        "Django Backend",
+        "Stripe API",
+        "WebSocket Server",
+        "Cleaner Browser",
+        "Accept & Pay"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。第一步客户点击后，前端要弹出PaymentModal，里面渲染Stripe的CardElement。这里有个关键点：我们要防止重复创建PaymentIntent，所以前端会用paymentIntentCreated.current来做标记检查。",
+      "elements_involved": [
+        "PaymentModal",
+        "CheckoutForm",
+        "CardElement",
+        "paymentIntentCreated.current"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把第一阶段画出来了：客户点击→打开弹窗→检查标记→向后端发起POST /api/payments/create-intent/。后端收到后创建PaymentIntent，金额是报价金额，关联客户ID和清洁工ID，然后从Stripe获取client_secret返回给前端。",
+      "elements_involved": [
+        "Client-Frontend",
+        "Frontend-Backend",
+        "Backend-Stripe",
+        "client_secret",
+        "payment_reference"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是第二阶段，客户输入卡号信息，点击\"立即支付\"。前端调用Stripe的confirmCardPayment，这里可能触发3D Secure验证。支付成功后Stripe返回succeeded状态，前端把paymentSucceeded.current设为true。",
+      "elements_involved": [
+        "Pay Now",
+        "confirmCardPayment",
+        "3D Secure",
+        "paymentSucceeded.current"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下：支付成功后前端要先更新本地状态，然后再通知后端确认？还是直接让后端通过webhook知道？",
+      "elements_involved": [
+        "paymentSucceeded.current",
+        "Backend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是前端主动通知后端。前端发起POST /api/payments/confirm/，带上payment_intent_id。后端再去Stripe查询详情，验证状态、客户ID、金额是否匹配。验证通过后才开始更新数据库。",
+      "elements_involved": [
+        "Frontend-Backend",
+        "POST /api/payments/confirm/",
+        "Backend-Stripe",
+        "payment_intent_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第三阶段我画好了：后端验证PaymentIntent状态为succeeded，确认client_id匹配，金额匹配。然后在alt分支里更新Payment状态为succeeded，记录paid_at时间，保存支付方式的last4和brand，更新Job状态为confirmed。如果是竞价模式还要接受JobBid。",
+      "elements_involved": [
+        "Payment.status",
+        "paid_at",
+        "last4",
+        "brand",
+        "Job.status",
+        "JobBid",
+        "alt Payment Valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，而且这时候要创建4条通知：客户收到\"支付已确认\"和\"订单已确认\"，清洁工收到\"款项已收到\"和\"订单已确认\"。这些通知通过WebSocket实时推送。",
+      "elements_involved": [
+        "Notification",
+        "WebSocket Server",
+        "notifications_{client_id}",
+        "notifications_{cleaner_id}",
+        "Payment Confirmed",
+        "Payment Received",
+        "Job Confirmed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第四阶段实时通知画好了：后端序列化通知，通过Channels推送到WebSocket服务器，然后分别推送给客户和清洁工。两边浏览器收到后，前端把通知加入数组，显示toast提示，并派发jobNotificationReceived事件。",
+      "elements_involved": [
+        "Backend-WS",
+        "WS-Client",
+        "WS-Cleaner",
+        "toast notification",
+        "jobNotificationReceived"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "还有个小细节：前端有个CleaningJobsPool监听器，收到通知后会自动刷新订单数据。另外关闭弹窗前有个100ms的延迟刷新，确保数据同步。",
+      "elements_involved": [
+        "CleaningJobsPool listener",
+        "Auto-refresh job data",
+        "100ms delay",
+        "Close PaymentModal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了。我还补了else分支：如果验证失败，后端返回400错误，前端显示错误toast。现在整个主流程都完整了。",
+      "elements_involved": [
+        "else Payment Failed/Invalid",
+        "400 Bad Request",
+        "error toast"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "等等，我们还漏了很重要的一块：防重机制。React的严格模式会导致useEffect执行两次，用户也可能误触多次提交，甚至弹窗重新渲染时也会触发useEffect。这些边界情况都要画出来。",
+      "elements_involved": [
+        "duplicate prevention",
+        "React StrictMode",
+        "double-render",
+        "double-submit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，这是第五阶段。第一种情况：用户触发弹窗重新渲染，useEffect再次执行，但paymentIntentCreated.current为true，跳过创建。第二种：React StrictMode双重渲染，用isCreatingPayment.current防止竞态。对吗？",
+      "elements_involved": [
+        "useEffect",
+        "paymentIntentCreated.current",
+        "isCreatingPayment.current",
+        "Skip payment creation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。第三种情况是用户真的点了两次提交，后端会返回400错误\"Job already confirmed\"。前端要识别这个isAlreadyConfirmed错误，把paymentSucceeded.current设为true，而且不显示错误toast，因为这是预期行为。",
+      "elements_involved": [
+        "Accidental double-submit",
+        "400 Job already confirmed",
+        "isAlreadyConfirmed error",
+        "expected behavior",
+        "Skip error toast"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "三个防重场景都画好了，用三个alt块分别表示。最后我加了个总结注释：订单已确认、支付已处理、双方用户实时收到通知。整个图结构清晰了，从客户点击到双方收到通知的完整闭环。",
+      "elements_involved": [
+        "alt User triggers modal re-render",
+        "alt React StrictMode double-render",
+        "alt Accidental double-submit",
+        "RESULT: Job confirmed, payment processed, both users notified in real-time"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我再看一眼，确认一下后端存储的字段：payment_method的last4和brand是从Stripe返回的数据里取的对吧？还有通知的content_type都指向Job？",
+      "elements_involved": [
+        "last4",
+        "brand",
+        "payment_method details",
+        "content_type",
+        "Job"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，last4是卡号后四位，brand是卡组织比如visa/mastercard。四条通知的content_type都指向Job，方便前端点击通知时跳转到对应订单详情页。",
+      "elements_involved": [
+        "last4",
+        "brand",
+        "content_type → Job"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有个细节想调整：在支付成功的alt分支里，更新Job.final_price那一步，应该是把payment.amount同步过去，确保最终价格和实际支付金额一致。另外如果走的是竞价流程，接受JobBid的操作也要明确标出来。",
+      "elements_involved": [
+        "Job.final_price",
+        "payment.amount",
+        "Accept JobBid",
+        "if bidding flow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正。把\"Update Job.final_price = payment.amount\"写清楚了，JobBid的接受也加了条件注释\"if bidding flow\"。另外我检查了一下，发现Backend-Backend的自调用箭头有点多，我调整了下布局让四条通知创建更紧凑，避免线条交叉。",
+      "elements_involved": [
+        "Job.final_price",
+        "payment.amount",
+        "Accept JobBid",
+        "Create Notification"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。最后确认一下WebSocket的频道命名：客户是notifications_{client_id}，清洁工是notifications_{cleaner_id}，这样不会串消息。整个流程看起来完整了，从点击支付到双方实时通知，所有异常分支也都覆盖了。",
+      "elements_involved": [
+        "notifications_{client_id}",
+        "notifications_{cleaner_id}",
+        "WebSocket频道"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 21,
+    "repair_count": 1,
+    "grounding_acts_count": 21,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:43Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:27Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:27Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 61877.6875,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 20
+  }
+}

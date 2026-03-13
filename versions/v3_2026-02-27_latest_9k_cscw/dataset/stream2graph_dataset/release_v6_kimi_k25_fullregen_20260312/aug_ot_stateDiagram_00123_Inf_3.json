@@ -1,0 +1,336 @@
+{
+  "id": "aug_ot_stateDiagram_00123_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/WallyMagill/LaundryPet/blob/1cc6d3e3ada8e49c32efac7ff55b0d4249be7fc4/ProductionDocs/02_Timer_State_Machine_Flow.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "WallyMagill/LaundryPet",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_EtcdCluster] --> Idle: Pet Created\n    \n    Idle --> Washing: Start Wash Button\n    \n    state Washing {Infra_WorkerNode] --> TimerRunning\n        TimerRunning --> CalculateRemaining: Every 0.5s\n        CalculateRemaining --> TimerRunning: remaining > 0\n        CalculateRemaining --> TimerComplete: remaining ≤ 0\n        \n        state TimerRunning {Infra_WorkerNode] --> SaveState\n            SaveState --> UpdateUI\n            UpdateUI --> SaveState: Loop\n            \n            note right of SaveState\n                UserDefaults:\n                - endTime: Date\n                - type: .wash\n                - petID: UUID\n            end note\n        }\n        \n        state TimerComplete {Infra_WorkerNode] --> CancelTimer\n            CancelTimer --> ClearState\n            ClearState --> SendNotification\n            SendNotification --> [Infra_IngressController]\n        }\n    }\n    \n    Washing --> WashComplete: Timer Expires\n    \n    WashComplete --> Drying: Start Dry Button\n    \n    state Drying {Infra_IngressController] --> TimerRunning2\n        TimerRunning2 --> CalculateRemaining2: Every 0.5s\n        CalculateRemaining2 --> TimerRunning2: remaining > 0\n        CalculateRemaining2 --> TimerComplete2: remaining ≤ 0\n        \n        state TimerRunning2 {Infra_RedisCache] --> SaveState2\n            SaveState2 --> UpdateUI2\n            UpdateUI2 --> SaveState2: Loop\n            \n            note right of SaveState2\n                UserDefaults:\n                - endTime: Date\n                - type: .dry\n                - petID: UUID\n            end note\n        }\n        \n        state TimerComplete2 {Infra_LoadBalancer] --> CancelTimer2\n            CancelTimer2 --> ClearState2\n            ClearState2 --> SendNotification2\n            SendNotification2 --> [Infra_EtcdCluster]\n        }\n    }\n    \n    Drying --> DryComplete: Timer Expires\n    \n    DryComplete --> Folding: Ready to Fold State\n    \n    Folding --> CycleComplete: User Taps Fold\n    \n    state CycleComplete {Infra_RedisCache] --> UpdatePetHealth\n        UpdatePetHealth --> UpdateStats\n        UpdateStats --> ClearNotifications\n        ClearNotifications --> SaveDatabase\n        SaveDatabase --> [Infra_IngressController]\n        \n        note right of UpdatePetHealth\n            Pet Updates:\n            - health = 100\n            - state = .happy\n            - lastLaundryDate = now\n            - cyclesCompleted += 1\n            - streak updated\n        end note\n    }\n    \n    CycleComplete --> Idle: Return to Idle\n    \n    Washing --> RecoveryCheck: App Reopened\n    Drying --> RecoveryCheck: App Reopened\n    \n    state RecoveryCheck {Infra_RedisCache] --> LoadUserDefaults\n        LoadUserDefaults --> ValidateState\n        ValidateState --> CalculateActualRemaining\n        CalculateActualRemaining --> [Infra_EtcdCluster]\n        \n        note right of ValidateState\n            Validation:\n            - endTime exists?\n            - endTime reasonable?\n            - Not too far in future?\n            - Not too far in past?\n        end note\n    }\n    \n    RecoveryCheck --> Washing: Timer Still Running\n    RecoveryCheck --> WashComplete: Timer Expired\n    RecoveryCheck --> Drying: Timer Still Running\n    RecoveryCheck --> DryComplete: Timer Expired\n    RecoveryCheck --> Idle: Corrupted/Invalid\n    \n    Idle --> HealthDecay: Time Passes\n    WashComplete --> HealthDecay: Time Passes\n    DryComplete --> HealthDecay: Time Passes\n    \n    state HealthDecay {Infra_EtcdCluster] --> CheckLastLaundry\n        CheckLastLaundry --> CalculateHealth\n        CalculateHealth --> UpdateState\n        \n        note right of CalculateHealth\n            Health Decay:\n            daysSince = now - lastLaundryDate\n            expected = cycleFrequencyDays\n            health = 100 * (Infra_IngressController)\n            \n            State Transitions:\n            100-75% → Happy\n            75-50% → Neutral\n            50-25% → Sad\n            25-1% → Very Sad\n            0% → Dead\n        end note\n        \n        UpdateState --> [Infra_WorkerNode]\n    }\n    \n    HealthDecay --> Idle: Health Updated\n    HealthDecay --> Dead: Health = 0\n    \n    Dead --> [Infra_EtcdCluster]: Pet Dies\n    \n    note left of Idle\n        Idle State:\n        - No active timers\n        - Can start wash\n        - Health decaying over time\n    end note\n    \n    note right of WashComplete\n        Wash Complete:\n        - Notification sent\n        - Can start dry\n        - Pet waiting\n    end note\n    \n    note right of DryComplete\n        Dry Complete:\n        - Notification sent\n        - Ready to fold\n        - Tap to complete\n    end note",
+  "content_size": 4501,
+  "collected_at": "2026-02-06T10:38:09.653280",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00123",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个宠物洗衣机的完整状态机，核心流程是：宠物创建后进入Idle状态，点击开始洗涤后进入Washing，洗完可以烘干，最后折叠完成。但还要考虑应用重启后的恢复逻辑，以及健康度衰减机制。",
+      "elements_involved": [
+        "Idle",
+        "Washing",
+        "Drying",
+        "Folding",
+        "CycleComplete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，主干是Idle → Washing → WashComplete → Drying → DryComplete → Folding → CycleComplete → Idle。关于Washing阶段，我需要确认：计时器部分要拆多细？我看到有Every 0.5s轮询剩余时间的逻辑。",
+      "elements_involved": [
+        "Washing",
+        "TimerRunning",
+        "CalculateRemaining"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Washing内部要两层嵌套：外层区分TimerRunning和TimerComplete，内层TimerRunning里有个SaveState和UpdateUI的循环，每0.5秒更新界面并持久化。注意SaveState要存endTime、type是wash、还有petID。",
+      "elements_involved": [
+        "TimerRunning",
+        "SaveState",
+        "UpdateUI",
+        "UserDefaults_wash"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Washing复合状态已画好，TimerRunning内部有SaveState→UpdateUI→SaveState的循环。TimerComplete分支走CancelTimer→ClearState→SendNotification，最终连到Infra_IngressController发推送。",
+      "elements_involved": [
+        "TimerComplete",
+        "CancelTimer",
+        "ClearState",
+        "SendNotification",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但Drying阶段的基础设施要换一下——TimerRunning2用RedisCache做状态存储，TimerComplete2走LoadBalancer发通知，最后回写到EtcdCluster。这样能和Washing形成对比。",
+      "elements_involved": [
+        "Drying",
+        "TimerRunning2",
+        "Infra_RedisCache",
+        "TimerComplete2",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整，Drying内部TimerRunning2用RedisCache持久化，SaveState2存的是type:.dry。TimerComplete2路径是CancelTimer2→ClearState2→SendNotification2→Infra_EtcdCluster。",
+      "elements_involved": [
+        "SaveState2",
+        "UpdateUI2",
+        "CancelTimer2",
+        "ClearState2",
+        "SendNotification2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CycleComplete阶段最关键，要更新宠物健康度到100，状态变happy，记录lastLaundryDate，cyclesCompleted加1，还要更新streak。这个复合状态从RedisCache开始，最后写到IngressController。",
+      "elements_involved": [
+        "CycleComplete",
+        "UpdatePetHealth",
+        "UpdateStats",
+        "ClearNotifications",
+        "SaveDatabase",
+        "Infra_RedisCache",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "CycleComplete的入口是Folding状态对吧？用户点击折叠后触发。还有，RecoveryCheck这个分支怎么处理？我看到Washing和Drying都有App Reopened的转移。",
+      "elements_involved": [
+        "Folding",
+        "CycleComplete",
+        "RecoveryCheck",
+        "Washing",
+        "Drying"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，RecoveryCheck是应用重启后的恢复逻辑。从RedisCache加载UserDefaults，验证endTime是否存在、是否合理（不能太未来也不能太过去），然后计算实际剩余时间，根据结果跳回Washing、WashComplete、Drying、DryComplete，或者如果数据损坏就回Idle。",
+      "elements_involved": [
+        "RecoveryCheck",
+        "LoadUserDefaults",
+        "ValidateState",
+        "CalculateActualRemaining",
+        "Infra_RedisCache",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RecoveryCheck画好了，四个出口都连上了。现在处理HealthDecay——Idle、WashComplete、DryComplete都会因为Time Passes触发健康度衰减？",
+      "elements_involved": [
+        "HealthDecay",
+        "Idle",
+        "WashComplete",
+        "DryComplete",
+        "Time Passes"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，HealthDecay从EtcdCluster开始，检查lastLaundryDate，计算daysSince和cycleFrequencyDays的比值，健康度公式是100乘以那个比例。要分五个档位：100-75%是Happy，75-50% Neutral，50-25% Sad，25-1% Very Sad，0%就进Dead状态。",
+      "elements_involved": [
+        "HealthDecay",
+        "CheckLastLaundry",
+        "CalculateHealth",
+        "UpdateState",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Dead"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "HealthDecay画好了，UpdateState之后连到WorkerNode。Dead状态最终回写到EtcdCluster，标记Pet Dies。Idle状态我加个注释说明：无活跃计时器、可以开始洗涤、健康度持续衰减。",
+      "elements_involved": [
+        "Dead",
+        "Infra_EtcdCluster",
+        "Idle_note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "WashComplete和DryComplete也加上注释吧。WashComplete要说明通知已发送、可以开始烘干、宠物在等待；DryComplete是通知已发送、准备折叠、点击完成。",
+      "elements_involved": [
+        "WashComplete_note",
+        "DryComplete_note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "三个注释都加上了。我检查一下整体结构：Washing的SaveState和Drying的SaveState2，UserDefaults的字段分别是type:.wash和type:.dry，这个区分对吗？",
+      "elements_involved": [
+        "SaveState",
+        "SaveState2",
+        "UserDefaults_wash",
+        "UserDefaults_dry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，这样RecoveryCheck时能根据type判断恢复到哪个阶段。还有，CalculateRemaining和CalculateRemaining2都是Every 0.5s触发，remaining0回TimerRunning，≤0进TimerComplete，这个条件别写反了。",
+      "elements_involved": [
+        "CalculateRemaining",
+        "CalculateRemaining2",
+        "Every 0.5s",
+        "remaining0",
+        "remaining≤0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现个问题：我之前把CalculateRemaining到TimerComplete的条件写成remaining=0了，应该是remaining≤0。还有TimerRunning2的父状态标注，我确认一下是Infra_IngressController对吗？",
+      "elements_involved": [
+        "CalculateRemaining",
+        "TimerComplete",
+        "remaining≤0",
+        "TimerRunning2",
+        "Infra_IngressController"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，TimerRunning2父状态是Infra_IngressController，TimerComplete2是Infra_LoadBalancer。这两个和Washing阶段的Infra_WorkerNode形成三层不同的基础设施依赖。",
+      "elements_involved": [
+        "TimerRunning2",
+        "Infra_IngressController",
+        "TimerComplete2",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正remaining≤0的条件。CycleComplete里的UpdatePetHealth注释我也补全了：health=100，state=.happy，lastLaundryDate=now，cyclesCompleted+=1，streak updated。",
+      "elements_involved": [
+        "UpdatePetHealth_note",
+        "health",
+        "state",
+        "lastLaundryDate",
+        "cyclesCompleted",
+        "streak"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ValidateState的验证逻辑注释再明确下：检查endTime是否存在、是否合理、不能太未来、不能太过去。CalculateHealth的公式也写清楚：daysSince除以cycleFrequencyDays，健康度是100乘这个比例。",
+      "elements_involved": [
+        "ValidateState_note",
+        "CalculateHealth_note",
+        "endTime",
+        "daysSince",
+        "cycleFrequencyDays"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个注释都完善了。最终确认一下：所有基础设施节点——EtcdCluster、WorkerNode、IngressController、RedisCache、LoadBalancer——都正确关联到对应状态了吗？",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "都对了。Pet Created从EtcdCluster进Idle，Washing用WorkerNode，Drying的TimerRunning2用IngressController、TimerComplete2用LoadBalancer、最后回EtcdCluster，CycleComplete从RedisCache到IngressController，HealthDecay从EtcdCluster到WorkerNode，RecoveryCheck用RedisCache。",
+      "elements_involved": [
+        "Pet Created",
+        "Infra_EtcdCluster",
+        "Idle",
+        "Washing",
+        "Infra_WorkerNode",
+        "Drying",
+        "CycleComplete",
+        "HealthDecay",
+        "RecoveryCheck",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 21,
+    "repair_count": 1,
+    "grounding_acts_count": 21,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 45385.3254,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 20
+  }
+}

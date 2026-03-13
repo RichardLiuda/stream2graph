@@ -1,0 +1,396 @@
+{
+  "id": "aug_ot_journey_01123_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/vaskomet/CapstoneProjectMetallinosE-Clean/blob/75dd266f9e5f00ca887adf8d291f36f4503fa0ee/docs/diagrams/flows/PAYMENT_FLOW.mmd",
+  "source_type": "github_search",
+  "github_repo": "vaskomet/CapstoneProjectMetallinosE-Clean",
+  "diagram_type": "journey",
+  "code": "%% Payment Flow Sequence Diagram\n%% This diagram shows the complete payment journey from bid acceptance to job confirmation\n%% View in VS Code with Mermaid extension or paste into https://mermaid.live\n\nsequenceDiagram\n    participant Client as Client Browser\n    participant Frontend as React Frontend\n    participant Backend as Django Backend\n    participant Stripe as Stripe API\n    participant WS as WebSocket Server\n    participant Cleaner as Cleaner Browser\n\n    Note over Client,Cleaner: 1. CLIENT ACCEPTS BID & INITIATES PAYMENT\n\n    Client->>Frontend: Click \"Accept & Pay\" on bid\n    Frontend->>Frontend: Open PaymentModal\n    Frontend->>Frontend: CheckoutForm renders Stripe Elements\n    \n    Note over Frontend: Check if payment already created\n    Frontend->>Frontend: Check paymentIntentCreated.current\n    \n    Frontend->>Backend: POST /api/payments/create-intent/\n    Note right of Backend: Create PaymentIntent<br/>Amount: bid amount<br/>Client: user ID<br/>Cleaner: bid owner\n    \n    Backend->>Stripe: Create PaymentIntent\n    Stripe-->>Backend: Return client_secret\n    Backend->>Backend: Save Payment record<br/>status='pending'<br/>payment_reference=UUID\n    Backend-->>Frontend: Return {Education_GradeSync}\n    \n    Frontend->>Frontend: Set paymentIntentCreated.current = true\n    Frontend->>Frontend: Render CardElement with client_secret\n\n    Note over Client,Cleaner: 2. CLIENT ENTERS CARD & CONFIRMS PAYMENT\n\n    Client->>Frontend: Enter card details\n    Client->>Frontend: Click \"Pay Now\"\n    \n    Frontend->>Frontend: Check payment guards<br/>(Education_LMS_Portal)\n    \n    Frontend->>Stripe: confirmCardPayment(Education_ClassroomService)\n    Note right of Stripe: 3D Secure if needed<br/>Card validation<br/>Charge authorization\n    \n    Stripe-->>Frontend: PaymentIntent {Education_GradeSync}\n\n    Note over Frontend: Payment successful!\n    Frontend->>Frontend: Set paymentSucceeded.current = true\n\n    Note over Client,Cleaner: 3. BACKEND CONFIRMATION & JOB UPDATE\n\n    Frontend->>Backend: POST /api/payments/confirm/<br/>{Education_LMS_Portal}\n    \n    Backend->>Stripe: Retrieve PaymentIntent details\n    Stripe-->>Backend: PaymentIntent full data\n    \n    Backend->>Backend: Validate payment_intent.status === 'succeeded'\n    Backend->>Backend: Validate client_id matches job.client\n    Backend->>Backend: Validate amount matches job.final_price\n    \n    alt Payment Valid\n        Backend->>Backend: Update Payment.status = 'succeeded'\n        Backend->>Backend: Update Payment.paid_at = now(Education_ContentCDN)\n        Backend->>Backend: Store payment_method details (Education_StudentDB)\n        \n        Backend->>Backend: Update Job.status = 'confirmed'\n        Backend->>Backend: Update Job.final_price = payment.amount\n        Backend->>Backend: Accept JobBid (Education_GradeSync)\n        \n        Note over Backend: Create 4 notifications\n        Backend->>Backend: Create Notification<br/>client: \"Payment Confirmed\"<br/>content_type → Job\n        Backend->>Backend: Create Notification<br/>cleaner: \"Payment Received\"<br/>content_type → Job\n        Backend->>Backend: Create Notification<br/>client: \"Job Confirmed\"<br/>content_type → Job\n        Backend->>Backend: Create Notification<br/>cleaner: \"Job Confirmed\"<br/>content_type → Job\n\n        Note over Client,Cleaner: 4. REAL-TIME NOTIFICATIONS\n\n        Backend->>WS: Serialize notifications<br/>Push via Channels\n        WS->>Client: notifications_{Education_ContentCDN}<br/>\"Payment Confirmed\"<br/>\"Job Confirmed\"\n        WS->>Cleaner: notifications_{Education_StudentDB}<br/>\"Payment Received\"<br/>\"Job Confirmed\"\n\n        Client->>Frontend: Receive WebSocket message\n        Frontend->>Frontend: Add to notifications array\n        Frontend->>Frontend: Show toast notification\n        Frontend->>Frontend: Dispatch 'jobNotificationReceived'\n        \n        Cleaner->>Frontend: Receive WebSocket message\n        Frontend->>Frontend: Add to notifications array\n        Frontend->>Frontend: Show toast notification\n        Frontend->>Frontend: Dispatch 'jobNotificationReceived'\n        Frontend->>Frontend: Auto-refresh job data<br/>(Education_ContentCDN)\n\n        Backend-->>Frontend: 200 OK {Education_LMS_Portal}\n        Frontend->>Frontend: Close PaymentModal\n        Frontend->>Client: Show success toast<br/>\"Payment successful!\"\n        Frontend->>Frontend: Refresh job data (Education_LMS_Portal)\n\n    else Payment Failed/Invalid\n        Backend-->>Frontend: 400 Bad Request<br/>{Education_GradeSync}\n        Frontend->>Client: Show error toast\n    end\n\n    Note over Client,Cleaner: 5. DUPLICATE PREVENTION\n\n    alt User triggers modal re-render\n        Frontend->>Frontend: useEffect runs again\n        Frontend->>Frontend: Check paymentIntentCreated.current<br/>→ Skip payment creation\n    end\n\n    alt React StrictMode double-render\n        Frontend->>Frontend: useEffect runs twice\n        Frontend->>Frontend: isCreatingPayment.current prevents race\n    end\n\n    alt Accidental double-submit\n        Frontend->>Backend: POST /api/payments/create-intent/\n        Backend-->>Frontend: 400 \"Job already confirmed\"\n        Frontend->>Frontend: Detect isAlreadyConfirmed error\n        Frontend->>Frontend: Set paymentSucceeded.current = true\n        Frontend->>Frontend: Skip error toast (Education_LMS_Portal)\n    end\n\n    Note over Client,Cleaner: RESULT: Job confirmed, payment processed, both users notified in real-time!\n",
+  "content_size": 5384,
+  "collected_at": "2026-02-06T11:05:17.371380",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Education",
+  "seed_id": "ot_journey_01123",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要梳理一下客户从接受报价到完成支付的完整流程。这个支付旅程涉及多个系统，我想确保每个环节都覆盖到。",
+      "elements_involved": [
+        "Client Browser",
+        "React Frontend",
+        "Django Backend",
+        "Stripe API",
+        "WebSocket Server",
+        "Cleaner Browser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。这个旅程的起点是客户在Cleaner Browser上看到报价后点击\"接受并支付\"，对吗？然后React Frontend会弹出PaymentModal？",
+      "elements_involved": [
+        "Client Browser",
+        "React Frontend",
+        "PaymentModal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但注意是Client Browser，不是Cleaner Browser。Cleaner是服务提供方，Client是付款方。PaymentModal里会渲染CheckoutForm，集成Stripe Elements。",
+      "elements_involved": [
+        "Client Browser",
+        "Cleaner Browser",
+        "PaymentModal",
+        "CheckoutForm",
+        "Stripe Elements"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我修正一下。现在第一步是Client Browser点击\"接受并支付\"，Frontend打开PaymentModal，CheckoutForm渲染Stripe Elements。这里需要加一个检查点，防止重复创建PaymentIntent。",
+      "elements_involved": [
+        "Client Browser",
+        "React Frontend",
+        "PaymentModal",
+        "CheckoutForm",
+        "paymentIntentCreated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，这个检查很重要。如果paymentIntentCreated.current为false，Frontend就向后端POST /api/payments/create-intent/。Django Backend需要创建PaymentIntent，保存到Stripe，同时在我们这边生成Payment记录。",
+      "elements_involved": [
+        "React Frontend",
+        "Django Backend",
+        "Stripe API",
+        "PaymentIntent",
+        "Payment record"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Payment记录的状态初始是'pending'，还要存payment_reference作为UUID对吧？Backend从Stripe拿到client_secret后返回给Frontend。",
+      "elements_involved": [
+        "Django Backend",
+        "Payment record",
+        "status",
+        "payment_reference",
+        "client_secret"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。Frontend拿到client_secret后设置paymentIntentCreated.current = true，然后用CardElement渲染支付表单。这时候客户就可以输入卡号了。",
+      "elements_involved": [
+        "React Frontend",
+        "client_secret",
+        "paymentIntentCreated",
+        "CardElement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "第二部分是客户确认支付。客户输入卡号后点击\"立即支付\"，Frontend要先做Education_LMS_Portal检查，然后调用Stripe的confirmCardPayment。这里需要Education_ClassroomService参数。",
+      "elements_involved": [
+        "Client Browser",
+        "React Frontend",
+        "Education_LMS_Portal",
+        "confirmCardPayment",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Education_ClassroomService就是client_secret。Stripe可能会触发3D Secure验证，完成授权后返回PaymentIntent状态。如果成功，Frontend设置paymentSucceeded.current = true。",
+      "elements_involved": [
+        "Stripe API",
+        "3D Secure",
+        "PaymentIntent",
+        "paymentSucceeded"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我记下了。第三步是后端确认和任务更新。Frontend POST到/api/payments/confirm/，带上Education_LMS_Portal。Backend要去Stripe验证PaymentIntent详情。",
+      "elements_involved": [
+        "React Frontend",
+        "Django Backend",
+        "Education_LMS_Portal",
+        "PaymentIntent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Backend要验证三个关键点：payment_intent.status是'succeeded'，client_id匹配job.client，amount匹配job.final_price。验证通过进入主分支，失败走错误分支。",
+      "elements_involved": [
+        "Django Backend",
+        "payment_intent.status",
+        "client_id",
+        "job.client",
+        "amount",
+        "job.final_price"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "验证通过后，Backend要更新Payment.status为'succeeded'，记录paid_at为当前时间，存储payment_method详情到Education_StudentDB，同时更新Job.status为'confirmed'。",
+      "elements_involved": [
+        "Django Backend",
+        "Payment",
+        "status",
+        "paid_at",
+        "payment_method",
+        "Education_StudentDB",
+        "Job",
+        "status"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，还要把Job.final_price设为实际支付金额，并Accept JobBid。然后创建四个通知：客户收到\"Payment Confirmed\"和\"Job Confirmed\"，Cleaner收到\"Payment Received\"和\"Job Confirmed\"。",
+      "elements_involved": [
+        "Django Backend",
+        "Job",
+        "final_price",
+        "JobBid",
+        "Notification",
+        "Client",
+        "Cleaner"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第四部分是实时通知。Backend通过Channels把通知序列化后推给WebSocket Server，WS再分别推送给Client和Cleaner。Client收到的是notifications_{Education_ContentCDN}，Cleaner是notifications_{Education_StudentDB}。",
+      "elements_involved": [
+        "Django Backend",
+        "WebSocket Server",
+        "Channels",
+        "Client",
+        "Cleaner",
+        "Education_ContentCDN",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "注意Client和Cleaner都是Browser端，但他们登录的是不同账户，所以WebSocket通道不同。两边Frontend收到消息后都要添加到通知数组，显示toast，并dispatch 'jobNotificationReceived'事件。",
+      "elements_involved": [
+        "Client Browser",
+        "Cleaner Browser",
+        "React Frontend",
+        "WebSocket",
+        "toast",
+        "jobNotificationReceived"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "然后Frontend自动刷新任务数据，调用Education_ContentCDN。Backend返回200 OK和Education_LMS_Portal，Frontend关闭PaymentModal，显示成功toast，再刷新一次任务数据。",
+      "elements_involved": [
+        "React Frontend",
+        "Education_ContentCDN",
+        "Django Backend",
+        "Education_LMS_Portal",
+        "PaymentModal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "如果支付验证失败，Backend返回400 Bad Request和Education_GradeSync，Frontend显示错误toast。这部分需要画在else分支里。",
+      "elements_involved": [
+        "Django Backend",
+        "Education_GradeSync",
+        "React Frontend",
+        "toast"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我加上错误分支。最后还需要第五部分：重复支付防护。这里有三种情况：用户触发modal重新渲染、React StrictMode双重渲染、意外双击提交。",
+      "elements_involved": [
+        "React Frontend",
+        "PaymentModal",
+        "useEffect",
+        "isCreatingPayment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "第一种情况，useEffect再次执行时检查paymentIntentCreated.current，如果已创建就跳过。第二种情况，StrictMode导致useEffect执行两次，用isCreatingPayment.current防止竞态。",
+      "elements_involved": [
+        "React Frontend",
+        "useEffect",
+        "paymentIntentCreated",
+        "isCreatingPayment",
+        "StrictMode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "第三种情况，如果用户意外双击导致两次POST /api/payments/create-intent/，Backend检测到Job已确认，返回400 \"Job already confirmed\"。Frontend识别isAlreadyConfirmed错误，设置paymentSucceeded.current = true，并且跳过错误toast。",
+      "elements_involved": [
+        "React Frontend",
+        "Django Backend",
+        "isAlreadyConfirmed",
+        "paymentSucceeded",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。最后结果框要说明：任务已确认，支付已处理，双方用户实时收到通知。整个流程覆盖从点击支付到最终确认的全链路。",
+      "elements_involved": [
+        "Job",
+        "Payment",
+        "Client",
+        "Cleaner",
+        "WebSocket",
+        "notification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我已经把整个流程画完了。五个阶段：1)客户接受报价并发起支付，2)客户输入卡片并确认支付，3)后端确认和任务更新，4)实时通知推送，5)重复支付防护。每个阶段的系统交互都标注清楚了。",
+      "elements_involved": [
+        "Client Browser",
+        "React Frontend",
+        "Django Backend",
+        "Stripe API",
+        "WebSocket Server",
+        "Cleaner Browser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我再看一眼，Education_GradeSync、Education_LMS_Portal、Education_ClassroomService、Education_ContentCDN、Education_StudentDB这些占位符在图里都用对位置了吗？它们分别代表client_secret、payment结果对象、confirm参数、通知通道ID和存储标识。",
+      "elements_involved": [
+        "Education_GradeSync",
+        "Education_LMS_Portal",
+        "Education_ClassroomService",
+        "Education_ContentCDN",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。Education_GradeSync出现在Backend返回给Frontend的client_secret和错误响应中；Education_LMS_Portal是confirm接口的请求体和成功响应；Education_ClassroomService是confirmCardPayment的参数；Education_ContentCDN是Client的通知通道和自动刷新标识；Education_StudentDB是Cleaner的通知通道和payment_method存储标识。",
+      "elements_involved": [
+        "Education_GradeSync",
+        "Education_LMS_Portal",
+        "Education_ClassroomService",
+        "Education_ContentCDN",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "很好。这个图现在可以清晰地向团队展示支付流程的全貌了。特别是重复防护那块，三种边界情况都覆盖到了，能避免很多线上问题。",
+      "elements_involved": [
+        "PaymentModal",
+        "useEffect",
+        "isCreatingPayment",
+        "isAlreadyConfirmed"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 25,
+    "repair_count": 1,
+    "grounding_acts_count": 25,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 73364.7876,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 25
+  }
+}

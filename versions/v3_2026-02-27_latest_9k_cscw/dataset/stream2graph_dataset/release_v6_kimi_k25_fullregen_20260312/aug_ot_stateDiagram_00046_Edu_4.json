@@ -1,0 +1,165 @@
+{
+  "id": "aug_ot_stateDiagram_00046_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/aminshahid573/todo-grpc/blob/fc06a441c73b41687132aec6f3ef0641aa675617/docs/diagrams/token_lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "aminshahid573/todo-grpc",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Education_LMS_Portal] --> Login: User Credentials\n    Login --> TokensGenerated: Success\n    \n    state TokensGenerated {Education_GradeSync] --> AccessToken_Stateless\n        [Education_ContentCDN] --> RefreshToken_Stateful\n    }\n    \n    AccessToken_Stateless --> Active: valid for 15m\n    Active --> Expired: after 15m\n    Expired --> Refresh: use RefreshToken\n    \n    RefreshToken_Stateful --> StoredInDB: Active for 7d\n    StoredInDB --> Rotated: Refresh RPC called\n    Rotated --> DeletedFromDB: Old Token\n    Rotated --> StoredInDB: New Token Pair Issued\n    \n    StoredInDB --> Revoked: DeleteUser called\n    Revoked --> [Education_ContentCDN]\n    \n    Expired --> [Education_StudentDB]\n",
+  "content_size": 634,
+  "collected_at": "2026-02-06T10:37:11.344273",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Education",
+  "seed_id": "ot_stateDiagram_00046",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为教育LMS门户设计一个完整的Token生命周期状态图。核心场景是：学生登录后系统生成双Token——AccessToken无状态、RefreshToken有状态，后者需要入库管理。",
+      "elements_involved": [
+        "Education_LMS_Portal",
+        "Login",
+        "TokensGenerated",
+        "AccessToken_Stateless",
+        "RefreshToken_Stateful"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我注意到TokensGenerated是一个复合状态，里面包含两个并行子状态：GradeSync对接AccessToken、ContentCDN对接RefreshToken。这样画对吗？另外AccessToken有效期15分钟这个细节要体现吗？",
+      "elements_involved": [
+        "TokensGenerated",
+        "Education_GradeSync",
+        "Education_ContentCDN",
+        "AccessToken_Stateless",
+        "RefreshToken_Stateful",
+        "Active",
+        "Expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，15分钟有效期必须标出来，这是安全关键。AccessToken走Active→Expired的流转，Expired之后必须能用RefreshToken续期，不能让学生重新登录。",
+      "elements_involved": [
+        "AccessToken_Stateless",
+        "Active",
+        "Expired",
+        "Refresh",
+        "RefreshToken_Stateful"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "RefreshToken这边我设计了四层状态：入库后7天有效，触发Refresh RPC时进入Rotated，此时旧Token要标记删除、同时签发新Token对重新入库。另外管理员调用DeleteUser时要能强制Revoked。",
+      "elements_involved": [
+        "RefreshToken_Stateful",
+        "StoredInDB",
+        "Rotated",
+        "DeletedFromDB",
+        "StoredInDB",
+        "Revoked",
+        "DeleteUser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "Rotated到StoredInDB的箭头描述需要调整——不是\"New Token Pair Issued\"，应该是\"New Token Pair Issued\"作为动作标签，但目标状态还是StoredInDB。另外Revoked之后要回到ContentCDN表示清理完成，这个终点关系别漏了。",
+      "elements_involved": [
+        "Rotated",
+        "StoredInDB",
+        "New Token Pair Issued",
+        "Revoked",
+        "Education_ContentCDN"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，已修正Rotated→StoredInDB的标注为\"New Token Pair Issued\"，并补全Revoked到ContentCDN的终止连线。还有Expired到StudentDB的关联需要保留吗？看起来像是数据归档路径。",
+      "elements_involved": [
+        "Rotated",
+        "StoredInDB",
+        "Revoked",
+        "Education_ContentCDN",
+        "Expired",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保留，Expired的Token日志要写入StudentDB做审计追踪。整个图结构没问题了：登录触发Token生成、AccessToken短时效走刷新、RefreshToken长时效走轮换和吊销，两条线最终都收敛到CDN或DB。",
+      "elements_involved": [
+        "Expired",
+        "Education_StudentDB",
+        "Login",
+        "TokensGenerated",
+        "AccessToken_Stateless",
+        "RefreshToken_Stateful",
+        "Education_ContentCDN"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "状态图已完成。复合状态TokensGenerated内部正确嵌套了GradeSync和ContentCDN的并行处理，所有状态迁移标注了触发条件：15分钟时效、7天有效期、Refresh RPC、DeleteUser调用等。最终版本已符合教育系统的Token安全规范。",
+      "elements_involved": [
+        "TokensGenerated",
+        "Education_GradeSync",
+        "Education_ContentCDN",
+        "Active",
+        "Expired",
+        "StoredInDB",
+        "Rotated",
+        "Revoked",
+        "DeletedFromDB"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 22124.1949,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

@@ -1,0 +1,162 @@
+{
+  "id": "aug_ot_stateDiagram_00046_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/aminshahid573/todo-grpc/blob/fc06a441c73b41687132aec6f3ef0641aa675617/docs/diagrams/token_lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "aminshahid573/todo-grpc",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [FinTech_FraudDetection] --> Login: User Credentials\n    Login --> TokensGenerated: Success\n    \n    state TokensGenerated {FinTech_FraudDetection] --> AccessToken_Stateless\n        [FinTech_PaymentGateway] --> RefreshToken_Stateful\n    }\n    \n    AccessToken_Stateless --> Active: valid for 15m\n    Active --> Expired: after 15m\n    Expired --> Refresh: use RefreshToken\n    \n    RefreshToken_Stateful --> StoredInDB: Active for 7d\n    StoredInDB --> Rotated: Refresh RPC called\n    Rotated --> DeletedFromDB: Old Token\n    Rotated --> StoredInDB: New Token Pair Issued\n    \n    StoredInDB --> Revoked: DeleteUser called\n    Revoked --> [FinTech_PaymentGateway]\n    \n    Expired --> [FinTech_TransactionQueue]\n",
+  "content_size": 634,
+  "collected_at": "2026-02-06T10:37:11.344273",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "ot_stateDiagram_00046",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个FinTech系统的Token生命周期状态图。核心场景是：用户通过FraudDetection服务登录，成功后生成两种Token——AccessToken是无状态的，RefreshToken是有状态的存数据库。",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "Login",
+        "TokensGenerated",
+        "AccessToken_Stateless",
+        "RefreshToken_Stateful"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。AccessToken和RefreshToken是在TokensGenerated这个复合状态里并行产生的吗？还有，AccessToken有效期15分钟，这个要显式标出来吗？",
+      "elements_involved": [
+        "TokensGenerated",
+        "AccessToken_Stateless",
+        "RefreshToken_Stateful",
+        "Active",
+        "Expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，TokensGenerated是复合状态，里面两个Token独立发展。AccessToken走Active→Expired，15分钟有效期要标注。Expired之后不能直接丢弃，得用RefreshToken去续期。",
+      "elements_involved": [
+        "TokensGenerated",
+        "Active",
+        "Expired",
+        "Refresh",
+        "RefreshToken_Stateful"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把AccessToken链路画好了：Active状态标注\"valid for 15m\"，Expired后指向Refresh动作。现在画RefreshToken那边——它先存到StoredInDB，有效期7天，对吧？",
+      "elements_involved": [
+        "AccessToken_Stateless",
+        "Active",
+        "Expired",
+        "RefreshToken_Stateful",
+        "StoredInDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。但RefreshToken还有个关键流转：当调用Refresh RPC时，旧Token要Rotated，然后分两条路——Old Token进DeletedFromDB，同时New Token Pair Issued回到StoredInDB。另外还要支持主动Revoked。",
+      "elements_involved": [
+        "StoredInDB",
+        "Rotated",
+        "DeletedFromDB",
+        "StoredInDB",
+        "Revoked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Rotated到StoredInDB的标注我理解，但Revoked之后呢？是直接结束，还是需要指向某个具体服务？",
+      "elements_involved": [
+        "Revoked",
+        "FinTech_PaymentGateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Revoked之后回到PaymentGateway，表示Token失效后用户需要重新走支付网关认证。另外Expired之后其实应该进TransactionQueue做异步清理，这个也补上。",
+      "elements_involved": [
+        "Revoked",
+        "FinTech_PaymentGateway",
+        "Expired",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "稍等，我刚才把Rotated到DeletedFromDB的标注写成了\"Old Token\"，但到StoredInDB的标注应该是\"New Token Pair Issued\"，不是简单的\"Active\"，我修正一下。还有Login的触发条件应该是\"User Credentials\"。",
+      "elements_involved": [
+        "Rotated",
+        "DeletedFromDB",
+        "StoredInDB",
+        "Login"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "检查过了，现在结构完整了。复合状态、双Token独立生命周期、Rotated的分支、以及最终的三个出口状态都清晰了。可以定稿。",
+      "elements_involved": [
+        "TokensGenerated",
+        "DeletedFromDB",
+        "Revoked",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 1,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 19862.2823,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 9
+  }
+}

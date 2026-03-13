@@ -1,0 +1,157 @@
+{
+  "id": "aug_gl_requirementDiagram_00595_Log_9",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/KevinDyerAU/NytroAI/blob/2e93c5649794515d35364c995a58431fc0899442/docs/validation-flow.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "KevinDyerAU/NytroAI",
+  "diagram_type": "requirementDiagram",
+  "code": "%%{Logistics_TrackingNumber}}}%%\n\nsequenceDiagram\n    participant User\n    participant UI as React UI\n    participant Upload as upload-document\n    participant Storage as Supabase Storage\n    participant Gemini as Google Gemini\n    participant DB as Database\n    participant Trigger as trigger-validation\n    participant Validate as validate-assessment\n    participant Query as query-document\n\n    Note over User,Query: Document Upload & Indexing\n\n    User->>UI: Upload PDF Assessment\n    UI->>Upload: POST /upload-document\n    Upload->>Storage: Store PDF file\n    Storage-->>Upload: File URL\n    Upload->>DB: Create validation_detail record\n    Upload->>Gemini: Index document\n    Gemini-->>Upload: Indexing started\n    Upload->>DB: Create gemini_operations record\n    Upload-->>UI: Upload complete\n    UI-->>User: Show \"Processing...\"\n\n    Note over User,Query: Automatic Validation Trigger\n\n    Gemini->>DB: Update gemini_operations (Logistics_TrackingNumber)\n    DB->>Trigger: Database trigger fires\n    Trigger->>DB: Check all operations complete\n    DB-->>Trigger: All complete\n    Trigger->>Validate: POST /validate-assessment\n    Trigger->>DB: Log trigger attempt\n    Validate->>DB: Update status to \"ProcessingInBackground\"\n\n    Note over User,Query: Validation Process\n\n    Validate->>DB: Fetch UOC requirements\n    DB-->>Validate: Requirements list\n    \n    loop For each requirement\n        Validate->>Query: Query assessment for requirement\n        Query->>Gemini: Search indexed document\n        Gemini-->>Query: Relevant passages\n        Query-->>Validate: Citations\n        Validate->>Gemini: Validate requirement\n        Gemini-->>Validate: Status + Reasoning\n        Validate->>DB: Store validation_result\n    end\n\n    Validate->>DB: Update validation_detail (Logistics_Warehouse)\n    Validate-->>Trigger: Validation complete\n    DB->>UI: Real-time update (Logistics_StockLevel)\n    UI-->>User: Show \"Complete\" with results\n\n    Note over User,Query: View Results & Regenerate Questions\n\n    User->>UI: Click validation to view results\n    UI->>DB: Fetch validation_results\n    DB-->>UI: All results\n    UI-->>User: Display results\n\n    alt Regenerate Smart Question\n        User->>UI: Click \"Regenerate\" with context\n        UI->>Validate: POST /regenerate-smart-questions\n        Validate->>Query: Query assessment\n        Query->>Gemini: Search with context\n        Gemini-->>Query: Passages\n        Validate->>Gemini: Generate question\n        Gemini-->>Validate: New smart question\n        Validate->>DB: Update validation_result\n        DB->>UI: Real-time update\n        UI-->>User: Show new question\n    end\n",
+  "content_size": 2801,
+  "collected_at": "2026-02-06T14:13:06.494447",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Logistics",
+  "seed_id": "gl_requirementDiagram_00595",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的评估文档上传和自动验证的时序图。用户通过React UI上传PDF，然后系统要自动触发Gemini索引，接着数据库触发器启动验证流程，最后还能查看结果和重新生成问题。",
+      "elements_involved": [
+        "User",
+        "React UI",
+        "upload-document",
+        "Supabase Storage",
+        "Google Gemini",
+        "Database",
+        "trigger-validation",
+        "validate-assessment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，我先确认一下参与者的划分。upload-document是一个独立的API端点吗？还有trigger-validation和validate-assessment是两个不同的服务，还是同一个模块的不同阶段？",
+      "elements_involved": [
+        "upload-document",
+        "trigger-validation",
+        "validate-assessment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，upload-document是独立的POST端点。trigger-validation是数据库触发器触发的函数，而validate-assessment是另一个独立的处理服务，专门做循环验证。另外还需要query-document服务来查询已索引的文档内容。",
+      "elements_involved": [
+        "upload-document",
+        "trigger-validation",
+        "validate-assessment",
+        "query-document"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把所有参与者都列出来了：User、React UI、upload-document、Supabase Storage、Google Gemini、Database、trigger-validation、validate-assessment、query-document。现在画第一个阶段——用户上传PDF，UI调用upload-document，存储到Supabase Storage，然后Upload服务同时创建数据库记录和请求Gemini索引。",
+      "elements_involved": [
+        "User",
+        "React UI",
+        "upload-document",
+        "Supabase Storage",
+        "Google Gemini",
+        "Database"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "索引完成后，Gemini会更新gemini_operations记录，这里要带上Logistics_TrackingNumber作为标识。然后数据库触发器检测到所有操作完成，就自动调用validate-assessment。这个触发逻辑要单独画一个Note标注为\"Automatic Validation Trigger\"。",
+      "elements_involved": [
+        "Gemini",
+        "Database",
+        "trigger-validation",
+        "Logistics_TrackingNumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。trigger-validation检查所有操作完成后，POST到validate-assessment，同时记录触发日志。validate-assessment先把状态改为\"ProcessingInBackground\"，然后进入循环：对每个UOC需求，通过query-document查询Gemini，获取引用片段，再让Gemini验证并存储结果。循环结束后更新validation_detail，带上Logistics_Warehouse信息。",
+      "elements_involved": [
+        "trigger-validation",
+        "validate-assessment",
+        "query-document",
+        "Gemini",
+        "Logistics_Warehouse"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "循环结束后，数据库到UI的实时更新要标注Logistics_StockLevel，然后UI显示完成。最后还有一个可选分支：用户可以点击查看结果，还能重新生成智能问题。这个重新生成需要走validate-assessment，再通过query-document查询后让Gemini生成新问题。",
+      "elements_involved": [
+        "Database",
+        "UI",
+        "Logistics_StockLevel",
+        "validate-assessment",
+        "query-document",
+        "Gemini"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成了。我用alt块包裹了\"Regenerate Smart Question\"的分支，用户点击后UI调用regenerate-smart-questions，validate-assessment通过query-document查询Gemini，生成新问题后更新数据库，UI实时同步显示。整个流程三个Note标注：Document Upload & Indexing、Automatic Validation Trigger、Validation Process，以及最后的View Results & Regenerate Questions。",
+      "elements_involved": [
+        "User",
+        "React UI",
+        "validate-assessment",
+        "query-document",
+        "Gemini",
+        "Database"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 25345.7382,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

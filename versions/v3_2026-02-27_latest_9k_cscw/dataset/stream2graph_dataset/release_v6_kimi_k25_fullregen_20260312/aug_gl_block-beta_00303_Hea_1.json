@@ -1,0 +1,298 @@
+{
+  "id": "aug_gl_block-beta_00303_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_FIRMWARE/blob/615cebd32230a26c23013f1c75381475e12c0b93/diagrams/ACQ_AND_TRANSMIT_EXTERNAL.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_FIRMWARE",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client\n    participant DataTrans as data_transmission.c\n    participant Acquisition as acquisition.c\n    \n    Client->>DataTrans: Connect to data socket\n    activate DataTrans\n    \n    Note over DataTrans,Acquisition: External ADC already initialized during startup\n    \n    alt mode == 0 (HealthTech_DiagnosticEngine)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(HealthTech_HIPAA_Vault)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Client: non_blocking_send(HealthTech_HIPAA_Vault) buffer\n            \n            opt Socket change detected\n                DataTrans->>DataTrans: Break acquisition loop\n            end\n        end\n    else mode == 1 (HealthTech_DiagnosticEngine)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(HealthTech_LabAnalyzer)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Acquisition: pcnt_unit_get_count(HealthTech_LabAnalyzer)\n            Acquisition-->>DataTrans: Current counter state\n            \n            alt Edge detected (HealthTech_PatientRecords)\n                DataTrans->>Client: non_blocking_send(HealthTech_HIPAA_Vault) buffer\n            end\n        end\n    end\n    \n    Client->>DataTrans: Disconnect\n    DataTrans->>DataTrans: safe_close(HealthTech_HIPAA_Vault)\n    deactivate DataTrans",
+  "content_size": 1551,
+  "collected_at": "2026-02-06T14:06:49.098744",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gl_block-beta_00303",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个时序图，展示我们的医疗诊断设备数据采集流程。核心有三个参与者：Client、DataTrans模块和Acquisition模块。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，DataTrans对应data_transmission.c，Acquisition对应acquisition.c对吧？Client是外部连接端？",
+      "elements_involved": [
+        "data_transmission.c",
+        "acquisition.c",
+        "Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Client连接数据socket，DataTrans负责整个传输逻辑。另外要注意，外部ADC在启动时已经初始化好了，这个需要标注在图上。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "External ADC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出基础结构：Client连接到DataTrans，激活DataTrans，然后在DataTrans和Acquisition之间加注释说明ADC已初始化。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "Note over DataTrans,Acquisition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是核心逻辑。设备有两种工作模式，都用HealthTech_DiagnosticEngine标识，但模式0和模式1行为不同。模式0是标准SPI数据采集。",
+      "elements_involved": [
+        "mode == 0",
+        "HealthTech_DiagnosticEngine",
+        "SPI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "模式0的循环条件是直到客户端断开？每次循环里DataTrans要先获取spi_mutex，然后通过SPI发送数据到HealthTech_HIPAA_Vault？",
+      "elements_involved": [
+        "loop Until client disconnects",
+        "spi_mutex",
+        "HealthTech_HIPAA_Vault",
+        "spi_device_polling_transmit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，SPI传输完成后Acquisition返回完成信号，然后释放mutex。最后DataTrans用non_blocking_send把HealthTech_HIPAA_Vault的buffer发给Client。",
+      "elements_involved": [
+        "SPI transaction complete",
+        "Release spi_mutex",
+        "non_blocking_send",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加模式0的alt分支和内部循环。我还在循环里加了一个opt分支，处理socket变化检测时跳出循环的情况。",
+      "elements_involved": [
+        "alt mode == 0",
+        "loop",
+        "opt Socket change detected",
+        "Break acquisition loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "模式1也是HealthTech_DiagnosticEngine，但针对HealthTech_LabAnalyzer。流程类似，但多了脉冲计数功能，需要获取当前计数器状态。",
+      "elements_involved": [
+        "mode == 1",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer",
+        "pcnt_unit_get_count"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "模式1里，SPI传输和mutex操作和模式0一样，只是目标换成HealthTech_LabAnalyzer。然后Acquisition返回计数器状态，这个我理解了。",
+      "elements_involved": [
+        "HealthTech_LabAnalyzer",
+        "Current counter state",
+        "spi_mutex"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "关键区别在这里：模式1要根据HealthTech_PatientRecords的边缘检测结果决定是否发送数据。只有检测到边缘时，才用non_blocking_send发送HealthTech_HIPAA_Vault的buffer。",
+      "elements_involved": [
+        "HealthTech_PatientRecords",
+        "Edge detected",
+        "non_blocking_send",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在模式1的循环内部加了一个alt分支：Edge detected (HealthTech_PatientRecords)时执行发送。这样模式0是定时发送，模式1是事件触发发送。",
+      "elements_involved": [
+        "alt Edge detected",
+        "HealthTech_PatientRecords",
+        "mode 1 loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，我需要确认一下：模式0和模式1的else关系对吗？它们都是HealthTech_DiagnosticEngine的两种配置，用alt...else...end结构？",
+      "elements_involved": [
+        "alt mode == 0",
+        "else mode == 1",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，外层是alt mode == 0，然后是else mode == 1，两个分支都标注HealthTech_DiagnosticEngine，最后end闭合。结构已经画好了。",
+      "elements_involved": [
+        "alt/else/end structure",
+        "mode == 0",
+        "mode == 1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后收尾部分：Client主动断开连接，DataTrans执行safe_close关闭HealthTech_HIPAA_Vault，然后失活。",
+      "elements_involved": [
+        "Disconnect",
+        "safe_close",
+        "HealthTech_HIPAA_Vault",
+        "deactivate DataTrans"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。我检查了所有元素：Client、DataTrans(data_transmission.c)、Acquisition(acquisition.c)，两种诊断引擎模式，HIPAA Vault和LabAnalyzer的数据流，以及PatientRecords的边缘检测逻辑。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再确认一下，模式0的socket变化检测break逻辑，和模式1的边缘检测发送逻辑，这两个条件分支的位置没搞混吧？",
+      "elements_involved": [
+        "Socket change detected",
+        "Edge detected",
+        "mode 0",
+        "mode 1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。模式0的break在opt Socket change detected里，是内部循环控制；模式1的alt Edge detected控制是否发送，两个分支逻辑清晰分离。",
+      "elements_involved": [
+        "opt Socket change detected",
+        "alt Edge detected",
+        "mode 0 loop",
+        "mode 1 loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一点，spi_mutex的获取和释放，在两种模式下都是成对出现的吧？这个同步机制很重要。",
+      "elements_involved": [
+        "spi_mutex",
+        "Take spi_mutex",
+        "Release spi_mutex"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，两种模式的每个循环迭代都是：Take spi_mutex → spi_device_polling_transmit → SPI transaction complete → Release spi_mutex。成对出现，没有遗漏。",
+      "elements_involved": [
+        "spi_mutex",
+        "Take spi_mutex",
+        "Release spi_mutex",
+        "mode 0",
+        "mode 1"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 20,
+    "repair_count": 0,
+    "grounding_acts_count": 20,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 43917.8648,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 20
+  }
+}

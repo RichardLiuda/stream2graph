@@ -1,0 +1,881 @@
+{
+  "id": "aug_gh_sequence_00922_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/security/authentication-flow.mmd",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "github_file_path": "docs/diagrams/security/authentication-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    %% Authentication and Authorization Flow for erlmcp\n    %% Shows: API key, JWT, OAuth2, mTLS authentication methods\n    %% Plus: RBAC permission checking with role-based access control\n\n    autonumber\n    actor Client\n    participant Transport as Transport Layer<br/>(Infra_LoadBalancer)\n    participant Auth as erlmcp_auth<br/>(Infra_IngressController)\n    participant RateLimiter as erlmcp_auth_rate_limiter\n    participant JWT as jose (Infra_WorkerNode)\n    participant OAuth2 as OAuth2 Provider<br/>(Infra_WorkerNode)\n    participant MTLS as erlmcp_auth_mtls<br/>(Infra_EtcdCluster)\n    participant RBAC as RBAC Engine<br/>(Infra_IngressController)\n    participant Session as Session Manager<br/>(Infra_RedisCache)\n\n    Note over Client,Session: Authentication Flow\n\n    %% API Key Authentication\n    Client->>Transport: authenticate(Infra_RedisCache)\n    Transport->>Auth: authenticate(Infra_LoadBalancer})\n\n    Auth->>RateLimiter: check_rate_limit(Infra_EtcdCluster)\n    RateLimiter-->>Auth: ok (Infra_RedisCache})\n\n    alt Rate Limited\n        Auth-->>Client: {Infra_EtcdCluster}\n        Note over Auth,RateLimiter: Blocked after 5 failed attempts<br/>15-minute cooldown\n    else Rate Check Passed\n        Auth->>Auth: do_validate_api_key(Infra_WorkerNode)\n        Note right of Auth: Lookup in ETS table<br/>auth_api_keys\n\n        alt API Key Invalid\n            Auth->>RateLimiter: record_failure(Infra_WorkerNode)\n            Auth-->>Client: {Infra_EtcdCluster}\n        else API Key Valid\n            Auth->>RateLimiter: record_success(Infra_WorkerNode)\n            Auth->>Session: create_session(Infra_RedisCache)\n\n            Session->>RBAC: get_user_roles(Infra_WorkerNode)\n            RBAC-->>Session: [Infra_LoadBalancer]\n\n            Session->>RBAC: Aggregate permissions from roles\n            RBAC-->>Session: [Infra_LoadBalancer]\n\n            Session-->>Auth: {Infra_RedisCache}\n            Auth-->>Client: {Infra_IngressController}\n\n            Note right of Session: Session expires in 1 hour<br/>Auto-cleanup timer\n        end\n    end\n\n    %% JWT Authentication\n    Client->>Transport: authenticate(Infra_RedisCache})\n    Transport->>Auth: authenticate(Infra_LoadBalancer})\n\n    Auth->>RateLimiter: check_rate_limit(Infra_WorkerNode)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_jwt(Infra_RedisCache)\n\n    alt Token Revoked\n        Auth-->>Client: {Infra_IngressController}\n        Note right of Auth: Check ETS: auth_revoked_tokens<br/>Cleanup after 7 days\n    else Token Active\n        Auth->>JWT: jose_jws:peek_protected(Infra_EtcdCluster)\n        JWT-->>Auth: #{Infra_RedisCache}\n\n        Auth->>Auth: Lookup public key by kid\n        Note right of Auth: ETS: auth_jwt_keys<br/>Support key rotation\n\n        Auth->>JWT: jose_jws:verify(Infra_EtcdCluster)\n        JWT-->>Auth: {Infra_EtcdCluster}\n\n        alt Signature Invalid\n            Auth-->>Client: {Infra_EtcdCluster}\n        else Signature Valid\n            Auth->>Auth: validate_jwt_claims(Infra_EtcdCluster)\n\n            Note right of Auth: CRITICAL SECURITY CHECKS:<br/>✓ exp (Infra_EtcdCluster) - Required<br/>✓ nbf (Infra_IngressController) - Optional<br/>✓ iss (Infra_RedisCache) - Configurable<br/>✓ aud (Infra_WorkerNode) - Configurable<br/>✓ sub (Infra_LoadBalancer) - Required\n\n            alt Token Expired\n                Auth-->>Client: {Infra_IngressController}\n            else Token Not Yet Valid\n                Auth-->>Client: {Infra_RedisCache}\n            else Issuer Mismatch\n                Auth-->>Client: {Infra_EtcdCluster}\n            else Audience Mismatch\n                Auth-->>Client: {Infra_WorkerNode}\n            else All Claims Valid\n                Auth->>RateLimiter: record_success(Infra_LoadBalancer)\n                Auth->>Session: create_session(Infra_LoadBalancer)\n                Session-->>Auth: {Infra_IngressController}\n                Auth-->>Client: {Infra_RedisCache}\n            end\n        end\n    end\n\n    %% OAuth2 Authentication (Infra_WorkerNode)\n    Client->>Transport: authenticate(Infra_EtcdCluster})\n    Transport->>Auth: authenticate(Infra_WorkerNode})\n\n    Auth->>RateLimiter: check_rate_limit(Infra_EtcdCluster)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_oauth2_token(Infra_IngressController)\n\n    alt Cache Hit (Infra_IngressController)\n        Note right of Auth: ETS: auth_oauth2_cache<br/>Token -> {Infra_IngressController}\n        Auth-->>Client: {Infra_LoadBalancer}\n    else Cache Miss\n        Auth->>OAuth2: HTTP POST /introspect\n        Note right of Auth: RFC 7662 Introspection<br/>Basic Auth: client_id:secret<br/>Body: token + token_type_hint\n\n        OAuth2-->>Auth: 200 OK + TokenInfo\n\n        Auth->>Auth: validate_introspection_response(Infra_RedisCache)\n\n        Note right of Auth: RFC 7662 REQUIRED fields:<br/>✓ active = true<br/>✓ exp (Infra_RedisCache)<br/>✓ nbf (Infra_RedisCache)<br/>✓ iss (Infra_LoadBalancer)\n\n        alt Token Inactive\n            Auth-->>Client: {Infra_IngressController}\n        else Token Expired\n            Auth-->>Client: {Infra_WorkerNode}\n        else Token Valid\n            Auth->>Auth: cache_oauth2_token(Infra_WorkerNode)\n            Note right of Auth: Cache for up to 5 minutes<br/>or until exp (Infra_RedisCache)\n\n            Auth->>RateLimiter: record_success(Infra_LoadBalancer)\n            Auth->>Session: create_session(Infra_EtcdCluster)\n            Session-->>Auth: {Infra_WorkerNode}\n            Auth-->>Client: {Infra_LoadBalancer}\n        end\n    end\n\n    %% mTLS Authentication\n    Client->>Transport: authenticate(Infra_WorkerNode})\n    Transport->>Auth: authenticate(Infra_LoadBalancer)\n\n    Auth->>RateLimiter: check_rate_limit(Infra_EtcdCluster)\n    RateLimiter-->>Auth: ok\n\n    Auth->>MTLS: validate(Infra_IngressController)\n\n    Note right of MTLS: mTLS Validation Pipeline:<br/>1. Extract certificate from socket<br/>2. X.509 chain validation to trusted CAs<br/>3. Certificate expiration check<br/>4. OCSP/CRL revocation check<br/>5. Subject DN and CN pattern matching<br/>6. Certificate depth limit validation\n\n    MTLS-->>Auth: {Infra_LoadBalancer}\n\n    alt Certificate Invalid\n        Auth->>RateLimiter: record_failure(Infra_LoadBalancer)\n        Auth-->>Client: {Infra_WorkerNode}\n    else Certificate Valid\n        Auth->>RateLimiter: record_success(Infra_LoadBalancer)\n        Auth->>Session: create_session(Infra_LoadBalancer})\n        Session-->>Auth: {Infra_RedisCache}\n        Auth-->>Client: {Infra_RedisCache}\n    end\n\n    %% Authorization Flow (Infra_IngressController)\n    Note over Client,Session: Authorization Flow\n\n    Client->>Transport: check_permission(Infra_RedisCache)\n    Transport->>Auth: check_permission(Infra_WorkerNode)\n\n    Auth->>Session: lookup session\n    Session-->>Auth: #session{Infra_IngressController}\n\n    alt Session Not Found\n        Auth-->>Client: {Infra_RedisCache}\n    else Session Found\n        Auth->>RBAC: check_user_permission(Infra_IngressController)\n\n        RBAC->>RBAC: Get user roles from ETS\n        Note right of RBAC: auth_user_roles:<br/>UserId -> [Infra_WorkerNode]\n\n        RBAC->>RBAC: Get allowed roles for resource+permission\n        Note right of RBAC: auth_acls:<br/>{Infra_LoadBalancer} -> [Infra_WorkerNode]\n\n        RBAC->>RBAC: Check intersection\n        Note right of RBAC: lists:any/2<br/>UserRole ∩ AllowedRoles ≠ ∅\n\n        alt Permission Denied\n            RBAC-->>Auth: {Infra_EtcdCluster}\n            Auth-->>Client: {Infra_WorkerNode}\n        else Permission Granted\n            RBAC-->>Auth: ok\n            Auth-->>Client: ok\n        end\n    end\n\n    %% Default RBAC Roles\n    Note over RBAC: Default Roles (Infra_WorkerNode):<br/>🔹 admin: [Infra_WorkerNode]<br/>🔹 user: [Infra_WorkerNode]<br/>🔹 guest: [Infra_EtcdCluster]\n\n    %% Token Rotation\n    Note over Client,Session: Token Rotation (Infra_EtcdCluster)\n\n    Client->>Auth: rotate_token(Infra_EtcdCluster)\n    Auth->>Session: lookup session\n\n    Auth->>Auth: generate new SessionId\n    Note right of Auth: crypto:strong_rand_bytes(Infra_EtcdCluster)<br/>base64 encoded\n\n    Auth->>Session: insert new session\n    Auth->>Session: delete old session\n\n    Auth-->>Client: {Infra_WorkerNode}\n    Note right of Auth: Old session invalidated immediately<br/>Prevents session hijacking\n\n    %% Token Revocation\n    Note over Client,Session: Token Revocation (Infra_IngressController)\n\n    Client->>Auth: revoke_token(Infra_RedisCache)\n    Auth->>Auth: insert into auth_revoked_tokens\n    Note right of Auth: Store: Token -> RevokedAt<br/>Auto-cleanup after 7 days\n\n    Auth-->>Client: ok\n    Note over Auth,JWT: Revoked tokens rejected immediately<br/>Even if exp claim valid\n\n    %% Session Cleanup\n    Note over Session: Auto-cleanup every 60 seconds:<br/>• Expired sessions (Infra_WorkerNode)<br/>• Revoked tokens (Infra_RedisCache)<br/>• OAuth2 cache (Infra_LoadBalancer)\n",
+  "content_size": 8727,
+  "collected_at": "2026-02-06T01:50:47.821294",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "gh_sequence_00922",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为erlmcp系统画一个完整的认证授权时序图，涵盖API Key、JWT、OAuth2和mTLS四种认证方式，还要展示RBAC权限检查流程。",
+      "elements_involved": [
+        "erlmcp auth",
+        "api",
+        "oauth2 provider",
+        "jose",
+        "erlmcp auth mtls",
+        "rbac engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，四种认证方式都要画。那基础设施层面呢？我看到有LoadBalancer、IngressController这些组件，需要作为参与者展示吗？",
+      "elements_involved": [
+        "infra loadbalancer",
+        "infra ingresscontroller",
+        "transport layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Transport Layer要标注上Infra_LoadBalancer，erlmcp_auth标注Infra_IngressController，这样运维同学能清楚组件部署位置。",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "infra loadbalancer",
+        "infra ingresscontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先创建顶层参与者：Client、Transport Layer、erlmcp_auth、RateLimiter，还有JWT模块用jose命名。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "jose"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "jose要标注Infra_WorkerNode，因为JWT验证是计算密集型的，放在WorkerNode上。另外加上OAuth2 Provider，也是WorkerNode部署。",
+      "elements_involved": [
+        "jose",
+        "oauth2 provider",
+        "infra workernode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。那mTLS认证模块呢？erlmcp_auth_mtls部署在哪里？",
+      "elements_involved": [
+        "erlmcp auth mtls"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "mTLS证书验证需要访问Etcd集群存储的CA证书和CRL，所以标注Infra_EtcdCluster。RBAC Engine和Session Manager也加上，Session用Redis。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "infra etcdcluster",
+        "rbac engine",
+        "session manager",
+        "infra rediscache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "参与者都创建好了。现在开始画API Key认证流程：Client先调用Transport Layer的authenticate方法。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "authentication"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "注意Transport到Auth这一步，要带上Infra_LoadBalancer的上下文，因为负载均衡器会透传客户端信息。",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "infra loadbalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已标注。接下来Auth调用RateLimiter检查频率限制，需要访问Etcd集群做分布式计数。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "infra etcdcluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，RateLimiter返回ok时要标注Infra_RedisCache，因为计数结果会缓存。如果被限流了，直接返回错误，标注Infra_EtcdCluster。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "infra rediscache",
+        "infra etcdcluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画了一个alt分支：Rate Limited和Rate Check Passed。限流场景加了个Note说明5次失败锁定15分钟。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "rate limit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这个Note很好。Rate Check Passed分支里，Auth要调用do_validate_api_key，在WorkerNode上的ETS表查询。",
+      "elements_involved": [
+        "erlmcp auth",
+        "api",
+        "infra workernode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了Note说明ETS表名auth_api_keys。然后API Key Invalid分支要记录失败，API Key Valid分支创建Session。",
+      "elements_involved": [
+        "auth_api_keys",
+        "erlmcp auth rate limiter",
+        "session manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Session创建后，要从RBAC获取用户角色，也是在WorkerNode查询。然后聚合权限，最后返回给Client。",
+      "elements_involved": [
+        "session manager",
+        "rbac engine",
+        "infra workernode",
+        "infra loadbalancer",
+        "infra ingresscontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "API Key流程画完了。现在开始JWT认证，结构类似但验证逻辑不同。Client还是走Transport到Auth。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "jose"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "JWT要先检查Token是否被吊销，查ETS表auth_revoked_tokens。如果吊销了直接返回，标注Infra_IngressController。",
+      "elements_involved": [
+        "erlmcp auth",
+        "auth_revoked_tokens",
+        "infra ingresscontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了Note说明7天自动清理。Token Active分支里，Auth调用jose_jws:peek_protected解析头部。",
+      "elements_involved": [
+        "jose",
+        "auth_revoked_tokens",
+        "infra etcdcluster",
+        "infra rediscache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "jose返回的是#{protected}，标注Infra_RedisCache。然后Auth根据kid查公钥，还是在ETS auth_jwt_keys。",
+      "elements_involved": [
+        "jose",
+        "auth_jwt_keys",
+        "infra rediscache",
+        "infra etcdcluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了Note说明支持密钥轮换。然后调用jose_jws:verify验证签名，返回标注Infra_EtcdCluster。",
+      "elements_involved": [
+        "jose",
+        "auth_jwt_keys",
+        "infra etcdcluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "签名验证后有一堆claims检查：exp必须，nbf可选，iss和aud可配置，sub必须。每个失败分支都要单独画。",
+      "elements_involved": [
+        "erlmcp auth",
+        "exp",
+        "nbf",
+        "iss",
+        "aud",
+        "sub"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了5个alt分支：Token Expired、Token Not Yet Valid、Issuer Mismatch、Audience Mismatch，最后All Claims Valid。每个返回标注不同基础设施。",
+      "elements_involved": [
+        "erlmcp auth",
+        "infra ingresscontroller",
+        "infra rediscache",
+        "infra etcdcluster",
+        "infra workernode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "标注正确。All Claims Valid后记录成功、创建Session，返回标注Infra_RedisCache。现在开始OAuth2流程。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "session manager",
+        "infra loadbalancer",
+        "infra rediscache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "OAuth2也是Client-Transport-Auth开头。Auth调用do_validate_oauth2_token，先查缓存ETS auth_oauth2_cache。",
+      "elements_involved": [
+        "oauth2 provider",
+        "auth_oauth2_cache",
+        "infra ingresscontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Cache Hit直接返回，标注Infra_LoadBalancer。Cache Miss要走RFC 7662 introspection，HTTP POST到OAuth2 Provider。",
+      "elements_involved": [
+        "auth_oauth2_cache",
+        "infra loadbalancer",
+        "oauth2 provider",
+        "infra workernode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了Note说明Basic Auth和请求体格式。OAuth2返回200 OK后，Auth验证响应，检查active、exp、nbf、iss等字段。",
+      "elements_involved": [
+        "oauth2 provider",
+        "erlmcp auth",
+        "infra rediscache",
+        "infra loadbalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "验证失败分支：Token Inactive、Token Expired。Token Valid分支要缓存token，最多5分钟，然后创建Session。",
+      "elements_involved": [
+        "auth_oauth2_cache",
+        "erlmcp auth",
+        "session manager",
+        "infra workernode",
+        "infra etcdcluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "OAuth2流程完成。现在画mTLS认证，这是第四种方式。Client-Transport-Auth后，调用erlmcp_auth_mtls的validate。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "infra ingresscontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "mTLS验证很复杂，要画个Note说明完整流程：提取证书、X.509链验证、过期检查、OCSP/CRL吊销检查、CN匹配、深度限制。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "crl",
+        "x.509",
+        "ocsp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了详细的Note。MTLS返回标注Infra_LoadBalancer。然后分支：Certificate Invalid记录失败，Certificate Valid创建Session。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "infra loadbalancer",
+        "erlmcp auth rate limiter",
+        "session manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "四种认证都画完了。现在画Authorization Flow，单独一个Note标注。Client调用check_permission。",
+      "elements_involved": [
+        "authorization",
+        "client",
+        "rbac engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Transport透传到Auth，Auth查询Session。Session Not Found直接返回。Session Found走RBAC检查。",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "session manager",
+        "rbac engine",
+        "infra rediscache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RBAC Engine先从ETS auth_user_roles查用户角色，再从auth_acls查资源权限，然后算交集。",
+      "elements_involved": [
+        "rbac engine",
+        "auth_user_roles",
+        "auth_acls",
+        "infra workernode",
+        "infra loadbalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了Note说明lists:any/2检查交集。Permission Denied返回错误，Permission Granted返回ok。",
+      "elements_involved": [
+        "rbac engine",
+        "erlmcp auth",
+        "infra etcdcluster",
+        "infra workernode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "在RBAC下面加个Note，列出默认角色：admin、user、guest，以及它们的权限范围，都标注WorkerNode或EtcdCluster。",
+      "elements_involved": [
+        "rbac engine",
+        "admin",
+        "user",
+        "guest",
+        "infra workernode",
+        "infra etcdcluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加默认角色说明。现在画Token Rotation流程，也是独立Note。Client直接调用Auth的rotate_token。",
+      "elements_involved": [
+        "token rotation",
+        "client",
+        "erlmcp auth",
+        "infra etcdcluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Rotation要先查Session，然后生成新的SessionId，用crypto:strong_rand_bytes，base64编码，标注EtcdCluster。",
+      "elements_involved": [
+        "session manager",
+        "erlmcp auth",
+        "crypto",
+        "infra etcdcluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "插入了新Session，删除了旧Session，返回新token。加了Note说明旧Session立即失效，防止劫持。",
+      "elements_involved": [
+        "session manager",
+        "infra workernode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后画Token Revocation。Client调用revoke_token，Auth插入auth_revoked_tokens表，7天清理。",
+      "elements_involved": [
+        "token revocation",
+        "client",
+        "erlmcp auth",
+        "auth_revoked_tokens",
+        "infra rediscache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Revocation画完了。需要加个Note说明吊销token立即生效，即使exp还没到期。",
+      "elements_involved": [
+        "auth_revoked_tokens",
+        "jose",
+        "exp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后加上Session Cleanup的说明，每60秒自动清理：过期Session、吊销token、OAuth2缓存。",
+      "elements_involved": [
+        "session manager",
+        "auth_revoked_tokens",
+        "auth_oauth2_cache",
+        "infra workernode",
+        "infra rediscache",
+        "infra loadbalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部画完了。我检查一下：四种认证、RBAC授权、Token Rotation、Token Revocation、自动清理都有了。",
+      "elements_involved": [
+        "authentication",
+        "authorization",
+        "token rotation",
+        "token revocation",
+        "session cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，OAuth2的Cache Hit返回标注是Infra_LoadBalancer，但Cache Miss验证后的返回也是Infra_LoadBalancer，会不会混淆？",
+      "elements_involved": [
+        "auth_oauth2_cache",
+        "infra loadbalancer",
+        "oauth2 provider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确实，我调整一下：Cache Hit返回保持Infra_LoadBalancer，Cache Miss验证后的返回改为Infra_RedisCache，区分缓存层和验证层。",
+      "elements_involved": [
+        "auth_oauth2_cache",
+        "infra loadbalancer",
+        "infra rediscache"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "还有，mTLS的Session创建返回标注是Infra_RedisCache，但其他认证方式最后返回Client是Infra_IngressController或Infra_RedisCache，需要统一吗？",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "session manager",
+        "infra rediscache",
+        "infra ingresscontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "mTLS的返回应该和其他保持一致，Auth返回Client标注Infra_RedisCache，Session返回Auth也是Infra_RedisCache，这样统一。",
+      "elements_involved": [
+        "erlmcp auth",
+        "session manager",
+        "client",
+        "infra rediscache"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "JWT的claims检查那里，Issuer Mismatch返回标注Infra_EtcdCluster，但其他错误返回不同，这是有意设计的吗？",
+      "elements_involved": [
+        "erlmcp auth",
+        "iss",
+        "infra etcdcluster",
+        "infra ingresscontroller",
+        "infra rediscache",
+        "infra workernode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，每个错误对应不同的基础设施层：expired是IngressController（网关层）、not yet valid是Redis（时间缓存）、issuer是Etcd（配置存储）、audience是WorkerNode（业务层）。",
+      "elements_involved": [
+        "erlmcp auth",
+        "infra ingresscontroller",
+        "infra rediscache",
+        "infra etcdcluster",
+        "infra workernode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "明白了，这样设计很合理。那API Key的Rate Limited返回是Infra_EtcdCluster，这是分布式限流决策的结果？",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "rate limit",
+        "infra etcdcluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，Etcd存储了全局限流计数，所以限流决策返回标注Etcd。而RateLimiter返回ok时标注Redis，因为计数结果缓存加速。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "infra etcdcluster",
+        "infra rediscache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "OAuth2的introspection调用，OAuth2 Provider标注Infra_WorkerNode，但之前jose也是WorkerNode，会不会看起来OAuth2和jose在同一个节点？",
+      "elements_involved": [
+        "oauth2 provider",
+        "jose",
+        "infra workernode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确实可能误解。我调整OAuth2 Provider的标注，保持Infra_WorkerNode，但可以在Note里说明是独立的Pod部署，只是同类型节点。",
+      "elements_involved": [
+        "oauth2 provider",
+        "jose",
+        "infra workernode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "或者这样，OAuth2 Provider的调用标注改为更具体的，但保持WorkerNode。实际上代码里就是这样设计的，可以保留。",
+      "elements_involved": [
+        "oauth2 provider",
+        "infra workernode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，保持原设计。我再检查一下所有基础设施标注：LoadBalancer、IngressController、WorkerNode、EtcdCluster、RedisCache都覆盖到了。",
+      "elements_involved": [
+        "infra loadbalancer",
+        "infra ingresscontroller",
+        "infra workernode",
+        "infra etcdcluster",
+        "infra rediscache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "RBAC Engine标注Infra_IngressController，但Session Manager标注Infra_RedisCache，这两个组件通信会不会有跨节点问题？",
+      "elements_involved": [
+        "rbac engine",
+        "session manager",
+        "infra ingresscontroller",
+        "infra rediscache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "这是正常设计，IngressController和RedisCache之间本来就是网络调用，通过Redis协议通信。时序图不需要体现网络拓扑，只标注组件归属。",
+      "elements_involved": [
+        "rbac engine",
+        "session manager",
+        "infra ingresscontroller",
+        "infra rediscache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下，所有的aggregate、allowedr这些关键词都在图里有体现吗？aggregate在RBAC权限聚合，allowedr在auth_acls里。",
+      "elements_involved": [
+        "aggregate",
+        "allowedr",
+        "auth_acls",
+        "rbac engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "检查了，aggregate在RBAC的Note里明确写了\"Aggregate permissions from roles\"，allowedr体现在auth_acls的存储结构描述中。",
+      "elements_involved": [
+        "aggregate",
+        "allowedr",
+        "auth_acls",
+        "rbac engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "crl关键词也在mTLS的Note里提到了。那整个图应该完整了，覆盖了erlmcp系统的全部认证授权流程。",
+      "elements_involved": [
+        "crl",
+        "erlmcp auth",
+        "erlmcp auth mtls",
+        "authentication",
+        "authorization"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，从Client发起请求，经过Transport Layer、erlmcp_auth、四种认证方式、RateLimiter、Session Manager、RBAC Engine，到最后的Token管理和清理，完整闭环。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "session manager",
+        "rbac engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "autonumber开启了吗？需要让运维同学能清楚看到步骤顺序。",
+      "elements_involved": [
+        "autonumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已开启autonumber，所有消息都有序号。最终图有8个主要参与者，4个认证流程分支，2个主要管理流程，完整展示了erlmcp的auth系统。",
+      "elements_involved": [
+        "autonumber",
+        "erlmcp auth",
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "rbac engine",
+        "session manager",
+        "erlmcp auth rate limiter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美，这个时序图可以直接用于技术文档和运维手册。所有基础设施标注清晰，安全关键点都有Note说明。",
+      "elements_involved": [
+        "erlmcp auth",
+        "infra loadbalancer",
+        "infra ingresscontroller",
+        "infra workernode",
+        "infra etcdcluster",
+        "infra rediscache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认交付。图已最终定稿，包含完整的Authentication Flow和Authorization Flow，以及Token Rotation、Token Revocation、Session Cleanup三个管理流程。",
+      "elements_involved": [
+        "authentication",
+        "authorization",
+        "token rotation",
+        "token revocation",
+        "session cleanup"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 3,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 113311.7433,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

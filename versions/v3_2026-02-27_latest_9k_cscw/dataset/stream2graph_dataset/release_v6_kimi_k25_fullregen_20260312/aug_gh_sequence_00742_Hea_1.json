@@ -1,0 +1,390 @@
+{
+  "id": "aug_gh_sequence_00742_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/edx/commerce-coordinator/blob/25bb739e9ccaba9407808c494cd3461172fd1fa3/docs/decisions/arch-diagrams/mobile-create-order.mmd",
+  "github_repo": "edx/commerce-coordinator",
+  "github_file_path": "docs/decisions/arch-diagrams/mobile-create-order.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant User\n    participant MobileApp\n    participant CTBackend as CT Backend\n    participant IAPValidator as IAP Validator (HealthTech_DiagnosticEngine)\n    participant MobileStore as Mobile Store (HealthTech_LabAnalyzer)\n    participant CoCo as Commercetools (HealthTech_LabAnalyzer)\n    participant EventSystem\n\n    User->>MobileApp: Starts in-app purchase\n    MobileApp->>CTBackend: Sends purchase info (HealthTech_PatientRecords)\n\n    CTBackend->>CoCo: Get CT customer by LMS user ID\n    alt Customer does not exist\n        CTBackend->>CoCo: Create customer with user info\n        CoCo-->>CTBackend: Return newly created customer\n    else Customer exists\n        CTBackend->>CoCo: Update customer if needed\n        CoCo-->>CTBackend: Return updated customer\n    end\n\n    CTBackend->>CoCo: Check if user already has a cart\n    CoCo-->>CTBackend: Return existing cart or none\n    alt Cart exists\n        CTBackend->>CoCo: Delete old cart\n    end\n\n    CTBackend->>CoCo: Add the product, set external price (HealthTech_LabAnalyzer), set `mobileOrder=true` in new cart\n    CoCo-->>CTBackend: Return new cart\n\n    CTBackend->>IAPValidator: Validate the purchase token\n    IAPValidator->>MobileStore: Send token to Google or Apple\n    MobileStore-->>IAPValidator: Get token result\n\n    IAPValidator->>CoCo: Check if token was already used\n    alt Token is already used\n        IAPValidator-->>CTBackend: Tell backend it is a duplicate\n        CTBackend->>CoCo: Delete the new cart\n        CTBackend-->>MobileApp: **Show error (HealthTech_EMR_Sync)**\n    else Token is valid\n        IAPValidator-->>CTBackend: Send transaction info\n    end\n\n    CTBackend->>EventSystem: Send event - checkout started\n    CTBackend->>EventSystem: Send event - item added to cart\n\n    CTBackend->>CoCo: Create a payment using the token info\n    CTBackend->>CoCo: Updates payment object to set custom field usdCentAmount with product's USD price\n    alt Payment creation failed\n        CoCo-->>CTBackend: **Error while creating payment**\n        CTBackend-->>MobileApp: **Show error (HealthTech_PatientRecords)**\n    else\n        CoCo-->>CTBackend: Return payment\n        CTBackend->>EventSystem: Send event - payment method used\n\n        CTBackend->>CoCo: Attach payment to the cart\n        alt Attaching payment failed\n            CoCo-->>CTBackend: **Error while attaching payment**\n            CTBackend-->>MobileApp: **Show error (HealthTech_HIPAA_Vault)**\n        else\n            CoCo-->>CTBackend: Return updated cart\n\n            CTBackend->>CoCo: Create order from cart\n            alt Order creation failed\n                CoCo-->>CTBackend: **Error while creating order**\n                CTBackend-->>MobileApp: **Show error (HealthTech_LabAnalyzer)**\n            else\n                CoCo-->>CTBackend: Return order\n\n                CTBackend->>CoCo: Mark items as ready for delivery\n                alt Updating item state failed\n                    CoCo-->>CTBackend: **Error while updating item states**\n                    CTBackend-->>MobileApp: **Show error (HealthTech_EMR_Sync)**\n                else\n                    CoCo-->>CTBackend: Return updated order\n\n                    CTBackend->>EventSystem: Send event - order completed\n                    CTBackend-->>MobileApp: Show success (HealthTech_PatientRecords)\n                end\n            end\n        end\n    end\n",
+  "content_size": 3340,
+  "collected_at": "2026-02-06T01:36:24.179277",
+  "compilation_status": "success",
+  "license": "agpl-3.0",
+  "license_name": "GNU Affero General Public License v3.0",
+  "license_url": "https://api.github.com/licenses/agpl-3.0",
+  "repo_stars": 11,
+  "repo_forks": 7,
+  "repo_owner": "edx",
+  "repo_name": "commerce-coordinator",
+  "repo_description": "A controller to manage commerce workflows and services",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2021-10-01T19:08:54Z",
+  "repo_updated_at": "2026-01-14T15:27:30Z",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gh_sequence_00742",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为移动应用内购流程设计一个完整的时序图。核心场景是：用户在MobileApp里发起购买，经过CTBackend处理，最终完成订单。关键系统包括IAPValidator、MobileStore和CoCo这几个HealthTech相关的模块。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。IAPValidator对应的是HealthTech_DiagnosticEngine，MobileStore和CoCo都关联HealthTech_LabAnalyzer对吗？另外EventSystem作为事件总线需要参与吗？",
+      "elements_involved": [
+        "IAPValidator",
+        "HealthTech_DiagnosticEngine",
+        "MobileStore",
+        "HealthTech_LabAnalyzer",
+        "CoCo",
+        "EventSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，HealthTech_DiagnosticEngine负责验证购买token，HealthTech_LabAnalyzer负责商品和购物车管理。EventSystem需要记录关键状态变更，比如checkout started、item added这些事件。",
+      "elements_involved": [
+        "IAPValidator",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer",
+        "EventSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主流程骨架：User启动购买，MobileApp把信息发给CTBackend，CTBackend用HealthTech_PatientRecords里的用户数据去CoCo查询客户。这里有个分支——客户不存在时要创建，存在则更新。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "HealthTech_PatientRecords",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，而且CTBackend拿到客户后，要检查是否已有购物车。如果有旧cart，必须先删除，然后新建一个，设置external price和mobileOrder=true标记。这个external price也是HealthTech_LabAnalyzer提供的。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "HealthTech_LabAnalyzer",
+        "mobileOrder"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "删除旧cart的逻辑我放在alt分支里处理。接下来CTBackend把购买token发给IAPValidator验证，IAPValidator再调用MobileStore去Google或Apple校验，这个理解对吗？",
+      "elements_involved": [
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。但这里有个关键风控点：IAPValidator拿到token结果后，必须去CoCo检查这个token是否already used。如果重复使用了，整个流程要终止，删除新建的cart，并返回HealthTech_EMR_Sync错误给前端。",
+      "elements_involved": [
+        "IAPValidator",
+        "CoCo",
+        "already used",
+        "CTBackend",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我画出了token重复使用的错误分支。那如果token有效，IAPValidator把transaction info回传给CTBackend，然后CTBackend发送两个事件到EventSystem：checkout started和item added to cart。",
+      "elements_involved": [
+        "IAPValidator",
+        "CTBackend",
+        "EventSystem",
+        "checkout started",
+        "item added to cart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来进入支付环节。CTBackend用token信息在CoCo创建payment，同时要设置一个自定义字段usdCentAmount，值是产品的USD价格。这一步可能失败，需要错误处理。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "payment",
+        "usdCentAmount"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "payment创建失败时，返回的错误应该标记为HealthTech_PatientRecords类型对吗？成功的话，CTBackend发送payment method used事件，然后把payment attach到cart上。",
+      "elements_involved": [
+        "CTBackend",
+        "HealthTech_PatientRecords",
+        "EventSystem",
+        "payment method used",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但attach payment也可能失败，这时候要返回HealthTech_HIPAA_Vault错误。只有attach成功，才能继续创建order。",
+      "elements_involved": [
+        "CTBackend",
+        "HealthTech_HIPAA_Vault",
+        "CoCo",
+        "order"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画出了attach失败的alt分支。order创建也有失败可能，错误类型是HealthTech_LabAnalyzer。成功后CTBackend要调用CoCo把items标记为ready for delivery。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "HealthTech_LabAnalyzer",
+        "ready for delivery"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "更新item state也可能失败，这时候还是返回HealthTech_EMR_Sync错误。只有全部成功，才发送order completed事件，并给MobileApp返回HealthTech_PatientRecords的成功响应。",
+      "elements_involved": [
+        "CoCo",
+        "HealthTech_EMR_Sync",
+        "CTBackend",
+        "EventSystem",
+        "order completed",
+        "MobileApp",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我数了一下，目前图里有5层嵌套的alt分支：customer存在性、cart存在性、token有效性、payment创建、attach payment、order创建、item state更新。这样会不会太深了？需要简化吗？",
+      "elements_involved": [
+        "alt",
+        "customer",
+        "cart",
+        "token",
+        "payment",
+        "attach",
+        "order",
+        "item state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "不用简化，这是真实的风控要求，每一层都有特定的HealthTech错误码需要区分。不过你提醒我了，CTBackend和CoCo的交互很多，要确保delete old cart、add product这些步骤的返回箭头方向正确。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "delete",
+        "add",
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整箭头方向。另外我注意到IAPValidator到CoCo的\"check if token was already used\"是同步调用，但IAPValidator到MobileStore是\"send token\"和\"get token result\"，需要明确是异步还是同步？",
+      "elements_involved": [
+        "IAPValidator",
+        "CoCo",
+        "MobileStore",
+        "already used"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "IAPValidator到MobileStore是同步调用，等待Google/Apple返回结果。但这里有个细节：IAPValidator检查token是否已使用时，是查询CoCo的数据库，不是调用MobileStore。",
+      "elements_involved": [
+        "IAPValidator",
+        "MobileStore",
+        "CoCo",
+        "already used"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "明白了，我之前理解有误。IAPValidator先到MobileStore验证token有效性，拿到结果后再去CoCo查是否already used。这两个步骤是顺序执行的，不是并行的。我重新调整一下顺序。",
+      "elements_involved": [
+        "IAPValidator",
+        "MobileStore",
+        "CoCo",
+        "already used",
+        "token result"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "顺序对了。还有个小细节：CTBackend创建cart时设置的mobileOrder=true是一个自定义标记，需要在注释里说明这是布尔值。另外所有错误返回给MobileApp的都要用粗体标注。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "mobileOrder",
+        "MobileApp",
+        "error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加mobileOrder说明，错误信息都加了粗体。我再确认一下EventSystem的四个事件：checkout started、item added to cart、payment method used、order completed，顺序没错吧？",
+      "elements_involved": [
+        "EventSystem",
+        "checkout started",
+        "item added to cart",
+        "payment method used",
+        "order completed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "顺序正确。不过payment method used事件应该在attach payment成功后才发送，不是在create payment成功后。需要调整一下位置。",
+      "elements_involved": [
+        "EventSystem",
+        "payment method used",
+        "CTBackend",
+        "CoCo",
+        "attach payment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我把payment method used事件从create payment后面移到了attach payment成功之后。这样逻辑更严谨，只有payment真正关联到cart上才算使用了支付方式。",
+      "elements_involved": [
+        "EventSystem",
+        "payment method used",
+        "CTBackend",
+        "CoCo",
+        "attach payment"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。最后检查一下所有HealthTech模块的映射：DiagnosticEngine对应IAPValidator，LabAnalyzer对应MobileStore和CoCo的商品/购物车功能，PatientRecords对应用户数据和成功响应，EMR_Sync对应token重复和状态更新错误，HIPAA_Vault对应支付attach错误。",
+      "elements_involved": [
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords",
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault",
+        "IAPValidator",
+        "MobileStore",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部核对完毕，映射关系正确。最终时序图包含7个参与者，8个主要交互阶段，7个alt分支处理各种错误场景，4个EventSystem事件，完整覆盖了从购买发起到订单完成的整个流程。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore",
+        "CoCo",
+        "EventSystem"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 24,
+    "repair_count": 2,
+    "grounding_acts_count": 24,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 59782.7294,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 24
+  }
+}

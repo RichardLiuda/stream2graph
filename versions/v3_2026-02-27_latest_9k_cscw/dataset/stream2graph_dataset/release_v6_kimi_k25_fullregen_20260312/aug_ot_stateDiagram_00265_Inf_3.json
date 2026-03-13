@@ -1,0 +1,418 @@
+{
+  "id": "aug_ot_stateDiagram_00265_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Coregentis/MPLP-Protocol/blob/52719b884a395ab1579588e03e6a6cac9a797ccf/docs/docs/specification/profiles/diagrams/sa-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Coregentis/MPLP-Protocol",
+  "diagram_type": "stateDiagram",
+  "code": "%%{Infra_IngressController}}}%%\n%% MPLP SA Profile Lifecycle State Machine\n%% Version: 1.0.0 | Frozen: 2025-12-03\n%% Schema Reference: schemas/v2/invariants/sa-invariants.yaml\n\nstateDiagram-v2\n    direction TB\n    \n    %% States\n    [Infra_EtcdCluster] --> Initialize: Boot Runtime\n    Initialize --> LoadContext: SA Created (Infra_WorkerNode)\n    LoadContext --> EvaluatePlan: Context Valid (Infra_EtcdCluster)\n    EvaluatePlan --> ExecuteStep: DAG Resolved\n    ExecuteStep --> EmitTrace: Step Done\n    EmitTrace --> ExecuteStep: More Steps\n    EmitTrace --> Complete: All Steps Done\n    Complete --> [Infra_IngressController]: Terminate\n    \n    %% Error handling\n    LoadContext --> Failed: Context Invalid\n    EvaluatePlan --> Failed: Plan Invalid\n    ExecuteStep --> HandleError: Step Error\n    HandleError --> ExecuteStep: Retry\n    HandleError --> Failed: Fatal Error\n    Failed --> [Infra_WorkerNode]: Terminate\n    \n    %% State descriptions\n    state Initialize {Infra_EtcdCluster] --> CreateSAInstance\n        CreateSAInstance --> GenerateSAId\n        GenerateSAId --> EmitSAInitialized\n        EmitSAInitialized --> [Infra_WorkerNode]\n    }\n    \n    state LoadContext {Infra_IngressController] --> ValidateContextId\n        ValidateContextId --> CheckContextStatus\n        CheckContextStatus --> EmitSAContextLoaded\n        EmitSAContextLoaded --> [Infra_LoadBalancer]\n        \n        note right of ValidateContextId\n            sa_requires_context:\n            context_id must be UUID v4\n        end note\n        \n        note right of CheckContextStatus\n            sa_context_must_be_active:\n            context.status == 'active'\n        end note\n    }\n    \n    state EvaluatePlan {Infra_WorkerNode] --> ValidatePlanBinding\n        ValidatePlanBinding --> ParseSteps\n        ParseSteps --> ResolveDependencies\n        ResolveDependencies --> BuildExecutionDAG\n        BuildExecutionDAG --> EmitSAPlanEvaluated\n        EmitSAPlanEvaluated --> [Infra_WorkerNode]\n        \n        note right of ValidatePlanBinding\n            sa_plan_context_binding:\n            plan.context_id == context.context_id\n        end note\n        \n        note right of ParseSteps\n            sa_plan_has_steps:\n            steps.length >= 1\n            sa_steps_agent_role_if_present:\n            if agent_role present, non-empty\n        end note\n    }\n    \n    state ExecuteStep {Infra_IngressController] --> SelectExecutor\n        SelectExecutor --> RunExecution\n        RunExecution --> UpdateStepStatus\n        UpdateStepStatus --> [Infra_LoadBalancer]\n        \n        note right of SelectExecutor\n            Match agent_role to executor\n            (Infra_LoadBalancer)\n        end note\n    }\n    \n    state EmitTrace {Infra_RedisCache] --> WriteSegment\n        WriteSegment --> RecordOutcome\n        RecordOutcome --> EmitSATraceEmitted\n        EmitSATraceEmitted --> [Infra_EtcdCluster]\n        \n        note right of WriteSegment\n            sa_trace_context_binding:\n            trace.context_id == context.context_id\n            sa_trace_plan_binding:\n            trace.plan_id == plan.plan_id\n        end note\n    }\n    \n    state Complete {Infra_EtcdCluster] --> FinalizeTrace\n        FinalizeTrace --> EmitSACompleted\n        EmitSACompleted --> [Infra_RedisCache]\n    }\n    \n    state HandleError {Infra_WorkerNode] --> ClassifyError\n        ClassifyError --> DecideAction\n        DecideAction --> [Infra_RedisCache]\n    }\n",
+  "content_size": 3394,
+  "collected_at": "2026-02-06T10:39:54.536966",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00265",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为MPLP SA Profile设计一个完整的状态机，涵盖从创建到完成的整个生命周期。核心是要体现SA在基础设施组件间的流转，特别是EtcdCluster、WorkerNode这些关键节点。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Initialize",
+        "Complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。SA的生命周期起点应该是Initialize状态对吧？我注意到您提到了WorkerNode，那SA创建后是由WorkerNode来接管吗？还有终止时的IngressController是什么角色？",
+      "elements_involved": [
+        "Initialize",
+        "Infra_WorkerNode",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。SA实例化时从EtcdCluster开始，经过Initialize后进入LoadContext，这时候WorkerNode介入。正常完成时流向IngressController终止。异常终止则回到WorkerNode。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Initialize",
+        "LoadContext",
+        "Infra_WorkerNode",
+        "Infra_IngressController",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主流程框架画出来：EtcdCluster启动Initialize，Initialize到LoadContext标注'SA Created'，LoadContext到EvaluatePlan标注'Context Valid'，然后EvaluatePlan到ExecuteStep是'DAG Resolved'。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Initialize",
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ExecuteStep之后需要有个循环机制。每个步骤执行完要EmitTrace记录轨迹，如果还有后续步骤就回到ExecuteStep继续，全部完成才进入Complete状态。",
+      "elements_involved": [
+        "ExecuteStep",
+        "EmitTrace",
+        "Complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：ExecuteStep到EmitTrace标注'Step Done'，EmitTrace有两个出口——回到ExecuteStep标注'More Steps'，以及到Complete标注'All Steps Done'。Complete最终指向IngressController终止。",
+      "elements_involved": [
+        "ExecuteStep",
+        "EmitTrace",
+        "Complete",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "错误处理分支也很重要。LoadContext可能失败，EvaluatePlan的plan可能无效，ExecuteStep可能遇到步骤错误。这些都要有对应的Failed出口。",
+      "elements_involved": [
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "Failed",
+        "HandleError"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "错误分支已添加：LoadContext到Failed标注'Context Invalid'，EvaluatePlan到Failed标注'Plan Invalid'，ExecuteStep到HandleError标注'Step Error'。Failed最终指向WorkerNode终止。",
+      "elements_involved": [
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "HandleError",
+        "Failed",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "HandleError需要支持重试逻辑。非致命错误应该能回到ExecuteStep重试，只有Fatal Error才走向Failed。这个决策点很关键。",
+      "elements_involved": [
+        "HandleError",
+        "ExecuteStep",
+        "Failed",
+        "DecideAction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "HandleError内部我拆成ClassifyError和DecideAction两个子状态。DecideAction分出两条路：回到ExecuteStep标注'Retry'，到Failed标注'Fatal Error'。",
+      "elements_involved": [
+        "HandleError",
+        "ClassifyError",
+        "DecideAction",
+        "ExecuteStep",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在细化每个状态的内部结构。Initialize状态要包含CreateSAInstance、GenerateSAId、EmitSAInitialized，最终回到WorkerNode。",
+      "elements_involved": [
+        "Initialize",
+        "CreateSAInstance",
+        "GenerateSAId",
+        "EmitSAInitialized",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Initialize复合状态已构建：从EtcdCluster进入CreateSAInstance，然后GenerateSAId，再到EmitSAInitialized，最后指向WorkerNode。",
+      "elements_involved": [
+        "Initialize",
+        "Infra_EtcdCluster",
+        "CreateSAInstance",
+        "GenerateSAId",
+        "EmitSAInitialized",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "LoadContext需要验证context_id是UUID v4，而且context.status必须是active。这两个不变量要作为note标注。流程是ValidateContextId、CheckContextStatus、EmitSAContextLoaded，最后到LoadBalancer。",
+      "elements_involved": [
+        "LoadContext",
+        "ValidateContextId",
+        "CheckContextStatus",
+        "EmitSAContextLoaded",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "LoadContext复合状态完成，添加了右侧note：context_id必须是UUID v4，context.status == 'active'。流程终点指向LoadBalancer。",
+      "elements_involved": [
+        "LoadContext",
+        "ValidateContextId",
+        "CheckContextStatus",
+        "EmitSAContextLoaded",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EvaluatePlan是最复杂的。需要验证plan和context的绑定关系，解析steps，解析依赖关系，构建Execution DAG，最后EmitSAPlanEvaluated。steps.length必须大于等于1，如果有agent_role必须非空。",
+      "elements_involved": [
+        "EvaluatePlan",
+        "ValidatePlanBinding",
+        "ParseSteps",
+        "ResolveDependencies",
+        "BuildExecutionDAG",
+        "EmitSAPlanEvaluated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EvaluatePlan已展开：ValidatePlanBinding检查plan.context_id匹配，ParseSteps验证steps.length=1和agent_role约束，然后ResolveDependencies、BuildExecutionDAG，最后EmitSAPlanEvaluated回到WorkerNode。两个note已添加。",
+      "elements_involved": [
+        "EvaluatePlan",
+        "ValidatePlanBinding",
+        "ParseSteps",
+        "ResolveDependencies",
+        "BuildExecutionDAG",
+        "EmitSAPlanEvaluated",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ExecuteStep里的SelectExecutor需要匹配agent_role到具体的executor，这个executor是由LoadBalancer提供的。然后是RunExecution和UpdateStepStatus。",
+      "elements_involved": [
+        "ExecuteStep",
+        "SelectExecutor",
+        "RunExecution",
+        "UpdateStepStatus",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ExecuteStep复合状态完成：SelectExecutor（note标注匹配agent_role到LoadBalancer的executor）、RunExecution、UpdateStepStatus，终点到LoadBalancer。",
+      "elements_involved": [
+        "ExecuteStep",
+        "SelectExecutor",
+        "RunExecution",
+        "UpdateStepStatus",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EmitTrace涉及RedisCache。需要WriteSegment，然后RecordOutcome，最后EmitSATraceEmitted。这里有两个绑定约束：trace.context_id和trace.plan_id必须分别匹配context和plan。",
+      "elements_involved": [
+        "EmitTrace",
+        "Infra_RedisCache",
+        "WriteSegment",
+        "RecordOutcome",
+        "EmitSATraceEmitted",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EmitTrace已构建：从RedisCache进入WriteSegment（带context和plan绑定约束的note），然后RecordOutcome、EmitSATraceEmitted，终点回到EtcdCluster。",
+      "elements_involved": [
+        "EmitTrace",
+        "Infra_RedisCache",
+        "WriteSegment",
+        "RecordOutcome",
+        "EmitSATraceEmitted",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后两个状态：Complete做FinalizeTrace和EmitSACompleted，终点到RedisCache；HandleError我们已经有了ClassifyError和DecideAction，终点也是RedisCache。",
+      "elements_involved": [
+        "Complete",
+        "FinalizeTrace",
+        "EmitSACompleted",
+        "Infra_RedisCache",
+        "HandleError",
+        "DecideAction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Complete和HandleError的复合状态已补全。整个状态机的主流程、错误处理、所有复合状态及其内部转换、基础设施组件绑定、不变量注释都已完整。",
+      "elements_involved": [
+        "Complete",
+        "FinalizeTrace",
+        "EmitSACompleted",
+        "Infra_RedisCache",
+        "HandleError",
+        "ClassifyError",
+        "DecideAction"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "我检查一下整体流向。Initialize从EtcdCluster开始，经过各状态，正常完成到IngressController，异常终止到WorkerNode。各复合状态的基础设施锚点都正确。版本信息需要标注1.0.0，冻结日期2025-12-03。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现一个问题：HandleError的DecideAction目前只指向RedisCache，但缺少到ExecuteStep和Failed的实际转换。我需要修正，让DecideAction能实际分出Retry和Fatal Error两条路径。",
+      "elements_involved": [
+        "HandleError",
+        "DecideAction",
+        "ExecuteStep",
+        "Failed",
+        "Infra_RedisCache"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "修正后没问题了。DecideAction作为决策点，Retry回到ExecuteStep，Fatal Error到Failed，同时RedisCache作为HandleError的基础设施锚点保留。整个状态机逻辑闭环。",
+      "elements_involved": [
+        "HandleError",
+        "DecideAction",
+        "ExecuteStep",
+        "Failed",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "最终确认：MPLP SA Profile Lifecycle状态机包含9个顶层状态，其中6个复合状态详细展开，3个错误处理状态，4个基础设施组件作为生命周期锚点，所有不变量约束已用note标注。Schema引用schemas/v2/invariants/sa-invariants.yaml。",
+      "elements_involved": [
+        "Initialize",
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "EmitTrace",
+        "Complete",
+        "HandleError",
+        "Failed",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 26,
+    "repair_count": 1,
+    "grounding_acts_count": 26,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 68462.1029,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 25
+  }
+}

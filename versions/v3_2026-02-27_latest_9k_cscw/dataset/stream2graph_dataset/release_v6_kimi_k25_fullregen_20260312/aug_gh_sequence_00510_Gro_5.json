@@ -1,0 +1,694 @@
+{
+  "id": "aug_gh_sequence_00510_Gro_5",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/DREAMSCAPE-AI/dreamscape-docs/blob/24aa5a14265601b36ddbbb02c958eea524e6eb11/architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "github_repo": "DREAMSCAPE-AI/dreamscape-docs",
+  "github_file_path": "architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    autonumber\n    actor User as 👤 Utilisateur\n    participant WC as Web Client\n    participant CN as Core NGINX<br/>:80\n    participant Voyage as Voyage Service<br/>:3003\n    participant Payment as Payment Service<br/>:3005\n    participant AI as AI Service<br/>:3004\n    participant PG as PostgreSQL<br/>:5432\n    participant Redis as Redis<br/>:6379\n    participant Kafka as Kafka<br/>:9092\n    participant Stripe as 💳 Stripe API\n\n    rect rgb(Groupware_WikiPage)\n        Note over User,Voyage: Phase 1: Sélection Vol\n        User->>WC: Sélectionne vol<br/>(Groupware_SprintBacklog)\n        WC->>WC: Add to cart<br/>(Groupware_KanbanBoard)\n        User->>WC: Click \"Réserver\"\n        \n        WC->>CN: POST /api/v1/bookings<br/>{Groupware_ChatRoom}<br/>Authorization: Bearer JWT\n        CN->>CN: Validate JWT (Groupware_WikiPage)\n        CN->>Voyage: Forward to Voyage<br/>localhost:3003/bookings\n    end\n\n    rect rgb(Groupware_SprintBacklog)\n        Note over Voyage,Kafka: Phase 2: Création Réservation\n        Voyage->>Voyage: Extract userId from JWT\n        Voyage->>PG: BEGIN transaction\n        Note right of PG: 🔄 ACID transaction<br/>pour cohérence\n        \n        Voyage->>PG: INSERT booking<br/>{Groupware_SprintBacklog}\n        PG-->>Voyage: Booking created (Groupware_KanbanBoard)\n        \n        Voyage->>Redis: Store booking temp<br/>key: \"booking:temp:bookingId\"<br/>TTL: 15min\n        Note right of Redis: ⏱️ Timeout si paiement<br/>échoue après 15min\n        \n        Voyage->>Kafka: Publish event<br/>Topic: \"voyage.booking.created\"<br/>{Groupware_IssueTracker}\n        Note left of Kafka: Event-Driven Architecture<br/>- Decoupling services<br/>- Async processing<br/>- Audit trail\n        \n        Voyage-->>CN: 201 Created<br/>{Groupware_KanbanBoard}\n        CN-->>WC: 201 Created\n    end\n\n    rect rgb(Groupware_SprintBacklog)\n        Note over WC,Stripe: Phase 3: Demande Paiement\n        WC->>CN: POST /api/v1/payments/intent<br/>{Groupware_IssueTracker}<br/>Authorization: Bearer JWT\n        CN->>Payment: Forward to Payment<br/>localhost:3005/payments/intent\n        \n        Payment->>Payment: Extract userId from JWT\n        Payment->>PG: Verify booking exists<br/>SELECT * FROM bookings<br/>WHERE id = bookingId AND userId = userId\n        \n        alt Booking Non Trouvé ❌\n            PG-->>Payment: null\n            Payment-->>CN: 404 Not Found<br/>{Groupware_KanbanBoard}\n            CN-->>WC: 404 Error\n            WC->>User: ❌ Erreur réservation\n        else Booking Trouvé ✅\n            PG-->>Payment: Booking found\n            Payment->>Stripe: Create PaymentIntent<br/>POST /v1/payment_intents<br/>{Groupware_KanbanBoard),<br/>currency: \"eur\",<br/>metadata: {Groupware_ChatRoom}}\n            \n            Stripe-->>Payment: PaymentIntent created<br/>{Groupware_KanbanBoard}\n            \n            Payment->>PG: INSERT payment<br/>{Groupware_KanbanBoard}\n            Payment->>Kafka: Publish event<br/>Topic: \"payment.intent.created\"<br/>{Groupware_SprintBacklog}\n            \n            Payment-->>CN: 200 OK<br/>{Groupware_SprintBacklog}\n            CN-->>WC: 200 OK\n        end\n    end\n\n    rect rgb(Groupware_IssueTracker)\n        Note over WC,Stripe: Phase 4: Paiement Stripe (Groupware_KanbanBoard)\n        WC->>WC: Initialize Stripe.js<br/>with clientSecret\n        WC->>User: Affiche formulaire carte<br/>(Groupware_KanbanBoard)\n        \n        User->>WC: Saisit infos carte<br/>(Groupware_SprintBacklog)\n        WC->>Stripe: POST /v1/payment_intents/:id/confirm<br/>(Groupware_IssueTracker)<br/>{Groupware_KanbanBoard}\n        \n        Note right of Stripe: 🔒 Sécurité PCI-DSS<br/>- Carte jamais envoyée à notre backend<br/>- Stripe gère tout<br/>- Tokenization automatique\n        \n        alt Paiement Réussi ✅\n            Stripe-->>WC: PaymentIntent succeeded\n            WC->>WC: Display success message\n            WC->>User: ✅ Paiement accepté\n        else Paiement Échoué ❌\n            Stripe-->>WC: PaymentIntent failed<br/>(Groupware_IssueTracker)\n            WC->>User: ❌ \"Paiement refusé\"<br/>(Groupware_KanbanBoard)\n        end\n    end\n\n    rect rgb(Groupware_SprintBacklog)\n        Note over Stripe,Kafka: Phase 5: Webhook Stripe (Groupware_ChatRoom)\n        Stripe->>Payment: POST /webhooks/stripe<br/>Stripe-Signature header<br/>{Groupware_KanbanBoard}}\n        \n        Payment->>Payment: Verify signature<br/>stripe.webhooks.constructEvent(Groupware_SprintBacklog)\n        \n        alt Signature Invalide ❌\n            Payment-->>Stripe: 400 Bad Request\n            Note right of Payment: Protection contre<br/>webhooks forgés\n        else Signature Valide ✅\n            Payment->>PG: UPDATE payment<br/>SET status = \"SUCCEEDED\"<br/>WHERE stripePaymentIntentId = id\n            \n            Payment->>PG: UPDATE booking<br/>SET status = \"CONFIRMED\"<br/>WHERE id = bookingId\n            \n            Payment->>Redis: Delete temp booking<br/>DEL \"booking:temp:bookingId\"\n            \n            Payment->>Kafka: Publish event<br/>Topic: \"payment.succeeded\"<br/>{Groupware_IssueTracker}\n            \n            Payment-->>Stripe: 200 OK\n        end\n    end\n\n    rect rgb(Groupware_SprintBacklog)\n        Note over Kafka,User: Phase 6: Traitement Async (Groupware_IssueTracker)\n        Kafka->>Voyage: Consume event<br/>\"payment.succeeded\"\n        Voyage->>PG: SELECT booking details\n        Voyage->>Voyage: Generate confirmation email<br/>(Groupware_KanbanBoard)\n        Voyage->>User: 📧 Email confirmation<br/>+ PDF billet\n        \n        Kafka->>AI: Consume event<br/>\"voyage.booking.created\"\n        AI->>PG: Get user profile<br/>+ booking history\n        AI->>AI: Update ML model<br/>(Groupware_SprintBacklog)\n        Note right of AI: 🤖 AI learning<br/>from user behavior\n        AI->>Redis: Update recommendations<br/>key: \"reco:userId\"\n    end\n\n    rect rgb(Groupware_IssueTracker)\n        Note over WC,User: Phase 7: Confirmation Frontend\n        loop Polling every 2s\n            WC->>CN: GET /api/v1/bookings/:bookingId\n            CN->>Voyage: Forward request\n            Voyage->>PG: SELECT booking<br/>WHERE id = bookingId\n            \n            alt Status = CONFIRMED ✅\n                PG-->>Voyage: Booking confirmed\n                Voyage-->>CN: 200 OK<br/>{Groupware_IssueTracker}\n                CN-->>WC: 200 OK\n                WC->>WC: Stop polling\n                WC->>WC: Redirect /bookings/:id\n                WC->>User: ✅ Affiche confirmation<br/>+ détails voyage\n            else Status = PENDING ⏳\n                PG-->>Voyage: Booking still pending\n                Voyage-->>CN: 200 OK<br/>{Groupware_WikiPage}\n                CN-->>WC: 200 OK (Groupware_ChatRoom)\n                Note right of WC: ⏱️ Après 15min<br/>réservation annulée<br/>automatiquement\n            end\n        end\n    end\n\n    Note over User,Kafka: 📊 Performance Réservation<br/>Create booking: ~100-150ms<br/>Payment intent: ~500-800ms (Groupware_IssueTracker)<br/>Confirmation: ~1-2s (Groupware_SprintBacklog)<br/>Email: ~3-5s (Groupware_IssueTracker)<br/><br/>🔒 Fiabilité<br/>- Transaction ACID (Groupware_KanbanBoard)<br/>- Idempotency keys (Groupware_SprintBacklog)<br/>- Webhook retry (Groupware_KanbanBoard)<br/>- Event sourcing (Groupware_SprintBacklog)",
+  "content_size": 7218,
+  "collected_at": "2026-02-06T01:33:16.963511",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "augmentation_domain": "Groupware",
+  "seed_id": "gh_sequence_00510",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为新的航班预订系统绘制一个完整的序列图，展示从用户选航班到最终确认的全流程。核心要体现我们的微服务架构，包括Voyage Service、Payment Service和AI Service这三个主要服务。",
+      "elements_involved": [
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "Web Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个典型的电商预订流程。我注意到有外部支付网关，是Stripe吗？另外数据层我们需要展示PostgreSQL和Redis，还有消息队列Kafka对吧？",
+      "elements_involved": [
+        "Stripe API",
+        "PostgreSQL",
+        "Redis",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Stripe作为外部支付网关。架构上我们采用事件驱动，Kafka用于服务解耦。Redis做临时预订数据的缓存，设置15分钟TTL，防止用户占座不付款。",
+      "elements_involved": [
+        "Stripe API",
+        "Kafka",
+        "Redis",
+        "event-driven architecture"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我建议用七个阶段来组织：选航班、创建预订、发起支付、Stripe支付、Webhook回调、异步处理、前端确认。每个阶段用rect包裹，这样层次清晰。入口统一走Core NGINX做网关。",
+      "elements_involved": [
+        "Core NGINX",
+        "Phase 1",
+        "Phase 2",
+        "Phase 3",
+        "Phase 4",
+        "Phase 5",
+        "Phase 6",
+        "Phase 7"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "七个阶段很好。Phase 1用户通过Web Client选航班，加入购物车，点击预订按钮。这里要体现JWT验证，我们的NGINX负责统一鉴权。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "JWT",
+        "cart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Phase 1画好了。用户选航班后Web Client本地做Add to cart，然后点击\"Réserver\"时POST到/api/v1/bookings，带Authorization头。NGINX验证JWT后转发到Voyage Service的3003端口。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "POST /api/v1/bookings"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Phase 2创建预订是关键，这里必须用ACID事务保证数据一致性。Voyage Service从JWT提取userId，开启PostgreSQL事务，插入booking记录，同时写Redis临时缓存。",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "Redis",
+        "ACID transaction",
+        "userId"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "理解，我标注Redis的key为\"booking:temp:bookingId\"，TTL 15分钟，并加注释说明超时后自动取消。同时Voyage发Kafka事件到\"voyage.booking.created\"主题，实现异步解耦。",
+      "elements_involved": [
+        "Redis",
+        "Kafka",
+        "voyage.booking.created",
+        "TTL 15min",
+        "timeout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Kafka事件要体现我们的Event-Driven Architecture，用于服务解耦、异步处理和审计追踪。返回201 Created给前端。",
+      "elements_involved": [
+        "Kafka",
+        "Event-Driven Architecture",
+        "async processing",
+        "audit trail",
+        "201 Created"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Phase 2完成。现在Phase 3支付请求，Web Client POST到/api/v1/payments/intent，NGINX转发到Payment Service的3005端口。这里需要验证预订是否存在。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Payment Service",
+        "POST /api/v1/payments/intent",
+        "booking verification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Phase 3要有分支逻辑：如果预订找不到返回404；找到了才创建Stripe PaymentIntent。Payment Service也要从JWT提取userId，去PG验证bookingId和userId匹配。",
+      "elements_involved": [
+        "Payment Service",
+        "PostgreSQL",
+        "JWT",
+        "alt booking not found",
+        "alt booking found"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "分支我画成alt结构。成功路径里，Payment Service调用Stripe API创建PaymentIntent，货币EUR，带metadata。然后PG插入payment记录，发Kafka事件\"payment.intent.created\"。",
+      "elements_involved": [
+        "Stripe API",
+        "PaymentIntent",
+        "EUR",
+        "metadata",
+        "payment.intent.created"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。Phase 4是Stripe前端支付，这里要强调PCI-DSS合规——信用卡信息直接走Stripe.js，绝不经过我们的后端。",
+      "elements_involved": [
+        "Stripe.js",
+        "PCI-DSS",
+        "card information",
+        "tokenization",
+        "security"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Phase 4画好了。Web Client用Stripe.js初始化，展示卡号输入表单，用户填写后直接POST到Stripe确认。我加了注释说明自动tokenization，还有支付成功/失败的分支。",
+      "elements_involved": [
+        "Web Client",
+        "Stripe.js",
+        "card form",
+        "PaymentIntent confirm",
+        "success",
+        "failure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Phase 5 Webhook很重要，Stripe回调我们的Payment Service。必须验证Stripe-Signature防伪造，这是安全关键。",
+      "elements_involved": [
+        "Stripe",
+        "Payment Service",
+        "Webhook",
+        "Stripe-Signature",
+        "signature verification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，我画alt分支：签名无效返回400，有效则更新PG里payment状态为SUCCEEDED，booking状态为CONFIRMED，同时删除Redis临时key，发Kafka事件\"payment.succeeded\"。",
+      "elements_involved": [
+        "Stripe-Signature",
+        "400 Bad Request",
+        "payment status",
+        "booking status",
+        "CONFIRMED",
+        "DEL Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。Phase 6是异步处理，Voyage Service消费\"payment.succeeded\"事件，查询预订详情，生成确认邮件和PDF机票。AI Service消费\"voyage.booking.created\"做推荐模型更新。",
+      "elements_involved": [
+        "Voyage Service",
+        "AI Service",
+        "payment.succeeded",
+        "voyage.booking.created",
+        "confirmation email",
+        "PDF ticket",
+        "ML model"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Phase 6完成。AI Service从PG获取用户画像和预订历史，更新ML模型，把新推荐写入Redis。Phase 7前端轮询确认状态，每2秒查一次/api/v1/bookings/:bookingId。",
+      "elements_involved": [
+        "AI Service",
+        "user profile",
+        "booking history",
+        "recommendations",
+        "Phase 7",
+        "polling 2s"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Phase 7的轮询要有退出条件：状态CONFIRMED停止轮询跳转详情页；PENDING继续，但15分钟后自动取消。这个超时逻辑要和Phase 2的Redis TTL对应。",
+      "elements_involved": [
+        "polling loop",
+        "CONFIRMED",
+        "PENDING",
+        "15min timeout",
+        "cancellation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "整体结构完成了。最后我加一个性能注释块，标注各阶段耗时：创建预订100-150ms，支付意图500-800ms，确认1-2秒，邮件3-5秒。还有可靠性措施：ACID事务、幂等键、Webhook重试、事件溯源。",
+      "elements_involved": [
+        "performance metrics",
+        "ACID",
+        "idempotency keys",
+        "webhook retry",
+        "event sourcing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，但Phase 3的分支标注我需要调整——\"Booking Non Trouvé\"和\"Booking Trouvé\"用法语保持风格一致，还有错误和成功图标。",
+      "elements_involved": [
+        "Booking Non Trouvé",
+        "Booking Trouvé",
+        "❌",
+        "✅",
+        "French labels"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正Phase 3的alt标签为\"Booking Non Trouvé ❌\"和\"Booking Trouvé ✅\"。同时检查Phase 4和Phase 5的分支也保持同样风格。",
+      "elements_involved": [
+        "alt labels",
+        "Phase 3",
+        "Phase 4",
+        "Phase 5",
+        "consistency"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Phase 4的Stripe支付，用户输入卡信息的动作描述要准确——\"Saisit infos carte\"，还有展示表单是\"Affiche formulaire carte\"。",
+      "elements_involved": [
+        "Saisit infos carte",
+        "Affiche formulaire carte",
+        "Phase 4",
+        "card input"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已更新为\"Affiche formulaire carte\"和\"Saisit infos carte\"。另外Phase 5的Webhook路径，我确认是POST到/webhooks/stripe，带Stripe-Signature header。",
+      "elements_involved": [
+        "POST /webhooks/stripe",
+        "Stripe-Signature header",
+        "Phase 5"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "各阶段的rect颜色标注需要对应我们的Groupware文档类型：WikiPage用于架构说明，SprintBacklog用于核心流程，KanbanBoard用于状态流转，IssueTracker用于问题和追踪，ChatRoom用于协作讨论。",
+      "elements_involved": [
+        "Groupware_WikiPage",
+        "Groupware_SprintBacklog",
+        "Groupware_KanbanBoard",
+        "Groupware_IssueTracker",
+        "Groupware_ChatRoom",
+        "rect colors"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已按Groupware类型着色：Phase 1用WikiPage（架构入口），Phase 2和3用SprintBacklog（核心预订），Phase 4用KanbanBoard（支付状态），Phase 5用ChatRoom（Webhook协作），Phase 6用SprintBacklog（异步处理），Phase 7用IssueTracker（轮询追踪）。",
+      "elements_involved": [
+        "Phase 1",
+        "Phase 2",
+        "Phase 3",
+        "Phase 4",
+        "Phase 5",
+        "Phase 6",
+        "Phase 7",
+        "color coding"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查Phase 6的AI Service部分，它消费的是\"voyage.booking.created\"而不是支付成功事件，这是为了实时更新推荐，不需要等待支付完成。",
+      "elements_involved": [
+        "AI Service",
+        "voyage.booking.created",
+        "real-time recommendation",
+        "async"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，AI Service在预订创建时就启动分析，这样即使用户最终没付款，我们也收集了行为数据用于模型训练。Voyage Service才是消费\"payment.succeeded\"。",
+      "elements_involved": [
+        "AI Service",
+        "Voyage Service",
+        "payment.succeeded",
+        "behavior data",
+        "model training"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Participant的标注要清晰，特别是带端口的：Core NGINX :80，Voyage Service :3003，Payment Service :3005，AI Service :3004，PostgreSQL :5432，Redis :6379，Kafka :9092。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "port numbers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有participant已标注端口。User用👤图标，Stripe用💳图标增强可读性。Actor和participant区分明确。",
+      "elements_involved": [
+        "👤 Utilisateur",
+        "💳 Stripe API",
+        "actor",
+        "participant",
+        "icons"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Phase 2的Note right of PG，ACID事务的注释要强调\"pour cohérence\"（为了一致性）。Redis的注释说明\"Timeout si paiement échoue après 15min\"。",
+      "elements_involved": [
+        "ACID transaction",
+        "pour cohérence",
+        "Redis timeout",
+        "15min",
+        "payment failure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正注释文本。Phase 4的PCI-DSS注释也完善了：\"Carte jamais envoyée à notre backend\"，\"Stripe gère tout\"，\"Tokenization automatique\"。",
+      "elements_involved": [
+        "PCI-DSS",
+        "tokenization",
+        "backend security",
+        "Phase 4 notes"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查消息流向：虚线箭头用于返回响应（--），实线用于请求（-）。特别是PG--Voyage这种数据库查询返回，还有Stripe--WC的直接回调。",
+      "elements_involved": [
+        "dashed arrows",
+        "solid arrows",
+        "response",
+        "request",
+        "PG--Voyage",
+        "Stripe--WC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "消息箭头已全部检查：异步返回用虚线，同步调用用实线。Phase 7的loop轮询结构正确，包含alt分支处理CONFIRMED和PENDING状态。",
+      "elements_involved": [
+        "loop polling",
+        "alt Status CONFIRMED",
+        "alt Status PENDING",
+        "arrow styles"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "性能指标的注释块，各阶段耗时后面要带上对应的Groupware标签，比如支付意图500-800ms用IssueTracker，确认1-2秒用SprintBacklog。",
+      "elements_involved": [
+        "performance metrics",
+        "Groupware_IssueTracker",
+        "Groupware_SprintBacklog",
+        "timing annotations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已更新性能注释：Create booking ~100-150ms，Payment intent ~500-800ms (IssueTracker)，Confirmation ~1-2s (SprintBacklog)，Email ~3-5s (IssueTracker)。可靠性措施也带上了对应标签。",
+      "elements_involved": [
+        "performance note",
+        "reliability note",
+        "Groupware tags",
+        "final annotation"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再确认一下Phase 1的细节：用户选航班时关联的是SprintBacklog，Add to cart是KanbanBoard，POST请求的注释用ChatRoom表示协作讨论，NGINX的JWT验证回到WikiPage。",
+      "elements_involved": [
+        "Phase 1",
+        "SprintBacklog",
+        "KanbanBoard",
+        "ChatRoom",
+        "WikiPage",
+        "element tags"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Phase 1标签已核对：Sélectionne vol (SprintBacklog)，Add to cart (KanbanBoard)，POST /api/v1/bookings {ChatRoom}，Validate JWT (WikiPage)。所有元素标签与代码一致。",
+      "elements_involved": [
+        "Sélectionne vol",
+        "Add to cart",
+        "POST /api/v1/bookings",
+        "Validate JWT",
+        "element verification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Phase 5的Webhook分支，签名无效时我注意到注释\"Protection contre webhooks forgés\"，这个要保留。签名有效后的UPDATE操作是两条独立的SQL。",
+      "elements_involved": [
+        "Webhook protection",
+        "forged webhooks",
+        "UPDATE payment",
+        "UPDATE booking",
+        "two SQL statements"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，Phase 5有两条UPDATE：先更新payment状态为SUCCEEDED，再更新booking为CONFIRMED，然后DEL Redis，最后发Kafka。签名验证失败直接400返回，无后续操作。",
+      "elements_involved": [
+        "Phase 5 flow",
+        "UPDATE sequence",
+        "Redis DEL",
+        "Kafka publish",
+        "error handling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体检查完成。最后确认autonumber开启，所有参与者正确声明，rect嵌套无重叠，note位置合理。这个序列图能准确反映我们的预订系统架构。",
+      "elements_involved": [
+        "autonumber",
+        "participant declaration",
+        "rect nesting",
+        "note positioning",
+        "final review"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部检查通过。序列图完整展示了：用户选航班→创建预订(ACID+Redis+Kafka)→发起支付(Stripe)→前端支付(PCI-DSS)→Webhook确认→异步处理(邮件+AI)→前端轮询确认的完整流程，共7个阶段，带性能指标和可靠性说明。",
+      "elements_involved": [
+        "complete flow",
+        "7 phases",
+        "ACID",
+        "PCI-DSS",
+        "event-driven",
+        "final diagram"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "非常好，这个图可以直接用于技术评审和新人培训。所有Groupware标签都准确对应了我们的文档体系，法语术语保持了产品的一致性风格。",
+      "elements_involved": [
+        "technical review",
+        "onboarding",
+        "Groupware documentation",
+        "French terminology",
+        "consistency"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "建议将最终版本同步到架构WikiPage，并在SprintBacklog创建任务跟踪相关实现的代码审查。KanbanBoard上可以监控各服务接口的响应时间是否符合图中的性能指标。",
+      "elements_involved": [
+        "WikiPage sync",
+        "SprintBacklog task",
+        "KanbanBoard monitoring",
+        "implementation tracking"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意，我来创建SprintBacklog任务。另外IssueTracker里要记录一个优化点：Phase 7的轮询可以后续升级为WebSocket推送，减少服务器压力。",
+      "elements_involved": [
+        "SprintBacklog task creation",
+        "IssueTracker optimization",
+        "WebSocket",
+        "polling improvement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已记录优化建议到IssueTracker。当前序列图已定稿，所有47个步骤（含最终注释）完整呈现，可直接导出用于文档。",
+      "elements_involved": [
+        "IssueTracker record",
+        "WebSocket future",
+        "diagram finalized",
+        "47 steps",
+        "export ready"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 46,
+    "repair_count": 4,
+    "grounding_acts_count": 46,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 102109.436,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 46
+  }
+}

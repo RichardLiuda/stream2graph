@@ -1,0 +1,170 @@
+{
+  "id": "ot_stateDiagram_00081",
+  "source": "other",
+  "source_url": "https://github.com/Avanade/approval-system/blob/1d4cbda1315be561fa4d8c70f4b2e1b104e86f8c/docs/diagrams/review-state-machine.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Avanade/approval-system",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [*] --> New\n    state New {\n        [*] --> Incomplete\n        Incomplete --> DataComplete : FormSubmission\n    }\n    New --> InReview\n    state InReview {\n        [*] --> AwaitingLegalReview\n        AwaitingLegalReview --> AwaitingResponse : LegalQuestionsRaised\n        AwaitingResponse --> AwaitingLegalReview : LegalResponsesProvided\n        AwaitingLegalReview --> OutcomeProvided : LegalOutcomeProvided\n        state legal_if_state <<choice>>\n        OutcomeProvided --> legal_if_state\n        legal_if_state --> LegalApproved: if LegalOutcome == approve\n        legal_if_state --> LegalRejected : if LegalOutcome == reject\n        LegalApproved --> [*]\n        LegalRejected --> [*]\n        --\n        [*] --> AwaitingIPScan\n        AwaitingIPScan --> IpScanComplete\n        state ip_if_state <<choice>>\n        IpScanComplete --> ip_if_state\n        ip_if_state --> IpApproved: if ScanOutcome == no_findings\n        ip_if_state --> AwaitingIpReview: if ScanOutcome == inconclusive\n        ip_if_state --> IpRejected: if ScanOutcome == findings\n        AwaitingIpReview --> AwaitingIpResponse : LegalQuestionsRaised\n        AwaitingIpResponse --> AwaitingIpReview : LegalResponsesProvided\n        AwaitingIpReview --> IpOutcomeProvided : LegalOutcomeProvided\n        state legal_ip_if_state <<choice>>\n        IpOutcomeProvided --> legal_ip_if_state\n        legal_ip_if_state --> IpApproved: if LegalOutcome == approve\n        legal_ip_if_state --> IpRejected : if LegalOutcome == reject\n        AwaitingIpReview --> AwaitingIPScan: Dependencies modified\n        IpRejected --> AwaitingIPScan: Dependencies modified\n        IpApproved --> AwaitingIPScan: Dependencies modified\n        IpRejected --> [*]\n        IpApproved --> [*]\n        --\n        [*] --> AwaitingSecurityScan\n        AwaitingSecurityScan --> SecurityScanComplete\n        state security_if_state <<choice>>\n        SecurityScanComplete --> security_if_state\n        security_if_state --> SecurityApproved: if no_findings\n        security_if_state --> SecurityRejected: if inconclusive\n        security_if_state --> SecurityRejected: if security findings\n        SecurityApproved --> AwaitingSecurityScan: Code updates identified\n        SecurityRejected --> AwaitingSecurityScan: Code updates identified\n        SecurityApproved --> [*]\n        SecurityRejected --> [*]\n    }\n    state inreview_if_state <<choice>>\n    InReview --> inreview_if_state\n    inreview_if_state --> Rejected: One or more check failed\n    inreview_if_state --> Approved: All checks pass\n    Approved --> NonCompliant: Periodic IP or security scan raises noncompliance\n    NonCompliant --> Retired: Noncompliance not mitigated\n    NonCompliant --> Approved: Compliance issue resolved\n    Approved --> Retired: Repository no longer required\n    Rejected --> [*]\n    Retired --> [*]\n",
+  "content_size": 2852,
+  "collected_at": "2026-02-06T10:37:39.824174",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 5,
+  "repo_forks": 0,
+  "repo_owner": "Avanade",
+  "repo_name": "approval-system",
+  "repo_description": "A re-usable system for providing approvals and rejections, reusable in many projects.",
+  "repo_language": "HTML",
+  "repo_topics": [],
+  "repo_created_at": "2022-05-27T10:07:33Z",
+  "repo_updated_at": "2026-01-06T15:03:36Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个开源代码库准入流程的状态图。整体分成两大阶段：New和InReview。New阶段要处理表单提交，InReview里面要并行跑法律审查、IP扫描和安全扫描三个检查流。",
+      "elements_involved": [
+        "New",
+        "InReview",
+        "FormSubmission"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。New阶段内部是从Incomplete到DataComplete的过渡，对吧？然后进入InReview。我想确认一下，这三个检查流是互相独立的并行状态，还是有什么先后依赖？",
+      "elements_involved": [
+        "Incomplete",
+        "DataComplete",
+        "AwaitingLegalReview",
+        "AwaitingIPScan",
+        "AwaitingSecurityScan"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，New阶段就是填表单。三个检查流是并行的，各自有独立的生命周期。不过IP扫描这边有个特殊点——如果扫描结果不明确，要进入一个AwaitingIpReview的子状态，那里可以走法律问答的循环，最后根据法务结论决定批准或拒绝。",
+      "elements_involved": [
+        "AwaitingIPScan",
+        "IpScanComplete",
+        "AwaitingIpReview",
+        "AwaitingIpResponse",
+        "LegalQuestionsRaised",
+        "LegalResponsesProvided"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把IP扫描流画出来了：AwaitingIPScan到IpScanComplete，然后choice节点分三条支路——无发现直接IpApproved，有发现直接IpRejected，不明确就进AwaitingIpReview。这个子状态内部也有法律问答循环，最后IpOutcomeProvided再走一个choice到批准或拒绝。另外我加了个回连到AwaitingIPScan的转换，标注\"Dependencies modified\"，表示依赖变更后可以重扫。",
+      "elements_involved": [
+        "IpScanComplete",
+        "ip_if_state",
+        "IpApproved",
+        "IpRejected",
+        "AwaitingIpReview",
+        "IpOutcomeProvided",
+        "legal_ip_if_state",
+        "Dependencies modified"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "法律审查流和安全扫描流也类似处理。法律审查这边是AwaitingLegalReview，有问题就进AwaitingResponse循环，没问题就到OutcomeProvided然后choice分支。安全扫描稍微简单点，扫描完直接choice，但不管是SecurityApproved还是SecurityRejected，都可能因为\"Code updates identified\"回到AwaitingSecurityScan重新扫描。",
+      "elements_involved": [
+        "AwaitingLegalReview",
+        "AwaitingResponse",
+        "OutcomeProvided",
+        "legal_if_state",
+        "LegalApproved",
+        "LegalRejected",
+        "AwaitingSecurityScan",
+        "SecurityScanComplete",
+        "security_if_state",
+        "SecurityApproved",
+        "SecurityRejected",
+        "Code updates identified"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到。我注意到三个并行流都走到终点后，InReview整体要汇总结果。我的理解是加一个choice节点inreview_if_state：任何一个检查失败就整体Rejected，全部通过才Approved。这样对吗？",
+      "elements_involved": [
+        "inreview_if_state",
+        "Rejected",
+        "Approved",
+        "One or more check failed",
+        "All checks pass"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。Approved之后还有个后置状态要注意：代码库运行期间可能触发定期IP或安全扫描，如果发现不合规就进入NonCompliant状态。NonCompliant可以修复后回到Approved，也可以最终走向Retired。另外Approved也可以直接因\"Repository no longer required\"退役。",
+      "elements_involved": [
+        "Approved",
+        "NonCompliant",
+        "Retired",
+        "Periodic IP or security scan raises noncompliance",
+        "Compliance issue resolved",
+        "Repository no longer required"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部画好了。我检查一下：New阶段内部有表单提交流程；InReview三大并行检查流各自带choice分支和可能的循环回退；InReview出口汇总为Approved或Rejected；Approved后续有NonCompliant和Retired的状态机，Rejected和Retired都指向终止状态。结构应该完整了。",
+      "elements_involved": [
+        "New",
+        "InReview",
+        "Approved",
+        "Rejected",
+        "NonCompliant",
+        "Retired",
+        "[*]"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:43Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:27Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:27Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 21356.1988,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

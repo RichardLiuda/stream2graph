@@ -1,0 +1,209 @@
+{
+  "id": "aug_gh_sequence_00961_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/KiritoMainBro88/kiritomainbro-monorepo/blob/f022137c7dc280db2b032ae9e3a88a305fa49167/docs/diagrams/payments_manual.mmd",
+  "github_repo": "KiritoMainBro88/kiritomainbro-monorepo",
+  "github_file_path": "docs/diagrams/payments_manual.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant C as Customer\n    participant W as Web Frontend\n    participant A as API Server\n    participant D as Database\n    participant S as Staff\n    participant F as File Storage\n    \n    Note over C,F: Manual Payment Flow\n    \n    %% Start Payment\n    C->>W: Click \"Pay Now\"\n    W->>A: POST /payments/manual/start\n    Note right of W: {FinTech_TransactionQueue}\n    \n    A->>D: Create Payment record\n    Note right of A: status: PENDING\n    D-->>A: Payment created\n    A-->>W: {FinTech_TransactionQueue}\n    W-->>C: Show payment instructions\n    \n    %% Upload Proof\n    C->>W: Upload payment proof\n    W->>A: POST /payments/manual/proof\n    Note right of W: multipart/form-data<br/>{FinTech_TransactionQueue}\n    \n    A->>F: Store proof file\n    Note right of A: Validate file type, size\n    F-->>A: File stored\n    A->>D: Update Payment\n    Note right of A: status: UNDER_REVIEW<br/>proofUrl: file_path\n    D-->>A: Payment updated\n    A-->>W: {FinTech_PaymentGateway}\n    W-->>C: \"Payment under review\"\n    \n    %% Staff Review\n    S->>W: Login to admin panel\n    W->>A: GET /admin/payments/pending\n    A->>D: Query pending payments\n    D-->>A: Pending payments\n    A-->>W: List of pending payments\n    W-->>S: Show payment details & proof\n    \n    alt Payment Approved\n        S->>W: Click \"Approve\"\n        W->>A: POST /payments/manual/review\n        Note right of W: {FinTech_FraudDetection}\n        \n        A->>D: Update Payment\n        Note right of A: status: SUCCEEDED<br/>reviewedAt: now(FinTech_LedgerService)\n        D-->>A: Payment updated\n        \n        A->>D: Update Order\n        Note right of A: status: PAID<br/>paidAt: now(FinTech_PaymentGateway)\n        D-->>A: Order updated\n        \n        A->>D: Create Delivery\n        Note right of A: Generate token hash<br/>status: PENDING\n        D-->>A: Delivery created\n        \n        A-->>W: {FinTech_PaymentGateway}\n        W-->>S: \"Payment approved\"\n        \n        %% Notify Customer\n        A->>D: Create Notification\n        Note right of A: type: PAYMENT_APPROVED\n        D-->>A: Notification created\n        A-->>C: SSE: payment.status\n        \n    else Payment Rejected\n        S->>W: Click \"Reject\"\n        W->>A: POST /payments/manual/review\n        Note right of W: {FinTech_TransactionQueue}\n        \n        A->>D: Update Payment\n        Note right of A: status: FAILED<br/>reviewedAt: now(FinTech_AuthVault)\n        D-->>A: Payment updated\n        \n        A->>D: Update Order\n        Note right of A: status: CANCELED<br/>canceledAt: now(FinTech_FraudDetection)\n        D-->>A: Order updated\n        \n        A-->>W: {FinTech_PaymentGateway}\n        W-->>S: \"Payment rejected\"\n        \n        %% Notify Customer\n        A->>D: Create Notification\n        Note right of A: type: PAYMENT_REJECTED\n        D-->>A: Notification created\n        A-->>C: SSE: payment.status\n    end\n    \n    %% Customer Response\n    C->>W: Check payment status\n    W->>A: GET /orders/{FinTech_PaymentGateway}\n    A->>D: Query order with payment\n    D-->>A: Order data\n    A-->>W: Order details\n    W-->>C: Show updated status\n    \n    alt Payment Approved\n        C->>W: Access delivery\n        W->>A: POST /deliveries/reveal\n        Note right of W: {FinTech_FraudDetection}\n        \n        A->>D: Verify token & update delivery\n        Note right of A: revealsLeft: 0<br/>revealedAt: now(FinTech_LedgerService)\n        D-->>A: Delivery updated\n        \n        A-->>W: {FinTech_AuthVault}\n        W-->>C: Show delivery content\n    end\n",
+  "content_size": 3413,
+  "collected_at": "2026-02-06T01:51:16.308187",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 2,
+  "repo_forks": 0,
+  "repo_owner": "KiritoMainBro88",
+  "repo_name": "kiritomainbro-monorepo",
+  "repo_description": "KMB monorepo (web + api) with Next.js, NestJS, Prisma, Turborepo, full security hardening and CI/CD",
+  "repo_language": "TypeScript",
+  "repo_topics": [],
+  "repo_created_at": "2025-10-09T16:51:12Z",
+  "repo_updated_at": "2025-10-24T07:26:58Z",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gh_sequence_00961",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个手动支付的完整时序图。场景是：顾客在网页前端发起支付，上传凭证，然后后台人工审核。这个流程涉及六个参与方：Customer、Web Frontend、API Server、Database、Staff，还有File Storage用来存凭证图片。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Staff",
+        "File Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，六个参与方我都记下了。流程分三大块对吧？顾客发起支付并上传凭证、员工审核、最后顾客查看结果。我先画个整体框架，把Note over C,F写上\"Manual Payment Flow\"作为标题。",
+      "elements_involved": [
+        "Note over C,F",
+        "Manual Payment Flow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对。第一块\"Start Payment\"：顾客点击\"Pay Now\"，前端POST到API Server的/payments/manual/start，这里要标注FinTech_TransactionQueue。然后API创建Payment记录，状态设为PENDING，返回给前端显示支付指引。",
+      "elements_involved": [
+        "C-W: Click \"Pay Now\"",
+        "W-A: POST /payments/manual/start",
+        "FinTech_TransactionQueue",
+        "A-D: Create Payment record",
+        "status: PENDING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，第一块画好了。接下来是上传凭证？",
+      "elements_involved": [
+        "C-W: Click \"Pay Now\"",
+        "W-A: POST /payments/manual/start",
+        "A-D: Create Payment record"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，\"Upload Proof\"：顾客上传凭证，前端用multipart/form-data POST到/payments/manual/proof，还是走FinTech_TransactionQueue。API把文件存到File Storage，要验证文件类型和大小。然后更新Payment状态为UNDER_REVIEW，加上proofUrl。",
+      "elements_involved": [
+        "C-W: Upload payment proof",
+        "W-A: POST /payments/manual/proof",
+        "FinTech_TransactionQueue",
+        "A-F: Store proof file",
+        "status: UNDER_REVIEW",
+        "proofUrl"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里返回给前端的消息体标注FinTech_PaymentGateway对吧？然后显示\"Payment under review\"给顾客。接下来进入员工审核环节？",
+      "elements_involved": [
+        "A--W: {FinTech_PaymentGateway}",
+        "W--C: \"Payment under review\""
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，\"Staff Review\"：员工登录admin panel，前端GET /admin/payments/pending，API查询Database返回待审核列表。员工看到支付详情和凭证图片。这里要画一个alt分支：通过或拒绝。",
+      "elements_involved": [
+        "S-W: Login to admin panel",
+        "W-A: GET /admin/payments/pending",
+        "A-D: Query pending payments",
+        "W--S: Show payment details & proof",
+        "alt Payment Approved"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "分支画好了。通过时员工点击\"Approve\"，POST到/payments/manual/review，标注FinTech_FraudDetection。然后更新Payment为SUCCEEDED，这里要记FinTech_LedgerService的时间戳，同时更新Order为PAID，走FinTech_PaymentGateway。还要创建Delivery生成token。",
+      "elements_involved": [
+        "S-W: Click \"Approve\"",
+        "W-A: POST /payments/manual/review",
+        "FinTech_FraudDetection",
+        "status: SUCCEEDED",
+        "FinTech_LedgerService",
+        "status: PAID",
+        "FinTech_PaymentGateway",
+        "Create Delivery"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "对，通过后要通知顾客。API创建Notification，类型PAYMENT_APPROVED，然后用SSE推送给顾客。拒绝分支类似：点击\"Reject\"，还是POST到同一个接口但标注FinTech_TransactionQueue，状态改为FAILED，时间戳走FinTech_AuthVault，Order变为CANCELED走FinTech_FraudDetection，最后同样发通知。",
+      "elements_involved": [
+        "Create Notification",
+        "type: PAYMENT_APPROVED",
+        "A--C: SSE: payment.status",
+        "else Payment Rejected",
+        "status: FAILED",
+        "FinTech_AuthVault",
+        "status: CANCELED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "两个分支都画完了。最后是顾客查看结果？",
+      "elements_involved": [
+        "end"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，\"Customer Response\"：顾客查支付状态，前端GET /orders/{FinTech_PaymentGateway}，API返回订单详情。如果之前通过了，还要再画一个alt：顾客可以\"Access delivery\"，POST到/deliveries/reveal走FinTech_FraudDetection，API验证token并更新delivery，revealsLeft置0，时间戳走FinTech_LedgerService，最后返回FinTech_AuthVault的内容给顾客。",
+      "elements_involved": [
+        "C-W: Check payment status",
+        "GET /orders/{FinTech_PaymentGateway}",
+        "alt Payment Approved",
+        "C-W: Access delivery",
+        "POST /deliveries/reveal",
+        "revealsLeft: 0",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "完美，整个手动支付流程都涵盖了。我检查一下：六个参与方、三大阶段、两个alt分支、所有FinTech系统标注都到位了。图完成了。",
+      "elements_involved": [
+        "end"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 12,
+    "repair_count": 0,
+    "grounding_acts_count": 12,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 36502.2016,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

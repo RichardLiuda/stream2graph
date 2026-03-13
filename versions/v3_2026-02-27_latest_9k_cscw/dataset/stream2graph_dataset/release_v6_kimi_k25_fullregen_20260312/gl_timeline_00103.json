@@ -1,0 +1,960 @@
+{
+  "id": "gl_timeline_00103",
+  "source": "gitlab",
+  "source_url": "https://github.com/ultrasoundlabs/untron-v3/blob/0d9744d83e96791fdb8807f12361f5716e21201d/docs/untron-v3.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ultrasoundlabs/untron-v3",
+  "diagram_type": "timeline",
+  "code": "%% Untron V3 protocol lifecycle (infographic-ready)\n%% Render (local):  npx -y @mermaid-js/mermaid-cli@latest -i docs/untron-v3.mmd -o docs/untron-v3.svg\n%% Render (docker): docker run --rm -v \"$PWD:/data\" ghcr.io/mermaid-js/mermaid-cli/mermaid-cli:latest -i /data/docs/untron-v3.mmd -o /data/docs/untron-v3.svg\n\nflowchart LR\n  %% -------------------------------------------------------------------------\n  %% LANE: ONE-TIME SETUP / CONFIG\n  %% -------------------------------------------------------------------------\n  subgraph SETUP[\"Setup / config (occasionally)\"]\n    direction TB\n    Admin[\"Owner / Admin\"]\n    Realtor[\"Realtor (allowlisted)\"]\n    LP[\"LP (allowlisted for deposits)\"]\n\n    AdminCfg[\"EVM Hub config:\\n- setUsdt\\n- setTronReader\\n- setSwapRate\\n- setBridger\\n- allowlists\\n- pause/unpause\"]\n    Admin --> AdminCfg\n  end\n\n  %% -------------------------------------------------------------------------\n  %% LANE: TRON SIDE (SOURCE CHAIN)\n  %% -------------------------------------------------------------------------\n  subgraph TRON[\"Tron lane (source chain)\"]\n    direction TB\n    Depositor[\"Depositor / end user\"]\n    ReceiverAddr[\"Deterministic receiver address\\n(predictable from controller+salt)\"]\n    TronUSDT[\"Tron USDT (TRC-20 contract)\"]\n\n    TronController[\"UntronController\\n- pullFromReceivers (permissionless)\\n- rebalanceUsdt (permissionless)\\n- emits event hash-chain tip\"]\n    Receiver[\"UntronReceiver (CREATE2)\\n- holds tokens\\n- only controller can pull()\"]\n    EventChainTip[\"Controller eventChainTip (sha256 hash-chain)\\nmaintained by UntronControllerIndex\"]\n\n    Depositor -->|\"TRC-20 transfer(to receiver, amount)\"| TronUSDT\n    TronUSDT -->|\"USDT credited to receiver address\"| ReceiverAddr\n    ReceiverAddr -. \"receiver may not be deployed yet\" .-> Receiver\n\n    TronController -->|\"deploy receiver if missing (CREATE2)\"| Receiver\n    TronController -->|\"pull(token, amount) from receivers\"| Receiver\n    TronController -->|\"emit PulledFromReceiver + other events\\n(advances eventChainTip)\"| EventChainTip\n  end\n\n  %% -------------------------------------------------------------------------\n  %% LANE: EVM HUB (DESTINATION/SETTLEMENT CHAIN)\n  %% -------------------------------------------------------------------------\n  subgraph EVM[\"EVM lane (UntronV3 hub)\"]\n    direction TB\n\n    Hub[\"UntronV3 hub (facets)\\n- LeaseFacet\\n- EntitleFacet\\n- ControllerFacet\\n- FillFacet\\n- LpFacet\\n(+ AdminFacet)\"]\n\n    LeaseTimeline[\"Lease timeline per receiverSalt\\n(active lease by timestamp)\\ncreated by createLease (realtor-only)\"]\n    PayoutCfg[\"Per-lease payout config\\n(targetChainId, targetToken, beneficiary)\\nmutable by lessee\"]\n\n    ClaimQueues[\"Claim queues (FIFO) keyed by targetToken\\nClaim.amountUsdt is always USDT-denominated\"]\n    NextIdx[\"nextIndexByTargetToken[targetToken]\\n(head cursor; filled slots deleted)\"]\n\n    LPVault[\"Fast-fill LP vault (principal-only)\\n- deposit: allowlisted\\n- withdraw: always allowed\\nlpPrincipal[lp] tracks principal\"]\n    HubUSDT[\"Hub-held USDT balance\\n(usdtBalance())\"]\n\n    TronReader[\"tronReader (ITronTxReader)\\nverifies Tron tx:\\n- finalized block headers\\n- inclusion proof\\n- success\\n- parses TriggerSmartContract\"]\n\n    SwapExec[\"SwapExecutor (per-hub)\\nexecutes arbitrary calls\\n+ enforces min output\"]\n\n    Bridger[\"IBridger registry\\nbridgers[targetToken][targetChainId]\"]\n\n    Fill[\"fill(targetToken, maxClaims, calls)\\n- plans batch by available USDT\\n- swaps once per targetToken (optional)\\n- pays locally or via bridger\\n- swap surplus -> filler incentive\"]\n\n    %% Lease creation + payout config\n    Realtor -->|\"createLease(receiverSalt,...)\"| Hub\n    Hub --> LeaseTimeline\n    Hub --> PayoutCfg\n\n    %% LP vault -> available USDT liquidity\n    LP -->|\"deposit(amount USDT)\"| Hub\n    Hub --> LPVault\n    LPVault --> HubUSDT\n\n    %% Claims are created by either fast or slow recognition paths\n    Hub --> ClaimQueues\n    ClaimQueues --> NextIdx\n\n    %% Fill uses USDT liquidity + optional swap + optional bridge\n    HubUSDT -->|\"fill() consumption\"| Hub\n    Hub --> Fill\n    Fill -->|\"if targetToken != USDT:\\nswap once for batch\"| SwapExec\n    Fill -->|\"local transfer OR bridge\"| Bridger\n  end\n\n  %% -------------------------------------------------------------------------\n  %% FAST PATH: PER-DEPOSIT PROOF -> CLAIM (PERMISSIONLESS)\n  %% -------------------------------------------------------------------------\n  subgraph FAST[\"Fast path (permissionless): prove deposit -> claim\"]\n    direction TB\n    PreEntitle[\"preEntitle(receiverSalt, blocks, tx, proof, index)\\n- replay-protected by txId\\n- enforces tx calls tronUsdt\\n- enforces recipient == predicted receiver\\n- attributes to active lease at tx timestamp\\n- recognizedRaw += raw\\n- unbackedRaw += raw\\n- books fees to protocolPnl\\n- enqueues claim(netOut) if > 0\"]\n\n    PreEntitle --> ClaimQueues\n  end\n\n  %% -------------------------------------------------------------------------\n  %% OPTIONAL ACCELERATOR: SUBJECTIVE PRE-ENTITLE (LP-SPONSORED)\n  %% -------------------------------------------------------------------------\n  subgraph SUBJECTIVE[\"Optional accelerator: LP-sponsored subjective pre-entitle\"]\n    direction TB\n    Subj[\"subjectivePreEntitle(txId guess, leaseId guess, raw guess)\\n- debits sponsor lpPrincipal immediately\\n- enqueues normal claim\\n- reimburses sponsor if later preEntitle proves exact match\"]\n    Subj --> ClaimQueues\n  end\n\n  %% -------------------------------------------------------------------------\n  %% SLOW PATH: CONTROLLER EVENT HASH-CHAIN -> BACKING + CLAIMS (PERMISSIONLESS)\n  %% -------------------------------------------------------------------------\n  subgraph SLOW[\"Slow path (permissionless): controller event-chain -> backing + claims\"]\n    direction TB\n    TipTx[\"Tron tx calls isEventChainTip(tipNew)\\n(provable successful tx)\"]\n\n    Relay[\"relayControllerEventChain(blocks, tx, proof, index, events)\\n- proves TipTx\\n- checks to == controller\\n- checks provided events hash-link lastTip->tipNew\\n- enqueues raw events\"]\n    Process[\"processControllerEvents(max)\\n- consumes queued events\\n- PulledFromReceiver:\\n  - updates lastReceiverPullTimestampByToken\\n  - if token==tronUsdt: repays unbackedRaw oldest-first\\n  - leftover becomes profit volume\\n  - profit volume -> claim under lease active at dumpTimestamp\\n- UsdtSet/UsdtRebalanced/ControllerUsdtTransfer update state/PnL\"]\n\n    Relay --> Process\n    Process --> LeaseTimeline\n    Process --> ClaimQueues\n  end\n\n  %% -------------------------------------------------------------------------\n  %% DESTINATION (OPTIONAL): BRIDGE DELIVERY\n  %% -------------------------------------------------------------------------\n  subgraph DEST[\"Destination chain (optional)\"]\n    direction TB\n    Beneficiary[\"Beneficiary receives\\n- local transfer, or\\n- bridged delivery\"]\n  end\n\n  %% -------------------------------------------------------------------------\n  %% CROSS-LANE CONNECTIONS\n  %% -------------------------------------------------------------------------\n  %% Fast path uses tronReader to verify the deposit proof\n  PreEntitle -->|\"uses\"| TronReader\n  TronReader -->|\"verifies included tx\\n+ returns txId,timestamp,to,calldata\"| PreEntitle\n  TronUSDT -->|\"deposit tx is about this contract\"| PreEntitle\n  ReceiverAddr -->|\"recipient must match predicted receiver\"| PreEntitle\n  LeaseTimeline -->|\"active lease at tx timestamp\"| PreEntitle\n\n  %% Subjective reconciliation happens inside preEntitle (if a subjective record exists for txId)\n  Subj -. \"later: preEntitle reimburses sponsor if exact match\" .-> PreEntitle\n\n  %% Slow path uses tronReader to prove the isEventChainTip call happened on Tron\n  TipTx -->|\"proved by\"| TronReader\n  TronReader --> Relay\n  EventChainTip -->|\"tipNew equals controller state\\nat proved block\"| Relay\n\n  %% Filling settles to beneficiary (directly or via bridger)\n  Bridger --> Beneficiary\n  Hub -->|\"if targetChainId == chainid:\\ntransfer(targetToken, beneficiary)\"| Beneficiary\n\n  %% -------------------------------------------------------------------------\n  %% STYLING (lightweight)\n  %% -------------------------------------------------------------------------\n  classDef perm fill:#E8FFF0,stroke:#0E7A39,stroke-width:1px,color:#0E7A39;\n  classDef permOnly fill:#FFF3E0,stroke:#B26A00,stroke-width:1px,color:#7A3F00;\n  classDef core fill:#EEF5FF,stroke:#2B62D6,stroke-width:1px,color:#133B8A;\n  classDef data fill:#F3F4F6,stroke:#6B7280,stroke-width:1px,color:#111827;\n\n  class PreEntitle,Relay,Process perm;\n  class TronController perm;\n  class Fill perm;\n\n  class Realtor,LP,Admin permOnly;\n  class Hub,SwapExec,TronReader core;\n  class LeaseTimeline,PayoutCfg,ClaimQueues,EventChainTip,HubUSDT,LPVault,NextIdx data;\n",
+  "content_size": 8735,
+  "collected_at": "2026-02-06T14:02:45.184165",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "ultrasoundlabs",
+  "repo_name": "untron-v3",
+  "repo_description": "Horizontally scalable cross-chain liquidity protocol for Tron and EVM with bulletproof security",
+  "repo_language": "Rust",
+  "repo_topics": [],
+  "repo_created_at": "2025-05-11T08:54:43Z",
+  "repo_updated_at": "2026-02-06T09:38:30Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为Untron V3协议做一个信息图级别的流程图，重点展示用户从Tron存款到最终在目标链收到资金的完整生命周期。先从最左边的Setup部分开始吧，这里涉及Owner、Realtor和LP三种角色的配置关系。",
+      "elements_involved": [
+        "Setup",
+        "Admin",
+        "Realtor",
+        "LP",
+        "AdminCfg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，Setup这个泳道标注为\"偶尔执行\"的配置操作。Admin通过AdminCfg可以设置USDT合约地址、TronReader、SwapRate、Bridger，还有白名单和暂停功能。Realtor和LP都是allowlisted的对吧？",
+      "elements_involved": [
+        "Admin",
+        "AdminCfg",
+        "Realtor",
+        "LP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Realtor是allowlisted才能创建lease，LP是allowlisted才能deposit。接下来是核心的Tron lane，这是source chain。Depositor通过TRC-20转账把USDT打到deterministic receiver address。",
+      "elements_involved": [
+        "Tron lane",
+        "Depositor",
+        "ReceiverAddr",
+        "TronUSDT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在Tron泳道里画出了Depositor到TronUSDT的转账箭头，标注\"TRC-20 transfer(to receiver, amount)\"。然后TronUSDT到ReceiverAddr显示\"USDT credited to receiver address\"。这个receiver address是predictable的，基于controller+salt？",
+      "elements_involved": [
+        "Depositor",
+        "TronUSDT",
+        "ReceiverAddr"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，predictable from controller+salt。这里有个关键点：ReceiverAddr和UntronReceiver合约之间用虚线连接，标注\"receiver may not be deployed yet\"，因为可能是CREATE2预测地址但合约还没部署。",
+      "elements_involved": [
+        "ReceiverAddr",
+        "Receiver",
+        "CREATE2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加虚线关系。然后TronController可以通过CREATE2部署receiver如果缺失，也能从receiver pull token。还有eventChainTip的维护，这是sha256 hash-chain，由UntronControllerIndex维护。",
+      "elements_involved": [
+        "TronController",
+        "Receiver",
+        "EventChainTip",
+        "CREATE2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在跳到EVM lane，这是destination/settlement chain。核心是UntronV3 hub，包含多个facet：LeaseFacet、EntitleFacet、ControllerFacet、FillFacet、LpFacet，还有AdminFacet。",
+      "elements_involved": [
+        "EVM lane",
+        "Hub",
+        "LeaseFacet",
+        "EntitleFacet",
+        "ControllerFacet",
+        "FillFacet",
+        "LpFacet",
+        "AdminFacet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Hub的结构我画成facets形式。LeaseTimeline是按receiverSalt管理的，active lease由timestamp决定，只能通过realtor-only的createLease创建。PayoutCfg是每个lease可配置的targetChainId、targetToken、beneficiary，lessee可以修改。",
+      "elements_involved": [
+        "Hub",
+        "LeaseTimeline",
+        "PayoutCfg",
+        "Realtor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。LP通过deposit(amount USDT)进入Hub，连接到LPVault，这是fast-fill的principal-only金库。LPVault再连接到HubUSDT，表示Hub持有的USDT余额。ClaimQueues是FIFO队列，按targetToken索引。",
+      "elements_involved": [
+        "LP",
+        "Hub",
+        "LPVault",
+        "HubUSDT",
+        "ClaimQueues",
+        "NextIdx"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画出LP deposit流程和LPVault结构。NextIdx是nextIndexByTargetToken[targetToken]，作为head cursor，filled slots会被deleted。Fill函数消耗HubUSDT，可选swap，然后本地转账或bridge。",
+      "elements_involved": [
+        "LPVault",
+        "HubUSDT",
+        "NextIdx",
+        "Fill",
+        "SwapExec",
+        "Bridger"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在需要两个主要路径：Fast path和Slow path。Fast path是permissionless的，通过preEntitle证明存款并创建claim。这个用单独的subgraph。",
+      "elements_involved": [
+        "Fast path",
+        "PreEntitle",
+        "permissionless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "preEntitle的参数包括receiverSalt、blocks、tx、proof、index。它用txId做replay保护，强制tx调用tronUsdt，强制recipient等于predicted receiver，根据tx timestamp找到active lease，然后recognizedRaw和unbackedRaw都增加，协议收取fee到protocolPnl，最后enqueue claim(netOut)如果大于0。",
+      "elements_involved": [
+        "PreEntitle",
+        "TronReader",
+        "LeaseTimeline",
+        "ClaimQueues",
+        "protocolPnl"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "准确。preEntitle使用TronReader来验证，TronReader返回txId、timestamp、to、calldata。还要注意TronUSDT和ReceiverAddr都要指向PreEntitle，表示deposit tx是关于这个合约的，recipient必须匹配。",
+      "elements_involved": [
+        "PreEntitle",
+        "TronReader",
+        "TronUSDT",
+        "ReceiverAddr"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已建立Fast path结构，PreEntitle连接到ClaimQueues。现在还有一个optional accelerator：LP-sponsored subjective pre-entitle，这个怎么用虚线表示？",
+      "elements_involved": [
+        "Subjective",
+        "Subj",
+        "PreEntitle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Subjective是optional的。subjectivePreEntitle让sponsor LP立即debit lpPrincipal，enqueue正常claim，之后如果preEntitle证明exact match就reimburse sponsor。用虚线连接Subj和PreEntitle，标注\"later: preEntitle reimburses sponsor if exact match\"。",
+      "elements_involved": [
+        "Subj",
+        "PreEntitle",
+        "lpPrincipal",
+        "txId"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "虚线关系已添加。现在Slow path也是permissionless的，基于controller event hash-chain。包括TipTx、Relay和Process三个步骤。",
+      "elements_involved": [
+        "Slow path",
+        "TipTx",
+        "Relay",
+        "Process",
+        "EventChainTip"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "TipTx是Tron上调用isEventChainTip(tipNew)的交易，需要是成功的可证明交易。Relay通过TronReader证明TipTx，检查to==controller，检查提供的事件hash-link从lastTip到tipNew，然后enqueue raw events。",
+      "elements_involved": [
+        "TipTx",
+        "Relay",
+        "TronReader",
+        "EventChainTip"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Process消费queued events，处理PulledFromReceiver时更新lastReceiverPullTimestampByToken，如果token==tronUsdt就按oldest-first repay unbackedRaw，leftover变成profit volume，profit volume减去在dumpTimestamp时active lease下的claim。还有UsdtSet等事件更新state和PnL。",
+      "elements_involved": [
+        "Process",
+        "LeaseTimeline",
+        "ClaimQueues",
+        "unbackedRaw",
+        "profit volume"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后需要Destination chain部分，这是optional的。Beneficiary接收资金，可以是local transfer或bridged delivery。Bridger和Hub都要指向Beneficiary。",
+      "elements_involved": [
+        "Destination chain",
+        "Beneficiary",
+        "Bridger",
+        "Hub"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Destination泳道已添加。Bridger到Beneficiary，Hub到Beneficiary的箭头标注\"if targetChainId == chainid: transfer(targetToken, beneficiary)\"。现在需要添加样式定义，用lightweight的配色。",
+      "elements_involved": [
+        "Bridger",
+        "Hub",
+        "Beneficiary",
+        "targetChainId",
+        "targetToken"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "样式分四类：perm（permissionless函数，绿色系#E8FFF0, #0E7A39），permOnly（仅白名单角色，橙色系#FFF3E0, #B26A00），core（核心合约，蓝色系#EEF5FF, #2B62D6），data（数据存储，灰色系#F3F4F6, #6B7280）。",
+      "elements_involved": [
+        "classDef",
+        "perm",
+        "permOnly",
+        "core",
+        "data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "样式已应用。PreEntitle、Relay、Process、TronController、Fill是perm；Realtor、LP、Admin是permOnly；Hub、SwapExec、TronReader是core；LeaseTimeline、PayoutCfg、ClaimQueues、EventChainTip、HubUSDT、LPVault、NextIdx是data。",
+      "elements_involved": [
+        "PreEntitle",
+        "Relay",
+        "Process",
+        "TronController",
+        "Fill",
+        "Realtor",
+        "LP",
+        "Admin",
+        "Hub",
+        "SwapExec",
+        "TronReader",
+        "LeaseTimeline",
+        "PayoutCfg",
+        "ClaimQueues",
+        "EventChainTip",
+        "HubUSDT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下Fast path的交叉连接：preEntitle使用TronReader，TronReader验证包含的tx并返回txId,timestamp,to,calldata。TronUSDT标注\"deposit tx is about this contract\"，ReceiverAddr标注\"recipient must match predicted receiver\"，LeaseTimeline标注\"active lease at tx timestamp\"。",
+      "elements_involved": [
+        "PreEntitle",
+        "TronReader",
+        "TronUSDT",
+        "ReceiverAddr",
+        "LeaseTimeline"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "这些标注都已添加。Slow path的交叉连接：TipTx通过TronReader证明，TronReader连接到Relay，EventChainTip标注\"tipNew equals controller state at proved block\"。",
+      "elements_involved": [
+        "TipTx",
+        "TronReader",
+        "Relay",
+        "EventChainTip"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Hub的结构需要更清楚展示fill函数的逻辑。fill(targetToken, maxClaims, calls)会plan batch by available USDT，每个targetToken只swap一次（optional），然后pay locally或via bridger，swap surplus作为filler incentive。",
+      "elements_involved": [
+        "Fill",
+        "targetToken",
+        "maxClaims",
+        "SwapExec",
+        "Bridger",
+        "filler incentive"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Fill的详细逻辑已标注在节点内。HubUSDT到Fill的箭头标注\"fill() consumption\"。Fill到SwapExec标注\"if targetToken != USDT: swap once for batch\"，Fill到Bridger标注\"local transfer OR bridge\"。",
+      "elements_involved": [
+        "HubUSDT",
+        "Fill",
+        "SwapExec",
+        "Bridger"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ClaimQueues的结构要强调amountUsdt始终是USDT-denominated，不管最终payout是什么token。这是设计的关键点，保证会计一致性。",
+      "elements_involved": [
+        "ClaimQueues",
+        "amountUsdt",
+        "USDT-denominated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已在ClaimQueues节点内添加\"Claim.amountUsdt is always USDT-denominated\"。检查整体流程：Depositor转账→ReceiverAddr→可能部署Receiver→Controller pull→emit event→Fast path或Slow path→Claim→Fill→Beneficiary。",
+      "elements_involved": [
+        "Depositor",
+        "ReceiverAddr",
+        "Receiver",
+        "TronController",
+        "EventChainTip",
+        "Fast path",
+        "Slow path",
+        "Fill",
+        "Beneficiary"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "流程正确。但Subjective path的位置需要调整，它应该明确显示为accelerator，不是替代Fast path，而是并行可选。LP sponsor承担风险换取速度。",
+      "elements_involved": [
+        "Subjective",
+        "Subj",
+        "LP sponsor",
+        "accelerator"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "调整了Subjective subgraph的标题为\"Optional accelerator: LP-sponsored subjective pre-entitle\"，强调optional性质。Subj节点内标注\"debits sponsor lpPrincipal immediately\"，虚线回连PreEntitle显示reimburse逻辑。",
+      "elements_involved": [
+        "Subjective",
+        "Subj",
+        "lpPrincipal",
+        "PreEntitle"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "TronController的权限设计需要突出：pullFromReceivers和rebalanceUsdt都是permissionless的，任何人可以调用。这很重要，因为协议不依赖特定keeper。",
+      "elements_involved": [
+        "TronController",
+        "pullFromReceivers",
+        "rebalanceUsdt",
+        "permissionless"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已在TronController节点内明确标注\"- pullFromReceivers (permissionless)\"和\"- rebalanceUsdt (permissionless)\"。整个Controller用perm样式类。",
+      "elements_involved": [
+        "TronController",
+        "perm"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SwapExecutor的设计是per-hub的，执行arbitrary calls但enforce min output。这是安全边界，防止filler被MEV攻击。",
+      "elements_involved": [
+        "SwapExec",
+        "per-hub",
+        "min output",
+        "security"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "SwapExec节点内已标注\"executes arbitrary calls + enforces min output\"。IBridger是registry，bridgers[targetToken][targetChainId]映射到具体bridge实现。",
+      "elements_involved": [
+        "SwapExec",
+        "Bridger",
+        "IBridger",
+        "registry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "LeaseTimeline的查询逻辑需要理解：给定receiverSalt和timestamp，能找到active lease。这是entitlement计算的基础。PayoutCfg是per-lease且lessee可变的。",
+      "elements_involved": [
+        "LeaseTimeline",
+        "receiverSalt",
+        "timestamp",
+        "active lease",
+        "PayoutCfg",
+        "lessee"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "LeaseTimeline标注为\"Lease timeline per receiverSalt (active lease by timestamp)\"，PayoutCfg标注为\"Per-lease payout config (targetChainId, targetToken, beneficiary) mutable by lessee\"。",
+      "elements_involved": [
+        "LeaseTimeline",
+        "PayoutCfg",
+        "receiverSalt",
+        "targetChainId",
+        "targetToken",
+        "beneficiary"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Slow path的Process函数中，PulledFromReceiver事件处理时，如果token是tronUsdt，会按oldest-first顺序repay unbackedRaw。这对应Fast path创建的unbacked claim。",
+      "elements_involved": [
+        "Process",
+        "PulledFromReceiver",
+        "tronUsdt",
+        "unbackedRaw",
+        "oldest-first"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解，这是Slow path对Fast path的backing机制。leftover成为profit volume，然后profit volume要减去在dumpTimestamp时active lease下的claim，这是协议收入分配。",
+      "elements_involved": [
+        "Process",
+        "profit volume",
+        "dumpTimestamp",
+        "active lease",
+        "claim"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "检查整个图的交叉lane连接是否完整。PreEntitle使用TronReader，TronReader返回验证结果；TipTx通过TronReader证明；EventChainTip状态用于Relay验证；Bridger和Hub都指向Beneficiary。",
+      "elements_involved": [
+        "cross-lane connections",
+        "PreEntitle",
+        "TronReader",
+        "TipTx",
+        "EventChainTip",
+        "Relay",
+        "Bridger",
+        "Hub",
+        "Beneficiary"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有交叉连接已验证。添加了一个注释块说明渲染命令：local用npx @mermaid-js/mermaid-cli，docker用ghcr.io/mermaid-js/mermaid-cli/mermaid-cli镜像。",
+      "elements_involved": [
+        "render",
+        "local",
+        "docker",
+        "npx",
+        "mermaid-cli"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Receiver合约的设计是CREATE2部署，hold tokens，only controller can pull()。这个权限控制很关键，防止资金被其他人提取。",
+      "elements_involved": [
+        "Receiver",
+        "CREATE2",
+        "only controller",
+        "pull()"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Receiver节点内已标注\"UntronReceiver (CREATE2) - holds tokens - only controller can pull()\"。Controller到Receiver的箭头包括\"deploy receiver if missing (CREATE2)\"和\"pull(token, amount) from receivers\"。",
+      "elements_involved": [
+        "Receiver",
+        "TronController",
+        "CREATE2",
+        "deploy",
+        "pull"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "LPVault的设计要注意：deposit是allowlisted，但withdraw是always allowed。这是为了防止LP随意撤出影响fast-fill流动性，但允许随时退出principal。",
+      "elements_involved": [
+        "LPVault",
+        "deposit",
+        "allowlisted",
+        "withdraw",
+        "always allowed",
+        "lpPrincipal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "LPVault节点内已标注\"Fast-fill LP vault (principal-only) - deposit: allowlisted - withdraw: always allowed - lpPrincipal[lp] tracks principal\"。",
+      "elements_involved": [
+        "LPVault",
+        "lpPrincipal",
+        "deposit",
+        "withdraw"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "NextIdx作为head cursor的设计，filled slots被deleted，这样队列是紧凑的，不会无限增长。这是gas优化。",
+      "elements_involved": [
+        "NextIdx",
+        "head cursor",
+        "filled slots deleted",
+        "FIFO",
+        "gas optimization"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "NextIdx标注为\"nextIndexByTargetToken[targetToken] (head cursor; filled slots deleted)\"。ClaimQueues是FIFO，keyed by targetToken。",
+      "elements_involved": [
+        "NextIdx",
+        "ClaimQueues",
+        "FIFO",
+        "targetToken"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "TronReader的接口设计：验证finalized block headers、inclusion proof、success状态，还要parse TriggerSmartContract。这是轻客户端验证的核心。",
+      "elements_involved": [
+        "TronReader",
+        "ITronTxReader",
+        "finalized block headers",
+        "inclusion proof",
+        "TriggerSmartContract"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "TronReader节点内已标注\"tronReader (ITronTxReader) verifies Tron tx: - finalized block headers - inclusion proof - success - parses TriggerSmartContract\"。",
+      "elements_involved": [
+        "TronReader",
+        "ITronTxReader",
+        "verification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "EventChainTip的sha256 hash-chain设计，UntronControllerIndex维护。Controller emit PulledFromReceiver和其他events时advance这个tip。",
+      "elements_involved": [
+        "EventChainTip",
+        "sha256 hash-chain",
+        "UntronControllerIndex",
+        "PulledFromReceiver",
+        "advances eventChainTip"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "EventChainTip标注为\"Controller eventChainTip (sha256 hash-chain) maintained by UntronControllerIndex\"。Controller到EventChainTip的箭头标注\"emit PulledFromReceiver + other events (advances eventChainTip)\"。",
+      "elements_involved": [
+        "EventChainTip",
+        "TronController",
+        "sha256",
+        "UntronControllerIndex"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "检查所有subgraph的方向：Setup是TB，Tron是TB，EVM是TB，Fast path是TB，Subjective是TB，Slow path是TB，Destination是TB。整体flowchart是LR。",
+      "elements_involved": [
+        "subgraph direction",
+        "TB",
+        "LR",
+        "Setup",
+        "Tron",
+        "EVM",
+        "Fast",
+        "Subjective",
+        "Slow",
+        "DEST"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有方向已确认。整体结构是flowchart LR，三个主泳道从左到右：Setup、Tron、EVM，然后Fast/Subjective/Slow三个路径 subgraph在下方或右侧，Destination在最右。",
+      "elements_involved": [
+        "flowchart LR",
+        "Setup",
+        "Tron",
+        "EVM",
+        "Fast",
+        "Subjective",
+        "Slow",
+        "DEST"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "AdminCfg的具体功能列表：setUsdt、setTronReader、setSwapRate、setBridger、allowlists、pause/unpause。这些是协议治理参数。",
+      "elements_involved": [
+        "AdminCfg",
+        "setUsdt",
+        "setTronReader",
+        "setSwapRate",
+        "setBridger",
+        "allowlists",
+        "pause/unpause"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "AdminCfg节点内已完整列出这些配置项。Admin到AdminCfg的箭头简洁标注为AdminCfg。",
+      "elements_involved": [
+        "Admin",
+        "AdminCfg"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后检查：infographic ready的标注已经体现在注释中，lightweight的样式已应用，所有关键术语如receiverSalt、targetToken、beneficiary、amount USDT、create2、f 0、head cursor都已在图中体现。",
+      "elements_involved": [
+        "infographic ready",
+        "lightweight",
+        "receiverSalt",
+        "targetToken",
+        "beneficiary",
+        "amount USDT",
+        "CREATE2",
+        "f 0",
+        "head cursor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有术语已核对。图的标题是\"Untron V3 protocol lifecycle (infographic-ready)\"。渲染命令注释提供了local和docker两种方式。",
+      "elements_involved": [
+        "title",
+        "Untron V3 protocol lifecycle",
+        "render commands"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "确认一下颜色编码的一致性：perm用绿色#0E7A39，permOnly用橙色#B26A00，core用蓝色#2B62D6，data用灰色#6B7280。stroke-width都是1px保持lightweight。",
+      "elements_involved": [
+        "color coding",
+        "perm",
+        "permOnly",
+        "core",
+        "data",
+        "stroke-width",
+        "lightweight"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "颜色编码已验证。perm: fill #E8FFF0 stroke #0E7A39；permOnly: fill #FFF3E0 stroke #B26A00；core: fill #EEF5FF stroke #2B62D6；data: fill #F3F4F6 stroke #6B7280。所有stroke-width为1px。",
+      "elements_involved": [
+        "classDef",
+        "colors",
+        "E8FFF0",
+        "0E7A39",
+        "FFF3E0",
+        "B26A00",
+        "EEF5FF",
+        "2B62D6",
+        "F3F4F6",
+        "6B7280"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "图的结构完整性检查完成。所有关键流程都覆盖：Setup配置、Tron存款、Fast证明、Subjective加速、Slow backing、Fill结算、Destination交付。权限模型清晰，permissionless函数和allowlisted角色区分明确。",
+      "elements_involved": [
+        "completeness check",
+        "Setup",
+        "Tron deposit",
+        "Fast",
+        "Subjective",
+        "Slow",
+        "Fill",
+        "Destination",
+        "permission model"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "图已完成。最终验证：64个节点和连接，7个subgraph，4个classDef样式，完整的Untron V3协议生命周期可视化，从配置到存款到证明到结算的全流程。",
+      "elements_involved": [
+        "final verification",
+        "nodes",
+        "connections",
+        "subgraphs",
+        "classDef"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好。这个图可以直接用于文档，开发者能快速理解协议架构。特别是Fast path和Slow path的并行设计，以及Subjective accelerator的风险权衡，都 visually clear。",
+      "elements_involved": [
+        "documentation",
+        "Fast path",
+        "Slow path",
+        "Subjective accelerator",
+        "risk tradeoff",
+        "visually clear"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "建议后续可以添加一个sequence diagram版本，展示具体的时序交互，特别是preEntitle和subjectivePreEntitle的竞态条件处理。但这个flowchart版本已经很好地展示了架构overview。",
+      "elements_involved": [
+        "sequence diagram",
+        "future work",
+        "race condition",
+        "preEntitle",
+        "subjectivePreEntitle",
+        "architecture overview"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意，这个flowchart作为infographic-ready的版本已经满足需求。sequence diagram可以作为补充。现在可以定稿了。",
+      "elements_involved": [
+        "final approval",
+        "infographic-ready",
+        "flowchart",
+        "sequence diagram"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Untron V3协议生命周期图已定稿。所有元素、连接、样式、注释完整，符合infographic-ready标准，可直接用于技术文档和演示。",
+      "elements_involved": [
+        "final",
+        "Untron V3",
+        "protocol lifecycle",
+        "infographic-ready",
+        "complete"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 1,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 134712.575,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

@@ -1,0 +1,356 @@
+{
+  "id": "aug_ot_journey_01123_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/vaskomet/CapstoneProjectMetallinosE-Clean/blob/75dd266f9e5f00ca887adf8d291f36f4503fa0ee/docs/diagrams/flows/PAYMENT_FLOW.mmd",
+  "source_type": "github_search",
+  "github_repo": "vaskomet/CapstoneProjectMetallinosE-Clean",
+  "diagram_type": "journey",
+  "code": "%% Payment Flow Sequence Diagram\n%% This diagram shows the complete payment journey from bid acceptance to job confirmation\n%% View in VS Code with Mermaid extension or paste into https://mermaid.live\n\nsequenceDiagram\n    participant Client as Client Browser\n    participant Frontend as React Frontend\n    participant Backend as Django Backend\n    participant Stripe as Stripe API\n    participant WS as WebSocket Server\n    participant Cleaner as Cleaner Browser\n\n    Note over Client,Cleaner: 1. CLIENT ACCEPTS BID & INITIATES PAYMENT\n\n    Client->>Frontend: Click \"Accept & Pay\" on bid\n    Frontend->>Frontend: Open PaymentModal\n    Frontend->>Frontend: CheckoutForm renders Stripe Elements\n    \n    Note over Frontend: Check if payment already created\n    Frontend->>Frontend: Check paymentIntentCreated.current\n    \n    Frontend->>Backend: POST /api/payments/create-intent/\n    Note right of Backend: Create PaymentIntent<br/>Amount: bid amount<br/>Client: user ID<br/>Cleaner: bid owner\n    \n    Backend->>Stripe: Create PaymentIntent\n    Stripe-->>Backend: Return client_secret\n    Backend->>Backend: Save Payment record<br/>status='pending'<br/>payment_reference=UUID\n    Backend-->>Frontend: Return {HealthTech_LabAnalyzer}\n    \n    Frontend->>Frontend: Set paymentIntentCreated.current = true\n    Frontend->>Frontend: Render CardElement with client_secret\n\n    Note over Client,Cleaner: 2. CLIENT ENTERS CARD & CONFIRMS PAYMENT\n\n    Client->>Frontend: Enter card details\n    Client->>Frontend: Click \"Pay Now\"\n    \n    Frontend->>Frontend: Check payment guards<br/>(HealthTech_LabAnalyzer)\n    \n    Frontend->>Stripe: confirmCardPayment(HealthTech_PatientRecords)\n    Note right of Stripe: 3D Secure if needed<br/>Card validation<br/>Charge authorization\n    \n    Stripe-->>Frontend: PaymentIntent {HealthTech_DiagnosticEngine}\n\n    Note over Frontend: Payment successful!\n    Frontend->>Frontend: Set paymentSucceeded.current = true\n\n    Note over Client,Cleaner: 3. BACKEND CONFIRMATION & JOB UPDATE\n\n    Frontend->>Backend: POST /api/payments/confirm/<br/>{HealthTech_PatientRecords}\n    \n    Backend->>Stripe: Retrieve PaymentIntent details\n    Stripe-->>Backend: PaymentIntent full data\n    \n    Backend->>Backend: Validate payment_intent.status === 'succeeded'\n    Backend->>Backend: Validate client_id matches job.client\n    Backend->>Backend: Validate amount matches job.final_price\n    \n    alt Payment Valid\n        Backend->>Backend: Update Payment.status = 'succeeded'\n        Backend->>Backend: Update Payment.paid_at = now(HealthTech_LabAnalyzer)\n        Backend->>Backend: Store payment_method details (HealthTech_LabAnalyzer)\n        \n        Backend->>Backend: Update Job.status = 'confirmed'\n        Backend->>Backend: Update Job.final_price = payment.amount\n        Backend->>Backend: Accept JobBid (HealthTech_EMR_Sync)\n        \n        Note over Backend: Create 4 notifications\n        Backend->>Backend: Create Notification<br/>client: \"Payment Confirmed\"<br/>content_type → Job\n        Backend->>Backend: Create Notification<br/>cleaner: \"Payment Received\"<br/>content_type → Job\n        Backend->>Backend: Create Notification<br/>client: \"Job Confirmed\"<br/>content_type → Job\n        Backend->>Backend: Create Notification<br/>cleaner: \"Job Confirmed\"<br/>content_type → Job\n\n        Note over Client,Cleaner: 4. REAL-TIME NOTIFICATIONS\n\n        Backend->>WS: Serialize notifications<br/>Push via Channels\n        WS->>Client: notifications_{HealthTech_EMR_Sync}<br/>\"Payment Confirmed\"<br/>\"Job Confirmed\"\n        WS->>Cleaner: notifications_{HealthTech_LabAnalyzer}<br/>\"Payment Received\"<br/>\"Job Confirmed\"\n\n        Client->>Frontend: Receive WebSocket message\n        Frontend->>Frontend: Add to notifications array\n        Frontend->>Frontend: Show toast notification\n        Frontend->>Frontend: Dispatch 'jobNotificationReceived'\n        \n        Cleaner->>Frontend: Receive WebSocket message\n        Frontend->>Frontend: Add to notifications array\n        Frontend->>Frontend: Show toast notification\n        Frontend->>Frontend: Dispatch 'jobNotificationReceived'\n        Frontend->>Frontend: Auto-refresh job data<br/>(HealthTech_EMR_Sync)\n\n        Backend-->>Frontend: 200 OK {HealthTech_EMR_Sync}\n        Frontend->>Frontend: Close PaymentModal\n        Frontend->>Client: Show success toast<br/>\"Payment successful!\"\n        Frontend->>Frontend: Refresh job data (HealthTech_DiagnosticEngine)\n\n    else Payment Failed/Invalid\n        Backend-->>Frontend: 400 Bad Request<br/>{HealthTech_EMR_Sync}\n        Frontend->>Client: Show error toast\n    end\n\n    Note over Client,Cleaner: 5. DUPLICATE PREVENTION\n\n    alt User triggers modal re-render\n        Frontend->>Frontend: useEffect runs again\n        Frontend->>Frontend: Check paymentIntentCreated.current<br/>→ Skip payment creation\n    end\n\n    alt React StrictMode double-render\n        Frontend->>Frontend: useEffect runs twice\n        Frontend->>Frontend: isCreatingPayment.current prevents race\n    end\n\n    alt Accidental double-submit\n        Frontend->>Backend: POST /api/payments/create-intent/\n        Backend-->>Frontend: 400 \"Job already confirmed\"\n        Frontend->>Frontend: Detect isAlreadyConfirmed error\n        Frontend->>Frontend: Set paymentSucceeded.current = true\n        Frontend->>Frontend: Skip error toast (HealthTech_DiagnosticEngine)\n    end\n\n    Note over Client,Cleaner: RESULT: Job confirmed, payment processed, both users notified in real-time!\n",
+  "content_size": 5384,
+  "collected_at": "2026-02-06T11:05:17.371380",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "ot_journey_01123",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的支付流程时序图，从客户接受报价到最终工作确认。核心参与者包括Client Browser、React Frontend、Django Backend、Stripe API、WebSocket Server和Cleaner Browser。",
+      "elements_involved": [
+        "Client Browser",
+        "React Frontend",
+        "Django Backend",
+        "Stripe API",
+        "WebSocket Server",
+        "Cleaner Browser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，这是一个清洁服务平台的支付场景。我注意到有六个参与者，其中Client Browser和Cleaner Browser是两端用户，中间通过WebSocket Server做实时通知。第一步应该是客户点击\"接受并支付\"按钮对吗？",
+      "elements_involved": [
+        "Client Browser",
+        "Cleaner Browser",
+        "WebSocket Server"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，第一步是客户接受报价并发起支付。需要标注Note说明这是阶段1，然后Client Browser到React Frontend触发点击事件，Frontend内部打开PaymentModal并渲染Stripe Elements。",
+      "elements_involved": [
+        "Client Browser",
+        "React Frontend",
+        "PaymentModal",
+        "Stripe Elements"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加阶段1的Note和初始交互。我在Frontend内部加了一个自检步骤：检查paymentIntentCreated.current状态，防止重复创建。然后Frontend向Django Backend发送POST请求到/api/payments/create-intent/。",
+      "elements_involved": [
+        "React Frontend",
+        "Django Backend",
+        "paymentIntentCreated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Backend的处理需要详细一些。创建PaymentIntent时要包含报价金额、客户ID和清洁工商ID。然后调用Stripe API创建意图，保存返回的client_secret，同时在本地数据库创建Payment记录，状态设为pending。",
+      "elements_involved": [
+        "Django Backend",
+        "Stripe API",
+        "PaymentIntent",
+        "client_secret",
+        "Payment record"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Backend逻辑已补充。我添加了右侧注释说明PaymentIntent的创建参数，以及Backend内部保存Payment记录的步骤，包含status='pending'和payment_reference=UUID。返回给Frontend的是包含client_secret的数据。",
+      "elements_involved": [
+        "Django Backend",
+        "Payment record",
+        "client_secret"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "返回结构正确。Frontend收到后要把paymentIntentCreated.current设为true，然后用client_secret渲染CardElement。进入阶段2：客户输入卡信息并点击\"立即支付\"。",
+      "elements_involved": [
+        "React Frontend",
+        "CardElement",
+        "client_secret",
+        "paymentIntentCreated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "阶段2我标注了Note。客户操作后，Frontend内部先检查payment guards，然后调用Stripe的confirmCardPayment。这里需要说明Stripe可能会触发3D Secure验证、卡验证和授权。",
+      "elements_involved": [
+        "Client Browser",
+        "React Frontend",
+        "Stripe API",
+        "3D Secure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "是的，Stripe返回的PaymentIntent状态如果是succeeded，Frontend内部设置paymentSucceeded.current = true，并显示\"支付成功\"。然后进入阶段3：Backend确认和任务更新。",
+      "elements_involved": [
+        "Stripe API",
+        "PaymentIntent",
+        "paymentSucceeded"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "阶段3已添加。Frontend发送POST到/api/payments/confirm/，Backend向Stripe查询PaymentIntent详情，然后在内部进行三重验证：payment_intent.status === 'succeeded'、client_id匹配、金额匹配。",
+      "elements_involved": [
+        "React Frontend",
+        "Django Backend",
+        "Stripe API",
+        "payment validation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "验证通过后，Backend要执行一系列更新：Payment状态改为succeeded、记录paid_at时间、存储payment_method详情、Job状态改为confirmed、设置final_price、接受JobBid。然后创建4条通知。",
+      "elements_involved": [
+        "Django Backend",
+        "Payment",
+        "Job",
+        "JobBid",
+        "Notification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加alt分支\"Payment Valid\"，包含所有Backend内部更新步骤。4条通知分别是：客户\"Payment Confirmed\"、清洁工\"Payment Received\"、客户\"Job Confirmed\"、清洁工\"Job Confirmed\"，都关联Job类型。",
+      "elements_involved": [
+        "Django Backend",
+        "Notification",
+        "Job"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "进入阶段4实时通知。Backend通过WebSocket Server推送序列化后的通知。需要显示两条WebSocket通道：notifications_{client_id}给客户，notifications_{cleaner_id}给清洁工。",
+      "elements_involved": [
+        "Django Backend",
+        "WebSocket Server",
+        "Client Browser",
+        "Cleaner Browser",
+        "notifications"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "阶段4 Note已添加。WebSocket Server分别向Client和Cleaner推送通知消息。两边的Frontend接收消息后，都要执行：添加到通知数组、显示toast、派发jobNotificationReceived事件。",
+      "elements_involved": [
+        "WebSocket Server",
+        "React Frontend",
+        "toast notification",
+        "jobNotificationReceived"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "两边处理逻辑对称，但Cleaner Browser那边还需要自动刷新任务数据。然后Backend返回200 OK，Frontend关闭PaymentModal，给客户显示成功toast，并刷新任务数据。",
+      "elements_involved": [
+        "Cleaner Browser",
+        "React Frontend",
+        "PaymentModal",
+        "job data refresh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充Cleaner端的auto-refresh和完整的成功流程。alt分支的else部分也添加了：验证失败时返回400 Bad Request，Frontend显示错误toast。",
+      "elements_involved": [
+        "Cleaner Browser",
+        "React Frontend",
+        "400 Bad Request",
+        "error toast"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要阶段5专门处理重复和竞态问题。有三种情况：用户触发modal重新渲染、React StrictMode双重渲染、意外双重提交。每种都要有防护机制。",
+      "elements_involved": [
+        "React Frontend",
+        "duplicate prevention",
+        "race condition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "阶段5 Note已添加。第一个alt：useEffect重新运行时检查paymentIntentCreated.current，跳过重复创建。第二个alt：StrictMode双重渲染时用isCreatingPayment.current防止竞态。",
+      "elements_involved": [
+        "React Frontend",
+        "useEffect",
+        "paymentIntentCreated",
+        "isCreatingPayment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "第三个alt需要修正。意外双重提交时，Backend应该返回400 \"Job already confirmed\"，Frontend检测到isAlreadyConfirmed错误后，设置paymentSucceeded.current = true，并且跳过错误toast显示。",
+      "elements_involved": [
+        "Django Backend",
+        "React Frontend",
+        "isAlreadyConfirmed",
+        "paymentSucceeded"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正第三个alt的处理逻辑。现在重复提交会静默处理为成功状态，避免用户困惑。最后加上结果Note：任务确认、支付完成、双方实时收到通知。",
+      "elements_involved": [
+        "Django Backend",
+        "React Frontend",
+        "Job confirmed",
+        "real-time notification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整体流程完整了。我检查一下：阶段1创建支付意图，阶段2确认卡支付，阶段3后端验证和任务更新，阶段4WebSocket实时通知，阶段5重复防护。五个参与者交互清晰。",
+      "elements_involved": [
+        "Client Browser",
+        "React Frontend",
+        "Django Backend",
+        "Stripe API",
+        "WebSocket Server",
+        "Cleaner Browser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下HealthTech相关的标注是否需要调整？我在返回数据处用了HealthTech_LabAnalyzer、HealthTech_PatientRecords、HealthTech_DiagnosticEngine、HealthTech_EMR_Sync这几个占位符，符合你们系统的命名规范吗？",
+      "elements_involved": [
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这些占位符位置正确。LabAnalyzer用于client_secret返回和paid_at时间戳，PatientRecords用于confirmCardPayment调用和确认请求参数，DiagnosticEngine用于支付成功状态和任务数据刷新，EMR_Sync用于JobBid接受和通知推送。可以定稿了。",
+      "elements_involved": [
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "时序图已完成。包含完整的5个阶段、6个参与者、3层alt分支结构，所有HealthTech系统标注就位，重复防护和竞态处理机制清晰。最终Note强调了实时通知和任务确认的结果。",
+      "elements_involved": [
+        "sequence diagram",
+        "5 stages",
+        "6 participants",
+        "alt branches",
+        "HealthTech systems"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 24,
+    "repair_count": 1,
+    "grounding_acts_count": 24,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 62858.2017,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 24
+  }
+}

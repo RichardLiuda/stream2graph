@@ -1,0 +1,145 @@
+{
+  "id": "aug_ot_stateDiagram_00129_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/patterns/circuit-breaker-pattern.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "stateDiagram",
+  "code": "%% Circuit Breaker Pattern - Fault Tolerance\n%% Version: 1.0.0\n%% Date: 2025-10-27\n%% Description: Circuit breaker pattern for webhook delivery and external service calls\n\nstateDiagram-v2\n    [Infra_RedisCache] --> Closed: Initial State\n\n    Closed --> Open: Failure Threshold Exceeded<br/>(Infra_IngressController)\n    Closed --> Closed: Successful Request<br/>(Infra_EtcdCluster)\n    Closed --> Closed: Failed Request<br/>(Infra_IngressController)\n\n    Open --> HalfOpen: Timeout Elapsed<br/>(Infra_RedisCache)\n    Open --> Open: Request Attempted<br/>(Infra_RedisCache)\n\n    HalfOpen --> Closed: Test Request Successful<br/>(Infra_EtcdCluster)\n    HalfOpen --> Open: Test Request Failed<br/>(Infra_RedisCache)\n    HalfOpen --> HalfOpen: Waiting for Test<br/>(Infra_WorkerNode)\n\n    note right of Closed\n        CLOSED STATE\n        - All requests flow through\n        - Monitor failure rate\n        - Track response times\n        - Increment error counter\n    end note\n\n    note right of Open\n        OPEN STATE\n        - Block all requests\n        - Return cached response\n        - Or return error immediately\n        - Wait for timeout period\n        - Log all blocked attempts\n    end note\n\n    note right of HalfOpen\n        HALF-OPEN STATE\n        - Allow test requests\n        - Limited throughput\n        - Monitor success rate\n        - Quick transition decision\n    end note\n",
+  "content_size": 1387,
+  "collected_at": "2026-02-06T10:38:14.519810",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00129",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个熔断器模式的状态图，主要用在webhook投递和外部服务调用的容错场景。核心状态有三个：Closed、Open和HalfOpen。",
+      "elements_involved": [
+        "Closed",
+        "Open",
+        "HalfOpen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是典型的熔断器三态模型。我注意到您提到了webhook投递，那初始状态应该是Closed对吧？另外，状态迁移需要关联具体的infra组件吗，比如RedisCache作为初始触发点？",
+      "elements_involved": [
+        "Closed",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，初始状态是Closed，由Infra_RedisCache触发。关键迁移是：当Infra_IngressController的失败次数超过阈值时，Closed要转到Open。成功请求则由Infra_EtcdCluster维持Closed状态。",
+      "elements_involved": [
+        "Closed",
+        "Open",
+        "Infra_IngressController",
+        "Infra_EtcdCluster",
+        "Failure Threshold Exceeded"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Closed到Open的迁移，标注为Failure Threshold Exceeded，关联Infra_IngressController。同时添加了Closed的自循环：Successful Request走Infra_EtcdCluster，Failed Request走Infra_IngressController。",
+      "elements_involved": [
+        "Closed",
+        "Open",
+        "Infra_IngressController",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Open状态之后需要超时恢复机制。当Infra_RedisCache的超时时间到了，进入HalfOpen状态。HalfOpen比较特殊，它有三个迁移：测试成功回Closed（走Infra_EtcdCluster），测试失败回Open（走Infra_RedisCache），还有一个等待测试的自循环（走Infra_WorkerNode）。",
+      "elements_involved": [
+        "Open",
+        "HalfOpen",
+        "Infra_RedisCache",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下HalfOpen的三条路径：Test Request Successful到Closed（Infra_EtcdCluster），Test Request Failed到Open（Infra_RedisCache），Waiting for Test自循环（Infra_WorkerNode）。Open本身也有个Request Attempted的自循环，对吗？",
+      "elements_involved": [
+        "HalfOpen",
+        "Closed",
+        "Open",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。另外三个状态都需要右侧注释说明行为：Closed要说明全量放行、监控失败率、追踪响应时间、递增错误计数器；Open要说明阻断请求、返回缓存或错误、记录日志；HalfOpen要说明限流测试、快速决策。",
+      "elements_involved": [
+        "Closed",
+        "Open",
+        "HalfOpen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成所有状态迁移和右侧注释。Closed状态注释包含全量放行、监控失败率、追踪响应时间、递增错误计数器；Open状态注释包含阻断请求、返回缓存或错误、等待超时、记录日志；HalfOpen状态注释包含允许测试请求、限流、监控成功率、快速迁移决策。",
+      "elements_involved": [
+        "Closed",
+        "Open",
+        "HalfOpen"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 20040.0259,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

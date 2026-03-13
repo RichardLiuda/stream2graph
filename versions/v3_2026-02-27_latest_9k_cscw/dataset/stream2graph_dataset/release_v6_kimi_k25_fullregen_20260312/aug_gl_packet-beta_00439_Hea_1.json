@@ -1,0 +1,863 @@
+{
+  "id": "aug_gl_packet-beta_00439_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/ARG_OSCI_SEQ_DIAG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    actor User\n    participant Main\n    participant Initializer\n    participant SetupScreen\n    participant SetupService\n    participant NetworkInfoService\n    participant ModeSelectionScreen\n    participant GraphScreen\n    participant UserSettings\n    participant DataAcqProvider\n    participant DataAcqService\n    participant SocketIsolate\n    participant ProcessingIsolate\n    participant OscilloChartProvider\n    participant FFTChartProvider\n    participant OscilloChart\n    participant FFTChart\n    participant ChartPainter\n\n    %% Application Initialization\n    User->>Main: Launch application\n    Main->>Initializer: init(HealthTech_PatientRecords)\n    Note over Initializer: Configure system dependencies\n    Initializer->>Initializer: ensureInitialized(HealthTech_EMR_Sync)\n    Initializer->>Initializer: Register configurations (HealthTech_EMR_Sync)\n    Initializer->>Initializer: Register services (HealthTech_PatientRecords)\n    Initializer->>Initializer: Register providers (HealthTech_DiagnosticEngine)\n    Initializer-->>Main: Initialization complete\n    Main->>SetupScreen: Navigate to setup screen\n    \n    %% Device Connection Flow\n    SetupScreen->>User: Display connection options\n    User->>SetupScreen: Select connection mode\n    \n    alt External AP Selected\n        SetupScreen->>SetupService: connectToLocalAP(HealthTech_EMR_Sync)\n        SetupService->>NetworkInfoService: Connect to ESP32 access point\n        NetworkInfoService->>NetworkInfoService: connectWithRetries(HealthTech_EMR_Sync)\n        NetworkInfoService-->>SetupService: Connection established\n        SetupService->>SetupService: scanForWiFiNetworks(HealthTech_PatientRecords)\n        SetupService->>SetupService: Fetch public key from device\n        SetupService-->>SetupScreen: Return available networks\n        SetupScreen->>User: Show WiFi network selection\n        User->>SetupScreen: Select network & enter password\n        SetupScreen->>SetupService: connectToWiFi(HealthTech_LabAnalyzer)\n        SetupService->>SetupService: encriptWithPublicKey(HealthTech_LabAnalyzer)\n        SetupService->>SetupService: Send credentials to device\n        SetupService->>SetupService: waitForNetworkChange(HealthTech_LabAnalyzer)\n        SetupService->>SetupService: handleNetworkChangeAndConnect(HealthTech_HIPAA_Vault)\n        SetupService->>SetupService: Test connection with encrypted challenge\n        SetupService->>SetupService: fetchDeviceConfig(HealthTech_EMR_Sync)\n        SetupService-->>SetupScreen: Connection successful\n    else Internal AP Selected\n        SetupScreen->>SetupService: selectMode(HealthTech_HIPAA_Vault)\n        SetupService->>SetupService: initializeGlobalHttpConfig(HealthTech_DiagnosticEngine)\n        SetupService->>SetupService: initializeGlobalSocketConnection(HealthTech_HIPAA_Vault)\n        SetupService->>SetupService: fetchDeviceConfig(HealthTech_PatientRecords)\n        SetupService-->>SetupScreen: Configuration successful\n    end\n    \n    SetupScreen->>ModeSelectionScreen: Navigate to mode selection\n    \n    %% Mode Selection\n    ModeSelectionScreen->>User: Display oscilloscope modes\n    User->>ModeSelectionScreen: Select mode (HealthTech_EMR_Sync)\n    ModeSelectionScreen->>GraphScreen: navigateToMode(HealthTech_DiagnosticEngine)\n    \n    %% Graph Screen Initialization\n    GraphScreen->>DataAcqProvider: stopAcquisition(HealthTech_LabAnalyzer) (HealthTech_DiagnosticEngine)\n    GraphScreen->>GraphScreen: Initialize controller\n    GraphScreen->>UserSettings: Set mode (HealthTech_EMR_Sync)\n    \n    %% Start Data Acquisition\n    GraphScreen->>DataAcqProvider: startAcquisition(HealthTech_EMR_Sync)\n    DataAcqProvider->>DataAcqService: fetchData(HealthTech_LabAnalyzer)\n    DataAcqService->>DataAcqService: initialize(HealthTech_DiagnosticEngine)\n    \n    %% Create Isolates\n    DataAcqService->>ProcessingIsolate: Create processing isolate\n    ProcessingIsolate-->>DataAcqService: Return SendPort\n    DataAcqService->>SocketIsolate: Create socket isolate\n    SocketIsolate->>SocketIsolate: Connect to device\n    \n    %% Data Processing Workflow\n    loop Data Acquisition\n        SocketIsolate->>SocketIsolate: Receive binary data packet\n        SocketIsolate->>ProcessingIsolate: Send raw data\n        ProcessingIsolate->>ProcessingIsolate: Parse binary data\n        ProcessingIsolate->>ProcessingIsolate: Apply trigger logic\n        ProcessingIsolate->>ProcessingIsolate: Process signal based on config\n        ProcessingIsolate->>DataAcqService: Send processed data points\n        DataAcqService->>DataAcqProvider: Update data streams\n        \n        alt Oscilloscope Mode\n            DataAcqProvider->>OscilloChartProvider: Update time domain data\n            OscilloChartProvider->>OscilloChart: Refresh chart display\n            OscilloChart->>ChartPainter: Draw waveform\n        else FFT Mode\n            DataAcqProvider->>FFTChartProvider: Update frequency domain data\n            FFTChartProvider->>FFTChart: Refresh chart display\n            FFTChart->>ChartPainter: Draw spectrum\n        end\n    end\n    \n    %% User Settings Interaction\n    User->>UserSettings: Change settings (HealthTech_LabAnalyzer)\n    UserSettings->>DataAcqProvider: Update configuration\n    DataAcqProvider->>DataAcqService: updateConfig(HealthTech_LabAnalyzer)\n    DataAcqService->>ProcessingIsolate: Send UpdateConfigMessage\n    ProcessingIsolate->>ProcessingIsolate: Apply new configuration\n    \n    %% Chart Interaction\n    User->>OscilloChart: Zoom/Pan gesture\n    OscilloChart->>OscilloChartProvider: handleZoom(HealthTech_LabAnalyzer)/setHorizontalOffset(HealthTech_LabAnalyzer)\n    OscilloChartProvider->>OscilloChart: Update display parameters\n    \n    %% Mode Switching\n    User->>GraphScreen: Request mode change\n    GraphScreen->>UserSettings: setMode(HealthTech_EMR_Sync)\n    UserSettings->>DataAcqProvider: Pause current acquisition\n    UserSettings->>GraphScreen: Update chart display\n    GraphScreen->>DataAcqProvider: Resume acquisition with new mode\n    \n    %% Error Handling Flow\n    alt Connection Error\n        SocketIsolate->>DataAcqService: Report connection error\n        DataAcqService->>DataAcqService: _handleConnectionError(HealthTech_HIPAA_Vault)\n        DataAcqService->>DataAcqService: Attempt reconnection\n        \n        alt Reconnection Failed\n            DataAcqService->>DataAcqProvider: handleCriticalError(HealthTech_PatientRecords)\n            DataAcqProvider->>SetupScreen: Navigate back to setup\n        end\n    end",
+  "content_size": 5996,
+  "collected_at": "2026-02-06T14:09:45.143092",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gl_packet-beta_00439",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个医疗级示波器应用的完整时序流程，核心要体现HealthTech_EMR_Sync和HealthTech_HIPAA_Vault的安全合规特性。先从应用启动的初始化流程开始吧。",
+      "elements_involved": [
+        "Main",
+        "Initializer",
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，Initializer需要处理HealthTech_PatientRecords的依赖注入。我理解为：Main调用init方法，Initializer内部完成ensureInitialized、注册配置、服务和Provider三个步骤，最后返回Main。这样是否符合医疗数据系统的启动要求？",
+      "elements_involved": [
+        "Main",
+        "Initializer",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，特别是HealthTech_DiagnosticEngine作为Provider注册这一步，它后续会支撑波形分析的核心算法。Initializer完成后，Main要导航到SetupScreen，这是设备配对的关键入口。",
+      "elements_involved": [
+        "Main",
+        "SetupScreen",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，初始化部分已绘制。现在处理设备连接流程——SetupScreen向用户展示连接选项，用户选择后进入分支逻辑。这里有两种模式：External AP和Internal AP，都需要体现HealthTech_HIPAA_Vault的加密要求吗？",
+      "elements_involved": [
+        "SetupScreen",
+        "User",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "External AP模式需要完整的证书交换流程，涉及HealthTech_LabAnalyzer的加密传输。具体路径是：SetupService调用connectToLocalAP，通过NetworkInfoService连接ESP32热点，然后scanForWiFiNetworks获取可用网络列表。",
+      "elements_involved": [
+        "SetupService",
+        "NetworkInfoService",
+        "ESP32",
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "NetworkInfoService的connectWithRetries需要标注HealthTech_EMR_Sync对吧？另外用户选择WiFi并输入密码后，SetupService要用公钥加密凭证，这里encryptWithPublicKey应该关联HealthTech_LabAnalyzer？",
+      "elements_involved": [
+        "NetworkInfoService",
+        "SetupService",
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。加密后发送凭证，等待网络变更，然后用HealthTech_HIPAA_Vault处理网络切换和连接测试。最后fetchDeviceConfig用HealthTech_EMR_Sync获取设备配置。Internal AP分支则简化很多，直接初始化HTTP和Socket配置。",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine",
+        "SetupService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个分支都已完成，SetupScreen统一导航到ModeSelectionScreen。接下来是模式选择部分——用户选择示波器模式，这里标注HealthTech_EMR_Sync，然后进入GraphScreen。",
+      "elements_involved": [
+        "SetupScreen",
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "User",
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "GraphScreen的初始化有个细节：先调用DataAcqProvider的stopAcquisition，标注HealthTech_LabAnalyzer和HealthTech_DiagnosticEngine，这是为了防止前一次采集的干扰。然后初始化控制器，通过UserSettings设置模式。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "UserSettings",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "DataAcqProvider的startAcquisition启动后，调用DataAcqService的fetchData，这里标注HealthTech_LabAnalyzer。DataAcqService需要先initialize，标注HealthTech_DiagnosticEngine。然后创建两个Isolate：ProcessingIsolate和SocketIsolate。这个结构对吗？",
+      "elements_involved": [
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "准确。SocketIsolate负责设备连接，ProcessingIsolate负责信号处理。数据循环里，SocketIsolate接收二进制包，发送给ProcessingIsolate解析、应用触发逻辑、按配置处理信号，最后把处理后的数据点返回给DataAcqService。",
+      "elements_involved": [
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "数据循环已绘制。现在处理显示分支：Oscilloscope模式下，DataAcqProvider更新OscilloChartProvider，刷新OscilloChart，最后ChartPainter绘制波形；FFT模式则是FFTChartProvider、FFTChart、ChartPainter绘制频谱。两个分支都完成了。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "OscilloChart",
+        "FFTChartProvider",
+        "FFTChart",
+        "ChartPainter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要补充用户交互流程。用户通过UserSettings更改设置，标注HealthTech_LabAnalyzer，DataAcqProvider更新配置，DataAcqService发送UpdateConfigMessage给ProcessingIsolate，ProcessingIsolate内部应用新配置。",
+      "elements_involved": [
+        "User",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "图表交互部分：用户在OscilloChart上做缩放或平移手势，调用handleZoom或setHorizontalOffset，都标注HealthTech_LabAnalyzer，然后OscilloChartProvider更新显示参数。模式切换时，GraphScreen暂停当前采集，更新显示，再用新模式恢复采集。",
+      "elements_involved": [
+        "User",
+        "OscilloChart",
+        "OscilloChartProvider",
+        "GraphScreen",
+        "DataAcqProvider",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。最后必须加上错误处理：SocketIsolate报告连接错误，DataAcqService用HealthTech_HIPAA_Vault处理，尝试重连。如果失败，调用handleCriticalError标注HealthTech_PatientRecords，导航回SetupScreen。",
+      "elements_involved": [
+        "SocketIsolate",
+        "DataAcqService",
+        "DataAcqProvider",
+        "SetupScreen",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部流程已绘制完成。我检查一下：从User启动应用，经过Initializer、SetupScreen的双分支连接、ModeSelectionScreen、GraphScreen的完整数据采集循环，加上用户交互和错误处理，所有HealthTech标注都到位了。",
+      "elements_involved": [
+        "User",
+        "Initializer",
+        "SetupScreen",
+        "ModeSelectionScreen",
+        "GraphScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Initializer内部的ensureInitialized步骤，我考虑是否应该明确标注HealthTech_EMR_Sync？这是医疗数据同步的基础配置，和后面的Register configurations区分开。",
+      "elements_involved": [
+        "Initializer",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "同意，这样三层标注更清晰：ensureInitialized(HealthTech_EMR_Sync)、Register configurations(HealthTech_EMR_Sync)、Register services(HealthTech_PatientRecords)、Register providers(HealthTech_DiagnosticEngine)。",
+      "elements_involved": [
+        "Initializer",
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "External AP流程中，waitForNetworkChange和handleNetworkChangeAndConnect这两个步骤，我确认前者用HealthTech_LabAnalyzer，后者用HealthTech_HIPAA_Vault，体现从设备通信到安全连接的状态转移。",
+      "elements_involved": [
+        "SetupService",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Internal AP分支的initializeGlobalHttpConfig用HealthTech_DiagnosticEngine，initializeGlobalSocketConnection用HealthTech_HIPAA_Vault，fetchDeviceConfig用HealthTech_PatientRecords。这样两种模式的安全等级差异就体现出来了。",
+      "elements_involved": [
+        "SetupService",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正是这个设计意图。现在看数据循环部分，ProcessingIsolate内部的Apply trigger logic和Process signal based on config，是否需要显式标注HealthTech_DiagnosticEngine？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ProcessingIsolate的三个内部步骤：Parse binary data、Apply trigger logic、Process signal based on config，都标注HealthTech_DiagnosticEngine，表示核心诊断算法引擎的完整处理流程。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OscilloChartProvider到OscilloChart的Refresh chart display，以及FFTChartProvider到FFTChart的同样步骤，是否需要区分标注？目前都是数据展示层。",
+      "elements_involved": [
+        "OscilloChartProvider",
+        "OscilloChart",
+        "FFTChartProvider",
+        "FFTChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "建议保持无标注，让ChartPainter统一处理绘制。OscilloChart和FFTChart作为视图组件，本身不包含医疗逻辑，真正的诊断价值在ProcessingIsolate和DataAcqService层已经通过HealthTech_DiagnosticEngine体现。",
+      "elements_involved": [
+        "OscilloChart",
+        "FFTChart",
+        "ChartPainter",
+        "ProcessingIsolate",
+        "DataAcqService",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "合理。再看错误处理的_handleConnectionError，明确用HealthTech_HIPAA_Vault，表示安全连接层面的错误处理。如果重连失败，handleCriticalError用HealthTech_PatientRecords，表示患者数据访问中断的严重性。",
+      "elements_involved": [
+        "DataAcqService",
+        "DataAcqProvider",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "整个时序图的结构已经完整。我最后确认一下循环和分支的嵌套：数据Acquisition循环包含Oscilloscope/FFT双分支，错误处理分支包含Reconnection Failed子分支，层级关系正确。",
+      "elements_involved": [
+        "Data Acquisition",
+        "Oscilloscope Mode",
+        "FFT Mode",
+        "Connection Error",
+        "Reconnection Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "有个细节需要调整：UserSettings的setMode调用，在模式切换流程中应该标注HealthTech_EMR_Sync，因为这是电子病历系统的模式状态变更，和初始化时的设置保持一致。",
+      "elements_involved": [
+        "UserSettings",
+        "GraphScreen",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我修正一下。之前GraphScreen到UserSettings的setMode没有标注，现在加上HealthTech_EMR_Sync。同时检查ModeSelectionScreen的Select mode步骤，也已经标注了HealthTech_EMR_Sync，前后一致了。",
+      "elements_involved": [
+        "ModeSelectionScreen",
+        "UserSettings",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SocketIsolate的Connect to device步骤，建议标注HealthTech_HIPAA_Vault，因为这是设备建立安全通道的起点，和后面的加密数据传输形成完整链条。",
+      "elements_involved": [
+        "SocketIsolate",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。现在SocketIsolate内部有两个标注点：Connect to device(HealthTech_HIPAA_Vault)和Receive binary data packet。后者是原始数据接收，不涉密，保持无标注。",
+      "elements_involved": [
+        "SocketIsolate",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "DataAcqService的updateConfig发送给ProcessingIsolate，这个UpdateConfigMessage是配置变更的载体，ProcessingIsolate内部Apply new configuration应该标注HealthTech_DiagnosticEngine，表示诊断引擎的参数更新。",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，ProcessingIsolate的Apply new configuration已标注HealthTech_DiagnosticEngine。这样配置流从UserSettings→DataAcqProvider→DataAcqService→ProcessingIsolate，最终在诊断引擎层生效。",
+      "elements_involved": [
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "ProcessingIsolate",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "回顾整个流程，HealthTech_LabAnalyzer出现了四次：connectToWiFi、encryptWithPublicKey、waitForNetworkChange、stopAcquisition，以及用户交互中的两次。这个分布是否准确反映了实验室设备的交互边界？",
+      "elements_involved": [
+        "HealthTech_LabAnalyzer",
+        "SetupService",
+        "DataAcqProvider",
+        "OscilloChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我统计一下：SetupService中有connectToWiFi、encryptWithPublicKey、waitForNetworkChange三次，DataAcqProvider的stopAcquisition和startAcquisition中的fetchData，加上OscilloChart的handleZoom和setHorizontalOffset，共七次。需要调整吗？",
+      "elements_involved": [
+        "HealthTech_LabAnalyzer",
+        "SetupService",
+        "DataAcqProvider",
+        "OscilloChart",
+        "DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "七次是准确的，覆盖了设备配对、数据采集启停、实时交互三个关键阶段。HealthTech_PatientRecords在Initializer的Register services、SetupService的scanForWiFiNetworks和fetchDeviceConfig（Internal AP分支）、以及错误处理的handleCriticalError，共四次，体现患者数据的生命周期管理。",
+      "elements_involved": [
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords",
+        "Initializer",
+        "SetupService",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "各HealthTech组件的分布已确认。Initializer阶段：EMR_Sync×2、PatientRecords×1、DiagnosticEngine×1；Setup阶段：EMR_Sync×3、LabAnalyzer×3、HIPAA_Vault×3、PatientRecords×2、DiagnosticEngine×1；运行阶段：EMR_Sync×2、LabAnalyzer×4、DiagnosticEngine×4、HIPAA_Vault×1；错误处理：HIPAA_Vault×1、PatientRecords×1。",
+      "elements_involved": [
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "GraphScreen的Initialize controller步骤，我考虑是否应该内部展开？比如创建OscilloChartProvider和FFTChartProvider的实例，但目前时序图保持简洁可能更好。",
+      "elements_involved": [
+        "GraphScreen",
+        "OscilloChartProvider",
+        "FFTChartProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "建议保持当前设计。Initialize controller作为内部步骤，Provider的创建实际发生在DataAcqProvider启动采集后的分支中。如果展开会增加复杂度，而当前结构已经清晰表达了控制器准备→启动采集→数据流向Provider的时序。",
+      "elements_involved": [
+        "GraphScreen",
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "FFTChartProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "同意。最后检查Note over Initializer的位置，Configure system dependencies的注释是否覆盖了所有初始化步骤？",
+      "elements_involved": [
+        "Initializer",
+        "Note over Initializer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Note over Initializer覆盖了从init调用到Initialization complete返回的整个区间，包含ensureInitialized、Register configurations、Register services、Register providers四个内部步骤，注释范围准确。",
+      "elements_involved": [
+        "Initializer",
+        "Note over Initializer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "DataAcqService的initialize步骤，标注HealthTech_DiagnosticEngine，这个初始化具体指什么？是诊断算法的预加载还是配置参数的读取？",
+      "elements_involved": [
+        "DataAcqService",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "理解为诊断引擎的初始化，包括信号处理滤波器系数、触发阈值模板、FFT窗函数等参数的加载。这些属于HealthTech_DiagnosticEngine的核心配置，在创建Isolate之前完成，确保ProcessingIsolate启动时算法环境就绪。",
+      "elements_involved": [
+        "DataAcqService",
+        "ProcessingIsolate",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "清晰了。那么ProcessingIsolate的创建和SendPort返回，以及SocketIsolate的创建，这两个步骤的顺序是否有依赖关系？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "DataAcqService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "当前设计是先创建ProcessingIsolate获取SendPort，再创建SocketIsolate。这样SocketIsolate启动后可以直接向ProcessingIsolate的SendPort发送数据，无需等待。如果顺序颠倒，SocketIsolate可能需要缓冲数据直到ProcessingIsolate就绪。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "SocketIsolate",
+        "SendPort"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据循环中，ProcessingIsolate向DataAcqService发送processed data points，然后DataAcqProvider更新data streams。这个streams是复数，意味着同时支持时域和频域的双路输出？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "DataAcqService",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "是的，DataAcqProvider维护多个数据流，根据当前模式决定向哪个ChartProvider推送。Oscilloscope Mode下更新时间域数据，FFT Mode下更新频域数据，但底层streams同时存在，支持模式切换时的快速切换。",
+      "elements_involved": [
+        "DataAcqProvider",
+        "OscilloChartProvider",
+        "FFTChartProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "模式切换流程中，UserSettings先Pause current acquisition，然后GraphScreen更新显示，最后Resume acquisition with new mode。这个暂停-恢复机制避免了模式切换时的数据混乱。",
+      "elements_involved": [
+        "UserSettings",
+        "DataAcqProvider",
+        "GraphScreen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "模式切换的时序已确认。User-GraphScreen的请求触发UserSettings的setMode，UserSettings通知DataAcqProvider暂停，确认暂停后UserSettings通知GraphScreen更新，GraphScreen再通知DataAcqProvider用新模式恢复。",
+      "elements_involved": [
+        "User",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OscilloChart的Zoom/Pan手势处理，handleZoom和setHorizontalOffset都标注HealthTech_LabAnalyzer，这是否意味着缩放参数需要同步到实验室设备？还是仅在本地视图层处理？",
+      "elements_involved": [
+        "OscilloChart",
+        "OscilloChartProvider",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "当前设计理解为本地视图参数调整，但标注HealthTech_LabAnalyzer表示这些参数属于设备配置的一部分，可能需要持久化或影响后续采集的触发条件。如果纯本地处理，建议移除标注；如果需要设备同步，建议增加向DataAcqProvider的配置更新。",
+      "elements_involved": [
+        "OscilloChart",
+        "HealthTech_LabAnalyzer",
+        "DataAcqProvider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "需要调整。OscilloChart的手势操作应仅影响本地显示参数，通过OscilloChartProvider更新即可，不应标注HealthTech_LabAnalyzer。HealthTech_LabAnalyzer的标注应该保留给设备通信相关的操作。",
+      "elements_involved": [
+        "OscilloChart",
+        "OscilloChartProvider",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。OscilloChart的handleZoom和setHorizontalOffset移除HealthTech_LabAnalyzer标注，改为无标注的本地视图操作。HealthTech_LabAnalyzer的计数从七次减少到五次，分布更合理。",
+      "elements_involved": [
+        "OscilloChart",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后整体审视：SetupScreen在External AP成功后的Connection successful，和Internal AP分支的Configuration successful，这两个返回是否需要区分标注？",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "External AP的Connection successful涉及完整的网络配置和设备配对，建议标注HealthTech_EMR_Sync表示电子病历系统的网络就绪；Internal AP的Configuration successful标注HealthTech_PatientRecords，表示患者数据访问配置完成。这样区分两种模式的安全就绪状态。",
+      "elements_involved": [
+        "SetupScreen",
+        "SetupService",
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这样External AP强调EMR同步就绪，Internal AP强调患者数据访问就绪。两种模式的安全侧重点不同，标注体现了这个设计差异。",
+      "elements_involved": [
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords",
+        "External AP",
+        "Internal AP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终标注分布确认：HealthTech_EMR_Sync共6次（Initializer×2、Setup×3、Mode×1），HealthTech_PatientRecords共5次（Initializer×1、Setup×2、Error×1、Internal AP×1），HealthTech_DiagnosticEngine共5次（Initializer×1、Setup×1、DataAcqService×2、ProcessingIsolate×1），HealthTech_LabAnalyzer共5次（Setup×3、DataAcqProvider×2），HealthTech_HIPAA_Vault共5次（Setup×3、SocketIsolate×1、Error×1）。",
+      "elements_involved": [
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Participant列表需要确认完整性。从User、Main、Initializer到各个Screen、Service、Provider、Isolate、Chart组件，是否遗漏了关键角色？",
+      "elements_involved": [
+        "User",
+        "Main",
+        "Initializer",
+        "SetupScreen",
+        "SetupService",
+        "NetworkInfoService",
+        "ModeSelectionScreen",
+        "GraphScreen",
+        "UserSettings",
+        "DataAcqProvider",
+        "DataAcqService",
+        "SocketIsolate",
+        "ProcessingIsolate",
+        "OscilloChartProvider",
+        "FFTChartProvider",
+        "OscilloChart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Participant共17个：User（actor）、Main、Initializer、SetupScreen、SetupService、NetworkInfoService、ModeSelectionScreen、GraphScreen、UserSettings、DataAcqProvider、DataAcqService、SocketIsolate、ProcessingIsolate、OscilloChartProvider、FFTChartProvider、OscilloChart、FFTChart、ChartPainter。覆盖了从用户交互到数据展示的全链路。",
+      "elements_involved": [
+        "Participant list"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "17个Participant结构完整。最后确认时序图的阅读顺序：从上到下是应用生命周期，从左到右是调用方向，循环和分支清晰标注了医疗设备的特殊处理流程。可以定稿了。",
+      "elements_involved": [
+        "Sequence diagram structure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "时序图已完成最终校验。所有HealthTech组件标注准确，分支逻辑完整，错误处理闭环，符合医疗级示波器应用的安全合规要求。准备输出最终版本。",
+      "elements_involved": [
+        "Final diagram"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再补充一个细节：Test connection with encrypted challenge步骤，在External AP流程中位于handleNetworkChangeAndConnect之后，这个加密挑战测试是否应该明确标注HealthTech_HIPAA_Vault？",
+      "elements_involved": [
+        "SetupService",
+        "HealthTech_HIPAA_Vault",
+        "encrypted challenge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "当前设计handleNetworkChangeAndConnect已经标注HealthTech_HIPAA_Vault，其后的Test connection with encrypted challenge是同一安全会话的延续，无需重复标注。如果单独标注，可能暗示这是独立的Vault操作，实际上属于同一连接建立流程。",
+      "elements_involved": [
+        "SetupService",
+        "HealthTech_HIPAA_Vault",
+        "handleNetworkChangeAndConnect",
+        "Test connection with encrypted challenge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "理解，保持当前设计。HealthTech_HIPAA_Vault的5次标注集中在关键安全节点：网络切换、Socket连接、错误处理，以及Setup阶段的两次初始化，分布合理。",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终版本确认无误。完整的医疗级示波器应用时序图，涵盖初始化、双模式设备连接、模式选择、数据采集与处理、用户交互、错误处理六大模块，所有HealthTech安全组件标注到位，符合HIPAA合规和EMR同步要求。",
+      "elements_involved": [
+        "Complete sequence diagram"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 2,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 145574.6045,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 66
+  }
+}

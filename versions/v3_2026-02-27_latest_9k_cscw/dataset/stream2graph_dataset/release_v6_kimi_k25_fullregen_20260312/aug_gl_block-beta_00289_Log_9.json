@@ -1,0 +1,161 @@
+{
+  "id": "aug_gl_block-beta_00289_Log_9",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/patterns/circuit-breaker-pattern.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "block-beta",
+  "code": "%% Circuit Breaker Pattern - Fault Tolerance\n%% Version: 1.0.0\n%% Date: 2025-10-27\n%% Description: Circuit breaker pattern for webhook delivery and external service calls\n\nstateDiagram-v2\n    [Logistics_DeliveryRoute] --> Closed: Initial State\n\n    Closed --> Open: Failure Threshold Exceeded<br/>(Logistics_TrackingNumber)\n    Closed --> Closed: Successful Request<br/>(Logistics_TrackingNumber)\n    Closed --> Closed: Failed Request<br/>(Logistics_DeliveryRoute)\n\n    Open --> HalfOpen: Timeout Elapsed<br/>(Logistics_DeliveryRoute)\n    Open --> Open: Request Attempted<br/>(Logistics_TrackingNumber)\n\n    HalfOpen --> Closed: Test Request Successful<br/>(Logistics_Warehouse)\n    HalfOpen --> Open: Test Request Failed<br/>(Logistics_Warehouse)\n    HalfOpen --> HalfOpen: Waiting for Test<br/>(Logistics_DeliveryRoute)\n\n    note right of Closed\n        CLOSED STATE\n        - All requests flow through\n        - Monitor failure rate\n        - Track response times\n        - Increment error counter\n    end note\n\n    note right of Open\n        OPEN STATE\n        - Block all requests\n        - Return cached response\n        - Or return error immediately\n        - Wait for timeout period\n        - Log all blocked attempts\n    end note\n\n    note right of HalfOpen\n        HALF-OPEN STATE\n        - Allow test requests\n        - Limited throughput\n        - Monitor success rate\n        - Quick transition decision\n    end note\n",
+  "content_size": 1387,
+  "collected_at": "2026-02-06T14:06:18.048847",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Logistics",
+  "seed_id": "gl_block-beta_00289",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为物流系统的webhook投递设计一个熔断器模式。核心场景是：当外部服务频繁超时或失败时，要快速失败避免级联故障。先定义三个核心状态：Closed、Open、HalfOpen。",
+      "elements_involved": [
+        "Closed",
+        "Open",
+        "HalfOpen",
+        "Logistics_DeliveryRoute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "理解。Closed是正常状态，所有请求都通过；Open是熔断状态，直接拒绝；HalfOpen是试探恢复。那初始状态应该是Closed对吧？还有，状态迁移的触发条件用什么来标识？",
+      "elements_involved": [
+        "Closed",
+        "Open",
+        "HalfOpen",
+        "Logistics_DeliveryRoute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，初始状态是Closed。触发条件我们结合物流实体来区分：用Logistics_TrackingNumber表示请求级别的指标，用Logistics_DeliveryRoute表示路由/时间维度的指标，用Logistics_Warehouse表示仓储服务层面的结果。",
+      "elements_involved": [
+        "Logistics_TrackingNumber",
+        "Logistics_DeliveryRoute",
+        "Logistics_Warehouse",
+        "Closed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主状态迁移：Closed到Open的迁移条件是\"Failure Threshold Exceeded\"，关联Logistics_TrackingNumber——意思是当追踪号层面的失败次数超标就熔断。Closed自身有两个循环：成功请求和失败请求都保持Closed，但分别关联TrackingNumber和DeliveryRoute。",
+      "elements_involved": [
+        "Closed",
+        "Open",
+        "Logistics_TrackingNumber",
+        "Logistics_DeliveryRoute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Open状态的自循环也要加上——\"Request Attempted\"关联TrackingNumber，表示熔断期间如果有请求尝试，记录下来但不放行。然后Open要能进入HalfOpen，条件是\"Timeout Elapsed\"，关联DeliveryRoute，表示路由层面的超时等待结束。",
+      "elements_involved": [
+        "Open",
+        "HalfOpen",
+        "Logistics_TrackingNumber",
+        "Logistics_DeliveryRoute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。HalfOpen的处理逻辑：测试成功就回到Closed，测试失败就回到Open，这两个都用Logistics_Warehouse关联，因为是仓储服务返回的实际结果。还有一个等待测试的自循环，关联DeliveryRoute。",
+      "elements_involved": [
+        "HalfOpen",
+        "Closed",
+        "Open",
+        "Logistics_Warehouse",
+        "Logistics_DeliveryRoute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，HalfOpen到Closed的标注应该是\"Test Request Successful\"，你写的是\"Test Success\"？需要精确一点。另外，三个状态右侧需要详细注释说明行为：Closed要监控失败率、递增错误计数器；Open要返回缓存或立即错误、记录被阻请求；HalfOpen要限制吞吐量、快速决策。",
+      "elements_involved": [
+        "HalfOpen",
+        "Closed",
+        "Open"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正HalfOpen到Closed的标注为\"Test Request Successful\"。三个状态的右侧注释已补充完整：Closed状态注释包含All requests flow through、Monitor failure rate、Increment error counter；Open状态包含Block all requests、Return cached response、Log all blocked attempts；HalfOpen状态包含Allow test requests、Limited throughput、Quick transition decision。",
+      "elements_involved": [
+        "HalfOpen",
+        "Closed",
+        "Open"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "检查一遍：初始状态Closed，失败超标（TrackingNumber）进Open；Open超时（DeliveryRoute）后进HalfOpen；HalfOpen测试成功（Warehouse）回Closed，测试失败（Warehouse）回Open。所有状态都有自循环记录行为。注释也完整了。可以定稿。",
+      "elements_involved": [
+        "Closed",
+        "Open",
+        "HalfOpen",
+        "Logistics_TrackingNumber",
+        "Logistics_DeliveryRoute",
+        "Logistics_Warehouse"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 2,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 32044.7905,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

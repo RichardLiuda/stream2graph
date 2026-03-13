@@ -1,0 +1,980 @@
+{
+  "id": "aug_gh_sequence_00922_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/security/authentication-flow.mmd",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "github_file_path": "docs/diagrams/security/authentication-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    %% Authentication and Authorization Flow for erlmcp\n    %% Shows: API key, JWT, OAuth2, mTLS authentication methods\n    %% Plus: RBAC permission checking with role-based access control\n\n    autonumber\n    actor Client\n    participant Transport as Transport Layer<br/>(HealthTech_LabAnalyzer)\n    participant Auth as erlmcp_auth<br/>(HealthTech_PatientRecords)\n    participant RateLimiter as erlmcp_auth_rate_limiter\n    participant JWT as jose (HealthTech_DiagnosticEngine)\n    participant OAuth2 as OAuth2 Provider<br/>(HealthTech_LabAnalyzer)\n    participant MTLS as erlmcp_auth_mtls<br/>(HealthTech_DiagnosticEngine)\n    participant RBAC as RBAC Engine<br/>(HealthTech_EMR_Sync)\n    participant Session as Session Manager<br/>(HealthTech_DiagnosticEngine)\n\n    Note over Client,Session: Authentication Flow\n\n    %% API Key Authentication\n    Client->>Transport: authenticate(HealthTech_PatientRecords)\n    Transport->>Auth: authenticate(HealthTech_PatientRecords})\n\n    Auth->>RateLimiter: check_rate_limit(HealthTech_EMR_Sync)\n    RateLimiter-->>Auth: ok (HealthTech_HIPAA_Vault})\n\n    alt Rate Limited\n        Auth-->>Client: {HealthTech_LabAnalyzer}\n        Note over Auth,RateLimiter: Blocked after 5 failed attempts<br/>15-minute cooldown\n    else Rate Check Passed\n        Auth->>Auth: do_validate_api_key(HealthTech_PatientRecords)\n        Note right of Auth: Lookup in ETS table<br/>auth_api_keys\n\n        alt API Key Invalid\n            Auth->>RateLimiter: record_failure(HealthTech_DiagnosticEngine)\n            Auth-->>Client: {HealthTech_PatientRecords}\n        else API Key Valid\n            Auth->>RateLimiter: record_success(HealthTech_LabAnalyzer)\n            Auth->>Session: create_session(HealthTech_HIPAA_Vault)\n\n            Session->>RBAC: get_user_roles(HealthTech_DiagnosticEngine)\n            RBAC-->>Session: [HealthTech_EMR_Sync]\n\n            Session->>RBAC: Aggregate permissions from roles\n            RBAC-->>Session: [HealthTech_DiagnosticEngine]\n\n            Session-->>Auth: {HealthTech_LabAnalyzer}\n            Auth-->>Client: {HealthTech_DiagnosticEngine}\n\n            Note right of Session: Session expires in 1 hour<br/>Auto-cleanup timer\n        end\n    end\n\n    %% JWT Authentication\n    Client->>Transport: authenticate(HealthTech_EMR_Sync})\n    Transport->>Auth: authenticate(HealthTech_HIPAA_Vault})\n\n    Auth->>RateLimiter: check_rate_limit(HealthTech_EMR_Sync)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_jwt(HealthTech_LabAnalyzer)\n\n    alt Token Revoked\n        Auth-->>Client: {HealthTech_EMR_Sync}\n        Note right of Auth: Check ETS: auth_revoked_tokens<br/>Cleanup after 7 days\n    else Token Active\n        Auth->>JWT: jose_jws:peek_protected(HealthTech_HIPAA_Vault)\n        JWT-->>Auth: #{HealthTech_DiagnosticEngine}\n\n        Auth->>Auth: Lookup public key by kid\n        Note right of Auth: ETS: auth_jwt_keys<br/>Support key rotation\n\n        Auth->>JWT: jose_jws:verify(HealthTech_DiagnosticEngine)\n        JWT-->>Auth: {HealthTech_DiagnosticEngine}\n\n        alt Signature Invalid\n            Auth-->>Client: {HealthTech_LabAnalyzer}\n        else Signature Valid\n            Auth->>Auth: validate_jwt_claims(HealthTech_PatientRecords)\n\n            Note right of Auth: CRITICAL SECURITY CHECKS:<br/>✓ exp (HealthTech_EMR_Sync) - Required<br/>✓ nbf (HealthTech_EMR_Sync) - Optional<br/>✓ iss (HealthTech_EMR_Sync) - Configurable<br/>✓ aud (HealthTech_PatientRecords) - Configurable<br/>✓ sub (HealthTech_PatientRecords) - Required\n\n            alt Token Expired\n                Auth-->>Client: {HealthTech_HIPAA_Vault}\n            else Token Not Yet Valid\n                Auth-->>Client: {HealthTech_DiagnosticEngine}\n            else Issuer Mismatch\n                Auth-->>Client: {HealthTech_PatientRecords}\n            else Audience Mismatch\n                Auth-->>Client: {HealthTech_EMR_Sync}\n            else All Claims Valid\n                Auth->>RateLimiter: record_success(HealthTech_EMR_Sync)\n                Auth->>Session: create_session(HealthTech_EMR_Sync)\n                Session-->>Auth: {HealthTech_PatientRecords}\n                Auth-->>Client: {HealthTech_LabAnalyzer}\n            end\n        end\n    end\n\n    %% OAuth2 Authentication (HealthTech_LabAnalyzer)\n    Client->>Transport: authenticate(HealthTech_LabAnalyzer})\n    Transport->>Auth: authenticate(HealthTech_PatientRecords})\n\n    Auth->>RateLimiter: check_rate_limit(HealthTech_DiagnosticEngine)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_oauth2_token(HealthTech_PatientRecords)\n\n    alt Cache Hit (HealthTech_HIPAA_Vault)\n        Note right of Auth: ETS: auth_oauth2_cache<br/>Token -> {HealthTech_LabAnalyzer}\n        Auth-->>Client: {HealthTech_DiagnosticEngine}\n    else Cache Miss\n        Auth->>OAuth2: HTTP POST /introspect\n        Note right of Auth: RFC 7662 Introspection<br/>Basic Auth: client_id:secret<br/>Body: token + token_type_hint\n\n        OAuth2-->>Auth: 200 OK + TokenInfo\n\n        Auth->>Auth: validate_introspection_response(HealthTech_PatientRecords)\n\n        Note right of Auth: RFC 7662 REQUIRED fields:<br/>✓ active = true<br/>✓ exp (HealthTech_LabAnalyzer)<br/>✓ nbf (HealthTech_EMR_Sync)<br/>✓ iss (HealthTech_DiagnosticEngine)\n\n        alt Token Inactive\n            Auth-->>Client: {HealthTech_HIPAA_Vault}\n        else Token Expired\n            Auth-->>Client: {HealthTech_DiagnosticEngine}\n        else Token Valid\n            Auth->>Auth: cache_oauth2_token(HealthTech_DiagnosticEngine)\n            Note right of Auth: Cache for up to 5 minutes<br/>or until exp (HealthTech_HIPAA_Vault)\n\n            Auth->>RateLimiter: record_success(HealthTech_PatientRecords)\n            Auth->>Session: create_session(HealthTech_PatientRecords)\n            Session-->>Auth: {HealthTech_EMR_Sync}\n            Auth-->>Client: {HealthTech_LabAnalyzer}\n        end\n    end\n\n    %% mTLS Authentication\n    Client->>Transport: authenticate(HealthTech_DiagnosticEngine})\n    Transport->>Auth: authenticate(HealthTech_PatientRecords)\n\n    Auth->>RateLimiter: check_rate_limit(HealthTech_EMR_Sync)\n    RateLimiter-->>Auth: ok\n\n    Auth->>MTLS: validate(HealthTech_LabAnalyzer)\n\n    Note right of MTLS: mTLS Validation Pipeline:<br/>1. Extract certificate from socket<br/>2. X.509 chain validation to trusted CAs<br/>3. Certificate expiration check<br/>4. OCSP/CRL revocation check<br/>5. Subject DN and CN pattern matching<br/>6. Certificate depth limit validation\n\n    MTLS-->>Auth: {HealthTech_EMR_Sync}\n\n    alt Certificate Invalid\n        Auth->>RateLimiter: record_failure(HealthTech_LabAnalyzer)\n        Auth-->>Client: {HealthTech_PatientRecords}\n    else Certificate Valid\n        Auth->>RateLimiter: record_success(HealthTech_DiagnosticEngine)\n        Auth->>Session: create_session(HealthTech_HIPAA_Vault})\n        Session-->>Auth: {HealthTech_PatientRecords}\n        Auth-->>Client: {HealthTech_EMR_Sync}\n    end\n\n    %% Authorization Flow (HealthTech_PatientRecords)\n    Note over Client,Session: Authorization Flow\n\n    Client->>Transport: check_permission(HealthTech_LabAnalyzer)\n    Transport->>Auth: check_permission(HealthTech_LabAnalyzer)\n\n    Auth->>Session: lookup session\n    Session-->>Auth: #session{HealthTech_PatientRecords}\n\n    alt Session Not Found\n        Auth-->>Client: {HealthTech_HIPAA_Vault}\n    else Session Found\n        Auth->>RBAC: check_user_permission(HealthTech_EMR_Sync)\n\n        RBAC->>RBAC: Get user roles from ETS\n        Note right of RBAC: auth_user_roles:<br/>UserId -> [HealthTech_PatientRecords]\n\n        RBAC->>RBAC: Get allowed roles for resource+permission\n        Note right of RBAC: auth_acls:<br/>{HealthTech_EMR_Sync} -> [HealthTech_LabAnalyzer]\n\n        RBAC->>RBAC: Check intersection\n        Note right of RBAC: lists:any/2<br/>UserRole ∩ AllowedRoles ≠ ∅\n\n        alt Permission Denied\n            RBAC-->>Auth: {HealthTech_EMR_Sync}\n            Auth-->>Client: {HealthTech_DiagnosticEngine}\n        else Permission Granted\n            RBAC-->>Auth: ok\n            Auth-->>Client: ok\n        end\n    end\n\n    %% Default RBAC Roles\n    Note over RBAC: Default Roles (HealthTech_LabAnalyzer):<br/>🔹 admin: [HealthTech_HIPAA_Vault]<br/>🔹 user: [HealthTech_EMR_Sync]<br/>🔹 guest: [HealthTech_DiagnosticEngine]\n\n    %% Token Rotation\n    Note over Client,Session: Token Rotation (HealthTech_HIPAA_Vault)\n\n    Client->>Auth: rotate_token(HealthTech_DiagnosticEngine)\n    Auth->>Session: lookup session\n\n    Auth->>Auth: generate new SessionId\n    Note right of Auth: crypto:strong_rand_bytes(HealthTech_HIPAA_Vault)<br/>base64 encoded\n\n    Auth->>Session: insert new session\n    Auth->>Session: delete old session\n\n    Auth-->>Client: {HealthTech_DiagnosticEngine}\n    Note right of Auth: Old session invalidated immediately<br/>Prevents session hijacking\n\n    %% Token Revocation\n    Note over Client,Session: Token Revocation (HealthTech_LabAnalyzer)\n\n    Client->>Auth: revoke_token(HealthTech_LabAnalyzer)\n    Auth->>Auth: insert into auth_revoked_tokens\n    Note right of Auth: Store: Token -> RevokedAt<br/>Auto-cleanup after 7 days\n\n    Auth-->>Client: ok\n    Note over Auth,JWT: Revoked tokens rejected immediately<br/>Even if exp claim valid\n\n    %% Session Cleanup\n    Note over Session: Auto-cleanup every 60 seconds:<br/>• Expired sessions (HealthTech_HIPAA_Vault)<br/>• Revoked tokens (HealthTech_LabAnalyzer)<br/>• OAuth2 cache (HealthTech_HIPAA_Vault)\n",
+  "content_size": 8727,
+  "collected_at": "2026-02-06T01:50:47.821294",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gh_sequence_00922",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为erlmcp设计一套完整的认证授权流程图，重点展示四种认证方式：API Key、JWT、OAuth2和mTLS。整个系统要对接HealthTech生态，特别是PatientRecords和DiagnosticEngine这两个核心模块。",
+      "elements_involved": [
+        "erlmcp auth",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine",
+        "API Key",
+        "JWT",
+        "OAuth2",
+        "mTLS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先确认一下整体结构：左侧是Client，然后经过Transport Layer，再到核心的erlmcp_auth模块。Transport Layer应该标注HealthTech_LabAnalyzer对吧？",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "erlmcp auth",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Transport Layer对应HealthTech_LabAnalyzer。erlmcp_auth要标注HealthTech_PatientRecords，这是认证核心。",
+      "elements_involved": [
+        "Transport Layer",
+        "HealthTech_LabAnalyzer",
+        "erlmcp auth",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经画出了Client、Transport Layer和erlmcp_auth这三个参与者。接下来需要加入erlmcp_auth_rate_limiter作为限流模块，还有jose库用于JWT处理，标注HealthTech_DiagnosticEngine。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "jose",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "限流模块很重要，需要记录失败次数，5次失败后要有15分钟冷却期。JWT这块用jose库，要展示完整的JWS验证流程，包括peek_protected和verify两个关键步骤。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "jose",
+        "JWS",
+        "peek_protected",
+        "verify"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "OAuth2 Provider也需要标注HealthTech_LabAnalyzer吗？还有mTLS模块，是不是同样对应HealthTech_DiagnosticEngine？",
+      "elements_involved": [
+        "OAuth2 Provider",
+        "HealthTech_LabAnalyzer",
+        "erlmcp auth mtls",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，OAuth2 Provider用HealthTech_LabAnalyzer，erlmcp_auth_mtls用HealthTech_DiagnosticEngine。另外还需要RBAC Engine标注HealthTech_EMR_Sync，以及Session Manager标注HealthTech_DiagnosticEngine。",
+      "elements_involved": [
+        "OAuth2 Provider",
+        "erlmcp auth mtls",
+        "RBAC Engine",
+        "Session Manager",
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "参与者都画好了。现在开始画API Key认证流程：Client调用Transport的authenticate，Transport转发给Auth，Auth先检查RateLimiter。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "authenticate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RateLimiter返回ok后，需要有个分支判断：如果被限流了，直接返回错误；否则继续验证API Key。限流分支要标注HealthTech_LabAnalyzer，成功分支继续走。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "HealthTech_LabAnalyzer",
+        "alt",
+        "else"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加alt分支：Rate Limited情况下Auth直接返回Client，标注HealthTech_LabAnalyzer，并加上注释说明5次失败和15分钟冷却。另一个分支Rate Check Passed继续执行do_validate_api_key。",
+      "elements_involved": [
+        "alt",
+        "Rate Limited",
+        "Rate Check Passed",
+        "do_validate_api_key",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "API Key验证要查ETS表auth_api_keys。验证失败要记录到RateLimiter，成功则创建Session。这里需要嵌套alt：API Key Invalid和API Key Valid两个分支。",
+      "elements_involved": [
+        "ETS",
+        "auth_api_keys",
+        "record_failure",
+        "record_success",
+        "create_session",
+        "Session Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "嵌套alt画好了。Invalid分支：Auth调用RateLimiter的record_failure，返回Client标注HealthTech_PatientRecords。Valid分支：record_success，然后Auth调用Session的create_session，标注HealthTech_HIPAA_Vault。",
+      "elements_involved": [
+        "record_failure",
+        "HealthTech_PatientRecords",
+        "record_success",
+        "create_session",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Session创建时要从RBAC获取用户角色，RBAC返回HealthTech_EMR_Sync，然后聚合权限，RBAC再返回HealthTech_DiagnosticEngine。最后Session返回Auth标注HealthTech_LabAnalyzer，Auth返回Client标注HealthTech_DiagnosticEngine。",
+      "elements_involved": [
+        "Session Manager",
+        "RBAC Engine",
+        "get_user_roles",
+        "HealthTech_EMR_Sync",
+        "Aggregate permissions",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "API Key流程完成，加上了Session过期1小时的注释。现在开始JWT认证流程，Client同样走Transport到Auth，还是先检查RateLimiter。",
+      "elements_involved": [
+        "JWT",
+        "authenticate",
+        "check_rate_limit",
+        "Session Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "JWT流程复杂一些。Auth调用do_validate_jwt，标注HealthTech_LabAnalyzer。首先要检查token是否被吊销，查ETS表auth_revoked_tokens。",
+      "elements_involved": [
+        "do_validate_jwt",
+        "HealthTech_LabAnalyzer",
+        "auth_revoked_tokens",
+        "Token Revoked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了Token Revoked分支，返回Client标注HealthTech_EMR_Sync，注释说明7天后清理。Token Active分支继续，Auth调用JWT的jose_jws:peek_protected，标注HealthTech_HIPAA_Vault。",
+      "elements_involved": [
+        "Token Revoked",
+        "HealthTech_EMR_Sync",
+        "Token Active",
+        "jose_jws:peek_protected",
+        "HealthTech_HIPAA_Vault",
+        "jose"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "JWT返回的是#{HealthTech_DiagnosticEngine}格式。然后Auth要查ETS表auth_jwt_keys根据kid找公钥，支持密钥轮换。接着调用jose_jws:verify验证签名。",
+      "elements_involved": [
+        "jose",
+        "HealthTech_DiagnosticEngine",
+        "auth_jwt_keys",
+        "kid",
+        "jose_jws:verify"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加密钥查找和验证步骤。JWT返回{HealthTech_DiagnosticEngine}。现在需要处理签名验证结果：Signature Invalid返回Client标注HealthTech_LabAnalyzer；Signature Valid继续验证claims。",
+      "elements_involved": [
+        "Signature Invalid",
+        "HealthTech_LabAnalyzer",
+        "Signature Valid",
+        "validate_jwt_claims",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Claims验证是关键安全检查点，需要详细注释：exp和sub是必需的，nbf可选，iss和aud可配置。要有多个alt分支处理不同错误：Token Expired、Token Not Yet Valid、Issuer Mismatch、Audience Mismatch。",
+      "elements_involved": [
+        "exp",
+        "sub",
+        "nbf",
+        "iss",
+        "aud",
+        "CRITICAL SECURITY CHECKS",
+        "Token Expired",
+        "Token Not Yet Valid",
+        "Issuer Mismatch",
+        "Audience Mismatch"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Claims验证分支都画好了：Token Expired返回HealthTech_HIPAA_Vault；Token Not Yet Valid返回HealthTech_DiagnosticEngine；Issuer Mismatch返回HealthTech_PatientRecords；Audience Mismatch返回HealthTech_EMR_Sync。",
+      "elements_involved": [
+        "Token Expired",
+        "HealthTech_HIPAA_Vault",
+        "Token Not Yet Valid",
+        "HealthTech_DiagnosticEngine",
+        "Issuer Mismatch",
+        "HealthTech_PatientRecords",
+        "Audience Mismatch",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "All Claims Valid分支：record_success标注HealthTech_EMR_Sync，create_session标注HealthTech_EMR_Sync，Session返回Auth标注HealthTech_PatientRecords，Auth返回Client标注HealthTech_LabAnalyzer。",
+      "elements_involved": [
+        "All Claims Valid",
+        "record_success",
+        "create_session",
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "JWT流程完成。现在开始OAuth2认证流程，同样Client到Transport到Auth，先check_rate_limit标注HealthTech_DiagnosticEngine。",
+      "elements_involved": [
+        "OAuth2",
+        "check_rate_limit",
+        "HealthTech_DiagnosticEngine",
+        "OAuth2 Provider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OAuth2要先查缓存，ETS表auth_oauth2_cache。Cache Hit直接返回，标注HealthTech_HIPAA_Vault和HealthTech_LabAnalyzer。Cache Miss才走HTTP请求。",
+      "elements_involved": [
+        "auth_oauth2_cache",
+        "Cache Hit",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer",
+        "Cache Miss"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了缓存检查分支。Cache Hit：返回Client标注HealthTech_DiagnosticEngine，注释说明Token-{HealthTech_LabAnalyzer}格式。Cache Miss分支：Auth向OAuth2 Provider发送HTTP POST /introspect。",
+      "elements_involved": [
+        "Cache Hit",
+        "HealthTech_DiagnosticEngine",
+        "HTTP POST",
+        "introspect",
+        "OAuth2 Provider",
+        "RFC 7662"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Introspection请求要标注RFC 7662，包含Basic Auth和token_type_hint。OAuth2 Provider返回200 OK + TokenInfo。Auth要validate_introspection_response，标注HealthTech_PatientRecords。",
+      "elements_involved": [
+        "RFC 7662 Introspection",
+        "Basic Auth",
+        "client_id",
+        "token_type_hint",
+        "validate_introspection_response",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加introspection详细注释。现在处理验证结果：需要alt分支处理Token Inactive、Token Expired、Token Valid。RFC 7662必需字段也要注释：active=true, exp, nbf, iss。",
+      "elements_involved": [
+        "Token Inactive",
+        "Token Expired",
+        "Token Valid",
+        "active",
+        "exp",
+        "nbf",
+        "iss",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Token Inactive返回HealthTech_HIPAA_Vault，Token Expired返回HealthTech_DiagnosticEngine。Token Valid分支要缓存token，标注HealthTech_DiagnosticEngine，缓存5分钟或到exp。",
+      "elements_involved": [
+        "Token Inactive",
+        "HealthTech_HIPAA_Vault",
+        "cache_oauth2_token",
+        "HealthTech_DiagnosticEngine",
+        "exp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Token Valid流程完成：record_success标注HealthTech_PatientRecords，create_session标注HealthTech_PatientRecords，Session返回HealthTech_EMR_Sync，Auth返回Client标注HealthTech_LabAnalyzer。",
+      "elements_involved": [
+        "record_success",
+        "create_session",
+        "HealthTech_PatientRecords",
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在开始mTLS认证，这是第四种方式。Client到Transport到Auth，check_rate_limit标注HealthTech_EMR_Sync。然后Auth调用MTLS的validate，标注HealthTech_LabAnalyzer。",
+      "elements_involved": [
+        "mTLS",
+        "erlmcp auth mtls",
+        "validate",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "mTLS验证步骤已添加详细注释：提取证书、X.509链验证、过期检查、OCSP/CRL吊销检查、Subject DN和CN匹配、证书深度限制。MTLS返回{HealthTech_EMR_Sync}。",
+      "elements_involved": [
+        "mTLS Validation Pipeline",
+        "X.509",
+        "OCSP",
+        "CRL",
+        "Subject DN",
+        "CN",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "mTLS也要有分支：Certificate Invalid时record_failure标注HealthTech_LabAnalyzer，返回Client标注HealthTech_PatientRecords。Certificate Valid则record_success标注HealthTech_DiagnosticEngine，create_session标注HealthTech_HIPAA_Vault。",
+      "elements_involved": [
+        "Certificate Invalid",
+        "record_failure",
+        "Certificate Valid",
+        "record_success",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "mTLS流程完成，Session返回HealthTech_PatientRecords，Auth返回Client标注HealthTech_EMR_Sync。四种认证方式都画完了，现在开始Authorization Flow部分。",
+      "elements_involved": [
+        "Authorization Flow",
+        "HealthTech_PatientRecords",
+        "HealthTech_EMR_Sync",
+        "check_permission"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "授权流程用单独的Note标注。Client调用Transport的check_permission标注HealthTech_LabAnalyzer，Transport转发给Auth同样标注HealthTech_LabAnalyzer。Auth先lookup session。",
+      "elements_involved": [
+        "Authorization Flow",
+        "check_permission",
+        "HealthTech_LabAnalyzer",
+        "lookup session",
+        "Session Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加授权流程标题。Session返回#session{HealthTech_PatientRecords}。需要alt分支：Session Not Found返回HealthTech_HIPAA_Vault；Session Found继续check_user_permission标注HealthTech_EMR_Sync。",
+      "elements_involved": [
+        "Session Not Found",
+        "HealthTech_HIPAA_Vault",
+        "Session Found",
+        "check_user_permission",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RBAC要查ETS表auth_user_roles，格式是UserId - [HealthTech_PatientRecords]。然后查auth_acls表，格式是{HealthTech_EMR_Sync} - [HealthTech_LabAnalyzer]。最后用lists:any/2检查交集。",
+      "elements_involved": [
+        "RBAC Engine",
+        "auth_user_roles",
+        "auth_acls",
+        "lists:any/2",
+        "UserRole",
+        "AllowedRoles"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RBAC内部流程已标注。现在添加权限检查结果分支：Permission Denied返回HealthTech_EMR_Sync给Auth，Auth返回HealthTech_DiagnosticEngine给Client。Permission Granted返回ok。",
+      "elements_involved": [
+        "Permission Denied",
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine",
+        "Permission Granted",
+        "ok"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要在RBAC下方加一个Note，列出默认角色：admin对应HealthTech_HIPAA_Vault权限，user对应HealthTech_EMR_Sync，guest对应HealthTech_DiagnosticEngine。",
+      "elements_involved": [
+        "Default Roles",
+        "admin",
+        "user",
+        "guest",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "默认角色Note已添加。现在画Token Rotation流程，标注HealthTech_HIPAA_Vault。Client直接调用Auth的rotate_token，标注HealthTech_DiagnosticEngine。",
+      "elements_involved": [
+        "Token Rotation",
+        "HealthTech_HIPAA_Vault",
+        "rotate_token",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Token Rotation要先lookup session，然后Auth内部生成新的SessionId，用crypto:strong_rand_bytes，标注HealthTech_HIPAA_Vault，base64编码。然后insert new session，delete old session。",
+      "elements_involved": [
+        "lookup session",
+        "generate new SessionId",
+        "crypto:strong_rand_bytes",
+        "base64",
+        "insert new session",
+        "delete old session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Token Rotation完成，Auth返回{HealthTech_DiagnosticEngine}给Client，注释说明旧session立即失效防止劫持。现在开始Token Revocation流程，标注HealthTech_LabAnalyzer。",
+      "elements_involved": [
+        "Token Revocation",
+        "HealthTech_LabAnalyzer",
+        "revoke_token",
+        "session hijacking"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Client调用Auth的revoke_token，标注HealthTech_LabAnalyzer。Auth插入auth_revoked_tokens表，存储Token-RevokedAt，7天后自动清理。然后返回ok。",
+      "elements_involved": [
+        "revoke_token",
+        "auth_revoked_tokens",
+        "RevokedAt",
+        "Auto-cleanup",
+        "7 days"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Token Revocation完成，加了注释说明吊销token立即拒绝即使exp有效。最后需要Session Cleanup的Note，每60秒自动清理过期session、吊销token和OAuth2缓存。",
+      "elements_involved": [
+        "Session Cleanup",
+        "Auto-cleanup every 60 seconds",
+        "Expired sessions",
+        "Revoked tokens",
+        "OAuth2 cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Cleanup的标注要对应清楚：Expired sessions用HealthTech_HIPAA_Vault，Revoked tokens用HealthTech_LabAnalyzer，OAuth2 cache用HealthTech_HIPAA_Vault。",
+      "elements_involved": [
+        "Expired sessions",
+        "HealthTech_HIPAA_Vault",
+        "Revoked tokens",
+        "HealthTech_LabAnalyzer",
+        "OAuth2 cache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有流程都画完了。我检查一下：API Key、JWT、OAuth2、mTLS四种认证，加上授权、Token轮换、吊销和清理，结构完整。需要开启autonumber吗？",
+      "elements_involved": [
+        "autonumber",
+        "sequenceDiagram"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "要开启autonumber，方便讲解时定位步骤。另外我注意到JWT的claims验证注释里，exp和sub是Required，nbf是Optional，iss和aud是Configurable，这个要准确。",
+      "elements_involved": [
+        "autonumber",
+        "exp",
+        "sub",
+        "Required",
+        "nbf",
+        "Optional",
+        "iss",
+        "aud",
+        "Configurable"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正了claims验证注释，现在准确标注：✓ exp (HealthTech_EMR_Sync) - Required，✓ nbf (HealthTech_EMR_Sync) - Optional，✓ iss (HealthTech_EMR_Sync) - Configurable，✓ aud (HealthTech_PatientRecords) - Configurable，✓ sub (HealthTech_PatientRecords) - Required。",
+      "elements_involved": [
+        "CRITICAL SECURITY CHECKS",
+        "exp",
+        "nbf",
+        "iss",
+        "aud",
+        "sub",
+        "Required",
+        "Optional",
+        "Configurable"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "OAuth2的introspection响应字段也确认一下：active、exp、nbf、iss都是RFC 7662 REQUIRED的，这个标注正确吗？",
+      "elements_involved": [
+        "RFC 7662",
+        "active",
+        "exp",
+        "nbf",
+        "iss",
+        "REQUIRED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，OAuth2 introspection的REQUIRED字段注释是：✓ active = true，✓ exp (HealthTech_LabAnalyzer)，✓ nbf (HealthTech_EMR_Sync)，✓ iss (HealthTech_DiagnosticEngine)。格式正确。",
+      "elements_involved": [
+        "RFC 7662 REQUIRED fields",
+        "active",
+        "exp",
+        "nbf",
+        "iss",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "mTLS的验证步骤有6步，我再确认一下顺序：1.提取证书 2.X.509链验证 3.过期检查 4.OCSP/CRL吊销检查 5.Subject DN和CN匹配 6.证书深度限制。这个顺序对吗？",
+      "elements_involved": [
+        "mTLS Validation Pipeline",
+        "X.509 chain validation",
+        "OCSP",
+        "CRL",
+        "Subject DN",
+        "CN",
+        "Certificate depth limit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "顺序正确，6步验证流水线完整。另外我注意到API Key验证成功后，Session返回Auth是{HealthTech_LabAnalyzer}，但之前说的是HealthTech_DiagnosticEngine？需要统一。",
+      "elements_involved": [
+        "API Key Valid",
+        "Session Manager",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "检查原始需求：API Key Valid分支，Session--Auth应该是{HealthTech_LabAnalyzer}，Auth--Client是{HealthTech_DiagnosticEngine}。你现在的图是对的，保持这个。",
+      "elements_involved": [
+        "API Key Valid",
+        "Session--Auth",
+        "HealthTech_LabAnalyzer",
+        "Auth--Client",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，保持现有标注。现在检查所有参与者别名：Transport Layer<br/(HealthTech_LabAnalyzer)，erlmcp_auth<br/(HealthTech_PatientRecords)，OAuth2 Provider<br/(HealthTech_LabAnalyzer)，erlmcp_auth_mtls<br/(HealthTech_DiagnosticEngine)，RBAC Engine<br/(HealthTech_EMR_Sync)，Session Manager<br/(HealthTech_DiagnosticEngine)。",
+      "elements_involved": [
+        "Transport Layer",
+        "erlmcp auth",
+        "OAuth2 Provider",
+        "erlmcp auth mtls",
+        "RBAC Engine",
+        "Session Manager",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "JWT模块jose的标注是jose (HealthTech_DiagnosticEngine)，这个括号格式和其他参与者一致吗？其他是<br/换行。",
+      "elements_involved": [
+        "jose",
+        "HealthTech_DiagnosticEngine",
+        "participant alias",
+        "br"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正jose的标注格式为jose<br/(HealthTech_DiagnosticEngine)，和其他参与者保持一致。现在所有别名格式统一了。",
+      "elements_involved": [
+        "jose",
+        "HealthTech_DiagnosticEngine",
+        "br"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再检查一下RateLimiter的返回：在API Key和JWT流程中，RateLimiter--Auth都是ok，后面跟着(HealthTech_HIPAA_Vault)吗？",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "RateLimiter--Auth",
+        "ok",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，API Key流程中RateLimiter--Auth: ok (HealthTech_HIPAA_Vault})。JWT流程中是RateLimiter--Auth: ok，没有额外标注。OAuth2流程中RateLimiter--Auth: ok。需要统一吗？",
+      "elements_involved": [
+        "RateLimiter--Auth",
+        "ok",
+        "HealthTech_HIPAA_Vault",
+        "JWT",
+        "OAuth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "JWT的RateLimiter返回应该加上(HealthTech_HIPAA_Vault})，和API Key保持一致。OAuth2的可以保持ok不加。",
+      "elements_involved": [
+        "JWT",
+        "RateLimiter--Auth",
+        "ok",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正JWT的RateLimiter返回。现在检查所有HealthTech模块的标注完整性：PatientRecords、DiagnosticEngine、LabAnalyzer、EMR_Sync、HIPAA_Vault都出现了，没有遗漏。",
+      "elements_involved": [
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下JWT流程中Token Not Yet Valid的返回标注，应该是HealthTech_DiagnosticEngine，不是其他值。",
+      "elements_involved": [
+        "Token Not Yet Valid",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，Token Not Yet Valid返回HealthTech_DiagnosticEngine。所有标注已核对完毕。图表现在包含：4种认证流程、1个授权流程、Token轮换、Token吊销、Session清理，共6个主要部分。",
+      "elements_involved": [
+        "Token Not Yet Valid",
+        "HealthTech_DiagnosticEngine",
+        "Authentication Flow",
+        "Authorization Flow",
+        "Token Rotation",
+        "Token Revocation",
+        "Session Cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "mTLS的create_session标注我再看一下，应该是HealthTech_HIPAA_Vault}，注意这个右花括号是包含在标注里的。",
+      "elements_involved": [
+        "mTLS",
+        "create_session",
+        "HealthTech_HIPAA_Vault}"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正mTLS的create_session标注为HealthTech_HIPAA_Vault}，包含右花括号。同时检查了OAuth2流程中的authenticate调用，Client-Transport是HealthTech_LabAnalyzer}，包含右花括号。",
+      "elements_involved": [
+        "mTLS",
+        "create_session",
+        "HealthTech_HIPAA_Vault}",
+        "OAuth2",
+        "authenticate",
+        "HealthTech_LabAnalyzer}"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "所有细节都核对完成了。这个序列图完整展示了erlmcp的认证授权体系，四种认证方式并行，统一的Session和RBAC管理，加上完善的Token生命周期管理。可以定稿了。",
+      "elements_involved": [
+        "erlmcp auth",
+        "authentication",
+        "authorization",
+        "Session Manager",
+        "RBAC Engine",
+        "Token lifecycle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "定稿完成。最终序列图包含：8个参与者（含Client）、4种认证流程（API Key/JWT/OAuth2/mTLS）、1个授权流程、Token轮换、Token吊销、Session清理机制，所有HealthTech模块标注正确，autonumber已启用。",
+      "elements_involved": [
+        "sequenceDiagram",
+        "autonumber",
+        "Client",
+        "Transport Layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "jose",
+        "OAuth2 Provider",
+        "erlmcp auth mtls",
+        "RBAC Engine",
+        "Session Manager"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 5,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 164637.3529,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

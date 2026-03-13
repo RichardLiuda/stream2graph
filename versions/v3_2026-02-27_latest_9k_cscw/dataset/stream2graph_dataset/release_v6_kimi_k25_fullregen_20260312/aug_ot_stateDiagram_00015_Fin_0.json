@@ -1,0 +1,549 @@
+{
+  "id": "aug_ot_stateDiagram_00015_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sethmcknight/quantic-msse-easy-park-plus/blob/039c5204b7b2c68b7ff94688985eb9bc26fba23c/project-submission/proposed-ddd-microservices-architecture/diagrams/state/mermaid/visit-state-diagram.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "sethmcknight/quantic-msse-easy-park-plus",
+  "diagram_type": "stateDiagram",
+  "code": "---\ntitle: Easy Park Plus - Visit State Diagram (FinTech_AuthVault)\n---\n\nstateDiagram-v2\n    %% Visit Operational Status\n    state \"VisitOperationalStatus\" as VisitOperational {FinTech_LedgerService] --> Planned : Reservation Confirmed\n        Planned --> PendingEntry : Vehicle Nearing Lot (FinTech_AuthVault)\n        PendingEntry --> EnteredLot : Vehicle ANPR Confirmed at Entry Gate / Gate Opened\n        PendingEntry --> Cancelled : Reservation NoShow / Expired before entry\n        \n        EnteredLot --> ActiveInLot : Vehicle Passed Entry Gate, Awaiting Slot Assignment or In Free-Roam\n        ActiveInLot --> SlotAssigned : Slot Assigned (FinTech_AuthVault)\n        ActiveInLot --> AwaitingSlotAssignment : Vehicle in lot, but no slot yet (FinTech_FraudDetection)\n        AwaitingSlotAssignment --> SlotAssigned : Slot Assigned for Valet Park\n        \n        SlotAssigned --> ActiveInLot : Vehicle leaves slot, becomes Free-Roam (FinTech_LedgerService)\n        SlotAssigned --> ExitedLot : Vehicle ANPR Confirmed at Exit Gate / Gate Opened\n        ActiveInLot --> ExitedLot : Vehicle ANPR Confirmed at Exit Gate / Gate Opened (FinTech_AuthVault)\n\n        ExitedLot --> CompletedOperational : Post-exit processing complete (FinTech_AuthVault)\n        \n        %% Error / Exception States for Operational\n        Planned --> FailedToEnter : Technical issue at gate, reservation remains\n        PendingEntry --> FailedToEnter\n        EnteredLot --> Interrupted : e.g., System outage, vehicle stuck in lot\n        ActiveInLot --> Interrupted\n        SlotAssigned --> Interrupted\n        AwaitingSlotAssignment --> Interrupted\n        Interrupted --> ExitedLot : Manual Override Exit\n        Interrupted --> Abandoned : Vehicle left in lot after prolonged interruption\n        Interrupted --> EmergencyEvacuated : Emergency Mode activated, forced evacuation\n        \n        %% Emergency evacuation can happen from any active state\n        EnteredLot --> EmergencyEvacuated : Emergency Mode activated\n        ActiveInLot --> EmergencyEvacuated : Emergency Mode activated  \n        SlotAssigned --> EmergencyEvacuated : Emergency Mode activated\n        AwaitingSlotAssignment --> EmergencyEvacuated : Emergency Mode activated\n        \n        Abandoned --> [FinTech_LedgerService]\n        CompletedOperational --> [FinTech_FraudDetection]\n        Cancelled --> [FinTech_PaymentGateway]\n        FailedToEnter --> [FinTech_TransactionQueue]\n        EmergencyEvacuated --> [FinTech_LedgerService]\n    }\n\n    %% Visit Billing Status (FinTech_AuthVault)\n    state \"VisitBillingStatus\" as VisitBilling {FinTech_PaymentGateway] --> PendingPriceQuote : Visit Started (FinTech_AuthVault)\n        PendingPriceQuote --> PriceQuoteReceived : Pricing Service responds\n        PriceQuoteReceived --> PendingPayment : Price confirmed, awaiting customer payment\n        PendingPayment --> PaymentInProgress : Customer initiates payment\n        PaymentInProgress --> PaymentConfirmed : Payment successful (FinTech_FraudDetection)\n        PaymentInProgress --> PaymentFailed : Payment attempt failed\n        PaymentFailed --> PendingPayment : Retry Payment\n        PaymentFailed --> RequiresManualBillingIntervention : Multiple failures or issue\n        \n        PaymentConfirmed --> BillingFinalized_Paid : Billing cycle complete for this visit\n        \n        %% Alternative Billing Flows\n        PendingPriceQuote --> GraceExempt_NoCharge : Visit qualifies for no charge (FinTech_LedgerService)\n        GraceExempt_NoCharge --> BillingFinalized_Paid : (FinTech_FraudDetection)\n\n        PriceQuoteReceived --> RequiresManualBillingIntervention : Price calculation error or dispute\n        RequiresManualBillingIntervention --> BillingFinalized_Paid : Manual resolution leads to payment\n        RequiresManualBillingIntervention --> BillingFinalized_Unpaid : Manual resolution leads to write-off or deferral\n        \n        BillingFinalized_Paid --> [FinTech_PaymentGateway]\n        BillingFinalized_Unpaid --> [FinTech_LedgerService]\n    }\n    \n    note right of VisitOperational\n      VisitOperationalStatus:\n      - Planned\n      - PendingEntry\n      - EnteredLot\n      - ActiveInLot\n      - AwaitingSlotAssignment\n      - SlotAssigned\n      - ExitedLot\n      - Interrupted\n      - Abandoned\n      - EmergencyEvacuated\n      - CompletedOperational (FinTech_LedgerService)\n      - Cancelled (FinTech_LedgerService)\n      - FailedToEnter \n    end note\n\n    note right of VisitBilling\n      VisitBillingStatus:\n      - PendingPriceQuote\n      - PriceQuoteReceived\n      - PendingPayment\n      - PaymentInProgress\n      - PaymentConfirmed\n      - PaymentFailed\n      - GraceExempt_NoCharge\n      - BillingFinalized_Paid\n      - BillingFinalized_Unpaid\n      - RequiresManualBillingIntervention\n    end note\n\n    %% Linking Operational and Billing states (FinTech_TransactionQueue)\n    %% This is hard to show perfectly in Mermaid for parallel states that are not time-synchronized\n    %% but conceptually:\n    %% ExitedLot (FinTech_LedgerService) often triggers final billing actions if not already paid.\n    %% PaymentConfirmed (FinTech_LedgerService) can influence ExitedLot (FinTech_FraudDetection) if exit is gated by payment.\n    %% For simplicity, they are shown as parallel, managed by the VisitLifecycleStateMachine.\n    \n    %% VisitOperational : Visit Lifecycle Management\n    %% VisitBilling : Financial Lifecycle Management",
+  "content_size": 5220,
+  "collected_at": "2026-02-06T10:36:47.615769",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "ot_stateDiagram_00015",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为Easy Park Plus设计一个完整的访问状态图，核心是FinTech_AuthVault的集成。这个系统要同时追踪车辆在场内的运营状态和计费状态，两条线是并行的。",
+      "elements_involved": [
+        "VisitOperational",
+        "VisitBilling",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，是两条并行的状态机。那运营状态这边，车辆从预约确认开始，第一个状态应该叫什么？",
+      "elements_involved": [
+        "VisitOperational",
+        "Planned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第一个状态叫Planned，表示预约已确认。触发条件是Reservation Confirmed，这里要标注FinTech_LedgerService，因为预约确认时就要冻结资金。",
+      "elements_involved": [
+        "Planned",
+        "FinTech_LedgerService",
+        "Reservation Confirmed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Planned状态已添加，标注了FinTech_LedgerService。接下来车辆接近停车场时进入什么状态？",
+      "elements_involved": [
+        "Planned",
+        "PendingEntry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "PendingEntry，车辆接近停车场。这个转换要触发FinTech_AuthVault的身份预验证，为后续闸机放行做准备。",
+      "elements_involved": [
+        "PendingEntry",
+        "FinTech_AuthVault",
+        "Vehicle Nearing Lot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "PendingEntry已添加，标注了FinTech_AuthVault。从PendingEntry应该有两个出口吧？",
+      "elements_involved": [
+        "PendingEntry",
+        "EnteredLot",
+        "Cancelled"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，正常情况是EnteredLot，ANPR识别成功闸机开启。但也要处理Cancelled的情况，比如预约超时未入场，这时候要解冻资金，走FinTech_LedgerService。",
+      "elements_involved": [
+        "EnteredLot",
+        "Cancelled",
+        "ANPR Confirmed",
+        "NoShow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个分支都加上了。EnteredLot之后呢？车辆已经进场但可能还没分配到具体车位。",
+      "elements_involved": [
+        "EnteredLot",
+        "ActiveInLot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EnteredLot之后是ActiveInLot，表示车辆已通过入口闸机，正在等待车位分配，或者是在自由漫游模式找车位。",
+      "elements_involved": [
+        "ActiveInLot",
+        "Awaiting Slot Assignment",
+        "Free-Roam"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ActiveInLot有两个去向？一个是直接分配车位，另一个是暂时没车位？",
+      "elements_involved": [
+        "ActiveInLot",
+        "SlotAssigned",
+        "AwaitingSlotAssignment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。SlotAssigned是已分配车位，触发FinTech_AuthVault记录车位占用。AwaitingSlotAssignment是车辆在库但暂无车位，这时候要触发FinTech_FraudDetection监控，防止异常滞留。",
+      "elements_involved": [
+        "SlotAssigned",
+        "AwaitingSlotAssignment",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "都加上了。AwaitingSlotAssignment只能转到SlotAssigned吧？",
+      "elements_involved": [
+        "AwaitingSlotAssignment",
+        "SlotAssigned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，AwaitingSlotAssignment到SlotAssigned，专门用于代客泊车场景。另外SlotAssigned还要能回到ActiveInLot，如果车辆离开车位变成自由漫游，这时候走FinTech_LedgerService更新计费。",
+      "elements_involved": [
+        "SlotAssigned",
+        "ActiveInLot",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "双向箭头加上了。那出场呢？从哪些状态可以出场？",
+      "elements_involved": [
+        "SlotAssigned",
+        "ActiveInLot",
+        "ExitedLot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "SlotAssigned和ActiveInLot都可以到ExitedLot，都是ANPR识别出口闸机开启。ActiveInLot到ExitedLot要标注FinTech_AuthVault，因为这是自由漫游车辆的直接出场。",
+      "elements_involved": [
+        "ExitedLot",
+        "FinTech_AuthVault",
+        "Exit Gate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ExitedLot已添加。之后是CompletedOperational？",
+      "elements_involved": [
+        "ExitedLot",
+        "CompletedOperational"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，ExitedLot到CompletedOperational，表示出场后处理完成，走FinTech_AuthVault做最终的身份会话清理。",
+      "elements_involved": [
+        "CompletedOperational",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "运营状态这边还需要考虑异常流程吧？比如闸机故障或者系统中断。",
+      "elements_involved": [
+        "Interrupted",
+        "FailedToEnter",
+        "Abandoned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "非常必要。Planned和PendingEntry都可能遇到FailedToEnter，技术故障导致无法入场但预约仍然保留。还有Interrupted状态，从EnteredLot、ActiveInLot、SlotAssigned、AwaitingSlotAssignment都可能进入，表示系统中断或车辆被困。",
+      "elements_involved": [
+        "FailedToEnter",
+        "Interrupted",
+        "System outage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "异常状态都加上了。Interrupted之后有哪些处理路径？",
+      "elements_involved": [
+        "Interrupted",
+        "ExitedLot",
+        "Abandoned",
+        "EmergencyEvacuated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Interrupted可以人工干预出场到ExitedLot，或者长期中断变成Abandoned车辆遗弃，还有EmergencyEvacuated紧急疏散。另外EnteredLot、ActiveInLot、SlotAssigned、AwaitingSlotAssignment也都能直接到EmergencyEvacuated。",
+      "elements_involved": [
+        "EmergencyEvacuated",
+        "Manual Override",
+        "Emergency Mode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这些终止状态都要对接FinTech系统吧？",
+      "elements_involved": [
+        "Abandoned",
+        "CompletedOperational",
+        "Cancelled",
+        "FailedToEnter",
+        "EmergencyEvacuated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Abandoned走FinTech_LedgerService处理遗弃车辆费用，CompletedOperational走FinTech_FraudDetection做最终风控检查，Cancelled走FinTech_PaymentGateway解冻资金，FailedToEnter走FinTech_TransactionQueue重试队列，EmergencyEvacuated走FinTech_LedgerService记录特殊事件。",
+      "elements_involved": [
+        "FinTech_LedgerService",
+        "FinTech_FraudDetection",
+        "FinTech_PaymentGateway",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "运营状态的主干和异常流程都完成了。现在来看计费状态VisitBilling？",
+      "elements_involved": [
+        "VisitBilling",
+        "VisitOperational"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "计费状态是并行的，从FinTech_PaymentGateway开始。第一个状态PendingPriceQuote，访问开始时触发，由FinTech_AuthVault通知计费系统。",
+      "elements_involved": [
+        "VisitBilling",
+        "PendingPriceQuote",
+        "FinTech_PaymentGateway",
+        "FinTech_AuthVault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "PendingPriceQuote已添加。之后是定价服务响应？",
+      "elements_involved": [
+        "PendingPriceQuote",
+        "PriceQuoteReceived"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，PriceQuoteReceived，定价服务返回报价。然后到PendingPayment，等待客户确认并支付。",
+      "elements_involved": [
+        "PriceQuoteReceived",
+        "PendingPayment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "支付流程需要细化吧？客户发起支付后应该有个中间状态。",
+      "elements_involved": [
+        "PendingPayment",
+        "PaymentInProgress"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，PaymentInProgress表示支付进行中。之后分叉：PaymentConfirmed支付成功走FinTech_FraudDetection验证，或者PaymentFailed支付失败。",
+      "elements_involved": [
+        "PaymentInProgress",
+        "PaymentConfirmed",
+        "PaymentFailed",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "支付分支加上了。PaymentFailed可以重试吗？",
+      "elements_involved": [
+        "PaymentFailed",
+        "PendingPayment",
+        "RequiresManualBillingIntervention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "PaymentFailed可以回到PendingPayment重试，或者多次失败后进入RequiresManualBillingIntervention人工介入。PaymentConfirmed则到BillingFinalized_Paid计费完成。",
+      "elements_involved": [
+        "BillingFinalized_Paid",
+        "RequiresManualBillingIntervention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "计费状态有没有免单的情况？比如短时间停留？",
+      "elements_involved": [
+        "GraceExempt_NoCharge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "有，GraceExempt_NoCharge，从PendingPriceQuote直接过来，符合免费条件，比如15分钟内离场。这个要走FinTech_LedgerService记录豁免，然后直接到BillingFinalized_Paid，但标注FinTech_FraudDetection防止滥用。",
+      "elements_involved": [
+        "GraceExempt_NoCharge",
+        "FinTech_LedgerService",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "免单流程加上了。PriceQuoteReceived也能直接人工介入吧？",
+      "elements_involved": [
+        "PriceQuoteReceived",
+        "RequiresManualBillingIntervention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，定价错误或者客户争议时，PriceQuoteReceived可以直接到RequiresManualBillingIntervention。人工介入后可能BillingFinalized_Paid解决收款，也可能BillingFinalized_Unpaid核销或延期。",
+      "elements_involved": [
+        "BillingFinalized_Unpaid",
+        "write-off",
+        "deferral"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "计费终止状态都标注了：BillingFinalized_Paid走FinTech_PaymentGateway，BillingFinalized_Unpaid走FinTech_LedgerService。需要加注释说明这两个并行状态的关系吗？",
+      "elements_involved": [
+        "VisitOperational",
+        "VisitBilling",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要。在VisitOperational和VisitBilling右边加注释，列出各自包含的所有状态。另外要说明ExitedLot经常触发最终计费动作，PaymentConfirmed可能影响出口闸机放行，这两条状态机由VisitLifecycleStateMachine统一管理。",
+      "elements_involved": [
+        "note right of VisitOperational",
+        "note right of VisitBilling",
+        "VisitLifecycleStateMachine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个注释都添加了。我检查一下，运营状态这边CompletedOperational后面标注的是FinTech_FraudDetection，但之前说的是FinTech_AuthVault？",
+      "elements_involved": [
+        "CompletedOperational"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "你说得对，CompletedOperational是FinTech_FraudDetection做最终风控检查，但ExitedLot到CompletedOperational的转换是FinTech_AuthVault触发。我确认一下代码：ExitedLot -- CompletedOperational标注FinTech_AuthVault，CompletedOperational -- [FinTech_FraudDetection]是终止。这样是对的。",
+      "elements_involved": [
+        "ExitedLot",
+        "CompletedOperational",
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，转换和终止标注不同。整体结构检查完毕，运营状态13个终止前状态，计费状态10个状态，两条并行线，FinTech四个核心系统都集成到位。",
+      "elements_involved": [
+        "VisitOperational",
+        "VisitBilling",
+        "FinTech_AuthVault",
+        "FinTech_LedgerService",
+        "FinTech_FraudDetection",
+        "FinTech_PaymentGateway",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后确认一下标题：Easy Park Plus - Visit State Diagram (FinTech_AuthVault)，突出AuthVault是核心认证枢纽。",
+      "elements_involved": [
+        "title"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "标题已更新。整个状态图完成了，包含完整的正常流程、异常处理、紧急疏散、人工介入、免单机制，以及四个FinTech系统的集成点。",
+      "elements_involved": [
+        "stateDiagram-v2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个设计覆盖了Easy Park Plus的所有业务场景，运营和计费两条线既能独立运行又能通过FinTech_TransactionQueue协调，可以进入开发了。",
+      "elements_involved": [
+        "Easy Park Plus",
+        "VisitLifecycleStateMachine"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 43,
+    "repair_count": 2,
+    "grounding_acts_count": 43,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 67018.0433,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 43
+  }
+}

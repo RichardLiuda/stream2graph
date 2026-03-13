@@ -1,0 +1,693 @@
+{
+  "id": "aug_ot_stateDiagram_00206_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/stevendos1/analisis/blob/ebafb85c113efedcd9e64d8dcab8dc98cfb2a02a/docs/meta-ahorro-state-diagram.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "stevendos1/analisis",
+  "diagram_type": "stateDiagram",
+  "code": "%%{IoT_Industrial_ActuatorController}}}%%\nstateDiagram-v2\n    direction LR\n    classDef lifecycle fill:#ffffff,stroke:#5d5fef,stroke-width:2px,color:#222\n\n    state \"En Progreso\\nEstaCompletada = false\\nMontoActual < MontoObjetivo\" as EnProgreso\n    state \"Completada\\nEstaCompletada = true\\nMontoActual ≥ MontoObjetivo\" as Completada\n    state \"Eliminada\\nRegistro físico borrado\" as Eliminada\n\n    class EnProgreso,Completada,Eliminada lifecycle\n\n    [IoT_Industrial_TelemetryStream] --> EnProgreso : CrearMeta(IoT_Industrial_TelemetryStream) / inicializarMeta(IoT_Industrial_EdgeNode)\n    [IoT_Industrial_MQTT_Broker] --> Completada : CrearMeta(IoT_Industrial_TelemetryStream) [IoT_Industrial_MQTT_Broker] / inicializarMeta(IoT_Industrial_MQTT_Broker)\n\n    %% Ciclo natural de ahorro\n    EnProgreso --> EnProgreso : RegistrarTransaccion|Contribuir\\n[IoT_Industrial_PLC_Logic]\\n/ ActualizarMontos(IoT_Industrial_MQTT_Broker)\n    EnProgreso --> Completada : RegistrarTransaccion|Contribuir\\n[IoT_Industrial_EdgeNode]\\n/ ActualizarMontos(IoT_Industrial_TelemetryStream)\n\n    Completada --> Completada : RegistrarTransaccion|Contribuir\\n[IoT_Industrial_PLC_Logic]\\n/ MantenerCierre(IoT_Industrial_MQTT_Broker)\n    Completada --> EnProgreso : RegistrarTransaccion|Contribuir\\n[IoT_Industrial_PLC_Logic]\\n/ AjustarMontos(IoT_Industrial_MQTT_Broker)\n\n    %% Actualizaciones manuales vía PUT\n    EnProgreso --> Completada : ActualizarMeta(IoT_Industrial_PLC_Logic)\\n[IoT_Industrial_ActuatorController]\\n/ PersistirCambios(IoT_Industrial_MQTT_Broker)\n    Completada --> EnProgreso : ActualizarMeta(IoT_Industrial_PLC_Logic)\\n[IoT_Industrial_MQTT_Broker]\\n/ PersistirCambios(IoT_Industrial_EdgeNode)\n\n    %% Borrado definitivo\n    EnProgreso --> Eliminada : EliminarMeta(IoT_Industrial_ActuatorController) / BorrarRegistro(IoT_Industrial_EdgeNode)\n    Completada --> Eliminada : EliminarMeta(IoT_Industrial_TelemetryStream) / BorrarRegistro(IoT_Industrial_MQTT_Broker)\n    Eliminada --> [IoT_Industrial_TelemetryStream]\n\n    note right of EnProgreso\n        Estado operacional por defecto.\n        Las contribuciones suman al monto y\n        recalculan el progreso.\n    end note\n\n    note right of Completada\n        Se marca cuando MontoActual\n        alcanza o supera el objetivo.\n        Puede reabrirse con ajustes manuales.\n    end note\n",
+  "content_size": 2062,
+  "collected_at": "2026-02-06T10:39:09.939790",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00206",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网场景设计一个储蓄目标状态机，核心是跟踪从创建到完成或删除的完整生命周期。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，这个状态机需要处理IoT_Industrial_EdgeNode和IoT_Industrial_MQTT_Broker之间的协作对吗？我先确认一下三个核心状态：进行中、已完成、已删除？",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，EnProgreso是默认状态，条件是EstaCompletada为false且当前金额小于目标金额。Completada则是当MontoActual大于等于MontoObjetivo时触发。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "EstaCompletada",
+        "MontoActual",
+        "MontoObjetivo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我设置了三个状态节点，给它们统一的生命周期样式，白色填充、紫色边框。EnProgreso的备注里写明了这是默认运营状态，贡献会累加金额并重新计算进度。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada",
+        "lifecycle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "创建流程要区分两个入口：从TelemetryStream创建的目标走EdgeNode初始化，从MQTT Broker触发的则直接标记为完成状态。",
+      "elements_involved": [
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "CrearMeta",
+        "inicializarMeta"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有个细节需要确认：MQTT Broker触发的CrearMeta，目标状态直接是Completada而不是EnProgreso？这看起来像是批量导入已完成的记录？",
+      "elements_involved": [
+        "IoT_Industrial_MQTT_Broker",
+        "Completada",
+        "CrearMeta"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，这是业务上的特殊场景，有些目标是通过上游系统同步过来的，已经满足完成条件，所以直接进Completada状态。",
+      "elements_involved": [
+        "Completada",
+        "CrearMeta",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加两条创建路径。现在处理核心的存款循环：EnProgreso状态下的自循环，通过PLC Logic执行RegistrarTransaccion或Contribuir操作。",
+      "elements_involved": [
+        "EnProgreso",
+        "IoT_Industrial_PLC_Logic",
+        "RegistrarTransaccion",
+        "Contribuir",
+        "ActualizarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这个自循环的触发源要标注清楚，是EdgeNode还是Broker？另外更新后要通知MQTT Broker。",
+      "elements_involved": [
+        "EnProgreso",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "ActualizarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我调整一下，EnProgreso的自循环应该由PLC Logic触发，执行ActualizarMontos后通知MQTT Broker。之前我可能混淆了触发源。",
+      "elements_involved": [
+        "EnProgreso",
+        "IoT_Industrial_PLC_Logic",
+        "ActualizarMontos",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。那从EnProgreso转移到Completada的边界条件呢？当贡献使MontoActual达到目标时。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "MontoActual",
+        "MontoObjetivo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加EnProgreso到Completada的转换，触发条件是RegistrarTransaccion或Contribuir，这次由EdgeNode检测边界条件，执行ActualizarMontos后通知TelemetryStream。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "IoT_Industrial_EdgeNode",
+        "ActualizarMontos",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Completada状态也要支持继续存款，比如超额完成的情况，还有完成后如果发生退款需要能回到EnProgreso。",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "RegistrarTransaccion",
+        "Contribuir",
+        "AjustarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "超额存款是自循环，退款回退是反向转换。这两个操作的执行组件都是PLC Logic吗？",
+      "elements_involved": [
+        "Completada",
+        "IoT_Industrial_PLC_Logic",
+        "MantenerCierre",
+        "AjustarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "都是PLC Logic处理。超额时执行MantenerCierre通知MQTT Broker；退款时执行AjustarMontos，同样通知MQTT Broker，但状态回到EnProgreso。",
+      "elements_involved": [
+        "Completada",
+        "IoT_Industrial_PLC_Logic",
+        "MantenerCierre",
+        "AjustarMontos",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Completada的自循环和到EnProgreso的反向转换。现在处理手动更新场景，通过ActualizarMeta操作。",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "ActualizarMeta",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "手动更新分两种情况：从进行中强制标记为完成，以及从已完成重新打开。都需要ActuatorController参与，但通知目标不同。",
+      "elements_involved": [
+        "ActualizarMeta",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我理一下：EnProgreso到Completada的手动更新，触发源是PLC Logic，但执行权限在ActuatorController？这看起来像是校验和执行的分离。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，PLC Logic做数据校验，ActuatorController执行实际的状态转换，最后PersistirCambios到MQTT Broker。反向流程类似，但通知EdgeNode。",
+      "elements_involved": [
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_ActuatorController",
+        "PersistirCambios",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加两条ActualizarMeta路径。现在处理删除流程，Eliminada是终态，物理记录会被清除。",
+      "elements_involved": [
+        "Eliminada",
+        "BorrarRegistro",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "删除操作需要最高权限，必须由ActuatorController发起，从EnProgreso删除时通知EdgeNode执行BorrarRegistro。",
+      "elements_involved": [
+        "Eliminada",
+        "IoT_Industrial_ActuatorController",
+        "BorrarRegistro",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Completada状态的删除呢？也是ActuatorController吗？还是允许其他组件触发？",
+      "elements_involved": [
+        "Completada",
+        "Eliminada",
+        "EliminarMeta"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "这里我之前说错了，Completada的删除不应该走ActuatorController。已完成目标的归档删除应该由TelemetryStream触发，通知MQTT Broker执行。",
+      "elements_involved": [
+        "Completada",
+        "Eliminada",
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_MQTT_Broker",
+        "EliminarMeta",
+        "BorrarRegistro"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，EnProgreso删除由ActuatorController触发、EdgeNode执行；Completada删除由TelemetryStream触发、MQTT Broker执行。最后Eliminada需要回到TelemetryStream形成闭环。",
+      "elements_involved": [
+        "Eliminada",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Completada的备注需要补充说明：可以重新打开进行手动调整。这是和EnProgreso的重要区别。",
+      "elements_involved": [
+        "Completada",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已在Completada的备注中添加：当MontoActual达到或超过目标时标记，支持通过手动调整重新打开。",
+      "elements_involved": [
+        "Completada",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们再检查一下所有转换的组件分配是否合理。特别是ActualizarMontos和PersistirCambios的区别要清晰。",
+      "elements_involved": [
+        "ActualizarMontos",
+        "PersistirCambios"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ActualizarMontos用于自动存款流程的金额更新，PersistirCambios用于手动更新的持久化。这样理解对吗？",
+      "elements_involved": [
+        "ActualizarMontos",
+        "PersistirCambios"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。另外检查一下方向，整个图用LR横向布局，状态从左到右是EnProgreso、Completada、Eliminada。",
+      "elements_involved": [
+        "direction LR",
+        "EnProgreso",
+        "Completada",
+        "Eliminada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认LR横向布局。我注意到Eliminada的位置在右侧，但它是终态，从Completada和EnProgreso都有指向它的箭头。",
+      "elements_involved": [
+        "Eliminada",
+        "EnProgreso",
+        "Completada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "关于触发源的标注格式，我们需要统一：方括号里是检测组件，斜杠后面是执行动作和目标组件。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我看到EnProgreso到Completada的自动转换标注是[IoT_Industrial_EdgeNode]，但手动ActualizarMeta那条是[IoT_Industrial_PLC_Logic][IoT_Industrial_ActuatorController]，双括号表示两层校验？",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，自动转换是EdgeNode直接检测金额边界；手动更新需要PLC Logic先校验，然后ActuatorController授权执行。这是安全设计。",
+      "elements_involved": [
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已统一所有标注格式。现在验证一下反向流程：Completada到EnProgreso的手动更新，触发源是PLC Logic和MQTT Broker？",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不对，这里应该是PLC Logic和ActuatorController，不是MQTT Broker。重新打开已完成目标需要控制器授权，通知EdgeNode持久化。",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_ActuatorController",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正Completada到EnProgreso的手动更新路径：PLC Logic校验，ActuatorController执行，PersistirCambios通知EdgeNode。",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "PersistirCambios",
+        "IoT_Industrial_EdgeNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再确认一下MantenerCierre的使用场景：Completada的自循环，当继续存款但保持完成状态时触发。",
+      "elements_involved": [
+        "Completada",
+        "MantenerCierre",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "超额完成的情况，比如目标1000，已经存到1000进入Completada，再存200，还是Completada，执行MantenerCierre通知MQTT Broker。那如果退款到800呢？",
+      "elements_involved": [
+        "Completada",
+        "MantenerCierre",
+        "AjustarMontos"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "退款到800低于目标，触发AjustarMontos，状态回到EnProgreso，通知MQTT Broker。注意这两个操作都是PLC Logic触发。",
+      "elements_involved": [
+        "Completada",
+        "EnProgreso",
+        "AjustarMontos",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认。现在检查所有状态的备注完整性。EnProgreso的备注强调了贡献累加和进度重算，Completada强调了可重新打开。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Eliminada不需要备注，它是物理删除的终态。但需要确保从Eliminada回到TelemetryStream的箭头清晰，表示记录归档或审计追踪。",
+      "elements_involved": [
+        "Eliminada",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这个回到TelemetryStream的箭头是虚线还是实线？在状态图中通常终态不需要外出箭头，但这里明确画了。",
+      "elements_involved": [
+        "Eliminada",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "实线，表示删除事件会回流到TelemetryStream进行日志记录，这不是状态转换，是事件通知。在Mermaid中用标准箭头表达即可。",
+      "elements_involved": [
+        "Eliminada",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Eliminada到TelemetryStream的连接。整体结构检查：三个状态节点，九条转换边，两个备注，一个样式定义，方向LR。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada",
+        "lifecycle",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后确认一下inicializarMeta的两个入口：TelemetryStream创建走EdgeNode，MQTT Broker创建走MQTT Broker自身初始化。",
+      "elements_involved": [
+        "inicializarMeta",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认。TelemetryStream创建的新目标是EnProgreso，由EdgeNode初始化；MQTT Broker同步的已完成目标由Broker自身初始化并直接进入Completada。",
+      "elements_involved": [
+        "IoT_Industrial_TelemetryStream",
+        "EnProgreso",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "Completada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "状态定义中的条件表达式也要准确：EnProgreso是EstaCompletada=false且MontoActual<MontoObjetivo；Completada是EstaCompletada=true且MontoActual≥MontoObjetivo。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "EstaCompletada",
+        "MontoActual",
+        "MontoObjetivo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已在状态标签中精确定义条件。Eliminada的描述是'Registro físico borrado'，表示物理记录已清除。",
+      "elements_involved": [
+        "Eliminada"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "整个图的标题用%%{IoT_Industrial_ActuatorController}}}%%，这是为了标识这个状态机属于执行器控制器模块。",
+      "elements_involved": [
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已添加标题注释。最终检查：所有组件名称使用下划线连接，状态使用中文描述加条件，转换标注包含操作、触发源和执行目标，备注位置在右侧。",
+      "elements_involved": [
+        "IoT_Industrial_TelemetryStream",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_ActuatorController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "execute",
+      "utterance": "看起来完整了。这个状态机覆盖了储蓄目标的完整生命周期：创建、存款推进、完成、超额、退款重开、手动调整、物理删除，以及对应的所有IoT组件协作。",
+      "elements_involved": [
+        "EnProgreso",
+        "Completada",
+        "Eliminada",
+        "CrearMeta",
+        "RegistrarTransaccion",
+        "Contribuir",
+        "ActualizarMeta",
+        "EliminarMeta"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 51,
+    "repair_count": 3,
+    "grounding_acts_count": 51,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 93648.5598,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 50
+  }
+}

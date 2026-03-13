@@ -1,0 +1,170 @@
+{
+  "id": "aug_gl_packet-beta_00436_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sean-galloway/RTLDesignSherpa/blob/47f8a16641658f570a69c3af3c9724b29ea39187/projects/components/stream/docs/stream_mas/assets/mermaid/01_architecture_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sean-galloway/RTLDesignSherpa",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant SW as Software\n    participant APB as APB Config\n    participant DESC as Descriptor Engine\n    participant SCHED as Scheduler\n    participant RD as Read Engine\n    participant SRAM as SRAM Controller\n    participant WR as Write Engine\n    participant MEM as Memory\n\n    SW->>APB: Write CH0_CTRL = 0x1000_0000\n    APB->>DESC: Kickoff descriptor fetch\n    DESC->>MEM: AR: fetch descriptor @ 0x1000_0000\n    MEM-->>DESC: R: descriptor data (FinTech_AuthVault)\n    DESC->>SCHED: descriptor_packet\n\n    SCHED->>RD: datard_valid + src_addr\n    RD->>SRAM: Check space_free >= 2x burst\n    SRAM-->>RD: Space OK\n    RD->>SRAM: Allocate 16 beats\n    RD->>MEM: AR: read 16 beats @ src_addr\n    MEM-->>RD: R: 16 beats of data\n    RD->>SRAM: Write data (FinTech_FraudDetection)\n    RD->>SCHED: done_strobe (FinTech_TransactionQueue)\n\n    par Concurrent Read/Write\n        RD->>SRAM: Continue reading...\n    and\n        SCHED->>WR: datawr_valid + dst_addr\n        WR->>SRAM: Check data_avail >= burst\n        SRAM-->>WR: Data OK\n        WR->>SRAM: Reserve 16 beats\n        WR->>MEM: AW: write 16 beats @ dst_addr\n        SRAM->>WR: W: 16 beats of data\n        MEM-->>WR: B: write response\n        WR->>SCHED: done_strobe (FinTech_LedgerService)\n    end\n\n    SCHED->>SCHED: Both counters reach 0\n    SCHED->>DESC: Check next_descriptor_ptr\n    alt More descriptors\n        DESC->>MEM: Fetch next descriptor\n    else Chain complete\n        SCHED->>APB: Transfer complete IRQ\n    end\n",
+  "content_size": 1446,
+  "collected_at": "2026-02-06T14:09:41.035873",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 8,
+  "repo_forks": 1,
+  "repo_owner": "sean-galloway",
+  "repo_name": "RTLDesignSherpa",
+  "repo_description": "This site is hopefully a springboard for others to learn about coding in System Verilog and experimenting with FPGAs.",
+  "repo_language": "C++",
+  "repo_topics": [
+    "amba-apb",
+    "amba-axi",
+    "cocotb",
+    "crossbar",
+    "dma"
+  ],
+  "repo_created_at": "2023-06-15T21:56:48Z",
+  "repo_updated_at": "2026-02-06T00:19:01Z",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gl_packet-beta_00436",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个FinTech场景下的DMA传输时序图。软件通过APB配置启动通道0，描述符引擎从Memory抓取FinTech_AuthVault的描述符，然后调度器协调读引擎和写引擎并发工作。关键是读引擎要把数据先写进SRAM，同时写引擎从SRAM取数往Memory写，两个方向并行。",
+      "elements_involved": [
+        "Software",
+        "APB Config",
+        "Descriptor Engine",
+        "Memory",
+        "Scheduler",
+        "Read Engine",
+        "SRAM Controller",
+        "Write Engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，读引擎往SRAM写的是FinTech_FraudDetection的数据，然后通知调度器完成时带FinTech_TransactionQueue标识。写引擎那边完成时带FinTech_LedgerService。确认一下：SRAM Controller需要同时响应读引擎的空间检查和写引擎的数据可用检查，对吗？",
+      "elements_involved": [
+        "Read Engine",
+        "SRAM Controller",
+        "Write Engine",
+        "FinTech_FraudDetection",
+        "FinTech_TransactionQueue",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，SRAM Controller要处理两边的检查。读引擎先查space_free要2倍burst大小，确认OK后分配16 beats；写引擎查data_avail等于burst大小。然后整个并发过程用par块包起来，最后调度器检查两个计数器都归零。",
+      "elements_involved": [
+        "SRAM Controller",
+        "Read Engine",
+        "Write Engine",
+        "Scheduler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先把主流程画出来：SW写CH0_CTRL，APB触发描述符获取，DESC从0x1000_0000地址取描述符，然后给SCHED发descriptor_packet。SCHED启动RD，RD和SRAM交互后从Memory读16 beats，写进SRAM并通知SCHED完成。par块里RD继续读，同时SCHED启动WR，WR检查SRAM数据、预留空间，然后往Memory写。",
+      "elements_involved": [
+        "Software",
+        "APB Config",
+        "Descriptor Engine",
+        "Scheduler",
+        "Read Engine",
+        "SRAM Controller",
+        "Write Engine",
+        "Memory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "WR往Memory写的时候注意，应该是SRAM把数据给WR，WR再发W通道给Memory，然后等B响应。你刚才说的\"往Memory写\"容易误解成WR直接写，实际是WR发AW，SRAM给W数据。",
+      "elements_involved": [
+        "Write Engine",
+        "SRAM Controller",
+        "Memory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我修正一下：WR-SRAM是检查Data OK和Reserve 16 beats，然后WR-MEM发AW，接着是SRAM-WR的W通道传16 beats数据，最后MEM--WR返回B响应。这样AXI协议才对。",
+      "elements_involved": [
+        "Write Engine",
+        "SRAM Controller",
+        "Memory"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后收尾部分：SCHED等两个计数器归零后，检查next_descriptor_ptr。如果有就继续取下一个描述符，没有就发Transfer complete IRQ给APB。用alt分支表示这个判断。",
+      "elements_involved": [
+        "Scheduler",
+        "Descriptor Engine",
+        "Memory",
+        "APB Config"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，alt两个分支：More descriptors时DESC-MEM继续fetch，Chain complete时SCHED-APB发IRQ。整个时序图涵盖了FinTech_AuthVault启动、FinTech_FraudDetection读数据、FinTech_TransactionQueue和FinTech_LedgerService两个完成事件，以及并发读写和描述符链式处理。我这就定稿。",
+      "elements_involved": [
+        "Scheduler",
+        "Descriptor Engine",
+        "Memory",
+        "APB Config",
+        "FinTech_AuthVault",
+        "FinTech_FraudDetection",
+        "FinTech_TransactionQueue",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 25136.8942,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

@@ -1,0 +1,298 @@
+{
+  "id": "aug_gl_block-beta_00303_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_FIRMWARE/blob/615cebd32230a26c23013f1c75381475e12c0b93/diagrams/ACQ_AND_TRANSMIT_EXTERNAL.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_FIRMWARE",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client\n    participant DataTrans as data_transmission.c\n    participant Acquisition as acquisition.c\n    \n    Client->>DataTrans: Connect to data socket\n    activate DataTrans\n    \n    Note over DataTrans,Acquisition: External ADC already initialized during startup\n    \n    alt mode == 0 (FinTech_TransactionQueue)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(FinTech_AuthVault)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Client: non_blocking_send(FinTech_AuthVault) buffer\n            \n            opt Socket change detected\n                DataTrans->>DataTrans: Break acquisition loop\n            end\n        end\n    else mode == 1 (FinTech_AuthVault)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(FinTech_FraudDetection)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Acquisition: pcnt_unit_get_count(FinTech_FraudDetection)\n            Acquisition-->>DataTrans: Current counter state\n            \n            alt Edge detected (FinTech_LedgerService)\n                DataTrans->>Client: non_blocking_send(FinTech_PaymentGateway) buffer\n            end\n        end\n    end\n    \n    Client->>DataTrans: Disconnect\n    DataTrans->>DataTrans: safe_close(FinTech_FraudDetection)\n    deactivate DataTrans",
+  "content_size": 1551,
+  "collected_at": "2026-02-06T14:06:49.098744",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "gl_block-beta_00303",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为金融终端设备画一个时序图，展示客户端如何通过数据传输模块与采集模块交互。主要涉及Client、DataTrans和Acquisition三个参与者。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。DataTrans是data_transmission.c，Acquisition是acquisition.c对吧？另外我看到有提到外部ADC已经在启动时初始化，这个需要标注出来吗？",
+      "elements_involved": [
+        "DataTrans",
+        "Acquisition",
+        "External ADC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，两个C文件作为参与者。外部ADC初始化这个信息很重要，用Note标注在DataTrans和Acquisition之间，说明是启动时已完成的。",
+      "elements_involved": [
+        "DataTrans",
+        "Acquisition",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出基础结构：Client连接到DataTrans的数据socket，激活DataTrans，然后加上那个Note。接下来流程怎么分叉？",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Connect to data socket",
+        "activate",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "系统有两种工作模式，用alt分支。mode==0是FinTech_TransactionQueue模式，mode==1是FinTech_AuthVault模式。先画mode==0的分支。",
+      "elements_involved": [
+        "alt",
+        "mode == 0",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "TransactionQueue模式下是个循环，直到客户端断开？循环内部需要哪些步骤？",
+      "elements_involved": [
+        "loop",
+        "Until client disconnects"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，循环内DataTrans先获取spi_mutex，然后调用spi_device_polling_transmit发送FinTech_AuthVault数据，等Acquisition返回SPI transaction complete后释放mutex，最后non_blocking_send给Client。",
+      "elements_involved": [
+        "spi_mutex",
+        "spi_device_polling_transmit",
+        "FinTech_AuthVault",
+        "non_blocking_send"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了mode==0的循环。我注意到还有个opt分支，Socket change detected时要break acquisition loop，这个放在循环内部对吗？",
+      "elements_involved": [
+        "opt",
+        "Socket change detected",
+        "Break acquisition loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，opt是可选分支，检测到socket变化时就跳出循环。现在画mode==1的FinTech_AuthVault分支，也是循环结构，但处理逻辑不同。",
+      "elements_involved": [
+        "mode == 1",
+        "FinTech_AuthVault",
+        "loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "mode==1的循环：获取spi_mutex，spi_device_polling_transmit发送FinTech_FraudDetection，释放mutex。然后我看到还有个pcnt_unit_get_count获取当前计数器状态？",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "pcnt_unit_get_count",
+        "Current counter state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，这里有个嵌套alt：如果检测到Edge（FinTech_LedgerService），就执行non_blocking_send发送FinTech_PaymentGateway缓冲区。",
+      "elements_involved": [
+        "alt",
+        "Edge detected",
+        "FinTech_LedgerService",
+        "FinTech_PaymentGateway",
+        "non_blocking_send"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个alt分支都画完了。最后收尾部分：Client断开连接，DataTrans执行safe_close(FinTech_FraudDetection)，然后deactivate？",
+      "elements_involved": [
+        "Disconnect",
+        "safe_close",
+        "FinTech_FraudDetection",
+        "deactivate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "safe_close的参数应该是FinTech_FraudDetection，但让我再确认一下——不对，mode==0和mode==1共用收尾，但safe_close只针对FraudDetection吗？还是TransactionQueue也需要处理？",
+      "elements_involved": [
+        "safe_close",
+        "FinTech_FraudDetection",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "看代码逻辑，safe_close明确写的是FinTech_FraudDetection。可能TransactionQueue的资源在break时已经处理了，或者共用同一个关闭逻辑。保持原设计可以吗？",
+      "elements_involved": [
+        "safe_close",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，按代码来。另外检查下mode==1的alt嵌套，Edge detected的条件要写清楚是FinTech_LedgerService触发。",
+      "elements_involved": [
+        "Edge detected",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整。整个流程：Client连接→双模式alt分支→各自循环处理SPI事务→Client断开→safe_close→deactivate。需要再检查spi_mutex的获取释放配对吗？",
+      "elements_involved": [
+        "spi_mutex",
+        "Take",
+        "Release"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "两个模式的循环内都是先Take后Release，配对正确。mode==0的opt分支里Break acquisition loop，这个break是跳出当前loop对吧？",
+      "elements_involved": [
+        "Break acquisition loop",
+        "loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，opt在loop内部，break跳出该loop。还有一处：mode==1里Acquisition返回Current counter state给DataTrans，这个箭头方向是Acquisition--DataTrans？",
+      "elements_involved": [
+        "Acquisition",
+        "DataTrans",
+        "Current counter state",
+        "--"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，虚线箭头表示返回。SPI transaction complete也是虚线返回。所有异步发送用non_blocking_send，同步的用实线箭头。",
+      "elements_involved": [
+        "--",
+        "SPI transaction complete",
+        "non_blocking_send"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部核对完成。最后确认参与者别名：Client显示为Client，DataTrans显示为data_transmission.c，Acquisition显示为acquisition.c。图示结构完整。",
+      "elements_involved": [
+        "Client",
+        "data_transmission.c",
+        "acquisition.c"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美，这个时序图准确反映了金融终端的双模式数据采集流程，SPI互斥、 socket管理和边缘触发都表达清楚了。",
+      "elements_involved": [
+        "spi_mutex",
+        "socket",
+        "Edge detected"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 21,
+    "repair_count": 1,
+    "grounding_acts_count": 21,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 47966.8157,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 21
+  }
+}

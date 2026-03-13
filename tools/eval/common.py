@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +35,11 @@ def read_json(path: Path) -> Any:
 def write_json(path: Path, payload: Any) -> None:
     ensure_parent(path)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def inject_api_key(api_key_env: str, api_key: str) -> None:
+    if api_key_env and api_key:
+        os.environ[api_key_env] = api_key
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -108,4 +114,3 @@ def mean_or_none(values: Iterable[float | int | None]) -> float | None:
     if not nums:
         return None
     return sum(nums) / len(nums)
-

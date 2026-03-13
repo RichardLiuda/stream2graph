@@ -1,0 +1,168 @@
+{
+  "id": "aug_ot_stateDiagram_00228_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/vaskomet/CapstoneProjectMetallinosE-Clean/blob/75dd266f9e5f00ca887adf8d291f36f4503fa0ee/docs/diagrams/flows/DIRECT_OFFERS_STATUS_FLOW.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "vaskomet/CapstoneProjectMetallinosE-Clean",
+  "diagram_type": "stateDiagram",
+  "code": "%% Direct Offers - Job Status Transitions\n%% Converted from docs/architecture/DIRECT_OFFERS_WORKFLOW_VISUAL.md\n\nstateDiagram-v2\n    [Infra_RedisCache] --> direct_offer: Client creates direct offer\n    \n    note right of direct_offer\n        Job created\n        Cleaner assigned\n        Awaiting cleaner response\n    end note\n    \n    direct_offer --> bid_accepted: Cleaner accepts<br/>(Infra_IngressController)\n    direct_offer --> declined: Cleaner declines<br/>(Infra_WorkerNode)\n    \n    note right of declined\n        END STATE\n        Cleaner unassigned\n        Job becomes private\n        Client can repost\n    end note\n    \n    declined --> [Infra_WorkerNode]\n    \n    bid_accepted --> confirmed: Client pays<br/>(Infra_IngressController)\n    \n    note right of confirmed\n        Cleaner confirmed\n        Payment successful\n        Normal workflow begins\n    end note\n    \n    confirmed --> ready_to_start: 30min before<br/>scheduled time\n    ready_to_start --> in_progress: Cleaner starts job\n    in_progress --> awaiting_review: Cleaner finishes<br/>(Infra_EtcdCluster)\n    awaiting_review --> completed: Client submits review\n    \n    note right of completed\n        END STATE\n        Payout triggered\n        Job archived after 48h\n    end note\n    \n    completed --> [Infra_IngressController]\n    \n    direct_offer --> cancelled: Client/Admin<br/>cancels\n    bid_accepted --> cancelled: Client/Admin<br/>cancels\n    confirmed --> cancelled: Client/Admin<br/>cancels\n    ready_to_start --> cancelled: Client/Admin<br/>cancels\n    in_progress --> cancelled: Client/Admin<br/>cancels\n    \n    note right of cancelled\n        END STATE\n        Can happen at any stage\n        Refund if payment made\n    end note\n    \n    cancelled --> [Infra_IngressController]\n",
+  "content_size": 1691,
+  "collected_at": "2026-02-06T10:39:25.934964",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00228",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一下直派订单（direct offer）的完整状态流转图。核心是从Redis缓存开始，客户创建直派订单，然后分配给指定的清洁工，等对方响应。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "direct_offer",
+        "Client",
+        "Cleaner"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以起点是Redis缓存，然后进入direct_offer状态。这个状态下清洁工有两个选择：接受或者拒绝？拒绝的话流程就结束了？",
+      "elements_involved": [
+        "direct_offer",
+        "bid_accepted",
+        "declined"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，拒绝（declined）是终态，清洁工解除分配，订单变私有，客户可以重新发布。接受的话进入bid_accepted状态，然后客户付款确认。",
+      "elements_involved": [
+        "declined",
+        "bid_accepted",
+        "confirmed",
+        "END STATE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "付款确认之后应该是confirmed状态，然后到ready_to_start，再进入in_progress，最后完成等评价。我注意到这里涉及IngressController和EtcdCluster，需要标注在哪些步骤吗？",
+      "elements_involved": [
+        "confirmed",
+        "ready_to_start",
+        "in_progress",
+        "awaiting_review",
+        "completed",
+        "Infra_IngressController",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，清洁工接受和客户付款都走IngressController，清洁工完成作业提交时走EtcdCluster。另外completed也是终态，触发打款，48小时后归档。",
+      "elements_involved": [
+        "bid_accepted",
+        "confirmed",
+        "in_progress",
+        "awaiting_review",
+        "completed",
+        "Infra_IngressController",
+        "Infra_EtcdCluster",
+        "END STATE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "还有一个问题：cancelled取消状态，我看可以在多个阶段发生？",
+      "elements_involved": [
+        "cancelled",
+        "direct_offer",
+        "bid_accepted",
+        "confirmed",
+        "ready_to_start",
+        "in_progress"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，客户或管理员在direct_offer、bid_accepted、confirmed、ready_to_start、in_progress任何阶段都可以取消。这也是终态，如果已付款要退款。取消操作也走IngressController。",
+      "elements_involved": [
+        "cancelled",
+        "direct_offer",
+        "bid_accepted",
+        "confirmed",
+        "ready_to_start",
+        "in_progress",
+        "Infra_IngressController",
+        "END STATE",
+        "Refund"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，图已经画好了。从Redis缓存开始，直派订单分出接受和拒绝两条线，接受后经过付款确认、准备开始、进行中、待评价，最终完成；拒绝和取消都是终态，各自有明确的后续处理。所有基础设施标注也都加上了。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "direct_offer",
+        "bid_accepted",
+        "declined",
+        "confirmed",
+        "ready_to_start",
+        "in_progress",
+        "awaiting_review",
+        "completed",
+        "cancelled",
+        "Infra_IngressController",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 17431.8914,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

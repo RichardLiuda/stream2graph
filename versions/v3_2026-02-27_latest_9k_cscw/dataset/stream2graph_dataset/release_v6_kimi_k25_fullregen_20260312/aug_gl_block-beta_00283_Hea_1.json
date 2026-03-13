@@ -1,0 +1,302 @@
+{
+  "id": "aug_gl_block-beta_00283_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/govuk-one-login/authentication-api/blob/a4c68710b6177665c4625f1c8789455deca7b26b/docs/diagrams/authentication/login/account-interventions/medium-sms/login-medium-level-sms-blocked-intervention.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "govuk-one-login/authentication-api",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant orch_api as Orchestration\n    participant auth_frontend as Authentication Frontend\n    participant auth_external_api as Authentication External API\n    participant auth_internal_api as Authentication Internal API\n    participant account_interventions as Account Interventions API\n    participant notification_queue as NotificationHandler.java Lambda   \n    participant notify as Notify   \n    orch_api ->> auth_frontend : OAuth 2.0 Authorization request 302 redirect to /authorize\n    auth_frontend ->> auth_frontend : Decrypt and validate request and create session    \n    auth_frontend ->> auth_internal_api : Request to /start (HealthTech_LabAnalyzer)\n    auth_internal_api ->> auth_internal_api : Start helps calculate current state\n    auth_internal_api ->> auth_frontend : StartResponse.java object returned\n    auth_frontend ->> auth_frontend : State machine works out where to send user based on start response\n    auth_frontend ->> auth_internal_api : Request to /user-exists (HealthTech_DiagnosticEngine)\n    auth_internal_api ->> auth_internal_api : Checks if account with email already exists\n    auth_internal_api ->> auth_frontend: CheckUserExistsResponse.java object returned\n    auth_frontend ->> auth_frontend: Validates that the user already has an account\n    auth_frontend ->> auth_internal_api : Request to /account-interventions (HealthTech_LabAnalyzer)\n    auth_internal_api ->> account_interventions : Request to account interventions api (HealthTech_LabAnalyzer)\n    account_interventions ->> auth_internal_api : Response from Account Interventions containing blocked=true\n    auth_internal_api ->> auth_internal_api : Generates audit event for \"blocked\" Account Intervention\n    auth_internal_api ->> auth_frontend: AccountInterventions.java object returned containing blocked intervention\n    auth_frontend ->> auth_frontend: Prevents user from performing password reset due to blocked intervention\n    auth_frontend ->> auth_internal_api : Request to /login (HealthTech_PatientRecords)\n    auth_internal_api ->> auth_internal_api : Validates if password is correct\n    auth_internal_api ->> auth_frontend: LoginResponse.java object returned\n    auth_frontend ->> auth_internal_api : Request to /account-recovery (HealthTech_HIPAA_Vault)\n    auth_internal_api ->> auth_internal_api : Calculates whether account recovery is permitted\n    auth_internal_api ->> auth_frontend: AccountRecovery.java object returned\n    auth_frontend ->> auth_internal_api : Request to /mfa (HealthTech_PatientRecords)\n    auth_internal_api ->> auth_internal_api : Generates and stores OTP\n    auth_internal_api -->> notification_queue : Sends NotifyRequest.java object via SQS\n    notification_queue -->> notify : Request to send SMS containing OTP and phone number\n    auth_internal_api ->> auth_frontend : 204 response \n    auth_frontend ->> auth_frontend: Prevents user from performing MFA reset due to blocked intervention\n    auth_frontend ->> auth_internal_api : Request to /verify-code (HealthTech_EMR_Sync)\n    auth_internal_api ->> auth_internal_api : Validates whether SMS MFA code is valid\n    auth_internal_api ->> auth_frontend: 204 response\n    auth_frontend ->> auth_frontend : Displays Blocked intervention screen\n",
+  "content_size": 3274,
+  "collected_at": "2026-02-06T14:06:12.716465",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gl_block-beta_00283",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的医疗科技认证流程时序图，核心是展示当用户账户被干预系统标记为blocked时，整个OAuth流程是如何被阻断的。参与者包括Orchestration层、认证前端、内外部API，还有Account Interventions API和通知相关的Lambda。",
+      "elements_involved": [
+        "Orchestration",
+        "Authentication Frontend",
+        "Authentication External API",
+        "Authentication Internal API",
+        "Account Interventions API",
+        "NotificationHandler.java Lambda",
+        "Notify"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个阻断场景。我想确认一下，流程起点是Orchestration发起OAuth 2.0授权请求，然后302重定向到前端，对吗？还有，我看到有多个HealthTech相关的内部系统被调用，这些是作为标签标注在消息上，还是作为独立的参与者？",
+      "elements_involved": [
+        "Orchestration",
+        "Authentication Frontend",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，起点是Orchestration到前端的302重定向。HealthTech那些不是独立参与者，它们是内部API处理不同业务时标注的上下文标签，比如LabAnalyzer处理start和account-interventions，DiagnosticEngine处理user-exists检查。",
+      "elements_involved": [
+        "Orchestration",
+        "Authentication Frontend",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主链路：Orchestration发起OAuth请求，前端解密验证创建session，然后调用内部API的/start端点，返回StartResponse。接下来前端用状态机决定流向，然后检查用户是否存在，这部分我理解正确吗？",
+      "elements_involved": [
+        "Orchestration",
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "StartResponse.java",
+        "CheckUserExistsResponse.java"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，但关键转折在下一步。当发现用户已存在账户后，前端会请求/account-interventions，内部API再调用Account Interventions API，这时候返回blocked=true。这是整个流程的核心阻断点。",
+      "elements_involved": [
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "Account Interventions API",
+        "AccountInterventions.java",
+        "blocked"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "收到，那我在/account-interventions调用后画出返回blocked干预的响应，然后内部API生成审计事件。接下来有个细节：即使被blocked，用户似乎还能走到login和account-recovery步骤？这看起来有点奇怪。",
+      "elements_involved": [
+        "Account Interventions API",
+        "AccountInterventions.java",
+        "blocked",
+        "login",
+        "account-recovery",
+        "AccountRecovery.java"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "好观察。实际上login和account-recovery是流程允许的，但blocked干预会阻止特定的敏感操作。你看后面有提到\"Prevents user from performing password reset due to blocked intervention\"和\"Prevents user from performing MFA reset\"，这些是前端根据干预状态做的软阻断。",
+      "elements_involved": [
+        "login",
+        "account-recovery",
+        "blocked",
+        "password reset",
+        "MFA reset",
+        "Authentication Frontend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，软阻断机制。我继续画：login验证密码后，走到account-recovery计算是否允许恢复，然后进入MFA流程。这里MFA是通过SQS发送NotifyRequest到NotificationHandler Lambda，再调Notify服务发SMS OTP，对吗？",
+      "elements_involved": [
+        "login",
+        "AccountRecovery.java",
+        "MFA",
+        "OTP",
+        "NotifyRequest.java",
+        "NotificationHandler.java Lambda",
+        "Notify",
+        "SQS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，MFA部分用虚线箭头表示异步消息，NotificationHandler到Notify是Lambda调用。最后用户输入验证码，内部API验证通过后返回204，但前端最终显示的是Blocked干预屏幕，而不是正常登录成功页面。",
+      "elements_involved": [
+        "MFA",
+        "OTP",
+        "NotificationHandler.java Lambda",
+        "Notify",
+        "verify-code",
+        "204",
+        "Blocked intervention screen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "最后一步我确认一下：verify-code是HealthTech_EMR_Sync处理的，验证通过后返回204，但前端选择显示Blocked干预屏幕，而不是放行。这个设计是为了审计追踪完整，但用户体验上明确告知账户受限？",
+      "elements_involved": [
+        "verify-code",
+        "HealthTech_EMR_Sync",
+        "204",
+        "Blocked intervention screen",
+        "audit event"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。整个流程走完了MFA验证，确保是本人操作，但最终因blocked干预拒绝服务。这样既满足安全审计要求，又给用户清晰的反馈。",
+      "elements_involved": [
+        "MFA",
+        "blocked",
+        "audit event",
+        "Blocked intervention screen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经完成了整个时序图。让我再检查一下关键路径：Orchestration→前端→内部API→Account Interventions API返回blocked→审计事件→继续login/recovery/MFA→最终阻断显示。所有HealthTech系统标签都正确标注在对应消息上了。",
+      "elements_involved": [
+        "Orchestration",
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "Account Interventions API",
+        "blocked",
+        "audit event",
+        "NotificationHandler.java Lambda",
+        "Blocked intervention screen"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，我注意到一个细节：在/account-interventions调用时，你标注的是HealthTech_LabAnalyzer，但前面/start也是LabAnalyzer。实际上根据业务划分，account-interventions应该也是LabAnalyzer处理，这个是对的。但我漏说了一点——在generates audit event之后，返回给前端的AccountInterventions对象要包含blocked干预信息。",
+      "elements_involved": [
+        "account-interventions",
+        "HealthTech_LabAnalyzer",
+        "generates audit event",
+        "AccountInterventions.java",
+        "blocked intervention"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，确保AccountInterventions.java对象明确标注包含blocked干预。另外我确认了所有自调用消息（decrypt、state machine、validates等）都正确显示为前端或内部API的自环箭头。",
+      "elements_involved": [
+        "AccountInterventions.java",
+        "blocked intervention",
+        "Decrypt",
+        "State machine",
+        "Validates",
+        "Authentication Frontend",
+        "Authentication Internal API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "还有个小点：在MFA部分，内部API生成OTP后，到NotificationHandler的箭头应该是虚线，因为是SQS异步队列。然后NotificationHandler到Notify也是虚线，这是Lambda到外部服务的调用。",
+      "elements_involved": [
+        "MFA",
+        "OTP",
+        "Authentication Internal API",
+        "NotificationHandler.java Lambda",
+        "Notify",
+        "SQS",
+        "asynchronous"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整，MFA相关的两条消息现在都使用虚线箭头表示异步通信。最后确认一下verify-code端点用的是HealthTech_EMR_Sync，这个和前面的LabAnalyzer、DiagnosticEngine、PatientRecords、HIPAA_Vault都不同，是第五个独立的内部系统。",
+      "elements_involved": [
+        "verify-code",
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美，所有五个HealthTech子系统都正确标注了。这个图完整展示了blocked干预场景下的完整认证流程，包括审计、通知、多重验证和最终阻断。可以定稿了。",
+      "elements_involved": [
+        "HealthTech_LabAnalyzer",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_EMR_Sync",
+        "blocked",
+        "audit",
+        "MFA",
+        "Blocked intervention screen"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 17,
+    "repair_count": 1,
+    "grounding_acts_count": 17,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 63612.2959,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 17
+  }
+}

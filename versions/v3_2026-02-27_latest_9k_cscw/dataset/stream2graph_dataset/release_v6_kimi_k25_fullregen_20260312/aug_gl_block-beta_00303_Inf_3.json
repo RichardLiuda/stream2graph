@@ -1,0 +1,345 @@
+{
+  "id": "aug_gl_block-beta_00303_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_FIRMWARE/blob/615cebd32230a26c23013f1c75381475e12c0b93/diagrams/ACQ_AND_TRANSMIT_EXTERNAL.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_FIRMWARE",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Client as Client\n    participant DataTrans as data_transmission.c\n    participant Acquisition as acquisition.c\n    \n    Client->>DataTrans: Connect to data socket\n    activate DataTrans\n    \n    Note over DataTrans,Acquisition: External ADC already initialized during startup\n    \n    alt mode == 0 (Infra_EtcdCluster)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(Infra_IngressController)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Client: non_blocking_send(Infra_EtcdCluster) buffer\n            \n            opt Socket change detected\n                DataTrans->>DataTrans: Break acquisition loop\n            end\n        end\n    else mode == 1 (Infra_LoadBalancer)\n        loop Until client disconnects\n            DataTrans->>Acquisition: Take spi_mutex\n            DataTrans->>Acquisition: spi_device_polling_transmit(Infra_RedisCache)\n            Acquisition-->>DataTrans: SPI transaction complete\n            DataTrans->>Acquisition: Release spi_mutex\n            \n            DataTrans->>Acquisition: pcnt_unit_get_count(Infra_RedisCache)\n            Acquisition-->>DataTrans: Current counter state\n            \n            alt Edge detected (Infra_RedisCache)\n                DataTrans->>Client: non_blocking_send(Infra_IngressController) buffer\n            end\n        end\n    end\n    \n    Client->>DataTrans: Disconnect\n    DataTrans->>DataTrans: safe_close(Infra_EtcdCluster)\n    deactivate DataTrans",
+  "content_size": 1551,
+  "collected_at": "2026-02-06T14:06:49.098744",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_block-beta_00303",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个时序图，描述客户端通过data_transmission模块与采集模块的交互流程。核心是两个工作模式：Infra_EtcdCluster模式和Infra_LoadBalancer模式。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，先确认一下参与者。Client是外部客户端，DataTrans是data_transmission.c，Acquisition是acquisition.c，对吗？还有Infra_IngressController和Infra_RedisCache这些是硬件模块还是软件抽象？",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "Infra_IngressController",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。Infra_IngressController、Infra_RedisCache这些是基础设施组件，Infra_EtcdCluster和Infra_LoadBalancer代表两种部署模式下的目标集群。另外还需要Infra_IngressController作为第一种模式的传输目标。",
+      "elements_involved": [
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把三个主要参与者画出来：Client、DataTrans、Acquisition。然后标注一下外部ADC已经在启动时初始化好了，这个用Note跨DataTrans和Acquisition来表示。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "流程开始是Client连接到DataTrans的数据socket，然后进入激活状态。接下来用alt分支区分mode==0和mode==1两种情况。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Connect",
+        "activate",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加连接和激活。第一个alt分支我标注为\"mode == 0 (Infra_EtcdCluster)\"，里面是一个循环，直到客户端断开。循环内先获取spi_mutex，然后调用spi_device_polling_transmit传输到Infra_IngressController。",
+      "elements_involved": [
+        "alt",
+        "loop",
+        "spi_mutex",
+        "Infra_IngressController",
+        "spi_device_polling_transmit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，SPI传输完成后需要等Acquisition返回确认，然后释放spi_mutex，再用non_blocking_send把数据发到Infra_EtcdCluster。这里有个细节：socket变化时要能跳出循环。",
+      "elements_involved": [
+        "SPI transaction complete",
+        "spi_mutex",
+        "non_blocking_send",
+        "Infra_EtcdCluster",
+        "Socket change detected",
+        "Break acquisition loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整：Acquisition返回SPI transaction complete，释放mutex，然后DataTrans向Client发送non_blocking_send到Infra_EtcdCluster。socket变化检测我放在opt块里，触发时break跳出循环。",
+      "elements_involved": [
+        "Acquisition",
+        "DataTrans",
+        "Client",
+        "SPI transaction complete",
+        "non_blocking_send",
+        "Infra_EtcdCluster",
+        "opt",
+        "Break acquisition loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画mode==1的分支，标注为Infra_LoadBalancer模式。这个模式也是循环，但SPI传输目标是Infra_RedisCache，而且后面多了脉冲计数和边沿检测的逻辑。",
+      "elements_involved": [
+        "alt",
+        "else",
+        "Infra_LoadBalancer",
+        "Infra_RedisCache",
+        "pcnt_unit_get_count",
+        "Edge detected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了else分支\"mode == 1 (Infra_LoadBalancer)\"。循环结构类似：获取spi_mutex，spi_device_polling_transmit到Infra_RedisCache，返回完成后释放mutex。然后调用pcnt_unit_get_count读取Infra_RedisCache的计数值。",
+      "elements_involved": [
+        "else",
+        "loop",
+        "spi_mutex",
+        "Infra_RedisCache",
+        "pcnt_unit_get_count",
+        "Current counter state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "pcnt_unit_get_count的返回值是Current counter state。然后需要嵌套一个alt判断Edge detected (Infra_RedisCache)，只有边沿触发时才non_blocking_send到Infra_IngressController。",
+      "elements_involved": [
+        "Current counter state",
+        "alt",
+        "Edge detected",
+        "Infra_RedisCache",
+        "non_blocking_send",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我调整一下，在mode 1里加一层alt嵌套：Edge detected (Infra_RedisCache)为真时，DataTrans才向Client发送non_blocking_send到Infra_IngressController。这样和mode 0的发送目标区分开。",
+      "elements_involved": [
+        "alt",
+        "Edge detected",
+        "Infra_RedisCache",
+        "DataTrans",
+        "Client",
+        "non_blocking_send",
+        "Infra_IngressController"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，mode 0是直接发往Infra_EtcdCluster，mode 1是边沿触发时才发往Infra_IngressController。两个循环都是Until client disconnects。",
+      "elements_involved": [
+        "mode 0",
+        "Infra_EtcdCluster",
+        "mode 1",
+        "Infra_IngressController",
+        "Until client disconnects"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个循环和alt分支都画完了。最后应该是Client主动Disconnect，DataTrans执行safe_close(Infra_EtcdCluster)然后退出激活状态。",
+      "elements_involved": [
+        "Client",
+        "Disconnect",
+        "DataTrans",
+        "safe_close",
+        "Infra_EtcdCluster",
+        "deactivate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "safe_close的参数确认一下，虽然mode 1也在跑，但关闭的是Infra_EtcdCluster的socket资源，这是统一的清理入口。",
+      "elements_involved": [
+        "safe_close",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，所以无论哪个mode，断开时都是safe_close(Infra_EtcdCluster)。整个流程：连接→模式分支循环→断开清理。我检查一下spi_mutex的获取释放是否成对。",
+      "elements_involved": [
+        "safe_close",
+        "Infra_EtcdCluster",
+        "spi_mutex"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再确认下mode 1的细节：pcnt_unit_get_count是在释放spi_mutex之后调用的，这个计数读取不需要SPI锁，因为它读的是Infra_RedisCache的本地计数状态。",
+      "elements_involved": [
+        "pcnt_unit_get_count",
+        "spi_mutex",
+        "Infra_RedisCache",
+        "Current counter state"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我重新排一下mode 1的顺序：释放spi_mutex之后，再调用pcnt_unit_get_count，然后才是边沿检测的alt。之前顺序有点紧，现在把计数和SPI传输解耦更清晰。",
+      "elements_involved": [
+        "Release spi_mutex",
+        "pcnt_unit_get_count",
+        "Current counter state",
+        "alt",
+        "Edge detected"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "这样对了。还有mode 0里的opt块，Socket change detected是DataTrans内部检测的，所以是自环消息，然后break跳出。",
+      "elements_involved": [
+        "DataTrans",
+        "Socket change detected",
+        "opt",
+        "Break acquisition loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正：DataTrans到DataTrans的自环标注Socket change detected，opt块内执行Break acquisition loop。所有参与者、消息、激活块、alt/else/opt/loop结构都完整了。",
+      "elements_involved": [
+        "DataTrans",
+        "Socket change detected",
+        "opt",
+        "Break acquisition loop",
+        "alt",
+        "else",
+        "loop",
+        "activate",
+        "deactivate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个时序图准确反映了两种基础设施模式下的数据采集和传输流程，SPI互斥、条件发送、资源清理都体现出来了。",
+      "elements_involved": [
+        "Client",
+        "DataTrans",
+        "Acquisition",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "spi_mutex"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 21,
+    "repair_count": 2,
+    "grounding_acts_count": 21,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 41162.8323,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 21
+  }
+}

@@ -1,0 +1,254 @@
+{
+  "id": "gh_ind_93cb06225a",
+  "source": "github_industrial",
+  "repo": "TotallyInformation/node-red-contrib-uibuilder",
+  "license": "apache-2.0",
+  "code": "sequenceDiagram\n    %% https://mermaid-js.github.io/mermaid-live-editor/edit\n    %% https://mermaid-js.github.io/mermaid/#/sequenceDiagram?id=syntax\n\n    title: uibuilder Security Sequence\n\n    participant client as Client <br> Browser\n    participant NR as Node-RED <br> uibuilder node\n    participant u as uib <br> Internals\n    participant js as Custom Code <br>(<uibRoot>/<br>.config/<br>security.js)\n\n    autonumber\n\n    Note over client,js: This sequence picks up from the uib-connect-sequence diagram<br>Assumes that security is ON. Dotted lines are websocket msg's<br>**Every msg in both directions MUST now contain msg._auth**\n\n    NR-->>+client: uibuilderCtrl: \"client connect\", incl. security flag\n\n    Note over client: Client checks<br>localstore for auth\n\n    client-->>-NR: uibuilderCtrl: \"auth\"<br> incl _auth (dummy or real)\n\n    loop Continue until authorised\n\n        Note over NR,u: Validate JWT\n        Note over u: Checks signature, expiry and IP address (optional)\n\n        Note over NR,js: Validate Auth\n        Note over u,js: Uses fns in the custom security.js file\n        Note over js: Updates session and user DBs\n\n        opt Client is not auth\n            Note over client,NR: Client must have sent no JWT<br> or session expired or something else invalid\n            rect rgba(255, 0, 255, 0.1)\n                js->>u: client marked as unauth\n                u->>NR: JWT invalidated (removed)\n                NR--)client: uibuilderCtrl: \"request for logon\"\n                Note over client: front-end must<br> ask user for logon\n                Note over client,NR: NOTE: Non-logon msgs can flow ONLY if<br> uibuilder instance is set to allow unauth\n                client-->>NR: uibuilderCtrl: \"logon\"\n                Note over client,js: (Loop)\n            end\n        end\n\n    end\n    opt Client has valid JWT & is auth\n        Note over client,NR: Client must have sent valid auth<br> and JWT from a pre-existing session\n        activate NR\n        u->>NR: _auth JWT is updated\n        rect rgba(0, 255, 0, 0.1)\n            NR-->>+client: uibuilderCtrl: \"authorised\"\n            deactivate NR\n            client--)-NR: uibuilderCtrl: \"ready for content\"<br> cacheControl: \"REPLAY\"\n        end\n    end\n\n    Note over client,js: For all standard messages from client once client is auth\n\n    client-->>NR: Some data sent to Node-RED\n    \n    Note over NR,u: Validate JWT\n\n    alt If JWT invalid\n        rect rgba(100, 100, 100, 0.1)\n            NR->>u: Validate Auth\n            u->>js: Validate Auth\n            js->>NR: Updated _auth\n            u->>NR: Updated JWT\n            rect rgba(255, 255, 255, 1)\n                alt If Auth is valid\n                    Note over NR,u: Update JWT\n                    NR-->>client: uibuilderCtrl: \"authorised\" with updated _auth\n                else If Auth not valid\n                    Note over NR,u: Invalidate JWT\n                    NR-->>client: uibuilderCtrl: \"request for logon\"\n                    Note over client: Return to auth loop\n                end\n            end\n        end\n    else If JWT Valid\n        rect rgba(100, 100, 100, 0.1)\n            NR-->>client: uibuilderCtrl: \"authorised\" with updated _auth<br>If JWT expiry is auto-updating\n        end\n        Note over NR: pass msg to port 1<br> and on to rest of flow\n    end\n",
+  "diagram_type": "loop size:>1500",
+  "collected_at": "2026-02-27T04:02:57.675497",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个uibuilder的安全序列图，重点展示从客户端连接到最终授权完成的完整流程。首先要有Client、Node-RED、uib Internals和Custom Code这几个参与者。",
+      "elements_involved": [
+        "Client",
+        "Node-RED",
+        "uib Internals",
+        "Custom Code"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。Custom Code是指那个security.js文件对吧？路径是<uibRoot/<br.config/<brsecurity.js？我需要确认一下这个标注方式。",
+      "elements_involved": [
+        "Custom Code",
+        "security.js"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，就是那个路径。另外开头要加一个说明，假设安全是开启状态，而且所有消息都必须包含msg._auth。",
+      "elements_involved": [
+        "msg._auth",
+        "security flag"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经把四个参与者和初始注释加好了。现在画第一条消息：Node-RED发送uibuilderCtrl \"client connect\"给Client，包含security flag。",
+      "elements_involved": [
+        "Node-RED",
+        "Client",
+        "uibuilderCtrl",
+        "client connect",
+        "security flag"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来Client要检查localstore里有没有之前的认证信息，然后发回一个auth消息，可能是dummy也可能是real的JWT。",
+      "elements_involved": [
+        "Client",
+        "localstore",
+        "_auth",
+        "dummy or real"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。现在进入核心循环：Continue until authorised。这里需要展示JWT验证和security.js的验证流程。",
+      "elements_involved": [
+        "loop",
+        "Validate JWT",
+        "Validate Auth",
+        "security.js"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "对的，uib Internals要检查signature、expiry和IP address，然后调用security.js里的函数。security.js还要更新session和user数据库。",
+      "elements_involved": [
+        "uib Internals",
+        "signature",
+        "expiry",
+        "IP address",
+        "session",
+        "user DBs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "如果客户端未授权，我需要画一个opt分支：标记为unauth，JWT被removed，然后请求logon。这里用个浅紫色背景框怎么样？rgba(255, 0, 255, 0.1)",
+      "elements_involved": [
+        "opt",
+        "unauth",
+        "JWT invalidated",
+        "removed",
+        "request for logon",
+        "rgba(255, 0, 255, 0.1)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，颜色没问题。还要加一条重要注释：非登录消息只有在uibuilder实例允许unauth时才能流通。然后客户端发logon消息，回到循环。",
+      "elements_involved": [
+        "allow unauth",
+        "logon",
+        "loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "未授权分支完成了。现在画授权成功的opt分支：Client has valid JWT & is auth。这里用绿色背景rgba(0, 255, 0, 0.1)表示成功状态。",
+      "elements_involved": [
+        "valid JWT",
+        "authorised",
+        "rgba(0, 255, 0, 0.1)",
+        "ready for content",
+        "REPLAY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，这里有个细节：_auth JWT需要被update，然后Node-RED发authorised给Client，Client回复ready for content并带cacheControl REPLAY。",
+      "elements_involved": [
+        "_auth JWT",
+        "updated",
+        "authorised",
+        "ready for content",
+        "cacheControl",
+        "REPLAY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，已调整顺序。现在画标准消息流程：客户端发数据到Node-RED，然后验证JWT。这里需要分alt分支处理JWT valid和invalid两种情况。",
+      "elements_involved": [
+        "Some data",
+        "Validate JWT",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "JWT invalid的情况比较复杂，要用灰色背景rgba(100, 100, 100, 0.1)，然后内部再套一个白色背景的alt判断auth是否valid。如果valid就update JWT，invalid就返回登录请求。",
+      "elements_involved": [
+        "rgba(100, 100, 100, 0.1)",
+        "rgba(255, 255, 255, 1)",
+        "Update JWT",
+        "Invalidate JWT",
+        "request for logon"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "嵌套结构画好了。JWT valid的情况也用灰色背景，然后Node-RED发authorised并更新_auth，最后消息送到port 1继续后续流程。",
+      "elements_involved": [
+        "authorised",
+        "updated _auth",
+        "port 1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不对，JWT valid时的authorised消息有个条件：如果JWT expiry是auto-updating才发。你漏了这个注释。",
+      "elements_involved": [
+        "JWT expiry",
+        "auto-updating"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修复，加上了auto-updating的条件注释。整个序列图现在从连接、认证循环、到标准消息处理都完整了。",
+      "elements_involved": [
+        "auto-updating"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，检查一下：dotted line都是websocket消息，loop和opt的层级正确，所有颜色标记都到位了。可以定稿了。",
+      "elements_involved": [
+        "dotted",
+        "websocket",
+        "loop",
+        "opt"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 17,
+    "repair_count": 1,
+    "grounding_acts_count": 17,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 30755.8362,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 17
+  }
+}

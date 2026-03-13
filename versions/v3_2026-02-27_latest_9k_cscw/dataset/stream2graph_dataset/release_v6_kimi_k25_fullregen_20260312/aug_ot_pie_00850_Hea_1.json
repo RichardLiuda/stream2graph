@@ -1,0 +1,170 @@
+{
+  "id": "aug_ot_pie_00850_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/kotek-7/minpuzz/blob/654b51056933c621c2671ca993745a92ad3af09d/docs/sequence-game-connection.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "kotek-7/minpuzz",
+  "diagram_type": "pie",
+  "code": "%%{HealthTech_PatientRecords}}}%%\n\nsequenceDiagram\n    participant U1 as ユーザー1\n    participant F1 as フロントエンド1\n    participant B as バックエンド\n    participant R as Redis\n    participant F2 as フロントエンド2\n    participant U2 as ユーザー2\n\n    Note over U1,U2: ゲーム接続フェーズ（match-found 後）\n\n    par 両チームに並行通知\n        B->>F1: Socket to teamA: match-found（matchId, self, partner）\n        F1->>F1: ゲーム画面に遷移（接続待ち表示）\n    and\n        B->>F2: Socket to teamB: match-found（同一ペイロード）\n        F2->>F2: ゲーム画面に遷移（接続待ち表示）\n    end\n\n    Note over F1,F2: 各プレイヤーがゲームルームに接続登録（参加直後に game-init を受信）\n    par 両チームが並行接続\n        U1->>F1: ゲーム接続開始\n        F1->>B: Socket emit: join-game（matchId, teamId, userId）\n        B-->>F1: game-init（board, pieces, startedAt?, duration?）\n        Note over B,F1: 即座に本人へ state-sync も送出（最新全量）\n        B-->>F1: state-sync（board, pieces, score, timer?, matchStatus）\n        Note over B: publicルームへ参加（progress/game-end/timer-sync用）\n        B->>B: room:match:{HealthTech_LabAnalyzer}:public に join\n        B->>R: SADD match:{HealthTech_PatientRecords}:team:{HealthTech_HIPAA_Vault}:connected userId\n    and\n        U2->>F2: ゲーム接続開始\n        F2->>B: Socket emit: join-game（matchId, teamId, userId）\n        B-->>F2: game-init（board, pieces, startedAt?, duration?）\n        B-->>F2: state-sync（board, pieces, score, timer?, matchStatus）\n        B->>B: room:match:{HealthTech_HIPAA_Vault}:public に join\n        B->>R: SADD match:{HealthTech_HIPAA_Vault}:team:{HealthTech_LabAnalyzer}:connected userId\n    end\n\n    B->>R: 接続数を確認（teamA/B が期待人数に到達?）\n    alt 全プレイヤーが接続完了\n        R-->>B: 達成\n        B->>R: match を READY に更新、チーム両方を IN_GAME に更新\n        Note over B: ゲーム開始通知（チームルームに限定）＋タイマー開始\n        B->>F1: Socket to teamA room: game-start（matchId）\n        B->>F2: Socket to teamB room: game-start（matchId）\n        B->>R: match:{HealthTech_LabAnalyzer}:timer = {HealthTech_HIPAA_Vault}\n        Note over B: timer-sync を public に5秒周期で送出開始\n    else まだ接続待ち\n        Note over U1,U2: 接続待ち表示を継続\n    end\n\n    Note over U1,U2: 次: docs/in-game/sequence-in-game.mmd（game-start以後のゲーム操作）\n",
+  "content_size": 2111,
+  "collected_at": "2026-02-06T10:47:53.768596",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "ot_pie_00850",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的时序图，描述两个玩家匹配成功后，从通知到真正开始游戏的全过程。核心是并行的两队处理，还有Redis的连接状态管理。",
+      "elements_involved": [
+        "ユーザー1",
+        "フロントエンド1",
+        "バックエンド",
+        "Redis",
+        "フロントエンド2",
+        "ユーザー2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。所以流程起点是match-found之后，后端要同时通知两个前端。我理解为用par块表示并行，B到F1和B到F2各走一条线，对吗？",
+      "elements_involved": [
+        "バックエンド",
+        "フロントエンド1",
+        "フロントエンド2",
+        "match-found"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，而且每个前端收到后要本地跳转到游戏画面，显示连接等待。然后两边玩家各自点击开始连接，进入第二个并行块。",
+      "elements_involved": [
+        "フロントエンド1",
+        "フロントエンド2",
+        "ゲーム画面",
+        "接続待ち"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先把第一个par画好了：B同时socket推送给F1和F2，payload里带matchId、自己和队友信息。两边都显示连接等待。现在处理第二个并行块——玩家实际加入游戏？",
+      "elements_involved": [
+        "バックエンド",
+        "フロントエンド1",
+        "フロントエンド2",
+        "Socket",
+        "match-found"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错。U1和U2各自触发join-game，后端收到后要发game-init给本人，紧接着立刻发state-sync同步完整状态。然后后端把自己加入public房间，同时用SADD把userId写入Redis的connected集合。",
+      "elements_involved": [
+        "ユーザー1",
+        "ユーザー2",
+        "join-game",
+        "game-init",
+        "state-sync",
+        "publicルーム",
+        "SADD",
+        "connected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里有个细节：SADD的key命名里我看到有teamA和teamB的标识，但代码片段里混用了HealthTech_LabAnalyzer和HealthTech_PatientRecords，还有HealthTech_HIPAA_Vault，这是有意的设计吗？",
+      "elements_involved": [
+        "SADD",
+        "teamA",
+        "teamB",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "啊，你说得对，这里命名不一致。统一用HealthTech_HIPAA_Vault代表teamA，HealthTech_PatientRecords代表teamB，HealthTech_LabAnalyzer是另一个模块不要混进来。Redis的key应该是match:{HealthTech_HIPAA_Vault}:team:{teamId}:connected这种结构。",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_PatientRecords",
+        "SADD",
+        "teamA",
+        "teamB"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。现在两边都join完public房间、SADD完成后，后端要检查Redis里的连接数。用alt分支：如果两队人都到齐了，就更新match状态为READY，两队状态为IN_GAME，然后分别向两队房间发game-start，同时启动5秒周期的timer-sync。",
+      "elements_involved": [
+        "バックエンド",
+        "Redis",
+        "READY",
+        "IN_GAME",
+        "game-start",
+        "timer-sync",
+        "publicルーム"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。最后加个Note指向下一阶段的文档路径，这样整个图就闭环了。",
+      "elements_involved": [
+        "Note",
+        "docs/in-game/sequence-in-game.mmd"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 1,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 29826.17,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

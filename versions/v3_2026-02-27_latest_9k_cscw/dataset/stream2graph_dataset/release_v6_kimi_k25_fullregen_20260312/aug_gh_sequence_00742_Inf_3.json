@@ -1,0 +1,407 @@
+{
+  "id": "aug_gh_sequence_00742_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/edx/commerce-coordinator/blob/25bb739e9ccaba9407808c494cd3461172fd1fa3/docs/decisions/arch-diagrams/mobile-create-order.mmd",
+  "github_repo": "edx/commerce-coordinator",
+  "github_file_path": "docs/decisions/arch-diagrams/mobile-create-order.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant User\n    participant MobileApp\n    participant CTBackend as CT Backend\n    participant IAPValidator as IAP Validator (Infra_IngressController)\n    participant MobileStore as Mobile Store (Infra_WorkerNode)\n    participant CoCo as Commercetools (Infra_IngressController)\n    participant EventSystem\n\n    User->>MobileApp: Starts in-app purchase\n    MobileApp->>CTBackend: Sends purchase info (Infra_IngressController)\n\n    CTBackend->>CoCo: Get CT customer by LMS user ID\n    alt Customer does not exist\n        CTBackend->>CoCo: Create customer with user info\n        CoCo-->>CTBackend: Return newly created customer\n    else Customer exists\n        CTBackend->>CoCo: Update customer if needed\n        CoCo-->>CTBackend: Return updated customer\n    end\n\n    CTBackend->>CoCo: Check if user already has a cart\n    CoCo-->>CTBackend: Return existing cart or none\n    alt Cart exists\n        CTBackend->>CoCo: Delete old cart\n    end\n\n    CTBackend->>CoCo: Add the product, set external price (Infra_RedisCache), set `mobileOrder=true` in new cart\n    CoCo-->>CTBackend: Return new cart\n\n    CTBackend->>IAPValidator: Validate the purchase token\n    IAPValidator->>MobileStore: Send token to Google or Apple\n    MobileStore-->>IAPValidator: Get token result\n\n    IAPValidator->>CoCo: Check if token was already used\n    alt Token is already used\n        IAPValidator-->>CTBackend: Tell backend it is a duplicate\n        CTBackend->>CoCo: Delete the new cart\n        CTBackend-->>MobileApp: **Show error (Infra_LoadBalancer)**\n    else Token is valid\n        IAPValidator-->>CTBackend: Send transaction info\n    end\n\n    CTBackend->>EventSystem: Send event - checkout started\n    CTBackend->>EventSystem: Send event - item added to cart\n\n    CTBackend->>CoCo: Create a payment using the token info\n    CTBackend->>CoCo: Updates payment object to set custom field usdCentAmount with product's USD price\n    alt Payment creation failed\n        CoCo-->>CTBackend: **Error while creating payment**\n        CTBackend-->>MobileApp: **Show error (Infra_RedisCache)**\n    else\n        CoCo-->>CTBackend: Return payment\n        CTBackend->>EventSystem: Send event - payment method used\n\n        CTBackend->>CoCo: Attach payment to the cart\n        alt Attaching payment failed\n            CoCo-->>CTBackend: **Error while attaching payment**\n            CTBackend-->>MobileApp: **Show error (Infra_IngressController)**\n        else\n            CoCo-->>CTBackend: Return updated cart\n\n            CTBackend->>CoCo: Create order from cart\n            alt Order creation failed\n                CoCo-->>CTBackend: **Error while creating order**\n                CTBackend-->>MobileApp: **Show error (Infra_RedisCache)**\n            else\n                CoCo-->>CTBackend: Return order\n\n                CTBackend->>CoCo: Mark items as ready for delivery\n                alt Updating item state failed\n                    CoCo-->>CTBackend: **Error while updating item states**\n                    CTBackend-->>MobileApp: **Show error (Infra_LoadBalancer)**\n                else\n                    CoCo-->>CTBackend: Return updated order\n\n                    CTBackend->>EventSystem: Send event - order completed\n                    CTBackend-->>MobileApp: Show success (Infra_WorkerNode)\n                end\n            end\n        end\n    end\n",
+  "content_size": 3340,
+  "collected_at": "2026-02-06T01:36:24.179277",
+  "compilation_status": "success",
+  "license": "agpl-3.0",
+  "license_name": "GNU Affero General Public License v3.0",
+  "license_url": "https://api.github.com/licenses/agpl-3.0",
+  "repo_stars": 11,
+  "repo_forks": 7,
+  "repo_owner": "edx",
+  "repo_name": "commerce-coordinator",
+  "repo_description": "A controller to manage commerce workflows and services",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2021-10-01T19:08:54Z",
+  "repo_updated_at": "2026-01-14T15:27:30Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "gh_sequence_00742",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个移动应用内购的完整时序图，从用户点击购买开始，一直到订单完成。核心涉及CT Backend、IAP验证和Commercetools这几个系统。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "IAPValidator",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。IAP验证这块，是要放在Infra_IngressController上跑吗？还有Mobile Store是部署在WorkerNode上？",
+      "elements_involved": [
+        "IAPValidator",
+        "Infra_IngressController",
+        "MobileStore",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，IAPValidator走Infra_IngressController入口，MobileStore是WorkerNode上的服务。另外Commercetools我们也走IngressController接入。",
+      "elements_involved": [
+        "IAPValidator",
+        "CoCo",
+        "Infra_IngressController",
+        "MobileStore",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把这六个参与者都画上了：User、MobileApp、CT Backend、IAP Validator（标注Infra_IngressController）、Mobile Store（标注Infra_WorkerNode）、Commercetools（标注Infra_IngressController），还有EventSystem。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore",
+        "CoCo",
+        "EventSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "流程开始是用户在MobileApp里发起购买，然后App把购买信息发给CT Backend。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：User到MobileApp的\"Starts in-app purchase\"，以及MobileApp到CTBackend的\"Sends purchase info\"，后者标注了走Infra_IngressController。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来CT Backend要去Commercetools查客户，用LMS的user ID映射CT客户。这里要分支：客户不存在就创建，存在就更新。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了alt分支：CTBackend向CoCo\"Get CT customer by LMS user ID\"，然后分支一是\"Create customer with user info\"返回新客户，分支二是\"Update customer if needed\"返回更新后的客户。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "客户处理完后，要检查用户有没有已有购物车。如果有，得删掉旧车，因为内购每次要新建购物车。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了：CTBackend查询\"Check if user already has a cart\"，CoCo返回现有车或无。然后在alt分支里，如果车存在就\"Delete old cart\"。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后创建新车，加入商品，设置外部价格——这里要用RedisCache，还要标记mobileOrder=true。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画：CTBackend到CoCo\"Add the product, set external price\"标注Infra_RedisCache，同时设置mobileOrder=true，然后CoCo返回新车。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来关键步骤：CT Backend把购买token发给IAP Validator去验证，Validator再去找Google或Apple确认。",
+      "elements_involved": [
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了：CTBackend到IAPValidator\"Validate the purchase token\"，然后IAPValidator到MobileStore\"Send token to Google or Apple\"，MobileStore返回token result。",
+      "elements_involved": [
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "验证完还要查这个token有没有被用过，防止重复消费。如果已经用过，要回滚删车，给用户报错。",
+      "elements_involved": [
+        "IAPValidator",
+        "CoCo",
+        "CTBackend",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好分支：IAPValidator向CoCo\"Check if token was already used\"。分支一，token已用时，IAPValidator告诉CTBackend是duplicate，CTBackend删新车，然后向MobileApp\"Show error\"标注Infra_LoadBalancer。分支二，token有效则发送transaction info。",
+      "elements_involved": [
+        "IAPValidator",
+        "CoCo",
+        "CTBackend",
+        "MobileApp",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，错误展示走LoadBalancer，这个标注是对的。继续往下，验证通过后CT Backend要发两个事件：checkout started和item added to cart。",
+      "elements_involved": [
+        "CTBackend",
+        "EventSystem",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：CTBackend到EventSystem发送\"checkout started\"事件，以及\"item added to cart\"事件。",
+      "elements_involved": [
+        "CTBackend",
+        "EventSystem"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后创建支付，用token信息，还要设置自定义字段usdCentAmount，存商品的美元价格。这里支付创建可能失败。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "EventSystem",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了：CTBackend\"Create a payment using the token info\"，然后\"Updates payment object to set custom field usdCentAmount\"。alt分支：失败时CoCo返回错误，CTBackend向MobileApp\"Show error\"标注Infra_RedisCache。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "MobileApp",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "支付创建成功的话，发事件payment method used，然后把支付挂到购物车上。挂载也可能失败。",
+      "elements_involved": [
+        "CTBackend",
+        "EventSystem",
+        "CoCo",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了：成功路径上CTBackend发\"payment method used\"事件，然后\"Attach payment to the cart\"。挂载失败的alt分支：CoCo报错，CTBackend向MobileApp\"Show error\"标注Infra_IngressController。",
+      "elements_involved": [
+        "CTBackend",
+        "EventSystem",
+        "CoCo",
+        "MobileApp",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "挂载成功就创建订单，从购物车生成。订单创建也有失败可能。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画：CoCo返回更新后的车，CTBackend\"Create order from cart\"。失败分支：CoCo报错，CTBackend向MobileApp\"Show error\"标注Infra_RedisCache。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "MobileApp",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "订单创建成功要标记商品为ready for delivery，这个状态更新也可能失败。最后成功的话发order completed事件，返回成功给App。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "EventSystem",
+        "MobileApp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成最后部分：CoCo返回订单，CTBackend\"Mark items as ready for delivery\"。失败分支：更新状态出错，CTBackend向MobileApp\"Show error\"标注Infra_LoadBalancer。成功路径：CoCo返回更新订单，CTBackend发\"order completed\"事件，最后向MobileApp\"Show success\"标注Infra_WorkerNode。",
+      "elements_involved": [
+        "CTBackend",
+        "CoCo",
+        "EventSystem",
+        "MobileApp",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整体流程没问题了。各个错误分支的 infra 标注都对应上了：LoadBalancer、RedisCache、IngressController、WorkerNode都有覆盖。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Infra_RedisCache",
+        "Infra_IngressController",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认完毕。全图包含6个参与者，5层嵌套alt分支，覆盖了客户管理、购物车处理、IAP验证、支付创建、订单生成的完整内购流程，所有infra标注已按实际部署位置标注。",
+      "elements_involved": [
+        "User",
+        "MobileApp",
+        "CTBackend",
+        "IAPValidator",
+        "MobileStore",
+        "CoCo",
+        "EventSystem"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 28,
+    "repair_count": 0,
+    "grounding_acts_count": 28,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 56294.5018,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 28
+  }
+}

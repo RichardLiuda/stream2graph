@@ -1,0 +1,273 @@
+{
+  "id": "aug_gh_sequence_00302_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/KiritoMainBro88/kiritomainbro-monorepo/blob/f022137c7dc280db2b032ae9e3a88a305fa49167/docs/diagrams/payments_manual.mmd",
+  "github_repo": "KiritoMainBro88/kiritomainbro-monorepo",
+  "github_file_path": "docs/diagrams/payments_manual.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant C as Customer\n    participant W as Web Frontend\n    participant A as API Server\n    participant D as Database\n    participant S as Staff\n    participant F as File Storage\n    \n    Note over C,F: Manual Payment Flow\n    \n    %% Start Payment\n    C->>W: Click \"Pay Now\"\n    W->>A: POST /payments/manual/start\n    Note right of W: {HealthTech_EMR_Sync}\n    \n    A->>D: Create Payment record\n    Note right of A: status: PENDING\n    D-->>A: Payment created\n    A-->>W: {HealthTech_HIPAA_Vault}\n    W-->>C: Show payment instructions\n    \n    %% Upload Proof\n    C->>W: Upload payment proof\n    W->>A: POST /payments/manual/proof\n    Note right of W: multipart/form-data<br/>{HealthTech_HIPAA_Vault}\n    \n    A->>F: Store proof file\n    Note right of A: Validate file type, size\n    F-->>A: File stored\n    A->>D: Update Payment\n    Note right of A: status: UNDER_REVIEW<br/>proofUrl: file_path\n    D-->>A: Payment updated\n    A-->>W: {HealthTech_EMR_Sync}\n    W-->>C: \"Payment under review\"\n    \n    %% Staff Review\n    S->>W: Login to admin panel\n    W->>A: GET /admin/payments/pending\n    A->>D: Query pending payments\n    D-->>A: Pending payments\n    A-->>W: List of pending payments\n    W-->>S: Show payment details & proof\n    \n    alt Payment Approved\n        S->>W: Click \"Approve\"\n        W->>A: POST /payments/manual/review\n        Note right of W: {HealthTech_PatientRecords}\n        \n        A->>D: Update Payment\n        Note right of A: status: SUCCEEDED<br/>reviewedAt: now(HealthTech_EMR_Sync)\n        D-->>A: Payment updated\n        \n        A->>D: Update Order\n        Note right of A: status: PAID<br/>paidAt: now(HealthTech_HIPAA_Vault)\n        D-->>A: Order updated\n        \n        A->>D: Create Delivery\n        Note right of A: Generate token hash<br/>status: PENDING\n        D-->>A: Delivery created\n        \n        A-->>W: {HealthTech_PatientRecords}\n        W-->>S: \"Payment approved\"\n        \n        %% Notify Customer\n        A->>D: Create Notification\n        Note right of A: type: PAYMENT_APPROVED\n        D-->>A: Notification created\n        A-->>C: SSE: payment.status\n        \n    else Payment Rejected\n        S->>W: Click \"Reject\"\n        W->>A: POST /payments/manual/review\n        Note right of W: {HealthTech_HIPAA_Vault}\n        \n        A->>D: Update Payment\n        Note right of A: status: FAILED<br/>reviewedAt: now(HealthTech_DiagnosticEngine)\n        D-->>A: Payment updated\n        \n        A->>D: Update Order\n        Note right of A: status: CANCELED<br/>canceledAt: now(HealthTech_LabAnalyzer)\n        D-->>A: Order updated\n        \n        A-->>W: {HealthTech_EMR_Sync}\n        W-->>S: \"Payment rejected\"\n        \n        %% Notify Customer\n        A->>D: Create Notification\n        Note right of A: type: PAYMENT_REJECTED\n        D-->>A: Notification created\n        A-->>C: SSE: payment.status\n    end\n    \n    %% Customer Response\n    C->>W: Check payment status\n    W->>A: GET /orders/{HealthTech_HIPAA_Vault}\n    A->>D: Query order with payment\n    D-->>A: Order data\n    A-->>W: Order details\n    W-->>C: Show updated status\n    \n    alt Payment Approved\n        C->>W: Access delivery\n        W->>A: POST /deliveries/reveal\n        Note right of W: {HealthTech_HIPAA_Vault}\n        \n        A->>D: Verify token & update delivery\n        Note right of A: revealsLeft: 0<br/>revealedAt: now(HealthTech_LabAnalyzer)\n        D-->>A: Delivery updated\n        \n        A-->>W: {HealthTech_PatientRecords}\n        W-->>C: Show delivery content\n    end\n",
+  "content_size": 3413,
+  "collected_at": "2026-02-06T01:30:26.059391",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 2,
+  "repo_forks": 0,
+  "repo_owner": "KiritoMainBro88",
+  "repo_name": "kiritomainbro-monorepo",
+  "repo_description": "KMB monorepo (web + api) with Next.js, NestJS, Prisma, Turborepo, full security hardening and CI/CD",
+  "repo_language": "TypeScript",
+  "repo_topics": [],
+  "repo_created_at": "2025-10-09T16:51:12Z",
+  "repo_updated_at": "2025-10-24T07:26:58Z",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gh_sequence_00302",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个手动支付流程的时序图，核心场景是：客户在线下付款后上传凭证，然后由Staff人工审核。这个流程涉及六个参与方：Customer、Web Frontend、API Server、Database、Staff，还有File Storage用来存支付凭证。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "Staff",
+        "File Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，六个参与方。我想确认一下：File Storage是专门用来存客户上传的支付凭证图片或PDF吗？另外，这个流程里HealthTech相关的组件标签，比如HIPAA Vault、EMR Sync这些，是加在消息旁边还是作为独立的参与方？",
+      "elements_involved": [
+        "File Storage",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "File Storage只存凭证文件，不是独立业务角色。那些HealthTech标签是合规审计标记，应该加在Note right of里，说明数据流经了哪个安全组件。比如Web Frontend发请求到API Server时，要标记经过了HealthTech_EMR_Sync。",
+      "elements_involved": [
+        "HealthTech_EMR_Sync",
+        "Note right of"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，那我先画出第一阶段：客户点击支付。Customer点击\"Pay Now\"，Web Frontend向API Server POST /payments/manual/start，这里我加Note right of W标记HealthTech_EMR_Sync。然后API Server去Database创建Payment记录，状态是PENDING，返回后经过HealthTech_HIPAA_Vault回到前端，最后展示支付指引给客户。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "POST /payments/manual/start",
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault",
+        "PENDING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，第一阶段没问题。接下来是上传凭证阶段：客户上传支付证明，Web Frontend用multipart/form-data POST到/payments/manual/proof，这里要标记HealthTech_HIPAA_Vault。然后API Server把文件存到File Storage，同时要验证文件类型和大小。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "File Storage",
+        "POST /payments/manual/proof",
+        "HealthTech_HIPAA_Vault",
+        "multipart/form-data"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。File Storage返回后，API Server更新Database里的Payment记录，状态改成UNDER_REVIEW，同时记录proofUrl。然后经过HealthTech_EMR_Sync返回给Web Frontend，前端告诉客户\"Payment under review\"。",
+      "elements_involved": [
+        "API Server",
+        "Database",
+        "File Storage",
+        "Web Frontend",
+        "UNDER_REVIEW",
+        "proofUrl",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在进入Staff审核阶段。Staff登录admin panel，Web Frontend向API Server GET /admin/payments/pending，API Server去Database查询pending状态的支付，返回列表给Staff查看详情和凭证。这里需要画一个alt分支：审核通过或拒绝。",
+      "elements_involved": [
+        "Staff",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "GET /admin/payments/pending",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "alt分支我理解了。通过时Staff点击\"Approve\"，拒绝时点击\"Reject\"，都POST到/payments/manual/review。但Note标记的HealthTech组件好像不一样？通过时用HealthTech_PatientRecords，拒绝时用HealthTech_HIPAA_Vault？",
+      "elements_involved": [
+        "Staff",
+        "POST /payments/manual/review",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，这是合规要求。通过时涉及患者记录访问，所以标记HealthTech_PatientRecords；拒绝时只是安全审计，标记HealthTech_HIPAA_Vault。通过分支里，Payment状态变SUCCEEDED，Order状态变PAID，还要创建Delivery记录，生成token hash，状态PENDING。",
+      "elements_involved": [
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault",
+        "SUCCEEDED",
+        "PAID",
+        "Delivery",
+        "token hash",
+        "PENDING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "通过分支已添加。之后API Server还要创建Notification，类型是PAYMENT_APPROVED，然后通过SSE推送给Customer。拒绝分支类似：Payment变FAILED，Order变CANCELED，但Note标记是HealthTech_DiagnosticEngine和HealthTech_LabAnalyzer，最后也发Notification和SSE。",
+      "elements_involved": [
+        "API Server",
+        "Database",
+        "Notification",
+        "SSE",
+        "Customer",
+        "FAILED",
+        "CANCELED",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer",
+        "PAYMENT_APPROVED",
+        "PAYMENT_REJECTED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后还有客户响应阶段。Customer可以查询支付状态，GET /orders/{id}，这里路径参数要标记HealthTech_HIPAA_Vault。返回Order详情后，如果支付已通过，客户可以Access delivery，Web Frontend POST /deliveries/reveal，API Server验证token并更新delivery，revealsLeft置0，标记HealthTech_LabAnalyzer。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "Database",
+        "GET /orders",
+        "HealthTech_HIPAA_Vault",
+        "POST /deliveries/reveal",
+        "revealsLeft",
+        "HealthTech_LabAnalyzer",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "最后这个alt是嵌套在之前的alt里面，还是独立的？看起来是：客户查询后，如果是Approved状态，才进入reveal流程。我画成查询返回后，一个alt分支\"Payment Approved\"，里面包含reveal的完整交互。",
+      "elements_involved": [
+        "Customer",
+        "Web Frontend",
+        "API Server",
+        "alt",
+        "Payment Approved",
+        "POST /deliveries/reveal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，就是这个结构。reveal成功后经过HealthTech_PatientRecords返回给前端，展示delivery内容。整个流程闭环了。你检查一下所有Note的HealthTech标记有没有遗漏？",
+      "elements_involved": [
+        "HealthTech_PatientRecords",
+        "delivery content"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "我发现一个问题：在通过分支里，更新Payment的reviewedAt时，我标记成了HealthTech_EMR_Sync，但更新Order的paidAt时标记了HealthTech_HIPAA_Vault。你确认一下这两个标记对吗？",
+      "elements_involved": [
+        "Payment",
+        "reviewedAt",
+        "HealthTech_EMR_Sync",
+        "Order",
+        "paidAt",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认，这两个标记是对的。Payment更新属于EMR同步，Order的支付完成涉及HIPAA Vault的审计。另外Delivery创建时的token hash生成也要加Note说明。现在图应该完整了。",
+      "elements_involved": [
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault",
+        "Delivery",
+        "token hash"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 15,
+    "repair_count": 1,
+    "grounding_acts_count": 15,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 39477.1724,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 13
+  }
+}

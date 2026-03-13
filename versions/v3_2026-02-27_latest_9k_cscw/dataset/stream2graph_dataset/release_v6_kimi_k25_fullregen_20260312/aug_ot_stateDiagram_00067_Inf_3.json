@@ -1,0 +1,185 @@
+{
+  "id": "aug_ot_stateDiagram_00067_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Ghenghis/SvonyBrowser/blob/b02803cf7b47e7d54ef3c45466f973948f5a47d4/docs/v2.0.6/diagrams/SESSION_RECORDING.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Ghenghis/SvonyBrowser",
+  "diagram_type": "stateDiagram",
+  "code": "%%{Infra_WorkerNode}}}%%\nstateDiagram-v2\n    [Infra_LoadBalancer] --> Idle: App Start\n    \n    Idle --> Recording: Start Recording\n    Recording --> Paused: Pause\n    Paused --> Recording: Resume\n    Recording --> Saving: Stop Recording\n    Paused --> Saving: Stop Recording\n    Saving --> Idle: Save Complete\n    \n    Idle --> Loading: Load Session\n    Loading --> Ready: Session Loaded\n    Ready --> Playing: Play\n    Playing --> Paused2: Pause\n    Paused2 --> Playing: Resume\n    Playing --> Ready: Stop/Complete\n    Ready --> Idle: Close Session\n    \n    state Recording {Infra_LoadBalancer] --> Capturing\n        Capturing --> Capturing: Packet Received\n        Capturing --> BufferFull: Buffer Limit\n        BufferFull --> Flushing: Auto-flush\n        Flushing --> Capturing: Flush Complete\n    }\n    \n    state Playing {Infra_RedisCache] --> Emitting\n        Emitting --> Waiting: Packet Emitted\n        Waiting --> Emitting: Delay Complete\n        Emitting --> [Infra_RedisCache]: Last Packet\n    }\n    \n    note right of Recording\n        Captures:\n        - Timestamp\n        - Direction\n        - Raw hex\n        - Decoded JSON\n        - Action name\n    end note\n    \n    note right of Playing\n        Replay Options:\n        - Speed: 0.5x - 4x\n        - Seek to position\n        - Step forward/back\n        - Filter by action\n    end note\n",
+  "content_size": 1360,
+  "collected_at": "2026-02-06T10:37:27.487618",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00067",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个状态图来描述流量录制回放系统的核心生命周期。系统从负载均衡器启动，先进入空闲状态，然后可以开始录制或者加载已有会话。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Idle",
+        "Recording",
+        "Loading"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，录制和加载是两个独立的分支对吧？那录制过程中如果暂停了，恢复后是回到Recording状态吗？还有停止录制后的数据保存怎么处理？",
+      "elements_involved": [
+        "Recording",
+        "Paused",
+        "Saving"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，Paused可以Resume回到Recording，也可以直接Stop Recording走到Saving。保存完成后回到Idle。另外录制状态内部还有细节——需要捕获数据包、处理缓冲区满的情况。",
+      "elements_involved": [
+        "Paused",
+        "Recording",
+        "Saving",
+        "Idle",
+        "Capturing",
+        "BufferFull",
+        "Flushing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把Recording做成一个复合状态，里面包含Capturing、BufferFull和Flushing的循环。缓冲区满时自动flush，完成后继续捕获。",
+      "elements_involved": [
+        "Recording",
+        "Capturing",
+        "BufferFull",
+        "Flushing",
+        "Auto-flush"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "录制这边可以了。现在看回放分支：Loading完成后进入Ready，然后Play进入Playing状态。Playing也可以暂停，但为了避免和录制的Paused混淆，回放暂停叫Paused2吧。",
+      "elements_involved": [
+        "Loading",
+        "Ready",
+        "Playing",
+        "Paused2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Paused2之后Resume回到Playing，那播放完成或者主动停止呢？还有Ready状态能直接关闭会话吗？",
+      "elements_involved": [
+        "Paused2",
+        "Playing",
+        "Ready",
+        "Idle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Playing停止后回到Ready，Ready可以Close Session回到Idle。Playing也是个复合状态，要从Redis缓存读取数据包，有Emitting和Waiting的循环，还要处理最后一包的发送。",
+      "elements_involved": [
+        "Playing",
+        "Infra_RedisCache",
+        "Emitting",
+        "Waiting",
+        "Last Packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "复合状态Playing加上了，Emitting和Waiting交替，延迟完成后继续发射，最后一包标记结束。另外我在Recording和Playing旁边加了注释，说明捕获字段和回放选项。",
+      "elements_involved": [
+        "Playing",
+        "Emitting",
+        "Waiting",
+        "Delay Complete",
+        "Recording",
+        "Captures",
+        "Replay Options"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，Playing内部从Waiting回到Emitting的触发条件我写的是\"Delay Complete\"，不是\"Packet Received\"，你刚才是不是标错了？还有BufferFull到Flushing应该是Auto-flush。",
+      "elements_involved": [
+        "Waiting",
+        "Emitting",
+        "Delay Complete",
+        "BufferFull",
+        "Flushing",
+        "Auto-flush"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，Waiting--Emitting的触发条件是Delay Complete，BufferFull--Flushing是Auto-flush。现在整个状态流转应该都对了，从负载均衡启动到各分支闭环。",
+      "elements_involved": [
+        "Waiting",
+        "Emitting",
+        "Delay Complete",
+        "BufferFull",
+        "Flushing",
+        "Auto-flush",
+        "Infra_LoadBalancer",
+        "Idle"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:37Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 21721.3604,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

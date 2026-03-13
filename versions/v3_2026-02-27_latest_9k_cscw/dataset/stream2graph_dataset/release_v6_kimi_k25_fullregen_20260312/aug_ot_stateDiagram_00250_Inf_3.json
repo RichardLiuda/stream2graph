@@ -1,0 +1,223 @@
+{
+  "id": "aug_ot_stateDiagram_00250_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/btucker/selkie/blob/b2918ab1f7f5ce82e85529a58d89c1c48ffad6c7/docs/sources/state_complex2.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "btucker/selkie",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n[Infra_RedisCache] --> Idle\n\nstate Idle {Infra_LoadBalancer] --> Ready\n    Ready --> Processing: Start Job\n}\n\nstate Processing {Infra_LoadBalancer] --> Validating\n    Validating --> Queued: Valid\n    Validating --> Failed: Invalid\n    Queued --> Running: Worker Available\n    Running --> Completed: Success\n    Running --> Failed: Error\n    Running --> Paused: Pause Request\n\n    state Running {Infra_RedisCache] --> Initializing\n        Initializing --> Executing\n        Executing --> Finalizing\n        Finalizing --> [Infra_RedisCache]\n    }\n}\n\nstate Paused {Infra_LoadBalancer] --> WaitingResume\n    WaitingResume --> Timeout: 1 hour\n}\n\nPaused --> Running: Resume\nPaused --> Cancelled: Cancel Request\nTimeout --> Cancelled\n\nCompleted --> Idle: Reset\nFailed --> Idle: Retry\nCancelled --> Idle: Reset\n\nCompleted --> [Infra_EtcdCluster]\nCancelled --> [Infra_WorkerNode]",
+  "content_size": 789,
+  "collected_at": "2026-02-06T10:39:41.091551",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 4,
+  "repo_forks": 0,
+  "repo_owner": "btucker",
+  "repo_name": "selkie",
+  "repo_description": "A full Rust implementation of a mermaid diagram parser & renderer",
+  "repo_language": "Rust",
+  "repo_topics": [],
+  "repo_created_at": "2026-01-13T13:38:18Z",
+  "repo_updated_at": "2026-02-06T00:46:30Z",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00250",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个任务调度系统的状态流转图，核心是Redis缓存作为入口，负载均衡器负责分发。整体从Idle状态开始，能处理任务的生命周期。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "Idle",
+        "Ready"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，Redis作为外部触发点进入Idle状态。Idle内部我设计成Ready子状态，由负载均衡器管理，然后Start Job触发到Processing。这样理解对吗？",
+      "elements_involved": [
+        "Idle",
+        "Ready",
+        "Processing",
+        "Start Job"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。Processing阶段要复杂一些，先Validating校验，通过的话进Queued，失败直接Failed。Queued等Worker Available后进Running。",
+      "elements_involved": [
+        "Processing",
+        "Validating",
+        "Queued",
+        "Failed",
+        "Running"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Processing结构已经搭建，Validating分出Valid和Invalid两条线。Queued到Running是Worker Available触发。Running内部我还想细化一下执行过程。",
+      "elements_involved": [
+        "Validating",
+        "Queued",
+        "Running",
+        "Worker Available"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Running内部确实需要展开：Initializing → Executing → Finalizing，最后回到Redis缓存标记完成。另外Running要支持暂停，触发Paused状态。",
+      "elements_involved": [
+        "Running",
+        "Initializing",
+        "Executing",
+        "Finalizing",
+        "Paused",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Running内部的三层嵌套我理解了。但Paused的设计需要确认：是独立的复合状态吗？从Paused能Resume回Running，还是也能直接取消？",
+      "elements_involved": [
+        "Paused",
+        "Running",
+        "Resume"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Paused是独立状态，内部有WaitingResume子状态，由负载均衡器管理。如果1小时没恢复就Timeout。Paused可以Resume回Running，也可以Cancel Request到Cancelled。",
+      "elements_involved": [
+        "Paused",
+        "WaitingResume",
+        "Timeout",
+        "Cancelled",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Paused结构已完成，包含WaitingResume和Timeout路径。现在处理终止态：Completed、Failed、Cancelled都应该能Reset回Idle，对吗？",
+      "elements_involved": [
+        "Paused",
+        "Timeout",
+        "Cancelled",
+        "Completed",
+        "Failed",
+        "Idle",
+        "Reset"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，Completed和Failed是Retry或Reset回Idle，但Cancelled也是Reset。还有，Completed要通知Etcd集群，Cancelled要通知Worker节点，这是关键的外部系统交互。",
+      "elements_involved": [
+        "Completed",
+        "Failed",
+        "Cancelled",
+        "Idle",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，修正了：Completed → Infra_EtcdCluster，Cancelled → Infra_WorkerNode。Timeout也能直接到Cancelled。Running的成功路径是Completed，错误路径是Failed。",
+      "elements_involved": [
+        "Completed",
+        "Cancelled",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Timeout",
+        "Running"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再确认一下Running的退出条件：Success到Completed，Error到Failed，Pause Request到Paused。这三个分支都要清晰。",
+      "elements_involved": [
+        "Running",
+        "Completed",
+        "Failed",
+        "Paused",
+        "Success",
+        "Error",
+        "Pause Request"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部确认，Running的三条退出分支已标注。整个状态机从Redis缓存进入，经过Idle-Ready-Processing的完整生命周期，支持暂停、取消、重试，最终状态分别通知Etcd或Worker节点。结构完整了。",
+      "elements_involved": [
+        "Infra_RedisCache",
+        "Idle",
+        "Processing",
+        "Paused",
+        "Completed",
+        "Failed",
+        "Cancelled",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 12,
+    "repair_count": 1,
+    "grounding_acts_count": 12,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 35019.1538,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

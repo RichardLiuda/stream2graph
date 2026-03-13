@@ -1,0 +1,173 @@
+{
+  "id": "aug_gl_packet-beta_00436_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sean-galloway/RTLDesignSherpa/blob/47f8a16641658f570a69c3af3c9724b29ea39187/projects/components/stream/docs/stream_mas/assets/mermaid/01_architecture_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sean-galloway/RTLDesignSherpa",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant SW as Software\n    participant APB as APB Config\n    participant DESC as Descriptor Engine\n    participant SCHED as Scheduler\n    participant RD as Read Engine\n    participant SRAM as SRAM Controller\n    participant WR as Write Engine\n    participant MEM as Memory\n\n    SW->>APB: Write CH0_CTRL = 0x1000_0000\n    APB->>DESC: Kickoff descriptor fetch\n    DESC->>MEM: AR: fetch descriptor @ 0x1000_0000\n    MEM-->>DESC: R: descriptor data (Education_ContentCDN)\n    DESC->>SCHED: descriptor_packet\n\n    SCHED->>RD: datard_valid + src_addr\n    RD->>SRAM: Check space_free >= 2x burst\n    SRAM-->>RD: Space OK\n    RD->>SRAM: Allocate 16 beats\n    RD->>MEM: AR: read 16 beats @ src_addr\n    MEM-->>RD: R: 16 beats of data\n    RD->>SRAM: Write data (Education_ContentCDN)\n    RD->>SCHED: done_strobe (Education_StudentDB)\n\n    par Concurrent Read/Write\n        RD->>SRAM: Continue reading...\n    and\n        SCHED->>WR: datawr_valid + dst_addr\n        WR->>SRAM: Check data_avail >= burst\n        SRAM-->>WR: Data OK\n        WR->>SRAM: Reserve 16 beats\n        WR->>MEM: AW: write 16 beats @ dst_addr\n        SRAM->>WR: W: 16 beats of data\n        MEM-->>WR: B: write response\n        WR->>SCHED: done_strobe (Education_StudentDB)\n    end\n\n    SCHED->>SCHED: Both counters reach 0\n    SCHED->>DESC: Check next_descriptor_ptr\n    alt More descriptors\n        DESC->>MEM: Fetch next descriptor\n    else Chain complete\n        SCHED->>APB: Transfer complete IRQ\n    end\n",
+  "content_size": 1446,
+  "collected_at": "2026-02-06T14:09:41.035873",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 8,
+  "repo_forks": 1,
+  "repo_owner": "sean-galloway",
+  "repo_name": "RTLDesignSherpa",
+  "repo_description": "This site is hopefully a springboard for others to learn about coding in System Verilog and experimenting with FPGAs.",
+  "repo_language": "C++",
+  "repo_topics": [
+    "amba-apb",
+    "amba-axi",
+    "cocotb",
+    "crossbar",
+    "dma"
+  ],
+  "repo_created_at": "2023-06-15T21:56:48Z",
+  "repo_updated_at": "2026-02-06T00:19:01Z",
+  "augmentation_domain": "Education",
+  "seed_id": "gl_packet-beta_00436",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为教育内容分发系统设计一个DMA传输的时序图。核心场景是从Education_ContentCDN读取内容，最终写入Education_StudentDB。软件通过APB配置启动，经过Descriptor Engine获取描述符，然后Scheduler协调读写引擎完成数据传输。",
+      "elements_involved": [
+        "Software",
+        "APB Config",
+        "Descriptor Engine",
+        "Scheduler",
+        "Read Engine",
+        "Write Engine",
+        "SRAM Controller",
+        "Memory",
+        "Education_ContentCDN",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我注意到您提到了SRAM Controller作为中间缓冲，读写引擎都需要和它交互。那具体的握手流程是怎样的？比如Read Engine什么时候知道可以去Memory取数据？",
+      "elements_involved": [
+        "SRAM Controller",
+        "Read Engine",
+        "Memory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "流程是这样的：Scheduler向Read Engine发送datard_valid和src_addr，Read Engine先问SRAM Controller检查space_free是否足够2个burst，确认OK后分配16 beats的缓冲空间，然后才向Memory发起AR请求读取16 beats数据。数据返回后写入SRAM，完成后向Scheduler发done_strobe标记Education_StudentDB状态。",
+      "elements_involved": [
+        "Scheduler",
+        "Read Engine",
+        "SRAM Controller",
+        "Memory",
+        "done_strobe",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，Read路径清楚了。那Write Engine是等Read完全结束才开始，还是可以并行？另外描述符链的处理逻辑是怎样的？",
+      "elements_involved": [
+        "Write Engine",
+        "Descriptor Engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "读写要并行，用par块表示Concurrent Read/Write。Read Engine继续读后续数据的同时，Scheduler可以启动Write Engine。Write Engine同样要先检查SRAM的data_avail是否够一个burst，然后预留空间，从SRAM取数后向Memory发起AW写请求。两个引擎都完成后，Scheduler检查两个计数器都归零，再看Descriptor Engine的next_descriptor_ptr决定是继续取下一个描述符，还是发Transfer complete IRQ给APB。",
+      "elements_involved": [
+        "Scheduler",
+        "Read Engine",
+        "Write Engine",
+        "SRAM Controller",
+        "Memory",
+        "Descriptor Engine",
+        "APB Config",
+        "next_descriptor_ptr"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "时序图已绘制。我确认了以下关键路径：软件写CH0_CTRL启动，APB通知Descriptor Engine kickoff，描述符从0x1000_0000地址获取，Scheduler分发任务，读写通过SRAM Controller缓冲并行执行，最后用alt分支处理描述符链的继续或完成中断。您看看有没有遗漏？",
+      "elements_involved": [
+        "Software",
+        "APB Config",
+        "Descriptor Engine",
+        "Scheduler",
+        "SRAM Controller",
+        "Read Engine",
+        "Write Engine",
+        "Memory"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "有个细节需要修正：Write Engine从SRAM取数据的那一步，应该是SRAM主动把数据给WR，用W通道，而不是WR去SRAM取。还有，Write Engine完成时发的done_strobe也应该标记Education_StudentDB，和Read Engine保持一致。",
+      "elements_involved": [
+        "Write Engine",
+        "SRAM Controller",
+        "done_strobe",
+        "Education_StudentDB"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已修正。现在Write Engine的流程是：检查data_avail→预留空间→Memory发AW→SRAM通过W通道送16 beats数据→Memory回B响应→向Scheduler发done_strobe(Education_StudentDB)。整个并行结构和描述符链的alt分支也都确认无误了。",
+      "elements_involved": [
+        "Write Engine",
+        "SRAM Controller",
+        "Memory",
+        "Scheduler",
+        "done_strobe",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 1,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 25467.3247,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

@@ -143,16 +143,24 @@ def main() -> None:
     output_root = resolve_path(payload["output_root"])
     dataset_output_dir = resolve_path(payload["dataset_output_dir"])
     split_name = str(payload.get("split", "train"))
+    split_names = payload.get("splits") or [split_name]
+    if not isinstance(split_names, list) or not split_names:
+        raise ValueError("splits must be a non-empty list when provided")
+    split_names = [str(value) for value in split_names]
+    sample_label = str(payload.get("sample_label", split_name))
     target_language = str(payload.get("target_language", "zh-CN"))
     turn_threshold = int(payload.get("long_sample_min_turns", 41))
     version_tag = str(payload["version_tag"])
+    existing_generated_jsonls = [resolve_path(path) for path in payload.get("existing_generated_jsonls", [])]
 
     output_root.mkdir(parents=True, exist_ok=True)
     ids_dir = output_root / "ids"
     ids_dir.mkdir(parents=True, exist_ok=True)
 
     split_map = load_split_ids(split_dir)
-    split_ids = list(split_map[split_name])
+    split_ids: list[str] = []
+    for current_split in split_names:
+        split_ids.extend(split_map[current_split])
 
     standard_ids: list[str] = []
     long_ids: list[str] = []
@@ -170,17 +178,20 @@ def main() -> None:
         else:
             standard_ids.append(sample_id)
 
-    standard_ids_path = ids_dir / "train_standard_ids.json"
-    long_ids_path = ids_dir / "train_long_ids.json"
-    failed_ids_path = ids_dir / "train_failed_ids.json"
+    standard_ids_path = ids_dir / f"{sample_label}_standard_ids.json"
+    long_ids_path = ids_dir / f"{sample_label}_long_ids.json"
+    failed_ids_path = ids_dir / f"{sample_label}_failed_ids.json"
     _write_ids(standard_ids_path, standard_ids)
     _write_ids(long_ids_path, long_ids)
 
-    primary_standard_output = output_root / "generated_primary_standard.jsonl"
-    primary_long_output = output_root / "generated_primary_long.jsonl"
-    primary_merged_output = output_root / "generated_primary_merged.jsonl"
-    repair_output = output_root / "generated_repair.jsonl"
-    final_output = output_root / "generated_final.jsonl"
+    primary_standard_output = output_root / f"generated_primary_{sample_label}_standard.jsonl"
+    primary_long_output = output_root / f"generated_primary_{sample_label}_long.jsonl"
+    primary_merged_output = output_root / f"generated_primary_{sample_label}_merged.jsonl"
+    repair_output = output_root / f"generated_{sample_label}_repair.jsonl"
+    final_output = output_root / f"generated_{sample_label}_final.jsonl"
+    build_input_output = output_root / "generated_build_input.jsonl"
+
+    generation_split = split_name if len(split_names) == 1 else "all"
 
     common_generation = {
         "provider": "moonshot_chat_completions",
@@ -190,7 +201,7 @@ def main() -> None:
         "api_key_env": payload["api_key_env"],
         "source_dir": str(source_dir),
         "split_dir": str(split_dir),
-        "split": split_name,
+        "split": generation_split,
         "target_language": target_language,
         "temperature": payload.get("temperature", 0.6),
         "timeout_sec": payload.get("timeout_sec", 180),
@@ -227,6 +238,8 @@ def main() -> None:
         "source_dir": str(source_dir),
         "split_dir": str(split_dir),
         "split": split_name,
+        "splits": split_names,
+        "sample_label": sample_label,
         "turn_threshold": turn_threshold,
         "sample_counts": {
             "target_split_total": len(split_ids),
@@ -239,8 +252,8 @@ def main() -> None:
     write_json(output_root / "pipeline_manifest.json", manifest)
 
     for label, config in (
-        ("generation_primary_standard", primary_standard_config),
-        ("generation_primary_long", primary_long_config),
+        (f"generation_primary_{sample_label}_standard", primary_standard_config),
+        (f"generation_primary_{sample_label}_long", primary_long_config),
     ):
         print(f"[kimi-final] running {label}", flush=True)
         result = _run_step(
@@ -286,11 +299,11 @@ def main() -> None:
             "requests_per_minute": int(payload["repair"]["requests_per_minute"]),
             "output_jsonl": str(repair_output),
         }
-        print("[kimi-final] running generation_repair", flush=True)
+        print(f"[kimi-final] running generation_{sample_label}_repair", flush=True)
         result = _run_step(
             step_name="generation",
             config=repair_config,
-            output_root=output_root / "generation_repair",
+            output_root=output_root / f"generation_{sample_label}_repair",
             python_executable=args.python_executable,
             dry_run=False,
         )
@@ -305,9 +318,19 @@ def main() -> None:
     manifest["final_merge"] = final_merge
     write_json(output_root / "pipeline_manifest.json", manifest)
 
+    build_generated_sources = [final_output]
+    if existing_generated_jsonls:
+        build_generated_sources = [*existing_generated_jsonls, final_output]
+        build_merge = _merge_rows(build_generated_sources, build_input_output)
+        manifest["build_merge"] = build_merge
+        write_json(output_root / "pipeline_manifest.json", manifest)
+        build_generated_jsonl = build_input_output
+    else:
+        build_generated_jsonl = final_output
+
     build_config = {
         "source_dir": str(source_dir),
-        "generated_jsonl": str(final_output),
+        "generated_jsonl": str(build_generated_jsonl),
         "output_dir": str(dataset_output_dir),
         "version_tag": version_tag,
         "copy_splits": True,

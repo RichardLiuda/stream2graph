@@ -1,0 +1,217 @@
+{
+  "id": "aug_ot_stateDiagram_00355_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/jacero-io/kode-operator/blob/5d36809dc147909b7087b0e1aa1f785b7ce569a6/docs/diagrams/kode-reconcile.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "jacero-io/kode-operator",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_EtcdCluster] --> ReconciliationRequest\n    ReconciliationRequest --> FetchLatestKode\n    FetchLatestKode --> CheckDeletionTimestamp\n    CheckDeletionTimestamp --> HandleDeletingState: DeletionTimestamp Set\n    CheckDeletionTimestamp --> CheckGenerationMismatch: DeletionTimestamp Not Set\n    CheckGenerationMismatch --> AssessCurrentPhase: No Mismatch\n    CheckGenerationMismatch --> Configuring: Mismatch Detected\n    AssessCurrentPhase --> Pending: New or Unknown\n    AssessCurrentPhase --> Configuring\n    AssessCurrentPhase --> Provisioning\n    AssessCurrentPhase --> Active\n    AssessCurrentPhase --> Inactive\n    AssessCurrentPhase --> Failed\n    AssessCurrentPhase --> Suspending\n    AssessCurrentPhase --> Suspended\n    AssessCurrentPhase --> Resuming\n    Pending --> ValidateKode\n    ValidateKode --> FetchTemplate: Validation Passed\n    ValidateKode --> Failed: Validation Failed\n    FetchTemplate --> Configuring: Template Found\n    FetchTemplate --> Failed: Template Not Found\n    Configuring --> EnsureResources\n    EnsureResources --> Provisioning: Resources Created\n    EnsureResources --> Failed: Error\n    Provisioning --> CheckResourceReadiness\n    CheckResourceReadiness --> Provisioning: Resources Not Ready\n    CheckResourceReadiness --> Active: Resources Ready\n    CheckResourceReadiness --> Failed: Error\n    Active --> CheckResourceHealth\n    CheckResourceHealth --> Configuring: Resources Not Ready\n    CheckResourceHealth --> Active: Resources Healthy\n    Inactive --> Suspending: Suspension Initiated\n    Suspending --> Suspended: Suspension Complete\n    Suspended --> Resuming: Resume Initiated\n    Resuming --> Configuring: Resume Complete\n    Failed --> IncrementRetryCount\n    IncrementRetryCount --> CheckMaxRetries\n    CheckMaxRetries --> Pending: Retry\n    CheckMaxRetries --> Failed: Max Retries Exceeded\n    HandleDeletingState --> CleanupResources\n    CleanupResources --> RemoveFinalizer: Cleanup Complete\n    RemoveFinalizer --> END_TRUE: Finalizer Removed\n\n    state CheckGenerationMismatch {Infra_RedisCache] --> CompareGenerations\n        CompareGenerations --> MismatchDetected: Generation Changed\n        CompareGenerations --> NoMismatch: Generation Unchanged\n        MismatchDetected --> UpdateObservedGeneration\n        UpdateObservedGeneration --> [Infra_WorkerNode]\n        NoMismatch --> [Infra_RedisCache]\n    }\n\n    NewKodeCreated --> Pending\n    SpecChanged --> CheckGenerationMismatch\n    ResourceStatusChanged --> CheckGenerationMismatch\n    PeriodicReconciliation --> CheckGenerationMismatch\n    ManualAction --> Suspended\n    ManualAction --> Failed\n    DeletionTimestampSet --> HandleDeletingState\n\n    Pending --> END_REQUEUE: Need Further Processing\n    Configuring --> END_REQUEUE: Need Further Processing\n    Provisioning --> END_REQUEUE: Need Further Processing\n    Active --> END_TRUE: No Changes Needed\n    Inactive --> END_REQUEUE: Need Further Processing\n    Failed --> END_REQUEUE: Retry Needed\n    Suspending --> END_REQUEUE: Need Further Processing\n    Suspended --> END_REQUEUE: Need Further Processing\n    Resuming --> END_REQUEUE: Need Further Processing\n\n    END_TRUE --> [Infra_WorkerNode]\n    END_REQUEUE --> [Infra_EtcdCluster]\n\n    classDef state fill:#4CAF50,stroke:#333,stroke-width:2px,color:#fff;\n    classDef special fill:#FFC107,stroke:#333,stroke-width:2px,color:#333;\n    classDef reconcileOrigin fill:#FF4081,stroke:#333,stroke-width:2px,color:#fff;\n    classDef initialState fill:#3F51B5,stroke:#333,stroke-width:4px,color:#fff;\n    classDef endState fill:#E91E63,stroke:#333,stroke-width:4px,color:#fff;\n\n    class Pending,Configuring,Provisioning,Active,Inactive,Failed,Suspending,Suspended,Resuming state\n    class CheckGenerationMismatch special\n    class NewKodeCreated,SpecChanged,ResourceStatusChanged,PeriodicReconciliation,ManualAction,DeletionTimestampSet reconcileOrigin\n    class ReconciliationRequest initialState\n    class END_TRUE,END_REQUEUE endState",
+  "content_size": 3899,
+  "collected_at": "2026-02-06T10:41:07.996846",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "jacero-io",
+  "repo_name": "kode-operator",
+  "repo_description": "Development environments, the cloud-native way",
+  "repo_language": "Go",
+  "repo_topics": [],
+  "repo_created_at": "2024-05-19T07:04:51Z",
+  "repo_updated_at": "2025-01-18T14:42:33Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00355",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个Etcd集群的完整状态机，核心是从ReconciliationRequest开始，先FetchLatestKode，然后必须检查DeletionTimestamp。如果设置了就进入删除流程HandleDeletingState，没设置才去检查GenerationMismatch。",
+      "elements_involved": [
+        "ReconciliationRequest",
+        "FetchLatestKode",
+        "CheckDeletionTimestamp",
+        "HandleDeletingState",
+        "CheckGenerationMismatch"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下，CheckGenerationMismatch这里如果检测到Mismatch，是直接到Configuring状态吗？还有AssessCurrentPhase这个节点，它要分出Pending、Active、Failed这些终态，还是中间态？",
+      "elements_involved": [
+        "CheckGenerationMismatch",
+        "Configuring",
+        "AssessCurrentPhase",
+        "Pending",
+        "Active",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Mismatch Detected就到Configuring。AssessCurrentPhase是分发器，New or Unknown走Pending，其他像Provisioning、Active、Inactive、Failed、Suspending、Suspended、Resuming都是可能的当前状态。另外Pending之后要ValidateKode，验证过了才能FetchTemplate。",
+      "elements_involved": [
+        "AssessCurrentPhase",
+        "Pending",
+        "Provisioning",
+        "Active",
+        "Inactive",
+        "Failed",
+        "Suspending",
+        "Suspended",
+        "Resuming",
+        "ValidateKode",
+        "FetchTemplate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，主干我画好了。现在处理CheckGenerationMismatch的内部细节——我把它做成一个复合状态，里面包含CompareGenerations，分出MismatchDetected和NoMismatch两条分支，MismatchDetected要UpdateObservedGeneration然后到WorkerNode，NoMismatch回到RedisCache。这样对吗？",
+      "elements_involved": [
+        "CheckGenerationMismatch",
+        "CompareGenerations",
+        "MismatchDetected",
+        "NoMismatch",
+        "UpdateObservedGeneration",
+        "Infra_WorkerNode",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "可以，但别忘了触发源。除了NewKodeCreated到Pending，还有SpecChanged、ResourceStatusChanged、PeriodicReconciliation这三个都要连到CheckGenerationMismatch，再加上ManualAction能直接到Suspended或Failed，DeletionTimestampSet触发删除流程。",
+      "elements_involved": [
+        "NewKodeCreated",
+        "SpecChanged",
+        "ResourceStatusChanged",
+        "PeriodicReconciliation",
+        "ManualAction",
+        "DeletionTimestampSet",
+        "Pending",
+        "CheckGenerationMismatch",
+        "Suspended",
+        "Failed",
+        "HandleDeletingState"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "终态处理我有点疑问。Active状态如果CheckResourceHealth发现Resources Healthy，是保持Active还是结束？还有Failed的重试逻辑，IncrementRetryCount之后CheckMaxRetries，Retry的话回Pending，Max Retries Exceeded就留在Failed？",
+      "elements_involved": [
+        "Active",
+        "CheckResourceHealth",
+        "Failed",
+        "IncrementRetryCount",
+        "CheckMaxRetries",
+        "Pending"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Active Healthy保持Active，但结束时要走END_TRUE表示No Changes Needed。Failed那里你说得对，Retry回Pending，超限就结束。另外删除流程要完整：CleanupResources完成后RemoveFinalizer，然后END_TRUE。其他中间态像Configuring、Provisioning这些Need Further Processing的都走END_REQUEUE回到EtcdCluster。",
+      "elements_involved": [
+        "Active",
+        "END_TRUE",
+        "Failed",
+        "CheckMaxRetries",
+        "Pending",
+        "CleanupResources",
+        "RemoveFinalizer",
+        "Configuring",
+        "Provisioning",
+        "END_REQUEUE",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部画完了。样式我也按类别分了：普通状态用绿色，CheckGenerationMismatch用黄色高亮，触发源用粉色，ReconciliationRequest是蓝色粗边框起点，END_TRUE和END_REQUEUE是红色粗边框终点。你看看还有要调整的吗？",
+      "elements_involved": [
+        "Pending",
+        "Configuring",
+        "Provisioning",
+        "Active",
+        "CheckGenerationMismatch",
+        "NewKodeCreated",
+        "SpecChanged",
+        "ReconciliationRequest",
+        "END_TRUE",
+        "END_REQUEUE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "有个细节错了——Provisioning状态CheckResourceReadiness的时候，Resources Not Ready应该回到Provisioning自己，不是到Configuring。我再看一眼，Active状态CheckResourceHealth发现Resources Not Ready才是到Configuring。这两个别搞混了。",
+      "elements_involved": [
+        "Provisioning",
+        "CheckResourceReadiness",
+        "Active",
+        "CheckResourceHealth",
+        "Configuring"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。Provisioning的自循环和Active到Configuring的降级路径现在区分清楚了。还有Inactive、Suspending、Suspended、Resuming这些状态的流转我也检查过了，Suspending完成到Suspended，Resume后回到Configuring重新配置。现在应该完整了。",
+      "elements_involved": [
+        "Provisioning",
+        "Active",
+        "Configuring",
+        "Inactive",
+        "Suspending",
+        "Suspended",
+        "Resuming"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:22Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:22Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 29325.022,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

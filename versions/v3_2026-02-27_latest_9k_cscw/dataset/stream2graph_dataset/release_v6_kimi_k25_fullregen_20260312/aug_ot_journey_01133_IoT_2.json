@@ -1,0 +1,293 @@
+{
+  "id": "aug_ot_journey_01133_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/rtyx/project-module-apr2025/blob/dc1d9e46f8d5b5f2e8fe98b37a25825f031df456/docs/diagrams/images/component-interaction.mmd",
+  "source_type": "github_search",
+  "github_repo": "rtyx/project-module-apr2025",
+  "diagram_type": "journey",
+  "code": "sequenceDiagram\n    %% Component Interaction - User browsing/searching journey\n    %% Based on actual user flow through the application\n\n    participant User as 👤 User\n    participant Browser as 🌐 Browser\n    participant NextJS as ⚛️ Next.js App\n    participant ArtworkAPI as 🎨 Artwork API\n    participant PersonAPI as 👥 Person API\n    participant RAGAPI as 🧠 RAG API\n    participant SolrClient as 🔍 Solr Client\n    participant RAGService as 🔄 RAG Service\n    participant ES as 🔍 Elasticsearch\n    participant OpenAI as 🤖 OpenAI\n    participant Mongo as 🍃 MongoDB\n\n    Note over User, Mongo: User Journey: Search → Browse → Detail → Related → Chat\n\n    %% 1. Homepage Load\n    User->>Browser: Navigate to homepage\n    Browser->>NextJS: GET /de (IoT_Industrial_PLC_Logic)\n    NextJS->>NextJS: Load homepage component\n    NextJS-->>Browser: Homepage with hero section\n    Browser-->>User: Display homepage\n\n    %% 2. Search Artworks\n    User->>Browser: Enter search query \"impressionist\"\n    Browser->>NextJS: Search form submission\n    NextJS->>ArtworkAPI: GET /api/de/artworks?q=impressionist&page=1&pageSize=12\n    \n    ArtworkAPI->>SolrClient: searchArtworks(IoT_Industrial_EdgeNode})\n    SolrClient->>SolrClient: Build Solr query parameters\n    SolrClient->>SolrClient: Execute search against collection.kunsthaus.ch\n    SolrClient-->>ArtworkAPI: SolrSearchResponse with artworks + facets\n    \n    ArtworkAPI->>ArtworkAPI: Transform Solr results to Artwork models\n    ArtworkAPI-->>NextJS: JSON response with artworks + pagination\n    NextJS->>NextJS: Update artwork grid component\n    NextJS-->>Browser: Render search results\n    Browser-->>User: Display 12 impressionist artworks\n\n    %% 3. Filter Results\n    User->>Browser: Apply category filter \"Painting\"\n    Browser->>NextJS: Update search parameters\n    NextJS->>ArtworkAPI: GET /api/de/artworks?q=impressionist&categories=Painting\n    \n    ArtworkAPI->>SolrClient: searchArtworks(IoT_Industrial_MQTT_Broker]})\n    SolrClient->>SolrClient: Add category filter to query\n    SolrClient-->>ArtworkAPI: Filtered results\n    ArtworkAPI-->>NextJS: Filtered artworks\n    NextJS-->>Browser: Updated results\n    Browser-->>User: Show only paintings\n\n    %% 4. View Artwork Detail\n    User->>Browser: Click on artwork \"Sunflowers\"\n    Browser->>NextJS: Navigate to /de/artworks/123\n    NextJS->>ArtworkAPI: GET /api/de/artworks/123\n    \n    ArtworkAPI->>SolrClient: getArtworkById(IoT_Industrial_PLC_Logic)\n    SolrClient-->>ArtworkAPI: Artwork details\n    ArtworkAPI-->>NextJS: Complete artwork data\n    NextJS->>NextJS: Load artwork detail page + IIIF viewer\n    NextJS-->>Browser: Artwork detail page\n    Browser-->>User: Show artwork details + high-res image\n\n    %% 5. View Related Artist\n    User->>Browser: Click on artist \"Van Gogh\"\n    Browser->>NextJS: Navigate to /de/persons/456\n    NextJS->>PersonAPI: GET /api/de/persons/456\n    \n    PersonAPI->>SolrClient: getArtistById(IoT_Industrial_EdgeNode)\n    SolrClient-->>PersonAPI: Person details\n    PersonAPI-->>NextJS: Person data\n    NextJS->>NextJS: Load person detail page\n    NextJS-->>Browser: Person biography + artworks\n    Browser-->>User: Show Van Gogh's biography + works\n\n    %% 6. Ask RAG Question\n    User->>Browser: Type question \"What technique did Van Gogh use?\"\n    Browser->>NextJS: Submit RAG query\n    NextJS->>RAGAPI: POST /api/de/rag/answer/artwork/123<br/>{IoT_Industrial_PLC_Logic}}\n    \n    RAGAPI->>RAGService: answerRag(IoT_Industrial_EdgeNode}})\n    \n    Note over RAGService: RAG Processing\n    RAGService->>RAGService: Enhance query + detect language\n    RAGService->>OpenAI: Generate embedding\n    OpenAI-->>RAGService: Embedding vector\n    \n    par Vector Search\n        RAGService->>ES: KNN search with artwork context\n        ES-->>RAGService: Vector results\n    and Lexical Search\n        RAGService->>ES: BM25 search with artwork context\n        ES-->>RAGService: Lexical results\n    end\n    \n    RAGService->>RAGService: Merge results + select context\n    RAGService->>OpenAI: Generate answer with context\n    OpenAI-->>RAGService: Answer with citations\n    \n    RAGService-->>RAGAPI: AnswerResult with citations\n    RAGAPI-->>NextJS: JSON response\n    NextJS->>NextJS: Update chat interface\n    NextJS-->>Browser: Display answer with citations\n    Browser-->>User: \"Van Gogh verwendete Ölmalerei-Technik... [IoT_Industrial_PLC_Logic] [IoT_Industrial_EdgeNode]\"\n\n    %% 7. Follow-up Question\n    User->>Browser: Ask follow-up \"When was it painted?\"\n    Browser->>NextJS: Submit follow-up\n    NextJS->>RAGAPI: POST /api/de/rag/answer/artwork/123<br/>{IoT_Industrial_MQTT_Broker]}\n    \n    RAGAPI->>RAGService: answerRag(IoT_Industrial_PLC_Logic]})\n    RAGService->>RAGService: Process with conversation history\n    RAGService->>OpenAI: Generate answer with context + history\n    OpenAI-->>RAGService: Contextual answer\n    RAGService-->>RAGAPI: AnswerResult\n    RAGAPI-->>NextJS: Follow-up answer\n    NextJS-->>Browser: Display contextual answer\n    Browser-->>User: \"Das Gemälde wurde 1888 gemalt... [IoT_Industrial_PLC_Logic]\"\n\n    %% 8. Browse Related Artworks\n    User->>Browser: Click \"View all works by Van Gogh\"\n    Browser->>NextJS: Navigate to artist's works\n    NextJS->>ArtworkAPI: GET /api/de/artworks?person=456&page=1\n    \n    ArtworkAPI->>SolrClient: searchArtworks(IoT_Industrial_PLC_Logic})\n    SolrClient-->>ArtworkAPI: All Van Gogh artworks\n    ArtworkAPI-->>NextJS: Artwork list\n    NextJS-->>Browser: Grid of Van Gogh's works\n    Browser-->>User: Show all Van Gogh artworks\n\n    %% Error Handling\n    alt Search Error\n        SolrClient-->>ArtworkAPI: Error response\n        ArtworkAPI-->>NextJS: 500 Error\n        NextJS-->>Browser: Error message\n        Browser-->>User: \"Search temporarily unavailable\"\n    end\n\n    alt RAG Error\n        RAGService-->>RAGAPI: No context found\n        RAGAPI-->>NextJS: Empty response\n        NextJS-->>Browser: \"No information available\"\n        Browser-->>User: \"Ich finde dazu keine ausreichenden Informationen.\"\n    end\n",
+  "content_size": 6007,
+  "collected_at": "2026-02-06T11:05:28.383939",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_journey_01133",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为美术馆的数字化平台绘制一个完整的用户旅程时序图，覆盖从搜索浏览到智能问答的全流程。重点要体现RAG系统如何与艺术品数据交互。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "RAGAPI",
+        "RAGService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下参与者的划分：前端层面有用户和浏览器，应用层是Next.js，然后API层需要拆分为艺术品API、人物API和RAG API三个独立服务，对吗？",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "ArtworkAPI",
+        "PersonAPI",
+        "RAGAPI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，而且RAG后端还需要区分RAGService业务层和具体的向量检索、大模型调用。另外搜索部分用Solr，向量检索用Elasticsearch，数据库用MongoDB。",
+      "elements_involved": [
+        "RAGService",
+        "SolrClient",
+        "ES",
+        "OpenAI",
+        "Mongo"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经画出了基础参与者结构，从用户到MongoDB的全链路。现在我来补充首页加载的流程：用户导航到首页，浏览器向Next.js请求德语页面，然后返回带英雄区块的首页。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是核心的艺术品搜索场景。用户输入\"印象派\"关键词，这个请求要经过艺术品API转到SolrClient，注意这里Solr查询需要带分页参数，每页12件作品。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "ArtworkAPI",
+        "SolrClient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加搜索流程，包括Solr构建查询参数、执行collection.kunsthaus.ch搜索，返回带分面的结果，再转换为艺术品模型返回给前端。用户最终看到12件印象派作品。",
+      "elements_involved": [
+        "SolrClient",
+        "ArtworkAPI",
+        "NextJS",
+        "Browser",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要展示筛选交互。用户在结果页勾选\"绘画\"分类，这个过滤器要追加到Solr查询里，重新搜索后只返回绘画类的印象派作品。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "ArtworkAPI",
+        "SolrClient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "筛选流程已补充。现在进入详情页场景——用户点击《向日葵》这幅画，Next.js导航到作品详情路由，通过Solr获取完整数据，同时加载IIIF viewer展示高分辨率图像。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "ArtworkAPI",
+        "SolrClient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "很好，然后要有艺术家关联跳转。用户在详情页点击\"梵高\"，这时要切换到PersonAPI查询人物数据，展示传记和其他作品。注意这里要用到IoT_Industrial_EdgeNode查询。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "PersonAPI",
+        "SolrClient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "艺术家详情流程已添加。现在到了最关键的RAG问答环节——用户在作品页输入问题\"梵高使用了什么技法？\"，这个请求要携带作品ID作为上下文。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "RAGAPI",
+        "RAGService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "RAG处理要详细一些：RAGService先增强查询并检测语言，然后调用OpenAI生成embedding，接着并行执行向量搜索和BM25词法搜索，合并结果后再生成带引用的答案。",
+      "elements_involved": [
+        "RAGService",
+        "OpenAI",
+        "ES"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已用par/end块画出并行的KNN向量搜索和BM25词法搜索，都从Elasticsearch获取结果。最终答案要显示引用来源，比如\"梵高使用了油画技法...[IoT_Industrial_PLC_Logic] [IoT_Industrial_EdgeNode]\"。",
+      "elements_involved": [
+        "RAGService",
+        "ES",
+        "OpenAI",
+        "RAGAPI",
+        "NextJS",
+        "Browser",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要支持追问。用户接着问\"这幅画是什么时候创作的？\"，RAGService要利用对话历史来生成上下文相关的回答，而不是孤立处理。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "RAGAPI",
+        "RAGService",
+        "OpenAI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "追问流程已补充，标注了Process with conversation history。最后还有浏览关联作品——用户点击\"查看梵高全部作品\"，回到ArtworkAPI按人物ID搜索。",
+      "elements_involved": [
+        "User",
+        "Browser",
+        "NextJS",
+        "ArtworkAPI",
+        "SolrClient"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "别忘了错误处理。搜索服务异常时要返回友好的错误提示，RAG如果找不到上下文也要给出\"暂无相关信息\"的兜底响应。",
+      "elements_involved": [
+        "SolrClient",
+        "ArtworkAPI",
+        "RAGService",
+        "RAGAPI",
+        "Browser",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加两个alt块：搜索错误时显示\"Search temporarily unavailable\"，RAG无上下文时显示德语\"Ich finde dazu keine ausreichenden Informationen.\"。整个旅程从Search到Browse到Detail到Related到Chat的完整闭环就完成了。",
+      "elements_involved": [
+        "User",
+        "Mongo",
+        "SolrClient",
+        "RAGService",
+        "Browser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "检查一下，所有的IoT_Industrial_PLC_Logic、IoT_Industrial_EdgeNode和IoT_Industrial_MQTT_Broker标记都正确对应到相应的查询节点了吗？这些标记对后续的系统对接很重要。",
+      "elements_involved": [
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已全部核对：首页加载、作品详情、追问关联和艺术家全部作品查询用了IoT_Industrial_PLC_Logic；搜索和艺术家详情用了IoT_Industrial_EdgeNode；筛选和追问用了IoT_Industrial_MQTT_Broker。时序图完整反映了用户旅程的所有技术交互。",
+      "elements_involved": [
+        "IoT_Industrial_PLC_Logic",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_MQTT_Broker",
+        "User",
+        "Mongo"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 18,
+    "repair_count": 0,
+    "grounding_acts_count": 18,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 47328.8145,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 18
+  }
+}

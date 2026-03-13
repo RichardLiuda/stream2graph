@@ -1,0 +1,212 @@
+{
+  "id": "aug_gh_sequence_00849_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/atoxfy/kikwiflow/blob/50f543c2bc2f5bbf3a389f97aba094843e707314/docs/mongo-uow-seq.mmd",
+  "github_repo": "atoxfy/kikwiflow",
+  "github_file_path": "docs/mongo-uow-seq.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant Core as \"kikwi-core<br>(HealthTech_EMR_Sync)\"\n    participant UoW as \"UnitOfWork (HealthTech_PatientRecords)\"\n    participant Repository as \"ProcessExecutionRepository\"\n    participant MongoDB as \"MongoDB\"\n    participant Publisher as \"EventPublisher (HealthTech_PatientRecords)\"\n\n    Core->>Core: Executa tarefas síncronas...\n    Core->>UoW: new UnitOfWork(HealthTech_LabAnalyzer)\n    Core->>UoW: Acumula alterações (HealthTech_EMR_Sync)\n\n    Note over Core: Fim do bloco síncrono.\n\n    Core->>+Repository: commit(HealthTech_LabAnalyzer)\n\n    Repository->>+MongoDB: INICIAR TRANSAÇÃO\n    MongoDB->>MongoDB: 1. Atualiza ProcessInstance\n    MongoDB->>MongoDB: 2. Cria/Apaga ExecutableTasks\n    MongoDB->>MongoDB: 3. Insere 'criticalEvents' na 'event_outbox'\n    MongoDB-->>-Repository: COMMIT TRANSAÇÃO\n    Repository-->>-Core: Commit bem-sucedido\n\n    Core->>+Publisher: publishEvents(HealthTech_LabAnalyzer))\n    Publisher-->>-Core: Retorno Imediato",
+  "content_size": 936,
+  "collected_at": "2026-02-06T01:49:55.467287",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 14,
+  "repo_forks": 0,
+  "repo_owner": "atoxfy",
+  "repo_name": "kikwiflow",
+  "repo_description": "The next gen process engine. ",
+  "repo_language": "Java",
+  "repo_topics": [
+    "automation",
+    "engine",
+    "flow",
+    "hyperautomation",
+    "java"
+  ],
+  "repo_created_at": "2025-07-29T22:51:16Z",
+  "repo_updated_at": "2026-01-07T08:47:34Z",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gh_sequence_00849",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个序列图，展示HealthTech EMR Sync模块的核心事务流程。关键点是同步任务执行后，如何通过UnitOfWork来管理HealthTech LabAnalyzer相关的变更。",
+      "elements_involved": [
+        "Core",
+        "UnitOfWork",
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。所以Core模块先执行一些同步任务，然后创建一个UnitOfWork实例来累积变更？这里的UnitOfWork具体对应哪个业务实体？",
+      "elements_involved": [
+        "Core",
+        "UnitOfWork",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，UnitOfWork绑定的是HealthTech_PatientRecords上下文。同步任务执行完毕后，Core会调用commit，把HealthTech_LabAnalyzer相关的变更持久化。",
+      "elements_involved": [
+        "Core",
+        "UnitOfWork",
+        "commit",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "我打算在Core自调用那里标注\"Executa tarefas síncronas...\"，然后在Note里说明\"Fim do bloco síncrono\"，这样分界更清晰。接着Core调用Repository的commit方法，你看可以吗？",
+      "elements_involved": [
+        "Core",
+        "ProcessExecutionRepository",
+        "commit",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以，但Repository的具体名称应该是ProcessExecutionRepository，不是CessExecutionRepository。另外commit调用需要是异步激活，因为后面要展开MongoDB的事务细节。",
+      "elements_involved": [
+        "ProcessExecutionRepository",
+        "commit",
+        "MongoDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "收到，我修正了Repository的名称。现在MongoDB内部有三个操作：更新ProcessInstance、管理ExecutableTasks、插入criticalEvents到event_outbox。这三个都要在事务里完成对吧？",
+      "elements_involved": [
+        "MongoDB",
+        "ProcessInstance",
+        "ExecutableTasks",
+        "event_outbox",
+        "criticalEvents"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，这三个操作是原子性的。事务提交成功后，Repository返回给Core，然后Core要触发事件发布。这里有个细节——Publisher是EventPublisher，同样绑定HealthTech_PatientRecords上下文。",
+      "elements_involved": [
+        "Repository",
+        "Core",
+        "EventPublisher",
+        "HealthTech_PatientRecords",
+        "publishEvents"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "publishEvents的调用方式我标注为异步激活，返回\"Retorno Imediato\"，因为事件发布应该是非阻塞的。这样整个流程就是：同步任务→UoW累积→提交事务→异步发布事件。结构对吗？",
+      "elements_involved": [
+        "publishEvents",
+        "Retorno Imediato",
+        "Core",
+        "Publisher"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "结构正确。不过我需要确认一下——MongoDB事务的开始和结束标注，你用\"INICIAR TRANSAÇÃO\"和\"COMMIT TRANSAÇÃO\"，保持葡萄牙语原文？",
+      "elements_involved": [
+        "MongoDB",
+        "INICIAR TRANSAÇÃO",
+        "COMMIT TRANSAÇÃO"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "是的，保持原文。另外UoW的创建消息我写成\"new UnitOfWork(HealthTech_LabAnalyzer)\"，累积变更标注为\"Acumula alterações (HealthTech_EMR_Sync)\"，这样上下文清晰。",
+      "elements_involved": [
+        "UnitOfWork",
+        "new UnitOfWork",
+        "Acumula alterações",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后检查一下：Core的participant标注要显示\"kikwi-core\"，下面换行显示HealthTech_EMR_Sync。还有commit成功后返回的消息应该是\"Commit bem-sucedido\"。",
+      "elements_involved": [
+        "Core",
+        "kikwi-core",
+        "HealthTech_EMR_Sync",
+        "Commit bem-sucedido"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部确认完毕。最终图包含5个参与者：kikwi-core、UnitOfWork、ProcessExecutionRepository、MongoDB、EventPublisher，完整展示了从同步任务执行到事务提交再到事件发布的完整流程。",
+      "elements_involved": [
+        "Core",
+        "UnitOfWork",
+        "ProcessExecutionRepository",
+        "MongoDB",
+        "EventPublisher"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 12,
+    "repair_count": 1,
+    "grounding_acts_count": 12,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 21603.6086,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 12
+  }
+}

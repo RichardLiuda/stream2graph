@@ -1,0 +1,495 @@
+{
+  "id": "aug_gh_sequence_00569_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/MESH-Research/invenio-stats-dashboard/blob/8b96c4598deaf08814b9b0fc7c7244a297725a45/docs/event-reindexing-sequence.mmd",
+  "github_repo": "MESH-Research/invenio-stats-dashboard",
+  "github_file_path": "docs/event-reindexing-sequence.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    participant CLI as CLI Command\n    participant Service as EventReindexingService\n    participant OpenSearch as OpenSearch Cluster\n    participant Bookmark as Bookmark API\n    participant Metadata as RDM Records Index\n\n    CLI->>Service: reindex_events(Infra_WorkerNode)\n    Service->>Service: update_and_verify_templates(Infra_RedisCache)\n    Service->>OpenSearch: Check/Update Templates\n\n    loop For Each Event Type\n        Service->>OpenSearch: get_monthly_indices(Infra_WorkerNode)\n        OpenSearch-->>Service: List of monthly indices\n\n        loop For Each Monthly Index\n            Service->>Service: migrate_monthly_index(Infra_RedisCache)\n            Service->>OpenSearch: create_enriched_index(Infra_IngressController)\n            OpenSearch-->>Service: New index name\n\n            Service->>Bookmark: get_bookmark(Infra_RedisCache)\n            Bookmark-->>Service: Last processed ID\n\n            loop Batch Processing\n                Service->>Service: check_health_conditions(Infra_RedisCache)\n                Service->>OpenSearch: process_monthly_index_batch(Infra_EtcdCluster)\n                Service->>Metadata: get_metadata_for_records(Infra_RedisCache)\n                Metadata-->>Service: Record metadata\n                Service->>Service: enrich_events(Infra_WorkerNode)\n                Service->>OpenSearch: bulk_index(Infra_WorkerNode)\n                Service->>Bookmark: set_bookmark(Infra_EtcdCluster)\n            end\n\n            Service->>Service: validate_enriched_data(Infra_WorkerNode)\n            Service->>OpenSearch: update_aliases(Infra_IngressController)\n\n            alt Current Month Index\n                Service->>OpenSearch: setup_write_alias(Infra_WorkerNode)\n                Service->>OpenSearch: migrate_new_records(Infra_RedisCache)\n            end\n\n            Service->>OpenSearch: delete_old_index(Infra_EtcdCluster)\n        end\n    end\n\n    Service-->>CLI: Migration results\n",
+  "content_size": 1663,
+  "collected_at": "2026-02-06T01:34:05.120021",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 3,
+  "repo_forks": 0,
+  "repo_owner": "MESH-Research",
+  "repo_name": "invenio-stats-dashboard",
+  "repo_description": "A usage statistics dashboard for InvenioRDM instances",
+  "repo_language": "Python",
+  "repo_topics": [],
+  "repo_created_at": "2025-05-07T13:44:58Z",
+  "repo_updated_at": "2026-01-24T04:34:06Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "gh_sequence_00569",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个事件重建索引的完整流程图。场景是运维人员通过CLI触发重建，然后EventReindexingService来协调整个迁移过程。",
+      "elements_involved": [
+        "CLI Command",
+        "EventReindexingService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，CLI是入口。那EventReindexingService启动时需要依赖什么基础设施吗？比如WorkerNode？",
+      "elements_involved": [
+        "CLI Command",
+        "EventReindexingService",
+        "Infra WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，reindex_events这个调用要标注依赖Infra_WorkerNode。另外Service启动后第一件事是更新OpenSearch的模板，这里要用到RedisCache做状态缓存。",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra RedisCache",
+        "Infra WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出CLI到Service的启动调用，以及Service内部的模板更新自检流程。",
+      "elements_involved": [
+        "CLI Command",
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra WorkerNode",
+        "Infra RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是核心逻辑：我们要按事件类型循环处理，每种事件类型又对应多个按月分片的索引。这里需要两层loop。",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "外层loop是For Each Event Type，内层是For Each Monthly Index对吗？获取月索引列表时Service需要查询OpenSearch。",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，get_monthly_indices依赖WorkerNode，返回的是该事件类型下所有的月索引列表。然后进入内层循环逐个迁移。",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两层loop结构已添加。现在内层循环里，migrate_monthly_index是Service内部方法，同样依赖RedisCache？",
+      "elements_involved": [
+        "EventReindexingService",
+        "Infra RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的。然后要创建新的富化索引，这里走IngressController，因为涉及外部流量入口的索引创建权限。",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "create_enriched_index画好了，返回New index name。接下来我看代码有Bookmark API的交互？",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Bookmark API",
+        "Infra IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，这是断点续传的关键。Service要从Bookmark API获取Last processed ID，依赖RedisCache。如果中途失败可以从书签位置恢复。",
+      "elements_involved": [
+        "EventReindexingService",
+        "Bookmark API",
+        "Infra RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "get_bookmark和返回的Last processed ID已添加。接下来是Batch Processing的第三层循环？",
+      "elements_involved": [
+        "EventReindexingService",
+        "Bookmark API",
+        "Infra RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Batch Processing是最内层循环。每批处理前要先check_health_conditions，确保RedisCache状态正常。",
+      "elements_involved": [
+        "EventReindexingService",
+        "Infra RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "process_monthly_index_batch这个批量处理，我看依赖标注的是Infra_EtcdCluster，这是用于分布式协调吗？",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，EtcdCluster用于批次处理的分布式锁和进度协调。然后需要查询RDM Records Index获取元数据，走RedisCache。",
+      "elements_involved": [
+        "EventReindexingService",
+        "RDM Records Index",
+        "Infra RedisCache",
+        "Infra EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "get_metadata_for_records和返回的Record metadata已画好。接下来是enrich_events富化处理？",
+      "elements_involved": [
+        "EventReindexingService",
+        "RDM Records Index",
+        "Infra RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，enrich_events是Service内部计算，依赖WorkerNode进行数据富化。然后bulk_index批量写入OpenSearch。",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "bulk_index已添加。每批处理完要更新书签吧？set_bookmark依赖EtcdCluster？",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Bookmark API",
+        "Infra WorkerNode",
+        "Infra EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，set_bookmark用EtcdCluster保证原子性写入。这样Batch Processing循环结束。然后要validate_enriched_data验证数据。",
+      "elements_involved": [
+        "EventReindexingService",
+        "Bookmark API",
+        "Infra EtcdCluster",
+        "Infra WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "validate_enriched_data画好了。接下来update_aliases更新别名，这个走IngressController？",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra WorkerNode",
+        "Infra IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。然后有个关键分支：如果是Current Month Index，需要额外处理写别名和新记录迁移。",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "alt分支里，setup_write_alias和migrate_new_records分别依赖WorkerNode和RedisCache，我理解对吗？",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra WorkerNode",
+        "Infra RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。当前月的索引需要保持写入能力，所以单独设置写别名，同时把重建期间产生的新记录也迁移过来。",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra WorkerNode",
+        "Infra RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "alt分支已添加。分支结束后要delete_old_index清理旧索引，依赖EtcdCluster做安全删除的分布式确认。",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，这样内层Monthly Index循环结束，回到外层Event Type循环，直到所有类型处理完。最后Service要返回结果给CLI。",
+      "elements_involved": [
+        "EventReindexingService",
+        "CLI Command"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Migration results返回已添加。整体流程应该完整了，我检查一下层级结构。",
+      "elements_involved": [
+        "EventReindexingService",
+        "CLI Command"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，我注意到batch processing里的Service-Service调用，enrich_events和check_health_conditions都是内部方法，但前者依赖WorkerNode后者依赖RedisCache，这个区分要清晰。",
+      "elements_involved": [
+        "EventReindexingService",
+        "Infra WorkerNode",
+        "Infra RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，check_health_conditions检查Redis状态，enrich_events是CPU密集型计算走WorkerNode。两者都是Service内部调用但基础设施依赖不同。",
+      "elements_involved": [
+        "EventReindexingService",
+        "Infra WorkerNode",
+        "Infra RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有个点，migrate_monthly_index和update_and_verify_templates都是Service内部方法，但前者在内层循环后者在初始化阶段，这个生命周期位置要准确。",
+      "elements_involved": [
+        "EventReindexingService",
+        "Infra RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，update_and_verify_templates在最开始只执行一次，migrate_monthly_index在每个Monthly Index循环里执行。位置已经正确。",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "OpenSearch返回的List of monthly indices和New index name，还有Bookmark返回的Last processed ID，这些虚线返回都要标注清楚。",
+      "elements_involved": [
+        "OpenSearch Cluster",
+        "EventReindexingService",
+        "Bookmark API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有虚线返回已检查并标注。包括Metadata返回的Record metadata也是虚线。",
+      "elements_involved": [
+        "OpenSearch Cluster",
+        "Bookmark API",
+        "RDM Records Index",
+        "EventReindexingService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "有个问题，我刚才说错了——process_monthly_index_batch的依赖应该是WorkerNode而不是EtcdCluster，EtcdCluster只用于set_bookmark的原子写入。请修正。",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra WorkerNode",
+        "Infra EtcdCluster"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，process_monthly_index_batch现在标注为Infra_WorkerNode，set_bookmark保持Infra_EtcdCluster。",
+      "elements_involved": [
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Infra WorkerNode",
+        "Infra EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好的，现在所有基础设施依赖都准确了。最后确认一下参与者顺序：CLI、Service、OpenSearch、Bookmark、Metadata，这个从左到右的排列符合调用依赖关系。",
+      "elements_involved": [
+        "CLI Command",
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Bookmark API",
+        "RDM Records Index"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，参与者顺序已按调用频率和依赖层级排列。整个事件重建索引流程图已完成，包含三层循环、一个alt分支、所有基础设施依赖标注。",
+      "elements_involved": [
+        "CLI Command",
+        "EventReindexingService",
+        "OpenSearch Cluster",
+        "Bookmark API",
+        "RDM Records Index",
+        "Infra WorkerNode",
+        "Infra RedisCache",
+        "Infra IngressController",
+        "Infra EtcdCluster"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 36,
+    "repair_count": 1,
+    "grounding_acts_count": 36,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 79466.9836,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 36
+  }
+}

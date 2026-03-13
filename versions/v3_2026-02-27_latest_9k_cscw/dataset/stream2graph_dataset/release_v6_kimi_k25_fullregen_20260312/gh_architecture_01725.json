@@ -1,0 +1,388 @@
+{
+  "id": "gh_architecture_01725",
+  "source": "github",
+  "source_url": "https://github.com/beatgeek/kernelport/blob/5b9a42cedcf50880a8a012b625dda812bedfe2ac/docs/worker_gpu.mmd",
+  "github_repo": "beatgeek/kernelport",
+  "github_file_path": "docs/worker_gpu.mmd",
+  "diagram_type": "architecture",
+  "code": "---\nconfig:\n      theme: redux-dark\n---\nflowchart LR\n  Q[Batch Job Queue] -->|dequeue| P[\"Prepare Inputs<br/>Validate · Stack · Layout\"]\n  P --> H2D[\"Host→Device Copy<br/>Pinned buffers\"]\n  H2D --> EX[\"Execute Backend<br/>LibTorch · TF · ORT · TRT\"]\n  EX --> D2H[\"Device→Host Copy<br/>(if needed)\"]\n  D2H --> SPLIT[\"Split Outputs<br/>per request\"]\n  SPLIT --> RESP[\"Respond<br/>gRPC / HTTP\"]\n\n  subgraph GPU[\"GPU Worker (bound to one GPU / MIG slice)\"]\n    direction TB\n\n    subgraph MEM[\"Memory Pools\"]\n      HP[\"Pinned Host Pool\"]\n      DP[\"Device Buffer Pool\"]\n    end\n\n    subgraph STREAMS[\"CUDA Streams\"]\n      CS[\"Compute Stream\"]\n      XS[\"Copy Stream(s)\"]\n    end\n\n    HP -.-> H2D\n    DP -.-> EX\n    XS -.-> H2D\n    CS -.-> EX\n    XS -.-> D2H\n  end\n",
+  "content_size": 757,
+  "collected_at": "2026-02-06T02:02:34.758194",
+  "compilation_status": "success",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 3,
+  "repo_forks": 0,
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个GPU推理服务的完整数据流图。核心是Batch Job Queue进来之后，经过一系列处理阶段最终返回响应。整体用LR横向布局，主题用redux-dark。",
+      "elements_involved": [
+        "Batch Job Queue",
+        "redux-dark"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，横向流程。Batch Job Queue之后直接到执行阶段吗？还是需要先做一些预处理？",
+      "elements_involved": [
+        "Batch Job Queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要先有个Prepare阶段，做输入验证、堆叠和张量布局。这个节点叫Prepare Inputs，里面包含Validate、Stack、Layout三个子步骤。从Queue到Prepare的边标注dequeue。",
+      "elements_involved": [
+        "Prepare Inputs",
+        "Validate",
+        "Stack",
+        "Layout",
+        "dequeue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Queue指向Prepare，边写dequeue。Prepare节点我用双引号括起来，里面换行显示三个子步骤。接下来是H2D拷贝？",
+      "elements_involved": [
+        "Batch Job Queue",
+        "Prepare Inputs",
+        "dequeue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Host到Device的拷贝，用Pinned buffers优化。节点叫H2D，全称Host→Device Copy，括号里注明Pinned buffers。",
+      "elements_involved": [
+        "H2D",
+        "Host→Device Copy",
+        "Pinned buffers"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "H2D节点已加上。然后是实际的模型执行？",
+      "elements_involved": [
+        "H2D"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "执行阶段叫Execute Backend，支持多种后端：LibTorch、TensorFlow、ONNX Runtime、TensorRT。这是核心计算节点。",
+      "elements_involved": [
+        "Execute Backend",
+        "LibTorch",
+        "TF",
+        "ORT",
+        "TRT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Execute Backend节点完成，里面列出了四个后端选项。执行完之后需要把结果拷回Host？",
+      "elements_involved": [
+        "Execute Backend"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，但注意是条件性的——Device→Host Copy (if needed)。不是所有请求都需要回拷，比如纯GPU后处理的情况。",
+      "elements_involved": [
+        "D2H",
+        "Device→Host Copy",
+        "if needed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "D2H节点加上了条件标注。接下来是响应客户端？",
+      "elements_involved": [
+        "D2H"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "中间还有个关键步骤：Split Outputs。批处理完成后要按原始请求拆分结果，per request。然后才是Respond，通过gRPC或HTTP返回。",
+      "elements_involved": [
+        "Split Outputs",
+        "Respond",
+        "gRPC",
+        "HTTP",
+        "per request"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "流程主线完成了：Queue → Prepare → H2D → Execute → D2H → Split → Respond。现在需要把GPU相关的细节用子图展开吗？",
+      "elements_involved": [
+        "Batch Job Queue",
+        "Prepare Inputs",
+        "H2D",
+        "Execute Backend",
+        "D2H",
+        "Split Outputs",
+        "Respond"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，需要一个GPU Worker子图，表示绑定到单个GPU或MIG切片的worker。内部用TB纵向布局，包含Memory Pools和CUDA Streams两个子图。",
+      "elements_involved": [
+        "GPU Worker",
+        "bound to one GPU",
+        "MIG slice",
+        "Memory Pools",
+        "CUDA Streams"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "GPU Worker是外层子图，方向TB。Memory Pools里面具体有什么？",
+      "elements_involved": [
+        "GPU Worker",
+        "Memory Pools"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Memory Pools包含Pinned Host Pool和Device Buffer Pool。另外CUDA Streams子图里有Compute Stream和Copy Stream(s)，注意拷贝流可以有多个。",
+      "elements_involved": [
+        "Pinned Host Pool",
+        "Device Buffer Pool",
+        "Compute Stream",
+        "Copy Stream(s)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个子图都建好了。现在需要把这些内存和流资源与主流程的节点关联起来，用虚线连接？",
+      "elements_involved": [
+        "Memory Pools",
+        "CUDA Streams",
+        "Pinned Host Pool",
+        "Device Buffer Pool",
+        "Compute Stream",
+        "Copy Stream(s)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，用虚线表示资源依赖关系。Pinned Host Pool连到H2D，Device Buffer Pool连到Execute Backend。Copy Stream(s)要同时连H2D和D2H，Compute Stream连Execute Backend。",
+      "elements_involved": [
+        "Pinned Host Pool",
+        "H2D",
+        "Device Buffer Pool",
+        "Execute Backend",
+        "Copy Stream(s)",
+        "D2H",
+        "Compute Stream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "虚线连接完成。我检查一下：HP-.-H2D, DP-.-EX, XS-.-H2D, CS-.-EX, XS-.-D2H。这样Copy Stream同时服务两个拷贝阶段，Compute Stream专属执行阶段。",
+      "elements_involved": [
+        "Pinned Host Pool",
+        "H2D",
+        "Device Buffer Pool",
+        "Execute Backend",
+        "Copy Stream(s)",
+        "Compute Stream",
+        "D2H"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，这个设计允许H2D和D2H与计算重叠。不过我刚注意到——GPU Worker的标注里，bound to one GPU / MIG slice这部分要清晰表达绑定关系。",
+      "elements_involved": [
+        "GPU Worker",
+        "bound to one GPU",
+        "MIG slice"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下，MIG是NVIDIA的多实例GPU特性吧？我需要确保读者理解这是可选的隔离方式。",
+      "elements_involved": [
+        "MIG slice"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，MIG slice是物理切分，与单GPU独占是互斥选项。标注写成\"bound to one GPU / MIG slice\"就行。另外检查下主题配置，redux-dark确定生效了吗？",
+      "elements_involved": [
+        "redux-dark",
+        "GPU Worker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现一个问题——我刚在config里写的是theme: dark，但要求是redux-dark。我修正为redux-dark。",
+      "elements_involved": [
+        "redux-dark",
+        "config"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好的，主题修复了。再看下Split Outputs的标注，per request前面用换行还是空格？",
+      "elements_involved": [
+        "Split Outputs",
+        "per request"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已统一用换行符<br/处理，Split Outputs<br/per request。现在整个图结构完整了，要最终确认一遍吗？",
+      "elements_involved": [
+        "Split Outputs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "走读一遍：Queue dequeue到Prepare，经过H2D（Pinned buffers）、Execute Backend（四种后端可选）、条件性D2H，然后Split Outputs per request，最后Respond gRPC/HTTP。GPU Worker内部Memory Pools和CUDA Streams通过虚线与主流程关联。",
+      "elements_involved": [
+        "Batch Job Queue",
+        "Prepare Inputs",
+        "H2D",
+        "Execute Backend",
+        "D2H",
+        "Split Outputs",
+        "Respond",
+        "GPU Worker",
+        "Memory Pools",
+        "CUDA Streams"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。所有节点命名、边标注、子图嵌套、虚线连接、主题配置都符合要求。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "补充一点——H2D和D2H的边标注格式要保持一致，都用<br/换行。H2D是\"Host→Device Copy<br/Pinned buffers\"，D2H是\"Device→Host Copy<br/(if needed)\"。",
+      "elements_involved": [
+        "H2D",
+        "D2H",
+        "Host→Device Copy",
+        "Device→Host Copy",
+        "Pinned buffers",
+        "if needed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "格式已统一，两个拷贝节点的标注都用了换行。最终图完成，可以输出了。",
+      "elements_involved": [
+        "H2D",
+        "D2H"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 28,
+    "repair_count": 1,
+    "grounding_acts_count": 27,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:39Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:23Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:23Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 67824.0225,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 28
+  }
+}

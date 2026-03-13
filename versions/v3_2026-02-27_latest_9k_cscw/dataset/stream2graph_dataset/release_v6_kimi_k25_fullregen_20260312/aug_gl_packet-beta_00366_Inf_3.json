@@ -1,0 +1,162 @@
+{
+  "id": "aug_gl_packet-beta_00366_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/ArgOsciProyect/ARG_OSCI_APP/blob/5b219c846361cf23dbe85c073aba8d9146c704d5/diagrams/DATA_ACQ_ALG.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "ArgOsciProyect/ARG_OSCI_APP",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant Device\n    participant Socket\n    participant ProcessingIsolate\n    participant DataService\n    participant Provider\n    participant ChartService\n    participant Chart\n\n    loop While acquisition active\n        Device->>Socket: Send binary data packet\n        Socket->>ProcessingIsolate: Forward raw data\n        \n        ProcessingIsolate->>ProcessingIsolate: Parse binary format\n        ProcessingIsolate->>ProcessingIsolate: Apply bit masks\n        ProcessingIsolate->>ProcessingIsolate: Extract values & channels\n        ProcessingIsolate->>ProcessingIsolate: Convert to voltage\n        \n        alt With trigger detection\n            ProcessingIsolate->>ProcessingIsolate: Run trigger detection algorithm\n        end\n        \n        ProcessingIsolate->>DataService: Send processed DataPoints\n        DataService->>DataService: Update metrics (Infra_EtcdCluster)\n        DataService->>Provider: Update data streams\n        \n        alt Oscilloscope Mode\n            Provider->>ChartService: Forward time-domain data\n            ChartService->>ChartService: Apply active filters\n            \n            alt Filter enabled\n                ChartService->>ChartService: Apply selected filter (Infra_RedisCache)\n                \n                alt Zero-Phase enabled\n                    ChartService->>ChartService: Apply forward-backward filtering\n                end\n            end\n            \n            ChartService->>Chart: Update waveform display\n        else FFT Mode\n            Provider->>ChartService: Forward time-domain data\n            ChartService->>ChartService: Buffer points until blockSize reached\n            ChartService->>ChartService: Perform FFT computation\n            ChartService->>Chart: Update frequency spectrum display\n        end\n    end",
+  "content_size": 1803,
+  "collected_at": "2026-02-06T14:08:20.778991",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_packet-beta_00366",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个实时数据采集系统的完整时序图。核心是从Device开始，经过Socket和ProcessingIsolate，最终到Chart展示。关键是要体现两种显示模式：示波器模式和FFT模式。",
+      "elements_involved": [
+        "Device",
+        "Socket",
+        "ProcessingIsolate",
+        "Chart"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，两种模式是互斥的吗？还有，ProcessingIsolate到DataService的数据流向是怎样的，DataService和Provider之间是什么关系？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "DataService",
+        "Provider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，Oscilloscope Mode和FFT Mode是二选一的alt分支。ProcessingIsolate把解析后的DataPoints发给DataService，DataService一方面更新Etcd里的指标，另一方面把数据流推给Provider。Provider再分发给ChartService做具体渲染。",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "DataService",
+        "Provider",
+        "ChartService",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，我理解ProcessingIsolate内部有多个处理步骤：Parse binary format、Apply bit masks、Extract values、Convert to voltage，还有可选的触发检测算法。ChartService在示波器模式下会应用Redis缓存的滤波器，对吗？",
+      "elements_involved": [
+        "ProcessingIsolate",
+        "ChartService",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，而且滤波器那里还有个嵌套alt——如果Zero-Phase启用，要做forward-backward filtering。FFT模式则完全不同：ChartService需要先Buffer数据点到blockSize，然后做FFT计算，最后更新频谱显示。",
+      "elements_involved": [
+        "ChartService",
+        "Chart",
+        "Zero-Phase",
+        "FFT Mode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我先把主循环画出来：Device通过Socket发送二进制包，ProcessingIsolate解析、掩码处理、转电压，触发检测可选，然后送DataService。DataService更新Etcd指标并推给Provider。",
+      "elements_involved": [
+        "Device",
+        "Socket",
+        "ProcessingIsolate",
+        "DataService",
+        "Provider",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，Provider到ChartService的箭头方向确认一下——是Provider主动推数据给ChartService，不是ChartService拉取，对吧？",
+      "elements_involved": [
+        "Provider",
+        "ChartService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对的，是Provider-ChartService的Forward关系。我现在把两种模式的分支补全：示波器模式带滤波器嵌套（包括Zero-Phase选项），FFT模式带Buffer和FFT计算。整个流程包在While acquisition active循环里。",
+      "elements_involved": [
+        "Provider",
+        "ChartService",
+        "Chart",
+        "Oscilloscope Mode",
+        "FFT Mode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美，这样整个数据流就清晰了：从硬件采集到隔离进程处理，再到数据服务分发，最后根据用户选择的模式渲染波形或频谱。Etcd和Redis的基础设施依赖也标注清楚了。",
+      "elements_involved": [
+        "Device",
+        "ProcessingIsolate",
+        "DataService",
+        "ChartService",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 0,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:33Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 23188.7372,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

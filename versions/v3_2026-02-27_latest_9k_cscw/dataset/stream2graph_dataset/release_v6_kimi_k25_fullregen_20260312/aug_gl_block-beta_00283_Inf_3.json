@@ -1,0 +1,265 @@
+{
+  "id": "aug_gl_block-beta_00283_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/govuk-one-login/authentication-api/blob/a4c68710b6177665c4625f1c8789455deca7b26b/docs/diagrams/authentication/login/account-interventions/medium-sms/login-medium-level-sms-blocked-intervention.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "govuk-one-login/authentication-api",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant orch_api as Orchestration\n    participant auth_frontend as Authentication Frontend\n    participant auth_external_api as Authentication External API\n    participant auth_internal_api as Authentication Internal API\n    participant account_interventions as Account Interventions API\n    participant notification_queue as NotificationHandler.java Lambda   \n    participant notify as Notify   \n    orch_api ->> auth_frontend : OAuth 2.0 Authorization request 302 redirect to /authorize\n    auth_frontend ->> auth_frontend : Decrypt and validate request and create session    \n    auth_frontend ->> auth_internal_api : Request to /start (Infra_WorkerNode)\n    auth_internal_api ->> auth_internal_api : Start helps calculate current state\n    auth_internal_api ->> auth_frontend : StartResponse.java object returned\n    auth_frontend ->> auth_frontend : State machine works out where to send user based on start response\n    auth_frontend ->> auth_internal_api : Request to /user-exists (Infra_LoadBalancer)\n    auth_internal_api ->> auth_internal_api : Checks if account with email already exists\n    auth_internal_api ->> auth_frontend: CheckUserExistsResponse.java object returned\n    auth_frontend ->> auth_frontend: Validates that the user already has an account\n    auth_frontend ->> auth_internal_api : Request to /account-interventions (Infra_EtcdCluster)\n    auth_internal_api ->> account_interventions : Request to account interventions api (Infra_LoadBalancer)\n    account_interventions ->> auth_internal_api : Response from Account Interventions containing blocked=true\n    auth_internal_api ->> auth_internal_api : Generates audit event for \"blocked\" Account Intervention\n    auth_internal_api ->> auth_frontend: AccountInterventions.java object returned containing blocked intervention\n    auth_frontend ->> auth_frontend: Prevents user from performing password reset due to blocked intervention\n    auth_frontend ->> auth_internal_api : Request to /login (Infra_RedisCache)\n    auth_internal_api ->> auth_internal_api : Validates if password is correct\n    auth_internal_api ->> auth_frontend: LoginResponse.java object returned\n    auth_frontend ->> auth_internal_api : Request to /account-recovery (Infra_LoadBalancer)\n    auth_internal_api ->> auth_internal_api : Calculates whether account recovery is permitted\n    auth_internal_api ->> auth_frontend: AccountRecovery.java object returned\n    auth_frontend ->> auth_internal_api : Request to /mfa (Infra_RedisCache)\n    auth_internal_api ->> auth_internal_api : Generates and stores OTP\n    auth_internal_api -->> notification_queue : Sends NotifyRequest.java object via SQS\n    notification_queue -->> notify : Request to send SMS containing OTP and phone number\n    auth_internal_api ->> auth_frontend : 204 response \n    auth_frontend ->> auth_frontend: Prevents user from performing MFA reset due to blocked intervention\n    auth_frontend ->> auth_internal_api : Request to /verify-code (Infra_WorkerNode)\n    auth_internal_api ->> auth_internal_api : Validates whether SMS MFA code is valid\n    auth_internal_api ->> auth_frontend: 204 response\n    auth_frontend ->> auth_frontend : Displays Blocked intervention screen\n",
+  "content_size": 3274,
+  "collected_at": "2026-02-06T14:06:12.716465",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_block-beta_00283",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的账户干预流程时序图，核心场景是：用户尝试登录时，系统发现账户被block了，然后阻止后续操作。起点是Orchestration层发起OAuth 2.0授权请求。",
+      "elements_involved": [
+        "Orchestration",
+        "OAuth 2.0 Authorization request",
+        "blocked intervention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，Orchestration通过302重定向把请求发到Authentication Frontend。那Frontend收到后是先解密验证，还是直接透传给后端API？",
+      "elements_involved": [
+        "Orchestration",
+        "Authentication Frontend",
+        "302 redirect",
+        "Decrypt and validate request"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Frontend要先自己处理，解密并验证请求，然后创建session。接着它会调用Authentication Internal API的/start接口，这个请求是打到Infra_WorkerNode上的。",
+      "elements_involved": [
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "/start",
+        "Infra_WorkerNode",
+        "session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Internal API在WorkerNode上执行start逻辑，计算当前状态，然后返回StartResponse.java对象给Frontend。我画一条返回消息。",
+      "elements_involved": [
+        "Authentication Internal API",
+        "StartResponse.java",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来Frontend的状态机要根据start response决定用户流向。然后它会调用/user-exists检查邮箱是否已注册，这个请求走Infra_LoadBalancer。",
+      "elements_involved": [
+        "Authentication Frontend",
+        "state machine",
+        "/user-exists",
+        "Infra_LoadBalancer",
+        "CheckUserExistsResponse.java"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，Internal API检查账户是否存在，返回CheckUserExistsResponse.java。Frontend验证用户已有账户后，下一步是调用/account-interventions对吧？",
+      "elements_involved": [
+        "Authentication Internal API",
+        "CheckUserExistsResponse.java",
+        "/account-interventions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，但这里有个细节：Internal API不是直接处理，而是再转发给Account Interventions API，这个调用也是走Infra_LoadBalancer。最终返回的响应里blocked=true。",
+      "elements_involved": [
+        "Authentication Internal API",
+        "Account Interventions API",
+        "/account-interventions",
+        "Infra_LoadBalancer",
+        "blocked=true",
+        "AccountInterventions.java"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了。Internal API收到blocked响应后，还要生成审计事件，然后把AccountInterventions.java对象返回给Frontend。Frontend这时候要阻止密码重置操作。",
+      "elements_involved": [
+        "Authentication Internal API",
+        "audit event",
+        "AccountInterventions.java",
+        "Authentication Frontend",
+        "blocked intervention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "流程继续，Frontend还是会尝试走登录流程，调用/login到Infra_RedisCache验证密码。验证通过后，再调用/account-recovery判断账户恢复是否允许。",
+      "elements_involved": [
+        "Authentication Frontend",
+        "/login",
+        "Infra_RedisCache",
+        "/account-recovery",
+        "Infra_LoadBalancer",
+        "AccountRecovery.java",
+        "LoginResponse.java"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里MFA环节怎么触发？是登录成功后才走MFA吗？还有通知服务是怎么接入的？",
+      "elements_involved": [
+        "/mfa",
+        "NotificationHandler.java Lambda",
+        "Notify"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Frontend调用/mfa到Infra_RedisCache，Internal API生成OTP后，通过SQS发送NotifyRequest.java给NotificationHandler.java Lambda，再由它调用Notify服务发SMS。",
+      "elements_involved": [
+        "Authentication Frontend",
+        "/mfa",
+        "Infra_RedisCache",
+        "OTP",
+        "NotifyRequest.java",
+        "NotificationHandler.java Lambda",
+        "SQS",
+        "Notify",
+        "SMS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了异步消息。Internal API返回204，Frontend由于blocked干预阻止MFA重置，然后调用/verify-code验证短信码，这个打到Infra_WorkerNode。",
+      "elements_involved": [
+        "Authentication Internal API",
+        "204 response",
+        "Authentication Frontend",
+        "/verify-code",
+        "Infra_WorkerNode",
+        "MFA reset"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "验证通过后返回204，最后Frontend显示Blocked intervention screen。不过我需要确认一下，/account-interventions的请求路径上，Internal API到Account Interventions API之间，基础设施标注对吗？",
+      "elements_involved": [
+        "/verify-code",
+        "Blocked intervention screen",
+        "/account-interventions",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "啊，我检查一下——Frontend到Internal API的/account-interventions请求应该标注Infra_EtcdCluster，但我之前可能漏标了。Internal API再到Account Interventions API才是Infra_LoadBalancer。我修正一下。",
+      "elements_involved": [
+        "/account-interventions",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer",
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "Account Interventions API"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "修正后是对的。另外确认一下，整个流程里Orchestration只出现在最开始发起OAuth请求，后面不再参与对吗？",
+      "elements_involved": [
+        "Orchestration",
+        "OAuth 2.0 Authorization request"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，Orchestration只在第一步通过302重定向触发流程，后续所有交互都在Frontend、Internal API、Account Interventions API和通知服务之间完成。最终用户看到Blocked干预页面。",
+      "elements_involved": [
+        "Orchestration",
+        "Authentication Frontend",
+        "Authentication Internal API",
+        "Account Interventions API",
+        "NotificationHandler.java Lambda",
+        "Notify",
+        "Blocked intervention screen"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 16,
+    "repair_count": 1,
+    "grounding_acts_count": 16,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 37129.298,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 16
+  }
+}

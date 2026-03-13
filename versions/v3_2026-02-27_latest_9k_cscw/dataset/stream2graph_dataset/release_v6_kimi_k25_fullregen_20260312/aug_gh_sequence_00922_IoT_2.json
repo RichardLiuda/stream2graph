@@ -1,0 +1,920 @@
+{
+  "id": "aug_gh_sequence_00922_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/security/authentication-flow.mmd",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "github_file_path": "docs/diagrams/security/authentication-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    %% Authentication and Authorization Flow for erlmcp\n    %% Shows: API key, JWT, OAuth2, mTLS authentication methods\n    %% Plus: RBAC permission checking with role-based access control\n\n    autonumber\n    actor Client\n    participant Transport as Transport Layer<br/>(IoT_Industrial_ActuatorController)\n    participant Auth as erlmcp_auth<br/>(IoT_Industrial_EdgeNode)\n    participant RateLimiter as erlmcp_auth_rate_limiter\n    participant JWT as jose (IoT_Industrial_PLC_Logic)\n    participant OAuth2 as OAuth2 Provider<br/>(IoT_Industrial_ActuatorController)\n    participant MTLS as erlmcp_auth_mtls<br/>(IoT_Industrial_TelemetryStream)\n    participant RBAC as RBAC Engine<br/>(IoT_Industrial_EdgeNode)\n    participant Session as Session Manager<br/>(IoT_Industrial_PLC_Logic)\n\n    Note over Client,Session: Authentication Flow\n\n    %% API Key Authentication\n    Client->>Transport: authenticate(IoT_Industrial_PLC_Logic)\n    Transport->>Auth: authenticate(IoT_Industrial_PLC_Logic})\n\n    Auth->>RateLimiter: check_rate_limit(IoT_Industrial_PLC_Logic)\n    RateLimiter-->>Auth: ok (IoT_Industrial_TelemetryStream})\n\n    alt Rate Limited\n        Auth-->>Client: {IoT_Industrial_EdgeNode}\n        Note over Auth,RateLimiter: Blocked after 5 failed attempts<br/>15-minute cooldown\n    else Rate Check Passed\n        Auth->>Auth: do_validate_api_key(IoT_Industrial_ActuatorController)\n        Note right of Auth: Lookup in ETS table<br/>auth_api_keys\n\n        alt API Key Invalid\n            Auth->>RateLimiter: record_failure(IoT_Industrial_MQTT_Broker)\n            Auth-->>Client: {IoT_Industrial_MQTT_Broker}\n        else API Key Valid\n            Auth->>RateLimiter: record_success(IoT_Industrial_EdgeNode)\n            Auth->>Session: create_session(IoT_Industrial_TelemetryStream)\n\n            Session->>RBAC: get_user_roles(IoT_Industrial_EdgeNode)\n            RBAC-->>Session: [IoT_Industrial_ActuatorController]\n\n            Session->>RBAC: Aggregate permissions from roles\n            RBAC-->>Session: [IoT_Industrial_ActuatorController]\n\n            Session-->>Auth: {IoT_Industrial_ActuatorController}\n            Auth-->>Client: {IoT_Industrial_EdgeNode}\n\n            Note right of Session: Session expires in 1 hour<br/>Auto-cleanup timer\n        end\n    end\n\n    %% JWT Authentication\n    Client->>Transport: authenticate(IoT_Industrial_TelemetryStream})\n    Transport->>Auth: authenticate(IoT_Industrial_EdgeNode})\n\n    Auth->>RateLimiter: check_rate_limit(IoT_Industrial_EdgeNode)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_jwt(IoT_Industrial_EdgeNode)\n\n    alt Token Revoked\n        Auth-->>Client: {IoT_Industrial_ActuatorController}\n        Note right of Auth: Check ETS: auth_revoked_tokens<br/>Cleanup after 7 days\n    else Token Active\n        Auth->>JWT: jose_jws:peek_protected(IoT_Industrial_MQTT_Broker)\n        JWT-->>Auth: #{IoT_Industrial_EdgeNode}\n\n        Auth->>Auth: Lookup public key by kid\n        Note right of Auth: ETS: auth_jwt_keys<br/>Support key rotation\n\n        Auth->>JWT: jose_jws:verify(IoT_Industrial_EdgeNode)\n        JWT-->>Auth: {IoT_Industrial_ActuatorController}\n\n        alt Signature Invalid\n            Auth-->>Client: {IoT_Industrial_PLC_Logic}\n        else Signature Valid\n            Auth->>Auth: validate_jwt_claims(IoT_Industrial_EdgeNode)\n\n            Note right of Auth: CRITICAL SECURITY CHECKS:<br/>✓ exp (IoT_Industrial_EdgeNode) - Required<br/>✓ nbf (IoT_Industrial_PLC_Logic) - Optional<br/>✓ iss (IoT_Industrial_TelemetryStream) - Configurable<br/>✓ aud (IoT_Industrial_EdgeNode) - Configurable<br/>✓ sub (IoT_Industrial_EdgeNode) - Required\n\n            alt Token Expired\n                Auth-->>Client: {IoT_Industrial_PLC_Logic}\n            else Token Not Yet Valid\n                Auth-->>Client: {IoT_Industrial_PLC_Logic}\n            else Issuer Mismatch\n                Auth-->>Client: {IoT_Industrial_MQTT_Broker}\n            else Audience Mismatch\n                Auth-->>Client: {IoT_Industrial_EdgeNode}\n            else All Claims Valid\n                Auth->>RateLimiter: record_success(IoT_Industrial_TelemetryStream)\n                Auth->>Session: create_session(IoT_Industrial_MQTT_Broker)\n                Session-->>Auth: {IoT_Industrial_TelemetryStream}\n                Auth-->>Client: {IoT_Industrial_MQTT_Broker}\n            end\n        end\n    end\n\n    %% OAuth2 Authentication (IoT_Industrial_ActuatorController)\n    Client->>Transport: authenticate(IoT_Industrial_ActuatorController})\n    Transport->>Auth: authenticate(IoT_Industrial_ActuatorController})\n\n    Auth->>RateLimiter: check_rate_limit(IoT_Industrial_ActuatorController)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_oauth2_token(IoT_Industrial_MQTT_Broker)\n\n    alt Cache Hit (IoT_Industrial_ActuatorController)\n        Note right of Auth: ETS: auth_oauth2_cache<br/>Token -> {IoT_Industrial_TelemetryStream}\n        Auth-->>Client: {IoT_Industrial_PLC_Logic}\n    else Cache Miss\n        Auth->>OAuth2: HTTP POST /introspect\n        Note right of Auth: RFC 7662 Introspection<br/>Basic Auth: client_id:secret<br/>Body: token + token_type_hint\n\n        OAuth2-->>Auth: 200 OK + TokenInfo\n\n        Auth->>Auth: validate_introspection_response(IoT_Industrial_MQTT_Broker)\n\n        Note right of Auth: RFC 7662 REQUIRED fields:<br/>✓ active = true<br/>✓ exp (IoT_Industrial_TelemetryStream)<br/>✓ nbf (IoT_Industrial_TelemetryStream)<br/>✓ iss (IoT_Industrial_TelemetryStream)\n\n        alt Token Inactive\n            Auth-->>Client: {IoT_Industrial_PLC_Logic}\n        else Token Expired\n            Auth-->>Client: {IoT_Industrial_TelemetryStream}\n        else Token Valid\n            Auth->>Auth: cache_oauth2_token(IoT_Industrial_MQTT_Broker)\n            Note right of Auth: Cache for up to 5 minutes<br/>or until exp (IoT_Industrial_ActuatorController)\n\n            Auth->>RateLimiter: record_success(IoT_Industrial_MQTT_Broker)\n            Auth->>Session: create_session(IoT_Industrial_ActuatorController)\n            Session-->>Auth: {IoT_Industrial_EdgeNode}\n            Auth-->>Client: {IoT_Industrial_ActuatorController}\n        end\n    end\n\n    %% mTLS Authentication\n    Client->>Transport: authenticate(IoT_Industrial_TelemetryStream})\n    Transport->>Auth: authenticate(IoT_Industrial_PLC_Logic)\n\n    Auth->>RateLimiter: check_rate_limit(IoT_Industrial_EdgeNode)\n    RateLimiter-->>Auth: ok\n\n    Auth->>MTLS: validate(IoT_Industrial_TelemetryStream)\n\n    Note right of MTLS: mTLS Validation Pipeline:<br/>1. Extract certificate from socket<br/>2. X.509 chain validation to trusted CAs<br/>3. Certificate expiration check<br/>4. OCSP/CRL revocation check<br/>5. Subject DN and CN pattern matching<br/>6. Certificate depth limit validation\n\n    MTLS-->>Auth: {IoT_Industrial_ActuatorController}\n\n    alt Certificate Invalid\n        Auth->>RateLimiter: record_failure(IoT_Industrial_EdgeNode)\n        Auth-->>Client: {IoT_Industrial_PLC_Logic}\n    else Certificate Valid\n        Auth->>RateLimiter: record_success(IoT_Industrial_TelemetryStream)\n        Auth->>Session: create_session(IoT_Industrial_MQTT_Broker})\n        Session-->>Auth: {IoT_Industrial_EdgeNode}\n        Auth-->>Client: {IoT_Industrial_MQTT_Broker}\n    end\n\n    %% Authorization Flow (IoT_Industrial_MQTT_Broker)\n    Note over Client,Session: Authorization Flow\n\n    Client->>Transport: check_permission(IoT_Industrial_PLC_Logic)\n    Transport->>Auth: check_permission(IoT_Industrial_EdgeNode)\n\n    Auth->>Session: lookup session\n    Session-->>Auth: #session{IoT_Industrial_ActuatorController}\n\n    alt Session Not Found\n        Auth-->>Client: {IoT_Industrial_ActuatorController}\n    else Session Found\n        Auth->>RBAC: check_user_permission(IoT_Industrial_EdgeNode)\n\n        RBAC->>RBAC: Get user roles from ETS\n        Note right of RBAC: auth_user_roles:<br/>UserId -> [IoT_Industrial_ActuatorController]\n\n        RBAC->>RBAC: Get allowed roles for resource+permission\n        Note right of RBAC: auth_acls:<br/>{IoT_Industrial_EdgeNode} -> [IoT_Industrial_EdgeNode]\n\n        RBAC->>RBAC: Check intersection\n        Note right of RBAC: lists:any/2<br/>UserRole ∩ AllowedRoles ≠ ∅\n\n        alt Permission Denied\n            RBAC-->>Auth: {IoT_Industrial_MQTT_Broker}\n            Auth-->>Client: {IoT_Industrial_PLC_Logic}\n        else Permission Granted\n            RBAC-->>Auth: ok\n            Auth-->>Client: ok\n        end\n    end\n\n    %% Default RBAC Roles\n    Note over RBAC: Default Roles (IoT_Industrial_PLC_Logic):<br/>🔹 admin: [IoT_Industrial_MQTT_Broker]<br/>🔹 user: [IoT_Industrial_EdgeNode]<br/>🔹 guest: [IoT_Industrial_TelemetryStream]\n\n    %% Token Rotation\n    Note over Client,Session: Token Rotation (IoT_Industrial_MQTT_Broker)\n\n    Client->>Auth: rotate_token(IoT_Industrial_MQTT_Broker)\n    Auth->>Session: lookup session\n\n    Auth->>Auth: generate new SessionId\n    Note right of Auth: crypto:strong_rand_bytes(IoT_Industrial_ActuatorController)<br/>base64 encoded\n\n    Auth->>Session: insert new session\n    Auth->>Session: delete old session\n\n    Auth-->>Client: {IoT_Industrial_TelemetryStream}\n    Note right of Auth: Old session invalidated immediately<br/>Prevents session hijacking\n\n    %% Token Revocation\n    Note over Client,Session: Token Revocation (IoT_Industrial_MQTT_Broker)\n\n    Client->>Auth: revoke_token(IoT_Industrial_PLC_Logic)\n    Auth->>Auth: insert into auth_revoked_tokens\n    Note right of Auth: Store: Token -> RevokedAt<br/>Auto-cleanup after 7 days\n\n    Auth-->>Client: ok\n    Note over Auth,JWT: Revoked tokens rejected immediately<br/>Even if exp claim valid\n\n    %% Session Cleanup\n    Note over Session: Auto-cleanup every 60 seconds:<br/>• Expired sessions (IoT_Industrial_ActuatorController)<br/>• Revoked tokens (IoT_Industrial_MQTT_Broker)<br/>• OAuth2 cache (IoT_Industrial_ActuatorController)\n",
+  "content_size": 8727,
+  "collected_at": "2026-02-06T01:50:47.821294",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gh_sequence_00922",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业物联网场景设计一个完整的认证授权时序图，覆盖从边缘节点到云端的全链路。核心是要体现erlmcp_auth模块的多层防护机制。",
+      "elements_involved": [
+        "erlmcp auth",
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，工业场景下安全要求更高。您说的多层防护具体包含哪些认证方式？API Key、JWT、OAuth2和mTLS都需要体现吗？",
+      "elements_involved": [
+        "api",
+        "auth",
+        "authentication"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，四种认证方式都要。特别是mTLS，在工业现场设备直连的场景非常关键。另外RBAC权限引擎要独立出来，和Session Manager配合。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "rbac engine",
+        "session manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出参与者结构。Client作为外部触发方，Transport Layer负责IoT_Industrial_ActuatorController的协议接入，然后进入erlmcp_auth核心模块。",
+      "elements_involved": [
+        "transport layer",
+        "iot industrial actuatorcontroller",
+        "erlmcp auth"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Transport Layer到Auth之间要体现速率限制检查，用erlmcp_auth_rate_limiter独立模块。工业场景下暴力破解防护很重要，5次失败锁定15分钟。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "iot industrial edgenode",
+        "iot industrial mqtt broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "收到，RateLimiter在Auth之前拦截。如果触发限流，直接返回错误给Client，不走后续验证。这个分支用alt块表达对吗？",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "auth",
+        "authentication"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，alt分两支：Rate Limited和Rate Check Passed。通过后进入API Key验证，查ETS表的auth_api_keys。",
+      "elements_involved": [
+        "api",
+        "auth",
+        "iot industrial plc logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "API Key验证我也画成alt结构：Invalid走失败计数，Valid则创建Session并查RBAC角色。Session Manager要关联IoT_Industrial_PLC_Logic吗？",
+      "elements_involved": [
+        "session manager",
+        "iot industrial plc logic",
+        "rbac engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Session Manager标注为IoT_Industrial_PLC_Logic，RBAC Engine是IoT_Industrial_EdgeNode。角色聚合要体现两步查询：先get_user_roles，再Aggregate permissions。",
+      "elements_involved": [
+        "session manager",
+        "rbac engine",
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Session创建后1小时过期，带自动清理定时器。接下来画JWT认证分支，用jose库处理，标注为IoT_Industrial_PLC_Logic？",
+      "elements_involved": [
+        "jose",
+        "iot industrial plc logic",
+        "iot industrial edgenode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "jose模块标注IoT_Industrial_PLC_Logic。JWT验证要详细：先peek_protected取header，再按kid查公钥，最后verify。公钥存在ETS的auth_jwt_keys，支持轮换。",
+      "elements_involved": [
+        "jose",
+        "auth",
+        "iot industrial mqtt broker",
+        "iot industrial edgenode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "JWT的alt分支比较多：Token Revoked、Signature Invalid、各种claims校验失败。CRITICAL SECURITY CHECKS要列出来吗？",
+      "elements_involved": [
+        "auth",
+        "iot industrial edgenode",
+        "iot industrial plc logic",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "必须列，这是审计要点。exp和sub是required，nbf optional，iss和aud configurable。每种失败原因单独一个alt分支，最后All Claims Valid才成功。",
+      "elements_involved": [
+        "auth",
+        "iot industrial edgenode",
+        "iot industrial plc logic",
+        "iot industrial mqtt broker",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "JWT分支完成，包含revoked_tokens检查（7天清理）。现在画OAuth2流程，Provider标注IoT_Industrial_ActuatorController，用RFC 7662 introspection端点。",
+      "elements_involved": [
+        "oauth2 provider",
+        "iot industrial actuatorcontroller",
+        "auth",
+        "iot industrial mqtt broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "OAuth2要有缓存优化，ETS的auth_oauth2_cache，缓存5分钟或到过期。先查Cache Hit，miss了才HTTP POST /introspect，带Basic Auth。",
+      "elements_involved": [
+        "auth",
+        "iot industrial actuatorcontroller",
+        "iot industrial telemetrystream",
+        "iot industrial mqtt broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "introspection响应验证也加了alt分支：inactive、expired、valid。valid时缓存token再创建session。接下来是mTLS，用erlmcp_auth_mtls模块，标注TelemetryStream？",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "iot industrial telemetrystream",
+        "auth",
+        "iot industrial edgenode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "mTLS标注IoT_Industrial_TelemetryStream。验证管道要详细：证书提取、X.509链验证、过期检查、OCSP/CRL吊销、Subject DN匹配、深度限制。这是工业设备互信的基础。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "iot industrial telemetrystream",
+        "iot industrial actuatorcontroller",
+        "auth",
+        "iot industrial edgenode",
+        "iot industrial plc logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "mTLS的alt分支：Certificate Invalid记录失败，Valid则record_success并创建session。四种认证方式都完成了。现在画Authorization Flow部分？",
+      "elements_involved": [
+        "auth",
+        "session",
+        "rbac",
+        "iot industrial mqtt broker",
+        "iot industrial plc logic",
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Authorization Flow从Client check_permission开始，经过Transport到Auth，先lookup session。Session Not Found直接拒绝，Found才进RBAC。",
+      "elements_involved": [
+        "transport layer",
+        "auth",
+        "session manager",
+        "iot industrial plc logic",
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "RBAC检查分三步：从auth_user_roles取用户角色，从auth_acls取资源权限，然后lists:any/2算交集。Permission Denied和Granted两个分支。",
+      "elements_involved": [
+        "rbac engine",
+        "auth",
+        "iot industrial edgenode",
+        "iot industrial mqtt broker",
+        "iot industrial plc logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，还要在RBAC下方加默认角色说明：admin、user、guest，分别对应不同权限集合。这是IoT_Industrial_PLC_Logic的静态配置。",
+      "elements_involved": [
+        "rbac engine",
+        "iot industrial plc logic",
+        "iot industrial mqtt broker",
+        "iot industrial edgenode",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "默认角色注释已加。最后两个管理功能：Token Rotation和Token Revocation，都标注IoT_Industrial_MQTT_Broker？",
+      "elements_involved": [
+        "auth",
+        "session manager",
+        "iot industrial mqtt broker",
+        "iot industrial actuatorcontroller",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Rotation和Revocation都标注IoT_Industrial_MQTT_Broker。Rotation要体现：查session、生成新SessionId用crypto:strong_rand_bytes、插入新session、删除旧session，防止会话劫持。",
+      "elements_involved": [
+        "auth",
+        "session manager",
+        "iot industrial mqtt broker",
+        "iot industrial actuatorcontroller",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Rotation完成。Revocation是insert到auth_revoked_tokens，带RevokedAt时间戳，7天自动清理。即使token没过期也能立即拒绝。",
+      "elements_involved": [
+        "auth",
+        "jose",
+        "iot industrial plc logic",
+        "iot industrial mqtt broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后加Session Cleanup的定时任务说明：每60秒清理过期session、revoked tokens、OAuth2 cache。整个图用autonumber自动编号。",
+      "elements_involved": [
+        "session manager",
+        "iot industrial actuatorcontroller",
+        "iot industrial mqtt broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部完成。我检查一下：四种认证方式、RBAC授权、Token轮换与吊销、定时清理，工业场景的安全闭环应该都覆盖了。需要调整哪些标注？",
+      "elements_involved": [
+        "erlmcp auth",
+        "rbac engine",
+        "session manager",
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "erlmcp auth rate limiter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "IoT_Industrial_EdgeNode在图里出现了多次，Auth和RBAC Engine都是它，确认一下角色分配有没有冲突。",
+      "elements_involved": [
+        "erlmcp auth",
+        "rbac engine",
+        "iot industrial edgenode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确实，Auth和RBAC Engine都标了IoT_Industrial_EdgeNode，但功能不同。这样表达也可以，说明这两个逻辑模块都部署在边缘节点上。或者把Auth改为IoT_Industrial_ActuatorController？",
+      "elements_involved": [
+        "erlmcp auth",
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持现状，erlmcp_auth和RBAC Engine都在边缘节点运行是合理架构。但注意Auth内部自调用的箭头，比如do_validate_api_key、do_validate_jwt这些。",
+      "elements_involved": [
+        "erlmcp auth",
+        "auth",
+        "authentication",
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "自调用箭头都保留了，体现内部状态机。jose_jws:peek_protected和jose_jws:verify的调用也清晰。OAuth2的HTTP POST细节要补充吗？",
+      "elements_involved": [
+        "jose",
+        "oauth2 provider",
+        "auth",
+        "iot industrial mqtt broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OAuth2的POST加上RFC 7662说明，Basic Auth用client_id:secret，body带token和token_type_hint。响应200 OK + TokenInfo。",
+      "elements_involved": [
+        "oauth2 provider",
+        "auth",
+        "iot industrial mqtt broker",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充。现在验证一下所有alt-else-end的嵌套层级，JWT部分最深，有claims校验的多层分支。结构应该正确。",
+      "elements_involved": [
+        "auth",
+        "jose",
+        "iot industrial edgenode",
+        "iot industrial plc logic",
+        "iot industrial mqtt broker",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "mTLS的Note块内容较长，确认换行符在Mermaid里能正常渲染。证书验证的6个步骤都要清晰可见。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "iot industrial telemetrystream",
+        "auth",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "用<br/标签换行，6步验证：证书提取、X.509链验证、过期检查、OCSP/CRL吊销、Subject DN匹配、深度限制。渲染没问题。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RateLimiter的record_failure和record_success要对应到不同的IoT标注，failure是MQTT_Broker，success是EdgeNode或TelemetryStream，体现风险分级。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "iot industrial mqtt broker",
+        "iot industrial edgenode",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "检查并修正：API Key失败时record_failure(IoT_Industrial_MQTT_Broker)，成功时record_success(IoT_Industrial_EdgeNode)；JWT成功是TelemetryStream；OAuth2成功是MQTT_Broker；mTLS成功是TelemetryStream。",
+      "elements_involved": [
+        "erlmcp auth rate limiter",
+        "iot industrial mqtt broker",
+        "iot industrial edgenode",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，这样标注有业务含义：MQTT_Broker代表高风险操作，EdgeNode和TelemetryStream代表正常或低风险状态。session创建的目标也要对应。",
+      "elements_involved": [
+        "session manager",
+        "iot industrial telemetrystream",
+        "iot industrial mqtt broker",
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "session创建目标：API Key成功→TelemetryStream，JWT成功→MQTT_Broker，OAuth2成功→ActuatorController，mTLS成功→MQTT_Broker。这样分布合理吗？",
+      "elements_involved": [
+        "session manager",
+        "iot industrial telemetrystream",
+        "iot industrial mqtt broker",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OAuth2的session应该是EdgeNode，不是ActuatorController，修正一下。OAuth2是云端认证，session回写到边缘节点缓存。",
+      "elements_involved": [
+        "session manager",
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正：OAuth2成功后Auth-Session: create_session(IoT_Industrial_EdgeNode)，Session--Auth返回也是EdgeNode。Auth--Client返回ActuatorController保持不变。",
+      "elements_involved": [
+        "auth",
+        "session manager",
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "现在对了。再看JWT的peek_protected返回，应该是IoT_Industrial_EdgeNode的header map，然后lookup public key。",
+      "elements_involved": [
+        "jose",
+        "auth",
+        "iot industrial mqtt broker",
+        "iot industrial edgenode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "JWT流程：JWT--Auth返回#{IoT_Industrial_EdgeNode}，然后Auth自调用lookup public key by kid，查ETS: auth_jwt_keys。verify后返回{IoT_Industrial_ActuatorController}。",
+      "elements_involved": [
+        "jose",
+        "auth",
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "claims校验的Note块内容很多，确认每个检查项的标注：exp(EdgeNode) required、nbf(PLC_Logic) optional、iss(TelemetryStream) configurable、aud(EdgeNode) configurable、sub(EdgeNode) required。",
+      "elements_involved": [
+        "auth",
+        "iot industrial edgenode",
+        "iot industrial plc logic",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部核对无误。每种失败情况返回不同的IoT标注：Token Expired→PLC_Logic，Not Yet Valid→PLC_Logic，Issuer Mismatch→MQTT_Broker，Audience Mismatch→EdgeNode。",
+      "elements_involved": [
+        "auth",
+        "iot industrial plc logic",
+        "iot industrial mqtt broker",
+        "iot industrial edgenode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这些返回码设计有实际意义，方便日志分析时快速定位问题类型。最后确认一下整个图的参与者顺序，符合调用层级吗？",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "rbac engine",
+        "session manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "参与者顺序：Client → Transport → Auth → RateLimiter → JWT/OAuth2/MTLS → RBAC → Session。RBAC在Session之前，因为创建session时要查角色聚合。",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "rbac engine",
+        "session manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "但Authorization Flow里RBAC是在Session之后，lookup session先，再check_user_permission。这个顺序和创建session时不同，是合理的。",
+      "elements_involved": [
+        "auth",
+        "session manager",
+        "rbac engine",
+        "iot industrial edgenode",
+        "iot industrial plc logic",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "是的，创建session时：Auth→Session→RBAC→Session→Auth→Client；校验权限时：Auth→Session→RBAC→Auth→Client。RBAC和Session的交互方向不同。",
+      "elements_involved": [
+        "auth",
+        "session manager",
+        "rbac engine",
+        "client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Token Rotation的new SessionId生成要强调安全性，crypto:strong_rand_bytes(32) base64编码，旧session立即失效防止劫持。",
+      "elements_involved": [
+        "auth",
+        "session manager",
+        "iot industrial mqtt broker",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Rotation的Note已加：crypto:strong_rand_bytes(IoT_Industrial_ActuatorController) base64 encoded，以及Old session invalidated immediately。",
+      "elements_involved": [
+        "auth",
+        "iot industrial actuatorcontroller",
+        "iot industrial mqtt broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Revocation的auth_revoked_tokens存储格式是Token-RevokedAt，7天清理。这个和JWT验证时的revoked检查是同一个ETS表。",
+      "elements_involved": [
+        "auth",
+        "jose",
+        "iot industrial plc logic",
+        "iot industrial mqtt broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "同一个表，JWT验证时先查这个表，命中直接拒绝，不走到jose验证。Note说明：Revoked tokens rejected immediately, Even if exp claim valid。",
+      "elements_involved": [
+        "auth",
+        "jose",
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Cleanup的三种对象：expired sessions(ActuatorController)、revoked tokens(MQTT_Broker)、OAuth2 cache(ActuatorController)。标注和各自的主要关联模块一致。",
+      "elements_involved": [
+        "session manager",
+        "iot industrial actuatorcontroller",
+        "iot industrial mqtt broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Cleanup注释已完成。整体检查一遍：4种认证方式各约10-15步，Authorization Flow约12步，Rotation和Revocation各约6步，Cleanup注释3行。结构完整。",
+      "elements_involved": [
+        "erlmcp auth",
+        "rbac engine",
+        "session manager",
+        "erlmcp auth rate limiter",
+        "erlmcp auth mtls",
+        "jose",
+        "oauth2 provider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "IoT标注的分布再确认一下：EdgeNode出现8次，ActuatorController出现7次，PLC_Logic出现6次，MQTT_Broker出现7次，TelemetryStream出现6次。分布比较均衡。",
+      "elements_involved": [
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller",
+        "iot industrial plc logic",
+        "iot industrial mqtt broker",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "统计正确。EdgeNode主要是Auth和RBAC的载体，ActuatorController是Client交互端，PLC_Logic是计算密集型模块，MQTT_Broker是消息中间件，TelemetryStream是数据流通道。",
+      "elements_involved": [
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller",
+        "iot industrial plc logic",
+        "iot industrial mqtt broker",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后优化一下Note的位置，Authentication Flow和Authorization Flow的大Note要覆盖对应参与者，Token Rotation和Revocation的Note也是。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "session manager",
+        "rbac engine",
+        "iot industrial mqtt broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Note位置调整完成：Authentication Flow覆盖Client到Session，Authorization Flow覆盖Client到Session，Rotation和Revocation各自独立Note over Client,Session。",
+      "elements_involved": [
+        "client",
+        "session manager",
+        "auth",
+        "iot industrial mqtt broker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "jose模块的全称是jose (IoT_Industrial_PLC_Logic)，括号里的标注和独立参与者一样，确认没有语法错误。",
+      "elements_involved": [
+        "jose",
+        "iot industrial plc logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "语法正确，Mermaid支持participant别名用<br/换行，括号内的IoT标注是别名的一部分。所有参与者定义和引用都检查通过。",
+      "elements_involved": [
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "erlmcp auth",
+        "transport layer",
+        "rbac engine",
+        "session manager",
+        "erlmcp auth rate limiter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "那这张图可以定稿了。完整覆盖了工业物联网的认证授权需求：多因素认证、分层防护、RBAC细粒度权限、Token全生命周期管理。",
+      "elements_involved": [
+        "erlmcp auth",
+        "rbac engine",
+        "session manager",
+        "erlmcp auth rate limiter",
+        "erlmcp auth mtls",
+        "jose",
+        "oauth2 provider",
+        "transport layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "定稿确认。时序图共64个自动编号步骤，4种认证流程、1种授权流程、2种管理操作、1个清理任务，工业级安全架构完整呈现。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "rbac engine",
+        "session manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "execute",
+      "utterance": "输出最终Mermaid代码，确保所有IoT标注、alt分支、Note注释都准确无误。",
+      "elements_involved": [
+        "iot industrial edgenode",
+        "iot industrial actuatorcontroller",
+        "iot industrial plc logic",
+        "iot industrial mqtt broker",
+        "iot industrial telemetrystream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "代码已生成并验证，所有元素和关系与对话讨论一致，可直接用于技术评审和开发参考。",
+      "elements_involved": [
+        "erlmcp auth",
+        "rbac engine",
+        "session manager",
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "erlmcp auth rate limiter",
+        "transport layer",
+        "client"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 3,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 163888.9217,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

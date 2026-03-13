@@ -1,0 +1,518 @@
+{
+  "id": "ot_stateDiagram_00318",
+  "source": "other",
+  "source_url": "https://github.com/coherosphere/architecture/blob/598bb65467787da38ac4029e35bdead27e7799ee/docs.coherosphere.io/static/assets/diagrams/C3_states/SM-02.02_Decay_Recompute_Cycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "coherosphere/architecture",
+  "diagram_type": "stateDiagram",
+  "code": "%%{init: {'theme':'base','themeVariables':{ 'primaryColor':'#ff8b00','edgeLabelBackground':'#ffffff','tertiaryColor':'#fef3c7'}}}%%\nstateDiagram-v2\ntitle: SM-02.02 — Decay & Recompute Cycle (C2-02 Proof-of-Contribution)\n\n[*] --> TRIGGER : CronTick / RecomputeRequested / ParamsVersioned\nnote right of TRIGGER\n  Entry conditions:\n  • Scheduled batch tick (CronTick)\n  • Manual backfill (RecomputeRequested)\n  • Parameters changed (ParamsVersioned: λ, α)\nend note\n\nTRIGGER --> LOAD_SNAPSHOT : Select ledger window\nnote right of LOAD_SNAPSHOT\n  Load CPᵢ(t₀) snapshots and pending deltas\n  Resolve idempotent ranges and gaps\nend note\n\nLOAD_SNAPSHOT --> CHECK_PARAMS : Bind constants (λ, α)\nnote right of CHECK_PARAMS\n  λ = ln(2)/T  (half-life)\n  α ∈ (0,1)    (sublinear voting)\n  If new version → tag run with ParamVersionID\nend note\n\nCHECK_PARAMS --> APPLY_DECAY : InputBound\nnote right of APPLY_DECAY\n  Apply time decay to each CPᵢ since t₀:\n  CPᵢ(t) = CPᵢ(t₀) · e^(−λ·Δt) + Σ(ΔCPᵢ)\nend note\n\nAPPLY_DECAY --> RECOMPUTE_W : DecayApplied (DDD EVT 21)\nnote right of RECOMPUTE_W\n  Recompute voting weights:\n  Wᵢ = (CPᵢ)^α\n  Prepare diffs for persistence & metrics\nend note\n\nRECOMPUTE_W --> WRITE_BACK : WeightsComputed\nnote right of WRITE_BACK\n  Persist CP/W snapshots + audit trail\n  Mark run as deterministic (run-id, param-ver)\nend note\n\nWRITE_BACK --> EMIT_EVENTS : LedgerCommitted\nnote right of EMIT_EVENTS\n  Emit CPUpdated / WeightsUpdated for Metrics (C2-07)\n  Optionally trigger Resonance recompute (C2-01)\nend note\n\nEMIT_EVENTS --> [*] : RecomputeFinished (DDD EVT 22)\n\n%% ---- Exceptional & maintenance paths ----\nLOAD_SNAPSHOT --> RECONCILE : GapDetected / CorrectionInput\nnote right of RECONCILE\n  Backfill missing windows, reconcile oracles\n  (e.g., late hub data or corrections)\nend note\nRECONCILE --> APPLY_DECAY : Reconciled\n\nAPPLY_DECAY --> ABORT : InvariantBreach / AnomalyDetected\nRECOMPUTE_W --> ABORT : InvariantBreach\nABORT --> [*] : RecomputeAborted\n\n%% =========== Styling ===========\nclassDef core fill:#ff8b00,stroke:#333,color:#fff,font-weight:bold;\nclass TRIGGER,LOAD_SNAPSHOT,CHECK_PARAMS,APPLY_DECAY,RECOMPUTE_W,WRITE_BACK,EMIT_EVENTS,RECONCILE,ABORT core;",
+  "content_size": 2180,
+  "collected_at": "2026-02-06T10:40:36.748897",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "license_url": null,
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "coherosphere",
+  "repo_name": "architecture",
+  "repo_description": "The cohersphere architecture — structural blueprint of the resonance network. Defines the modular layers connecting app, API, and governance protocols. Outlines data flows for Proof-of-Contribution, c",
+  "repo_language": "Mermaid",
+  "repo_topics": [
+    "architecture",
+    "c4",
+    "distributed-systems",
+    "modular-architecture",
+    "system-design"
+  ],
+  "repo_created_at": "2025-10-29T09:30:02Z",
+  "repo_updated_at": "2026-02-06T04:58:50Z",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为C2-02的Proof-of-Contribution设计一个状态机，核心是一个衰减与重新计算的周期。起点应该是三种触发方式：定时任务、手动回填，或者参数变更。",
+      "elements_involved": [
+        "[*]",
+        "TRIGGER",
+        "CronTick",
+        "RecomputeRequested",
+        "ParamsVersioned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以入口是一个合并的触发节点。我想确认一下，ParamsVersioned具体包含哪些参数？是λ和α吗？",
+      "elements_involved": [
+        "ParamsVersioned",
+        "λ",
+        "α"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，λ是衰减系数，由半衰期T决定，α是次线性投票的指数。参数版本变更时必须重新计算整个周期。",
+      "elements_involved": [
+        "λ",
+        "α",
+        "half life",
+        "sublinear voting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出触发节点，然后连接到加载快照的状态。这里需要加载CPᵢ的历史快照和待处理的增量数据。",
+      "elements_involved": [
+        "TRIGGER",
+        "LOAD_SNAPSHOT",
+        "CPᵢ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "LOAD_SNAPSHOT之后要加一个检查点，专门处理幂等性范围和间隙的解析。有时候会有数据缺口需要处理。",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "resolve idempotent ranges and gaps"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "如果检测到间隙，我们是要阻断主流程还是走分支处理？比如延迟的hub数据或者人工修正的情况。",
+      "elements_involved": [
+        "GapDetected",
+        "CorrectionInput",
+        "late hub data or corrections"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "走分支。主流程继续到CHECK_PARAMS，但间隙检测要分叉到RECONCILE状态，完成回填后再汇合到APPLY_DECAY。",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "RECONCILE",
+        "backfill",
+        "APPLY_DECAY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加RECONCILE分支。现在画CHECK_PARAMS，这里绑定λ和α的具体数值，如果参数是新版本还要打标签。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "bind",
+        "ParamVersionID",
+        "run id",
+        "param ver"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，λ = ln(2)/T，这个公式要备注在状态上。然后进入核心的APPLY_DECAY，应用时间衰减到每个CPᵢ。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "−λ·δt",
+        "δcpᵢ"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "衰减公式是CPᵢ(t) = CPᵢ(t₀) · e^(−λ·Δt) + Σ(ΔCPᵢ)，我理解对吗？需要把数学表达式写完整。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "CPᵢ(t₀)",
+        "e^(−λ·Δt)",
+        "Σ(ΔCPᵢ)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。衰减完成后触发DDD EVT 21，进入RECOMPUTE_W重新计算投票权重。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "DDD EVT 21",
+        "DecayApplied"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RECOMPUTE_W画好了，权重公式Wᵢ = (CPᵢ)^α。这里还要准备diff用于持久化和指标采集。",
+      "elements_involved": [
+        "RECOMPUTE_W",
+        "Wᵢ",
+        "(CPᵢ)^α"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是WRITE_BACK，把CP和W的快照持久化，加上审计追踪。这个run要标记为deterministic，绑定run-id和param-ver。",
+      "elements_involved": [
+        "WRITE_BACK",
+        "WeightsComputed",
+        "deterministic",
+        "run id",
+        "param ver"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "WRITE_BACK完成。然后到EMIT_EVENTS，这里应该输出CPUpdated和WeightsUpdated给C2-07的指标系统？",
+      "elements_involved": [
+        "WRITE_BACK",
+        "EMIT_EVENTS",
+        "LedgerCommitted",
+        "C2-07"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，还要考虑可选触发C2-01的Resonance重新计算。最后以DDD EVT 22结束，标记RecomputeFinished。",
+      "elements_involved": [
+        "EMIT_EVENTS",
+        "C2-01",
+        "DDD EVT 22",
+        "RecomputeFinished",
+        "[*]"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "主流程画完了。现在补全异常路径：APPLY_DECAY和RECOMPUTE_W都可能检测到不变量违规，需要ABORT状态。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "ABORT",
+        "InvariantBreach",
+        "AnomalyDetected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "ABORT直接回到终止状态，标记RecomputeAborted。另外RECONCILE到APPLY_DECAY的汇合边标签应该是Reconciled。",
+      "elements_involved": [
+        "ABORT",
+        "[*]",
+        "RecomputeAborted",
+        "RECONCILE",
+        "Reconciled"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正一下，我刚才把RECONCILE画成直接连到APPLY_DECAY了，但应该确认下是否需要经过CHECK_PARAMS？",
+      "elements_involved": [
+        "RECONCILE",
+        "CHECK_PARAMS",
+        "APPLY_DECAY"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "不需要，回填完成后直接到APPLY_DECAY，因为参数在触发时已经确定了。你的画法是对的。",
+      "elements_involved": [
+        "RECONCILE",
+        "APPLY_DECAY",
+        "Reconciled"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，保留直连。现在统一样式，核心状态用橙色填充，TRIGGER到EMIT_EVENTS以及RECONCILE、ABORT都应用core样式。",
+      "elements_involved": [
+        "classDef core",
+        "TRIGGER",
+        "LOAD_SNAPSHOT",
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "WRITE_BACK",
+        "EMIT_EVENTS",
+        "RECONCILE",
+        "ABORT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下边的标签：TRIGGER到LOAD_SNAPSHOT是Select ledger window，APPLY_DECAY的输入条件是InputBound，这些都要准确。",
+      "elements_involved": [
+        "TRIGGER",
+        "LOAD_SNAPSHOT",
+        "APPLY_DECAY",
+        "InputBound"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现一个问题，APPLY_DECAY到RECOMPUTE_W的触发事件我写成了WeightsComputed，但应该是DecayApplied对应DDD EVT 21。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "DecayApplied",
+        "DDD EVT 21",
+        "WeightsComputed"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，WeightsComputed是RECOMPUTE_W到WRITE_BACK的触发条件。修正后逻辑就通顺了。",
+      "elements_involved": [
+        "RECOMPUTE_W",
+        "WRITE_BACK",
+        "WeightsComputed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。现在所有note都补全了：TRIGGER的入口条件、LOAD_SNAPSHOT的幂等性处理、CHECK_PARAMS的公式、APPLY_DECAY的数学表达式、RECOMPUTE_W的权重计算、WRITE_BACK的持久化说明、EMIT_EVENTS的事件输出、RECONCILE的回填场景。",
+      "elements_involved": [
+        "note right of"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "标题需要明确：SM-02.02 — Decay & Recompute Cycle (C2-02 Proof-of-Contribution)。另外初始化主题用base，主色#ff8b00。",
+      "elements_involved": [
+        "title",
+        "%%{init",
+        "theme",
+        "primaryColor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "主题配置完成。再确认一下ABORT的两个来源：APPLY_DECAY是InvariantBreach或AnomalyDetected，RECOMPUTE_W只有InvariantBreach。",
+      "elements_involved": [
+        "ABORT",
+        "InvariantBreach",
+        "AnomalyDetected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。RECOMPUTE_W阶段如果检测到异常，通常是计算层面的不变量违规；而APPLY_DECAY还可能遇到数据异常。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "ABORT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "EMIT_EVENTS到终止状态的边标签是RecomputeFinished (DDD EVT 22)，这个事件名和编号需要严格对应吗？",
+      "elements_involved": [
+        "EMIT_EVENTS",
+        "[*]",
+        "RecomputeFinished",
+        "DDD EVT 22"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要严格对应，这是我们的领域事件编码规范。EVT 21是衰减完成，EVT 22是整个重计算周期完成。",
+      "elements_involved": [
+        "DDD EVT 21",
+        "DDD EVT 22"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终检查完成。所有状态、转移、注释、样式、异常路径都已对齐。状态机覆盖了正常流程、回填分支和异常终止三种场景。",
+      "elements_involved": [
+        "stateDiagram-v2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一个细节：RECONCILE的备注里要强调e.g., late hub data or corrections，这是实际的业务场景。",
+      "elements_involved": [
+        "RECONCILE",
+        "e.g., late hub data or corrections"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已包含。整个图现在完整了，从三种触发方式开始，经过加载、参数绑定、衰减、重计算、持久化、事件输出，以及回填和异常两个分支。",
+      "elements_involved": [
+        "[*]",
+        "TRIGGER",
+        "EMIT_EVENTS",
+        "[*]"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "CHECK_PARAMS的备注里，α ∈ (0,1) 的区间表示要清晰，强调这是次线性投票的约束条件。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "α ∈ (0,1)",
+        "sublinear voting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "备注已优化。所有核心状态都应用了core样式类，颜色统一为#ff8b00，文字白色加粗。",
+      "elements_involved": [
+        "classDef core",
+        "fill:#ff8b00",
+        "color:#fff",
+        "font-weight:bold"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个状态机可以直接用于C2-02的实现文档。衰减和重计算的逻辑清晰，异常处理也完备。",
+      "elements_involved": [
+        "C2-02",
+        "Decay & Recompute Cycle"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认交付。最终图包含9个核心状态、2个终止连接、2条异常分支、8条详细注释，完整实现了Proof-of-Contribution的衰减重计算周期。",
+      "elements_involved": [
+        "TRIGGER",
+        "LOAD_SNAPSHOT",
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "WRITE_BACK",
+        "EMIT_EVENTS",
+        "RECONCILE",
+        "ABORT"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 36,
+    "repair_count": 2,
+    "grounding_acts_count": 36,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:44Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:28Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:28Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 110003.9802,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 36
+  }
+}

@@ -1,0 +1,382 @@
+{
+  "id": "gl_packet-beta_00459",
+  "source": "gitlab",
+  "source_url": "https://github.com/Lucascis/discord_bot/blob/3c98f8c01a7f4e2f2e4770f9209b19c752940a0f/docs/architecture/diagrams/sequence-play.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "Lucascis/discord_bot",
+  "diagram_type": "packet-beta",
+  "code": "%% Sequence Diagram: Play Command Flow\n%% Purpose: Shows the complete flow when a user executes /play command\n%% Author: Discord Bot Team\n%% Last Updated: 2025-11-03\n\nsequenceDiagram\n    autonumber\n\n    actor User as 👤 Discord User\n    participant Discord as Discord API\n    participant Gateway as Gateway Service\n    participant Redis as Redis Pub/Sub\n    participant Audio as Audio Service\n    participant DB as PostgreSQL\n    participant Lavalink as Lavalink\n    participant YouTube as YouTube API\n\n    Note over User,YouTube: User wants to play a song in voice channel\n\n    %% Command Initiation\n    User->>Discord: /play query: \"never gonna give you up\"\n    activate Discord\n    Discord->>Gateway: INTERACTION_CREATE event\n    activate Gateway\n\n    Note over Gateway: Validate interaction<br/>Check permissions\n\n    Gateway->>Discord: POST /interactions/{id}/callback<br/>(ephemeral: \"🎵 Processing...\")\n    Discord->>User: Show processing message\n    deactivate Discord\n\n    %% Command Processing\n    Gateway->>DB: SELECT * FROM guild_settings<br/>WHERE guildId = ?\n    activate DB\n    DB-->>Gateway: Guild settings (if exists)\n    deactivate DB\n\n    Gateway->>Redis: PUBLISH discord-bot:commands<br/>{ type: 'play', query: '...', guildId, ... }\n    activate Redis\n    Note over Redis: Message queued in pub/sub\n\n    Redis->>Audio: Message delivered\n    deactivate Redis\n    activate Audio\n\n    %% Audio Service Processing\n    Note over Audio: Extract query and guild info\n\n    Audio->>DB: SELECT * FROM queue<br/>WHERE guildId = ?\n    activate DB\n    DB-->>Audio: Current queue (if exists)\n    deactivate DB\n\n    %% Search for Track\n    alt Query is YouTube URL\n        Note over Audio: Parse YouTube URL<br/>Extract video ID\n    else Query is search term\n        Audio->>Lavalink: GET /loadtracks?identifier=ytsearch:{query}\n        activate Lavalink\n        Lavalink->>YouTube: Search API request\n        activate YouTube\n        YouTube-->>Lavalink: Search results\n        deactivate YouTube\n        Lavalink-->>Audio: Track results (top 5)\n        deactivate Lavalink\n        Note over Audio: Select first result\n    end\n\n    %% Cache Search Results\n    Audio->>Redis: SETEX search:{query} 300 {results}\n    activate Redis\n    Redis-->>Audio: OK\n    deactivate Redis\n\n    %% Add to Queue\n    alt Queue is empty\n        Note over Audio: This will be the first track\n        Audio->>DB: INSERT INTO queue<br/>(guildId, title, url, position, ...)\n        activate DB\n        DB-->>Audio: Queue entry created (position: 0)\n        deactivate DB\n\n        %% Start Playback\n        Audio->>Lavalink: POST /sessions/{sessionId}/players/{guildId}<br/>{ encodedTrack, voice: {...} }\n        activate Lavalink\n\n        Note over Lavalink: Create player<br/>Connect to voice channel\n\n        Lavalink->>Discord: Voice connection (UDP)\n        activate Discord\n        Discord-->>Lavalink: Voice connection established\n        deactivate Discord\n\n        Lavalink->>YouTube: Stream audio data\n        activate YouTube\n        Note over Lavalink: Download and encode audio\n        YouTube-->>Lavalink: Audio stream\n        deactivate YouTube\n\n        Lavalink->>Discord: Send opus packets (UDP)\n        activate Discord\n        Discord->>User: 🎵 Audio playback in voice channel\n        deactivate Discord\n\n        Lavalink-->>Audio: Player updated event\n        deactivate Lavalink\n\n    else Queue has tracks\n        Note over Audio: Add to end of queue\n        Audio->>DB: SELECT MAX(position) FROM queue<br/>WHERE guildId = ?\n        activate DB\n        DB-->>Audio: maxPosition\n        deactivate DB\n\n        Audio->>DB: INSERT INTO queue<br/>(guildId, title, url, position: maxPosition + 1, ...)\n        activate DB\n        DB-->>Audio: Queue entry created\n        deactivate DB\n    end\n\n    %% Update Cache\n    Audio->>Redis: SET queue:{guildId} {...}<br/>EX 3600\n    activate Redis\n    Redis-->>Audio: OK\n    deactivate Redis\n\n    %% Send UI Update\n    alt First track (now playing)\n        Audio->>Redis: PUBLISH discord-bot:ui:now<br/>{ type: 'nowPlaying', track: {...}, ... }\n        activate Redis\n        Redis->>Gateway: UI update message\n        deactivate Redis\n\n        Gateway->>Discord: POST /channels/{id}/messages<br/>{ embeds: [nowPlayingEmbed], components: [...] }\n        activate Discord\n        Discord->>User: 🎵 Now Playing: Song Title<br/>[Controls: ⏯️ ⏭️ 🔊 🔁 ...]\n        deactivate Discord\n\n        Gateway->>Discord: DELETE /webhooks/{id}/messages/@original<br/>(Remove \"Processing...\" message)\n        activate Discord\n        deactivate Discord\n\n    else Added to queue\n        Gateway->>Discord: POST /webhooks/{id}/messages/@original<br/>{ content: \"✅ Added to queue (position: X)\", ephemeral: true }\n        activate Discord\n        Discord->>User: ✅ Added to queue (position: 5)\n        deactivate Discord\n    end\n\n    deactivate Gateway\n    deactivate Audio\n\n    Note over User,YouTube: User hears music playing in voice channel\n\n    %% Track Events\n    loop Every 5 seconds\n        Lavalink->>Audio: PlayerUpdate event<br/>{ position, connected: true }\n        activate Audio\n\n        Audio->>Redis: PUBLISH discord-bot:to-discord<br/>{ type: 'playerUpdate', position, ... }\n        activate Redis\n        Redis->>Gateway: Player update event\n        deactivate Redis\n\n        Note over Gateway: Update UI if needed<br/>(progress bar, time)\n        deactivate Audio\n    end\n\n    %% Track End\n    Note over Lavalink,Audio: Track finishes playing\n\n    Lavalink->>Audio: TrackEnd event<br/>{ reason: 'finished' }\n    activate Audio\n\n    Audio->>DB: DELETE FROM queue<br/>WHERE guildId = ? AND position = 0\n    activate DB\n    DB-->>Audio: Deleted\n    deactivate DB\n\n    Audio->>DB: UPDATE queue SET position = position - 1<br/>WHERE guildId = ?\n    activate DB\n    DB-->>Audio: Queue reindexed\n    deactivate DB\n\n    alt More tracks in queue\n        Audio->>DB: SELECT * FROM queue<br/>WHERE guildId = ? AND position = 0\n        activate DB\n        DB-->>Audio: Next track\n        deactivate DB\n\n        Note over Audio: Play next track<br/>(repeat playback flow)\n\n    else Queue empty and autoplay enabled\n        Note over Audio: Generate autoplay recommendation\n        Audio->>Audio: Get similar tracks<br/>based on last played\n        Note over Audio: Add to queue and play\n\n    else Queue empty and autoplay disabled\n        Audio->>Lavalink: DELETE /sessions/{sessionId}/players/{guildId}\n        activate Lavalink\n        Lavalink-->>Audio: Player destroyed\n        deactivate Lavalink\n\n        Audio->>Redis: PUBLISH discord-bot:ui:now<br/>{ type: 'queueEmpty' }\n        activate Redis\n        Redis->>Gateway: Queue empty event\n        deactivate Redis\n\n        Gateway->>Discord: PATCH /channels/{id}/messages/{id}<br/>{ content: \"Queue finished\", components: [] }\n        activate Discord\n        Discord->>User: Queue finished (no controls)\n        deactivate Discord\n    end\n\n    deactivate Audio\n\n    Note over User,YouTube: Flow complete\n",
+  "content_size": 6985,
+  "collected_at": "2026-02-06T14:10:10.289943",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的/play命令流程图，从用户在Discord输入命令开始，一直到音乐实际播放出来。这个流程涉及好几个服务，我想先确认一下整体结构。",
+      "elements_involved": [
+        "User",
+        "Discord API",
+        "play command"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "好的，我理解是从用户侧发起。那除了Discord API，还有哪些核心参与者？我看到你提到了好几个服务。",
+      "elements_involved": [
+        "Discord API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "核心参与者有六个：Gateway Service负责接收和分发命令，Redis Pub/Sub做消息队列，Audio Service处理核心业务逻辑，PostgreSQL存队列数据，Lavalink负责音频解码和传输，还有YouTube API用来搜歌。",
+      "elements_involved": [
+        "Gateway Service",
+        "Redis Pub/Sub",
+        "Audio Service",
+        "PostgreSQL",
+        "Lavalink",
+        "YouTube API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，我已经把这六个服务都加进去了。现在从用户输入/play query: \"never gonna give you up\"开始画，Discord API收到后触发INTERACTION_CREATE事件给Gateway，对吗？",
+      "elements_involved": [
+        "User",
+        "Discord API",
+        "Gateway Service",
+        "INTERACTION_CREATE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Gateway要先验证权限，然后立刻回一个ephemeral的\"🎵 Processing...\"消息，让用户知道在处理了。这个很重要，不然用户会觉得卡住了。",
+      "elements_involved": [
+        "Gateway Service",
+        "ephemeral: \"🎵 processing...\"",
+        "Discord API",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，processing消息已经画上去了。接下来Gateway要去查guild_settings？",
+      "elements_involved": [
+        "Gateway Service",
+        "PostgreSQL",
+        "guildid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，查guildId对应的设置，然后Gateway把命令publish到Redis的discord-bot:commands频道，带上type、query、guildId这些信息。Audio Service订阅了这个频道，会消费这条消息。",
+      "elements_involved": [
+        "Gateway Service",
+        "Redis Pub/Sub",
+        "Audio Service",
+        "discord-bot:commands"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Redis消息队列画好了。现在Audio Service激活，它要先查当前队列状态？",
+      "elements_involved": [
+        "Audio Service",
+        "Redis Pub/Sub",
+        "PostgreSQL",
+        "queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Audio查queue表看有没有现有歌曲。然后这里有个分支：如果用户给的是YouTube URL就直接解析，否则要走搜索流程。搜索的话Audio调用Lavalink的/loadtracks接口，用ytsearch前缀。",
+      "elements_involved": [
+        "Audio Service",
+        "PostgreSQL",
+        "queue",
+        "Lavalink",
+        "YouTube API",
+        "url",
+        "title"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Lavalink和YouTube API的交互我要确认一下：是Lavalink直接调YouTube API搜索，然后返回top 5结果给Audio Service？",
+      "elements_involved": [
+        "Lavalink",
+        "YouTube API",
+        "Audio Service",
+        "top 5",
+        "tracks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Lavalink封装了YouTube的搜索，Audio拿到top 5之后选第一个结果。然后Audio要把搜索结果缓存到Redis，key是search:{query}，TTL设300秒。",
+      "elements_involved": [
+        "Audio Service",
+        "Redis Pub/Sub",
+        "search:{query}",
+        "300"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "缓存步骤加上了。接下来是加入队列的逻辑，这里我看到你之前提到有分支？",
+      "elements_involved": [
+        "Audio Service",
+        "Redis Pub/Sub",
+        "PostgreSQL",
+        "queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "关键分支：如果队列为空，这是第一首歌，position设为0，而且要立即开始播放；如果队列有歌，就查maxPosition，新歌曲position设为maxPosition + 1，加到队尾。",
+      "elements_involved": [
+        "queue",
+        "position: 0",
+        "position: maxposition + 1",
+        "Audio Service",
+        "PostgreSQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "播放流程我有点疑问：Audio怎么让Lavalink开始播放的？还有语音连接是怎么建立的？",
+      "elements_involved": [
+        "Audio Service",
+        "Lavalink",
+        "Discord API",
+        "udp"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Audio POST到Lavalink的/sessions/{sessionId}/players/{guildId}，带上encodedTrack和voice配置。Lavalink然后跟Discord建立UDP语音连接，连接成功后从YouTube拉音频流，编码成opus包发给Discord。",
+      "elements_involved": [
+        "Audio Service",
+        "Lavalink",
+        "Discord API",
+        "YouTube API",
+        "udp",
+        "sessions/{sessionId}/players/{guildId}",
+        "encodedTrack"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "语音连接和播放流程都画好了。那UI更新部分呢？用户应该能看到now playing信息和控制按钮。",
+      "elements_involved": [
+        "Audio Service",
+        "Redis Pub/Sub",
+        "Gateway Service",
+        "Discord API",
+        "User",
+        "now playing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，如果是第一首歌，Audio publish到discord-bot:ui:now频道，Gateway收到后发embed消息到频道，带控制按钮⏯️⏭️🔊🔁这些，同时删掉之前的processing消息。如果是加入队列，就回复\"Added to queue (position: X)\"。",
+      "elements_involved": [
+        "Audio Service",
+        "Redis Pub/Sub",
+        "Gateway Service",
+        "Discord API",
+        "discord-bot:ui:now",
+        "remove \"processing...\" message",
+        "position: x"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "UI更新分支完成了。我看到后面还有个每5秒的循环更新？",
+      "elements_involved": [
+        "Lavalink",
+        "Audio Service",
+        "Redis Pub/Sub",
+        "Gateway Service",
+        "position",
+        "time",
+        "progress bar"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，Lavalink每5秒发PlayerUpdate事件给Audio，带上position和connected状态，Audio publish到discord-bot:to-discord，Gateway用来更新进度条和时间显示。",
+      "elements_involved": [
+        "Lavalink",
+        "Audio Service",
+        "Redis Pub/Sub",
+        "Gateway Service",
+        "position: 5",
+        "progress bar",
+        "time",
+        "playerUpdate"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "循环更新画好了。最后歌曲结束后的处理逻辑呢？",
+      "elements_involved": [
+        "Lavalink",
+        "Audio Service",
+        "PostgreSQL",
+        "queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Lavalink发TrackEnd事件，Audio先删queue里position 0的歌，然后把剩下所有歌曲position减1重新索引。之后有三个分支：还有歌就继续播放下一首，重复之前的播放流程；没歌但开了autoplay就推荐相似歌曲；没歌且没开autoplay就销毁player，发queueEmpty事件，UI显示\"Queue finished\"并且去掉控制按钮。",
+      "elements_involved": [
+        "Lavalink",
+        "Audio Service",
+        "PostgreSQL",
+        "queue",
+        "position: 0",
+        "repeat playback flow",
+        "autoplay",
+        "queueEmpty",
+        "no controls"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下autoplay disabled的情况：Audio调Lavalink DELETE /sessions/{sessionId}/players/{guildId}销毁player，然后通过Redis通知Gateway更新Discord消息？",
+      "elements_involved": [
+        "Audio Service",
+        "Lavalink",
+        "Redis Pub/Sub",
+        "Gateway Service",
+        "Discord API",
+        "sessions/{sessionId}/players/{guildId}"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。Gateway收到queueEmpty后PATCH那条消息，内容改成\"Queue finished\"，components设为空数组，用户就看不到控制按钮了。整个流程到这里结束。",
+      "elements_involved": [
+        "Gateway Service",
+        "Discord API",
+        "User",
+        "queueEmpty",
+        "no controls"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "好的，整个/play命令的完整流程图已经画好了，从用户输入命令到音乐播放，包括队列管理、搜索缓存、语音连接、UI更新和播放结束后的处理，所有分支和循环都覆盖到了。",
+      "elements_involved": [
+        "User",
+        "Discord API",
+        "Gateway Service",
+        "Redis Pub/Sub",
+        "Audio Service",
+        "PostgreSQL",
+        "Lavalink",
+        "YouTube API"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 24,
+    "repair_count": 0,
+    "grounding_acts_count": 24,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 60374.8851,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 24
+  }
+}

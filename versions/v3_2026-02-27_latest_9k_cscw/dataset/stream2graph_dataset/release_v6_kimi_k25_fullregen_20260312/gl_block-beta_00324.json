@@ -1,0 +1,627 @@
+{
+  "id": "gl_block-beta_00324",
+  "source": "gitlab",
+  "source_url": "https://github.com/quantizor/markdown-to-jsx/blob/5c76b18bb5102b00ca77c8a4480da6e93d4765f4/lib/src/parser-spec.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "quantizor/markdown-to-jsx",
+  "diagram_type": "block-beta",
+  "code": "sequenceDiagram\n    participant Input as Markdown Input\n    participant Phase1 as Phase 1: Block Structure\n    participant LineProcessor as Process Line\n    participant BlockChecker as Check Open Blocks\n    participant BlockParser as Block Parser\n    participant Phase2 as Phase 2: Inline Structure\n    participant TreeWalker as Walk Tree\n    participant InlineParser as Parse Inline\n    participant AST as Final AST\n\n    Input->>Phase1: Markdown text\n\n    loop For Each Line\n        Phase1->>LineProcessor: Process line sequentially\n\n        LineProcessor->>BlockChecker: Step 1: Check open blocks\n        Note over BlockChecker: Iterate from root to last open block<br/>Each block imposes continuation condition\n\n        BlockChecker->>BlockChecker: Match all or some open blocks\n        Note over BlockChecker: Cannot close unmatched yet<br/>May have lazy continuation\n\n        BlockChecker->>BlockParser: Step 2: Consume continuation markers\n        Note over BlockParser: >, list markers, indentation\n\n        BlockParser->>BlockParser: Look for new block starts\n\n        alt First non-space char\n            BlockParser->>BlockParser: Space/Tab: Indented path\n            Note over BlockParser: 1. Thematic Break 0-3 spaces<br/>2. Lists/Blockquote<br/>3. Code Block 4+ spaces\n        else >\n            BlockParser->>BlockParser: Block Quote (container)\n        else #\n            BlockParser->>BlockParser: ATX Heading (0-3 spaces indent)\n        else - * _\n            BlockParser->>BlockParser: Thematic Break (0-3 spaces, 3+ chars)<br/>(Note: setext > thematic when content exists)\n        else ` ~\n            BlockParser->>BlockParser: Fenced Code Block (0-3 spaces)\n        else - * + 0-9\n            BlockParser->>BlockParser: Unordered/Ordered List (container)\n        else <\n            BlockParser->>BlockParser: HTML Block (0-3 spaces, Type 1-7)\n        else |\n            BlockParser->>BlockParser: Table (GFM extension)<br/>Requires header row + delimiter row<br/>Delimiter row must match header cell count\n        else = -\n            BlockParser->>BlockParser: Setext Heading<br/>(PRECEDENCE: setext > thematic break)\n        else default\n            BlockParser->>BlockParser: Paragraph (leaf block)\n        end\n\n        BlockParser->>BlockParser: Close unmatched blocks from Step 1\n        BlockParser->>BlockParser: Create new block as child of last matched container\n\n        BlockParser->>BlockParser: Step 3: Process remainder\n        Note over BlockParser: Add text to last open block<br/>(Paragraph, Code Block, Heading, Raw HTML)<br/>or Table (GFM extension)\n\n        alt Paragraph + Setext underline?\n            BlockParser->>BlockParser: Convert paragraph to setext heading\n        else No\n            BlockParser->>BlockParser: Accumulate text in current block\n        end\n\n        BlockParser-->>LineProcessor: Block node created\n    end\n\n    Phase1->>Phase1: Close all open blocks\n    Phase1->>Phase1: For each list item:<br/>Check if first block is paragraph with task marker (GFM extension)<br/>[ ] or [x] or [X] at start of paragraph\n    Phase1->>Phase1: For each closed paragraph:<br/>Parse accumulated text lines\n    Phase1->>Phase1: Extract link reference definitions from start of text\n    Phase1->>Phase1: Remaining text becomes normal paragraph\n\n    Phase1->>Phase2: Block tree structure\n\n    Phase2->>TreeWalker: Walk the tree\n\n    loop Visit every node\n        TreeWalker->>TreeWalker: Check if node has inline content\n        Note over TreeWalker: Paragraph, Heading<br/>or Table Cell (GFM extension)\n\n        alt Has inline content?\n            TreeWalker->>InlineParser: Parse inline content (left to right)\n\n            loop Character-by-character\n                InlineParser->>InlineParser: Switch on character\n\n                alt backslash\n                    InlineParser->>InlineParser: Backslash escape\n                else `\n                    InlineParser->>InlineParser: Code span<br/>(Higher precedence than emphasis/links)\n                else <\n                    InlineParser->>InlineParser: Check angle bracket\n                    alt autolink (angle brackets)\n                        InlineParser->>InlineParser: Autolink (email or URL)<br/>Standard CommonMark autolinks<br/>(Same precedence as code spans and HTML tags)\n                    else HTML tag\n                        InlineParser->>InlineParser: HTML tag<br/>GFM extension: Disallowed Raw HTML<br/>(Same precedence as code spans and autolinks)\n                    else comment\n                        InlineParser->>InlineParser: HTML comment\n                    end\n                else www. or http:// or https:// or ftp:// or email\n                    InlineParser->>InlineParser: Extended autolink (GFM extension)<br/>www. URLs, http/https/ftp URLs, emails<br/>Only after start of line, whitespace, or * _ ~ (<br/>(Same precedence as code spans and HTML tags)\n                else * _\n                    InlineParser->>InlineParser: Emphasis delimiter<br/>Add to delimiter stack\n                    InlineParser->>InlineParser: Check left-flanking\n                    InlineParser->>InlineParser: Check right-flanking\n                    InlineParser->>InlineParser: Apply delimiter rules (9/10/11/12/13)\n                    InlineParser->>InlineParser: Parse nested content recursively\n                else ~\n                    InlineParser->>InlineParser: Strikethrough delimiter (GFM extension)<br/>Add to delimiter stack<br/>Requires exactly ~~ (two tildes) for strikethrough<br/>Similar parsing rules to emphasis\n                else !bracket\n                    InlineParser->>InlineParser: Image (add to delimiter stack)\n                else bracket\n                    InlineParser->>InlineParser: Link (add to delimiter stack)\n                else closing bracket\n                    InlineParser->>InlineParser: Look for link/image<br/>Process delimiter stack\n                    alt Reference link?\n                        InlineParser->>InlineParser: Resolve reference<br/>(All link refs available from Phase 1)\n                    else Inline link\n                        InlineParser->>InlineParser: Inline link\n                    end\n                else newline\n                    InlineParser->>InlineParser: Soft line break\n                else entity\n                    InlineParser->>InlineParser: HTML entity reference<br/>(decodeEntityReferences)\n                else default\n                    InlineParser->>InlineParser: Accumulate as text\n                end\n            end\n\n            InlineParser-->>TreeWalker: Inline AST nodes\n        end\n\n        TreeWalker->>TreeWalker: Next node\n    end\n\n    TreeWalker-->>Phase2: Complete tree with inline nodes\n    Phase2->>AST: Final AST document tree\n\n",
+  "content_size": 6767,
+  "collected_at": "2026-02-06T14:07:19.076963",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的Markdown解析流程图，从原始文本输入到最终AST输出。这个系统分为两大阶段：块级结构解析和行内结构解析。",
+      "elements_involved": [
+        "Input",
+        "Phase1",
+        "Phase2",
+        "AST"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下整体架构：左侧是Markdown Input，然后进入Phase 1处理块结构，接着是Phase 2处理行内结构，最后输出到Final AST。中间需要几个关键处理节点吗？",
+      "elements_involved": [
+        "Input",
+        "Phase1",
+        "Phase2",
+        "AST"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Phase 1里面要有Process Line、Check Open Blocks和Block Parser这三个核心组件。Phase 2则需要Tree Walker和Inline Parser。",
+      "elements_involved": [
+        "LineProcessor",
+        "BlockChecker",
+        "BlockParser",
+        "TreeWalker",
+        "InlineParser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经把参与者都画好了。现在从Input到Phase 1画一条消息，标注为\"Markdown text\"。",
+      "elements_involved": [
+        "Input-Phase1"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Phase 1的核心是一个逐行处理的循环。每一行都要经过三个步骤：检查开放块、消费延续标记、处理剩余内容。",
+      "elements_involved": [
+        "Phase1",
+        "LineProcessor",
+        "BlockChecker",
+        "BlockParser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我加了一个loop框，标注\"For Each Line\"。然后从Phase1指向LineProcessor，消息是\"Process line sequentially\"。",
+      "elements_involved": [
+        "Phase1-LineProcessor",
+        "loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第一步是Check Open Blocks，要从根节点迭代到最后一个开放块，每个块都有延续条件。这里需要加个注释说明。",
+      "elements_involved": [
+        "BlockChecker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "LineProcessor到BlockChecker的消息是\"Step 1: Check open blocks\"。我在BlockChecker上方加了个Note，内容是\"Iterate from root to last open block，Each block imposes continuation condition\"。",
+      "elements_involved": [
+        "LineProcessor-BlockChecker",
+        "BlockChecker Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "BlockChecker内部还有个自循环，表示匹配所有或部分开放块。这时候不能立即关闭未匹配的块，因为可能有延迟延续。",
+      "elements_involved": [
+        "BlockChecker-BlockChecker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了BlockChecker到自身的消息\"Match all or some open blocks\"。另外加了个Note说明\"Cannot close unmatched yet，May have lazy continuation\"。",
+      "elements_involved": [
+        "BlockChecker-BlockChecker",
+        "BlockChecker Note 2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第二步进入Block Parser，消费延续标记，比如列表标记和缩进。然后寻找新块的开始。",
+      "elements_involved": [
+        "BlockChecker",
+        "BlockParser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "BlockChecker到BlockParser的消息是\"Step 2: Consume continuation markers\"。Note标注了\"list markers, indentation\"。",
+      "elements_involved": [
+        "BlockChecker-BlockParser",
+        "BlockParser Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "新块开始的检测很复杂，需要根据第一个非空格字符来分支判断。这里要用alt结构，包含多种情况。",
+      "elements_involved": [
+        "BlockParser",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我加了BlockParser到自身的消息\"Look for new block starts\"，然后开始画alt分支。第一个分支是\"First non-space char\"，对应空格或Tab的情况。",
+      "elements_involved": [
+        "BlockParser-BlockParser",
+        "alt First non-space char"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "空格或Tab走缩进路径，里面包含三种可能：0-3空格的主题分隔线、列表/块引用、4+空格的代码块。",
+      "elements_involved": [
+        "BlockParser",
+        "Thematic Break",
+        "Lists/Blockquote",
+        "Code Block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第一个else分支画好了，消息是\"Space/Tab: Indented path\"。Note详细列出了三种情况。",
+      "elements_involved": [
+        "BlockParser Note 3"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "下一个else是块引用，用字符，这是一个容器块。",
+      "elements_involved": [
+        "Block Quote"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了else分支，消息\"Block Quote (container)\"。",
+      "elements_involved": [
+        "BlockParser-BlockParser Block Quote"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "然后是ATX标题，用#号，缩进限制在0-3个空格。",
+      "elements_involved": [
+        "ATX Heading"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了else #分支，消息\"ATX Heading (0-3 spaces indent)\"。",
+      "elements_involved": [
+        "BlockParser-BlockParser ATX Heading"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "主题分隔线用- * _三种字符，要求0-3空格缩进，至少3个字符。注意如果前面有内容，要变成Setext标题。",
+      "elements_involved": [
+        "Thematic Break",
+        "Setext Heading"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了else - * _分支，消息包含两部分：主题分隔线的条件，以及Setext的注意事项。",
+      "elements_involved": [
+        "BlockParser-BlockParser Thematic Break"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "围栏代码块用`或~，缩进也是0-3空格。",
+      "elements_involved": [
+        "Fenced Code Block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了else ` ~分支，消息\"Fenced Code Block (0-3 spaces)\"。",
+      "elements_involved": [
+        "BlockParser-BlockParser Fenced Code Block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "无序和有序列表，用- * +或0-9数字，这也是容器块。",
+      "elements_involved": [
+        "Unordered/Ordered List"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了else - * + 0-9分支，消息\"Unordered/Ordered List (container)\"。",
+      "elements_involved": [
+        "BlockParser-BlockParser List"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "HTML块用<开头，缩进0-3空格，有7种类型。",
+      "elements_involved": [
+        "HTML Block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了else <分支，消息\"HTML Block (0-3 spaces, Type 1-7)\"。",
+      "elements_involved": [
+        "BlockParser-BlockParser HTML Block"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "表格是GFM扩展，用|开头，需要表头行和分隔行，分隔行的单元格数必须匹配表头。",
+      "elements_involved": [
+        "Table"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了else |分支，消息详细说明了表格的条件，包括GFM扩展的标注。",
+      "elements_involved": [
+        "BlockParser-BlockParser Table"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Setext标题用=或-，注意优先级低于主题分隔线。",
+      "elements_involved": [
+        "Setext Heading"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了else = -分支，消息\"Setext Heading\"，并标注了PRECEDENCE信息。",
+      "elements_involved": [
+        "BlockParser-BlockParser Setext Heading"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后默认情况是段落，作为叶子块。alt到这里结束。",
+      "elements_involved": [
+        "Paragraph"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了else default分支\"Paragraph (leaf block)\"，然后结束alt。",
+      "elements_involved": [
+        "BlockParser-BlockParser Paragraph",
+        "end alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "新块创建后，要关闭第一步中未匹配的块，并把新块作为最后一个匹配容器的子节点。然后第三步处理剩余内容。",
+      "elements_involved": [
+        "BlockParser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了三个BlockParser自循环：关闭未匹配块、创建新块作为子节点、第三步处理剩余。Note说明了添加文本到开放块的情况。",
+      "elements_involved": [
+        "BlockParser-BlockParser close unmatched",
+        "BlockParser-BlockParser create child",
+        "BlockParser-BlockParser process remainder",
+        "BlockParser Note 4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里还有个特殊情况：如果是段落遇到了Setext下划线，要转换成Setext标题。需要再画一个alt。",
+      "elements_involved": [
+        "BlockParser",
+        "Paragraph",
+        "Setext Heading"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了alt分支：\"Paragraph + Setext underline?\"时转换，否则累积文本。然后BlockParser返回给LineProcessor。",
+      "elements_involved": [
+        "alt Paragraph Setext",
+        "BlockParser--LineProcessor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "循环结束后，Phase 1要关闭所有开放块，然后处理GFM的任务列表，检查段落中的任务标记。还要提取链接引用定义。",
+      "elements_involved": [
+        "Phase1",
+        "task marker",
+        "link reference definitions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了Phase1的三个自循环：关闭所有块、检查任务列表、解析链接引用定义、剩余文本变成普通段落。",
+      "elements_involved": [
+        "Phase1-Phase1 close blocks",
+        "Phase1-Phase1 task list",
+        "Phase1-Phase1 link refs",
+        "Phase1-Phase1 normal paragraph"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Phase 1完成后，块树结构传递给Phase 2进行行内解析。Tree Walker遍历树，Inline Parser处理行内内容。",
+      "elements_involved": [
+        "Phase1-Phase2",
+        "TreeWalker",
+        "InlineParser"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Phase1到Phase2的消息是\"Block tree structure\"。然后Phase2到TreeWalker是\"Walk the tree\"。",
+      "elements_involved": [
+        "Phase1-Phase2",
+        "Phase2-TreeWalker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "TreeWalker遍历每个节点，检查是否有行内内容：段落、标题、表格单元格。有的话调用Inline Parser。",
+      "elements_involved": [
+        "TreeWalker",
+        "InlineParser",
+        "inline content"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了loop\"Visit every node\"，TreeWalker自循环检查行内内容，Note列出了有行内内容的节点类型。然后alt判断是否有行内内容。",
+      "elements_involved": [
+        "loop Visit every node",
+        "TreeWalker-TreeWalker check inline",
+        "TreeWalker Note",
+        "alt Has inline content"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Inline Parser从左到右逐字符处理，根据字符类型分支：反斜杠转义、代码跨度、尖括号、自动链接、扩展自动链接、强调分隔符、删除线、图片、链接、换行、HTML实体等。",
+      "elements_involved": [
+        "InlineParser",
+        "backslash",
+        "code span",
+        "angle brackets",
+        "autolink",
+        "emphasis",
+        "strikethrough",
+        "image",
+        "link",
+        "delimiter stack"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加了TreeWalker到InlineParser的消息\"Parse inline content (left to right)\"。然后loop\"Character-by-character\"，里面用alt处理各种字符情况，包括反斜杠、反引号、尖括号、URL模式、强调符号、波浪号、感叹号+方括号、方括号、闭方括号、换行、实体引用等。",
+      "elements_involved": [
+        "TreeWalker-InlineParser",
+        "loop Character-by-character",
+        "InlineParser alt branches"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "强调和删除线都要加入分隔符栈，检查左右 flanking，应用规则9-13。链接处理时要解析引用链接或内联链接。",
+      "elements_involved": [
+        "emphasis delimiter",
+        "strikethrough delimiter",
+        "delimiter stack",
+        "rules 9/10/11/12/13",
+        "reference link",
+        "inline link"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "详细画了* _分支的处理流程：加入分隔符栈、检查左右flanking、应用规则9-13、递归解析嵌套内容。~分支类似，要求两个波浪号。闭方括号分支要查找链接/图片，处理分隔符栈，alt区分引用链接和内联链接。",
+      "elements_involved": [
+        "InlineParser-InlineParser emphasis",
+        "InlineParser-InlineParser strikethrough",
+        "InlineParser-InlineParser closing bracket"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "引用链接的解析要注意，所有链接引用在Phase 1已经提取好了，可以直接使用。",
+      "elements_involved": [
+        "reference link",
+        "Phase 1 link refs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "在引用链接分支加了Note：\"All link refs available from Phase 1\"。Inline Parser处理完后返回给TreeWalker，然后TreeWalker继续下一个节点。",
+      "elements_involved": [
+        "InlineParser--TreeWalker",
+        "TreeWalker-TreeWalker Next node"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "遍历完成后，Phase 2输出完整的带行内节点的树，最后到Final AST。",
+      "elements_involved": [
+        "Phase2",
+        "AST"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "TreeWalker返回给Phase2：\"Complete tree with inline nodes\"。然后Phase2到AST：\"Final AST document tree\"。整个Markdown解析流程图完成了。",
+      "elements_involved": [
+        "TreeWalker--Phase2",
+        "Phase2-AST"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 52,
+    "repair_count": 0,
+    "grounding_acts_count": 52,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 108899.4071,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 46
+  }
+}

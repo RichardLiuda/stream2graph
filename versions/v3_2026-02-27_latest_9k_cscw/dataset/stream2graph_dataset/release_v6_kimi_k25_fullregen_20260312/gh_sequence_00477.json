@@ -1,0 +1,346 @@
+{
+  "id": "gh_sequence_00477",
+  "source": "github",
+  "source_url": "https://github.com/neronguyenvn/CardQRPaymentSample/blob/851554dee9af8625b68905008730d891856a7b72/docs/diagrams/card-retry-sequence.mmd",
+  "github_repo": "neronguyenvn/CardQRPaymentSample",
+  "github_file_path": "docs/diagrams/card-retry-sequence.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    autonumber\n    participant User\n    participant App as POS App\n    participant Repo as Payment Repository\n    participant DB as Encrypted Local Storage\n    participant SDK as POS SDK\n    participant GW as Payment Gateway\n    User ->> App: Retry payment\n    App ->> Repo: Retry payment (intentId)\n    Repo ->> DB: Load payment intent (intentId)\n    DB -->> Repo: Payment intent loaded<br>(amount, idempotencyKey, status=PENDING)\n\n    alt Retry without re-reading card\n        Note right of Repo: High confidence request was not sent<br>and card token still valid\n        Repo ->> GW: Charge payment<br>(same idempotencyKey, same card token)\n\n    else Card re-presentation required\n        Note right of Repo: Outcome uncertain or token expired<br>EMV compliance requires re-presentation\n        Repo ->> SDK: Read card again\n        SDK -->> Repo: New card token / EMV data\n        Repo ->> GW: Charge payment<br>(same idempotencyKey, new card token)\n    end\n\n    alt Success (already processed or processed now)\n        GW -->> Repo: Success (transactionId)\n        Repo ->> DB: Update intent (COMPLETED, transactionId)\n        Repo -->> App: Payment success\n\n    else Failure (retryable=false)\n        GW -->> Repo: Failure (error, retryable=false)\n        Repo ->> DB: Update intent (FAILED, lastError=error)\n        Repo -->> App: Payment failed\n\n    else Failure (retryable=true)\n        GW -->> Repo: Failure (error, retryable=true)\n        Repo ->> DB: Update intent (PENDING, lastError=error)\n        Repo -->> App: Payment retryable\n\n    else Timeout / Network error\n        GW --x Repo: No response\n        Repo -->> App: Payment retryable\n    end\n",
+  "content_size": 1677,
+  "collected_at": "2026-02-06T01:32:51.514607",
+  "compilation_status": "success",
+  "license": "unlicense",
+  "license_name": "The Unlicense",
+  "license_url": "https://api.github.com/licenses/unlicense",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个POS支付重试的时序图。场景是用户在POS App上点击重试，系统要根据之前的状态决定是直接重发还是重新刷卡。",
+      "elements_involved": [
+        "User",
+        "POS App",
+        "Payment Repository",
+        "Encrypted Local Storage",
+        "POS SDK",
+        "Payment Gateway"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，我先确认一下参与者。User发起重试，App调用Repo，Repo从DB加载之前的支付意图。这里DB是Encrypted Local Storage对吗？",
+      "elements_involved": [
+        "Encrypted Local Storage",
+        "Payment Repository"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，Encrypted Local Storage里存着amount、idempotencyKey和status=PENDING这些字段。Repo加载时要拿到这些信息。",
+      "elements_involved": [
+        "Encrypted Local Storage",
+        "amount",
+        "idempotencyKey",
+        "status=PENDING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我先把基础流程画出来：User到App是Retry payment，App传intentId给Repo，Repo再去DB加载。DB返回amount、idempotencyKey和PENDING状态。",
+      "elements_involved": [
+        "User",
+        "POS App",
+        "Payment Repository",
+        "Encrypted Local Storage",
+        "intentId"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关键的分支。Repo要根据信心度决定走哪条路：如果高信心认为请求根本没发出去，且card token还有效，就直接用same idempotencyKey和same card token去Gateway重试。",
+      "elements_involved": [
+        "Payment Repository",
+        "Payment Gateway",
+        "same idempotencyKey",
+        "same card token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这里的same idempotencyKey是指复用之前的key来保证幂等性？那另一种情况是什么？",
+      "elements_involved": [
+        "same idempotencyKey",
+        "idempotencyKey"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，幂等性必须保持。另一种情况是结果不确定或者token过期了，EMV合规要求必须重新刷卡。这时候要走SDK重新读卡，拿到new card token，但idempotencyKey还是same。",
+      "elements_involved": [
+        "POS SDK",
+        "new card token",
+        "same idempotencyKey",
+        "EMV compliance"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我画个alt分支：左边是Retry without re-reading card，Repo直接调Gateway；右边是Card re-presentation required，Repo先调SDK拿new card token，再调Gateway。两个分支都是same idempotencyKey。",
+      "elements_involved": [
+        "Payment Repository",
+        "POS SDK",
+        "Payment Gateway",
+        "alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Gateway返回之后还有个大分支，四种结果：成功、不可重试失败、可重试失败、超时/网络错误。每种情况Repo更新DB的状态都不一样。",
+      "elements_involved": [
+        "Payment Gateway",
+        "Payment Repository",
+        "Encrypted Local Storage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "成功的话是COMPLETED状态，带上transactionId对吧？失败分retryable=false和retryable=true两种？",
+      "elements_involved": [
+        "COMPLETED",
+        "transactionId",
+        "retryable=false",
+        "retryable=true"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，retryable=false要标记FAILED，存lastError；retryable=true保持PENDING，也存lastError。超时和网络错误不用更新DB，直接告诉App可重试。",
+      "elements_involved": [
+        "FAILED",
+        "lastError=error",
+        "PENDING",
+        "COMPLETED",
+        "transactionId"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "我在画第二个alt了：Success分支Gateway返回transactionId，Repo更新DB为COMPLETED，然后告诉App成功。Failure retryable=false分支更新为FAILED。",
+      "elements_involved": [
+        "Payment Gateway",
+        "Payment Repository",
+        "Encrypted Local Storage",
+        "POS App",
+        "COMPLETED",
+        "FAILED"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，Success的描述要准确一点：already processed or processed now。因为可能之前其实已经成功了，只是响应丢了。",
+      "elements_involved": [
+        "already processed or processed now",
+        "Success"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "好的，我修正Success的注释：already processed or processed now。这样覆盖幂等返回和真正处理成功两种情况。",
+      "elements_involved": [
+        "already processed or processed now",
+        "Success"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。还有Failure retryable=true的分支，要保持PENDING状态，这样用户还能再点重试。",
+      "elements_involved": [
+        "PENDING",
+        "retryable=true",
+        "lastError=error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了，Failure retryable=true分支：Repo更新DB为PENDING并记录lastError，然后告诉App Payment retryable。",
+      "elements_involved": [
+        "Payment Repository",
+        "Encrypted Local Storage",
+        "POS App",
+        "PENDING",
+        "lastError=error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后一种情况，Timeout / Network error，Gateway根本没响应。这时候Repo不要更新DB，直接返回App说可重试。",
+      "elements_involved": [
+        "Timeout / Network error",
+        "No response",
+        "Payment retryable"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了，用虚线叉表示No response，Repo直接返回App Payment retryable，不走DB更新。",
+      "elements_involved": [
+        "Payment Gateway",
+        "Payment Repository",
+        "POS App",
+        "No response"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "第一个alt的注释也补一下吧，说明什么情况下走哪边。左边是高信心请求没发且token有效，右边是结果不确定或token过期。",
+      "elements_involved": [
+        "High confidence request was not sent",
+        "Outcome uncertain or token expired"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了Note right of Repo。左边：High confidence request was not sent and card token still valid。右边：Outcome uncertain or token expired, EMV compliance requires re-presentation。",
+      "elements_involved": [
+        "Payment Repository",
+        "EMV compliance"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Gateway调用时的参数标注清楚了吗？两个分支都是Charge payment，但token不同。",
+      "elements_involved": [
+        "Charge payment",
+        "same card token",
+        "new card token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都标了。直接重试的是same idempotencyKey, same card token；重新刷卡的是same idempotencyKey, new card token。",
+      "elements_involved": [
+        "same idempotencyKey",
+        "same card token",
+        "new card token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "整体看一下，autonumber加上，参与者名字用别名吧，App显示为POS App，Repo显示为Payment Repository，这样可读性好点。",
+      "elements_involved": [
+        "autonumber",
+        "POS App",
+        "Payment Repository"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。autonumber加上了，参与者都用了别名：App as POS App，Repo as Payment Repository，DB as Encrypted Local Storage，SDK as POS SDK，GW as Payment Gateway。",
+      "elements_involved": [
+        "autonumber",
+        "POS App",
+        "Payment Repository",
+        "Encrypted Local Storage",
+        "POS SDK",
+        "Payment Gateway"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 24,
+    "repair_count": 1,
+    "grounding_acts_count": 24,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 58010.1724,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 24
+  }
+}

@@ -1,0 +1,719 @@
+{
+  "id": "aug_gh_sequence_00510_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/DREAMSCAPE-AI/dreamscape-docs/blob/24aa5a14265601b36ddbbb02c958eea524e6eb11/architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "github_repo": "DREAMSCAPE-AI/dreamscape-docs",
+  "github_file_path": "architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    autonumber\n    actor User as 👤 Utilisateur\n    participant WC as Web Client\n    participant CN as Core NGINX<br/>:80\n    participant Voyage as Voyage Service<br/>:3003\n    participant Payment as Payment Service<br/>:3005\n    participant AI as AI Service<br/>:3004\n    participant PG as PostgreSQL<br/>:5432\n    participant Redis as Redis<br/>:6379\n    participant Kafka as Kafka<br/>:9092\n    participant Stripe as 💳 Stripe API\n\n    rect rgb(HealthTech_EMR_Sync)\n        Note over User,Voyage: Phase 1: Sélection Vol\n        User->>WC: Sélectionne vol<br/>(HealthTech_DiagnosticEngine)\n        WC->>WC: Add to cart<br/>(HealthTech_HIPAA_Vault)\n        User->>WC: Click \"Réserver\"\n        \n        WC->>CN: POST /api/v1/bookings<br/>{HealthTech_EMR_Sync}<br/>Authorization: Bearer JWT\n        CN->>CN: Validate JWT (HealthTech_LabAnalyzer)\n        CN->>Voyage: Forward to Voyage<br/>localhost:3003/bookings\n    end\n\n    rect rgb(HealthTech_EMR_Sync)\n        Note over Voyage,Kafka: Phase 2: Création Réservation\n        Voyage->>Voyage: Extract userId from JWT\n        Voyage->>PG: BEGIN transaction\n        Note right of PG: 🔄 ACID transaction<br/>pour cohérence\n        \n        Voyage->>PG: INSERT booking<br/>{HealthTech_DiagnosticEngine}\n        PG-->>Voyage: Booking created (HealthTech_PatientRecords)\n        \n        Voyage->>Redis: Store booking temp<br/>key: \"booking:temp:bookingId\"<br/>TTL: 15min\n        Note right of Redis: ⏱️ Timeout si paiement<br/>échoue après 15min\n        \n        Voyage->>Kafka: Publish event<br/>Topic: \"voyage.booking.created\"<br/>{HealthTech_DiagnosticEngine}\n        Note left of Kafka: Event-Driven Architecture<br/>- Decoupling services<br/>- Async processing<br/>- Audit trail\n        \n        Voyage-->>CN: 201 Created<br/>{HealthTech_LabAnalyzer}\n        CN-->>WC: 201 Created\n    end\n\n    rect rgb(HealthTech_DiagnosticEngine)\n        Note over WC,Stripe: Phase 3: Demande Paiement\n        WC->>CN: POST /api/v1/payments/intent<br/>{HealthTech_LabAnalyzer}<br/>Authorization: Bearer JWT\n        CN->>Payment: Forward to Payment<br/>localhost:3005/payments/intent\n        \n        Payment->>Payment: Extract userId from JWT\n        Payment->>PG: Verify booking exists<br/>SELECT * FROM bookings<br/>WHERE id = bookingId AND userId = userId\n        \n        alt Booking Non Trouvé ❌\n            PG-->>Payment: null\n            Payment-->>CN: 404 Not Found<br/>{HealthTech_HIPAA_Vault}\n            CN-->>WC: 404 Error\n            WC->>User: ❌ Erreur réservation\n        else Booking Trouvé ✅\n            PG-->>Payment: Booking found\n            Payment->>Stripe: Create PaymentIntent<br/>POST /v1/payment_intents<br/>{HealthTech_EMR_Sync),<br/>currency: \"eur\",<br/>metadata: {HealthTech_PatientRecords}}\n            \n            Stripe-->>Payment: PaymentIntent created<br/>{HealthTech_EMR_Sync}\n            \n            Payment->>PG: INSERT payment<br/>{HealthTech_PatientRecords}\n            Payment->>Kafka: Publish event<br/>Topic: \"payment.intent.created\"<br/>{HealthTech_HIPAA_Vault}\n            \n            Payment-->>CN: 200 OK<br/>{HealthTech_LabAnalyzer}\n            CN-->>WC: 200 OK\n        end\n    end\n\n    rect rgb(HealthTech_EMR_Sync)\n        Note over WC,Stripe: Phase 4: Paiement Stripe (HealthTech_EMR_Sync)\n        WC->>WC: Initialize Stripe.js<br/>with clientSecret\n        WC->>User: Affiche formulaire carte<br/>(HealthTech_DiagnosticEngine)\n        \n        User->>WC: Saisit infos carte<br/>(HealthTech_PatientRecords)\n        WC->>Stripe: POST /v1/payment_intents/:id/confirm<br/>(HealthTech_LabAnalyzer)<br/>{HealthTech_HIPAA_Vault}\n        \n        Note right of Stripe: 🔒 Sécurité PCI-DSS<br/>- Carte jamais envoyée à notre backend<br/>- Stripe gère tout<br/>- Tokenization automatique\n        \n        alt Paiement Réussi ✅\n            Stripe-->>WC: PaymentIntent succeeded\n            WC->>WC: Display success message\n            WC->>User: ✅ Paiement accepté\n        else Paiement Échoué ❌\n            Stripe-->>WC: PaymentIntent failed<br/>(HealthTech_HIPAA_Vault)\n            WC->>User: ❌ \"Paiement refusé\"<br/>(HealthTech_EMR_Sync)\n        end\n    end\n\n    rect rgb(HealthTech_PatientRecords)\n        Note over Stripe,Kafka: Phase 5: Webhook Stripe (HealthTech_EMR_Sync)\n        Stripe->>Payment: POST /webhooks/stripe<br/>Stripe-Signature header<br/>{HealthTech_EMR_Sync}}\n        \n        Payment->>Payment: Verify signature<br/>stripe.webhooks.constructEvent(HealthTech_HIPAA_Vault)\n        \n        alt Signature Invalide ❌\n            Payment-->>Stripe: 400 Bad Request\n            Note right of Payment: Protection contre<br/>webhooks forgés\n        else Signature Valide ✅\n            Payment->>PG: UPDATE payment<br/>SET status = \"SUCCEEDED\"<br/>WHERE stripePaymentIntentId = id\n            \n            Payment->>PG: UPDATE booking<br/>SET status = \"CONFIRMED\"<br/>WHERE id = bookingId\n            \n            Payment->>Redis: Delete temp booking<br/>DEL \"booking:temp:bookingId\"\n            \n            Payment->>Kafka: Publish event<br/>Topic: \"payment.succeeded\"<br/>{HealthTech_PatientRecords}\n            \n            Payment-->>Stripe: 200 OK\n        end\n    end\n\n    rect rgb(HealthTech_DiagnosticEngine)\n        Note over Kafka,User: Phase 6: Traitement Async (HealthTech_HIPAA_Vault)\n        Kafka->>Voyage: Consume event<br/>\"payment.succeeded\"\n        Voyage->>PG: SELECT booking details\n        Voyage->>Voyage: Generate confirmation email<br/>(HealthTech_EMR_Sync)\n        Voyage->>User: 📧 Email confirmation<br/>+ PDF billet\n        \n        Kafka->>AI: Consume event<br/>\"voyage.booking.created\"\n        AI->>PG: Get user profile<br/>+ booking history\n        AI->>AI: Update ML model<br/>(HealthTech_EMR_Sync)\n        Note right of AI: 🤖 AI learning<br/>from user behavior\n        AI->>Redis: Update recommendations<br/>key: \"reco:userId\"\n    end\n\n    rect rgb(HealthTech_HIPAA_Vault)\n        Note over WC,User: Phase 7: Confirmation Frontend\n        loop Polling every 2s\n            WC->>CN: GET /api/v1/bookings/:bookingId\n            CN->>Voyage: Forward request\n            Voyage->>PG: SELECT booking<br/>WHERE id = bookingId\n            \n            alt Status = CONFIRMED ✅\n                PG-->>Voyage: Booking confirmed\n                Voyage-->>CN: 200 OK<br/>{HealthTech_LabAnalyzer}\n                CN-->>WC: 200 OK\n                WC->>WC: Stop polling\n                WC->>WC: Redirect /bookings/:id\n                WC->>User: ✅ Affiche confirmation<br/>+ détails voyage\n            else Status = PENDING ⏳\n                PG-->>Voyage: Booking still pending\n                Voyage-->>CN: 200 OK<br/>{HealthTech_LabAnalyzer}\n                CN-->>WC: 200 OK (HealthTech_EMR_Sync)\n                Note right of WC: ⏱️ Après 15min<br/>réservation annulée<br/>automatiquement\n            end\n        end\n    end\n\n    Note over User,Kafka: 📊 Performance Réservation<br/>Create booking: ~100-150ms<br/>Payment intent: ~500-800ms (HealthTech_EMR_Sync)<br/>Confirmation: ~1-2s (HealthTech_EMR_Sync)<br/>Email: ~3-5s (HealthTech_EMR_Sync)<br/><br/>🔒 Fiabilité<br/>- Transaction ACID (HealthTech_HIPAA_Vault)<br/>- Idempotency keys (HealthTech_PatientRecords)<br/>- Webhook retry (HealthTech_EMR_Sync)<br/>- Event sourcing (HealthTech_DiagnosticEngine)",
+  "content_size": 7218,
+  "collected_at": "2026-02-06T01:33:16.963511",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gh_sequence_00510",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个完整的航班预订系统时序图，核心流程包括用户选航班、创建预订、支付、Stripe回调和异步处理。系统涉及Web Client、Core NGINX、Voyage Service、Payment Service、AI Service，还有PostgreSQL、Redis和Kafka这些基础设施。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个典型的微服务架构。我注意到你提到了HealthTech相关的标注，比如HealthTech_EMR_Sync、HealthTech_DiagnosticEngine这些，这些是颜色分组的标识吗？还有Stripe作为外部支付网关，需要单独标注出来吗？",
+      "elements_involved": [
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，HealthTech_EMR_Sync、HealthTech_DiagnosticEngine、HealthTech_HIPAA_Vault、HealthTech_LabAnalyzer、HealthTech_PatientRecords这五个是不同阶段的色块标识。Stripe API作为外部服务，用💳图标标注。另外用户角色用👤 Utilisateur表示。",
+      "elements_involved": [
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords",
+        "Stripe API",
+        "Utilisateur"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先搭建基础参与者结构。从左到右依次是：👤 Utilisateur用户、Web Client、Core NGINX（端口80）、Voyage Service（3003）、Payment Service（3005）、AI Service（3004）、PostgreSQL（5432）、Redis（6379）、Kafka（9092），最右边是💳 Stripe API。",
+      "elements_involved": [
+        "Utilisateur",
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第一阶段是航班选择，用HealthTech_EMR_Sync色块包裹。用户先在Web Client上选航班，这里标注HealthTech_DiagnosticEngine；然后添加到购物车，这个操作涉及HealthTech_HIPAA_Vault的数据保护；最后点击\"Réserver\"预订按钮。",
+      "elements_involved": [
+        "Phase 1: Sélection Vol",
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加第一阶段色块。用户选航班后，Web Client向Core NGINX发送POST /api/v1/bookings请求，Authorization带Bearer JWT，这里标注HealthTech_EMR_Sync。然后NGINX本地验证JWT，标注HealthTech_LabAnalyzer，再转发到Voyage Service的localhost:3003/bookings。",
+      "elements_involved": [
+        "POST /api/v1/bookings",
+        "Authorization: Bearer JWT",
+        "HealthTech_EMR_Sync",
+        "Validate JWT",
+        "HealthTech_LabAnalyzer",
+        "Forward to Voyage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第二阶段创建预订，继续用HealthTech_EMR_Sync色块。Voyage Service从JWT提取userId，然后开启PostgreSQL的ACID事务，这里要标注ACID transaction pour cohérence。插入预订数据时标注HealthTech_DiagnosticEngine，返回结果标注HealthTech_PatientRecords。",
+      "elements_involved": [
+        "Phase 2: Création Réservation",
+        "ACID transaction",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ACID事务的注释放在PostgreSQL右边对吗？另外Redis这里需要临时存储预订信息，TTL设15分钟，如果支付失败就自动过期。这个超时注释怎么写比较合适？",
+      "elements_involved": [
+        "ACID transaction",
+        "Redis",
+        "TTL: 15min",
+        "Timeout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，PostgreSQL右边标注\"🔄 ACID transaction pour cohérence\"。Redis的key用\"booking:temp:bookingId\"，右边注释写\"⏱️ Timeout si paiement échoue après 15min\"。然后Kafka发布事件到\"voyage.booking.created\"主题，标注HealthTech_DiagnosticEngine。",
+      "elements_involved": [
+        "ACID transaction",
+        "Redis key",
+        "Kafka Topic: voyage.booking.created",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Kafka右边需要加一个架构说明注释吗？比如Event-Driven Architecture，包含Decoupling services、Async processing、Audit trail这些点。",
+      "elements_involved": [
+        "Kafka",
+        "Event-Driven Architecture",
+        "Decoupling services",
+        "Async processing",
+        "Audit trail"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "要加的，这个很重要。最后Voyage返回201 Created给NGINX，标注HealthTech_LabAnalyzer，NGINX再返回给Web Client。",
+      "elements_involved": [
+        "201 Created",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "第三阶段是支付请求，换HealthTech_DiagnosticEngine色块。Web Client向NGINX发POST /api/v1/payments/intent，带JWT，标注HealthTech_LabAnalyzer。NGINX转发到Payment Service。这里需要加一个alt分支处理预订不存在的情况吗？",
+      "elements_involved": [
+        "Phase 3: Demande Paiement",
+        "POST /api/v1/payments/intent",
+        "HealthTech_LabAnalyzer",
+        "alt Booking Non Trouvé"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要alt分支。Payment Service先验证预订存在性，如果不存在，PostgreSQL返回null，Payment返回404 Not Found给NGINX，标注HealthTech_HIPAA_Vault，最终Web Client显示错误。如果存在则走正常支付流程。",
+      "elements_involved": [
+        "alt Booking Non Trouvé",
+        "404 Not Found",
+        "HealthTech_HIPAA_Vault",
+        "else Booking Trouvé"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加alt分支。正常流程中，Payment Service向Stripe创建PaymentIntent，POST /v1/payment_intents，标注HealthTech_EMR_Sync，metadata包含HealthTech_PatientRecords。Stripe返回后Payment向PostgreSQL插入支付记录，标注HealthTech_PatientRecords，然后Kafka发布\"payment.intent.created\"事件，标注HealthTech_HIPAA_Vault。",
+      "elements_involved": [
+        "Stripe PaymentIntent",
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords",
+        "payment.intent.created",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第四阶段是Stripe前端支付，用HealthTech_EMR_Sync色块。Web Client初始化Stripe.js，显示银行卡表单时标注HealthTech_DiagnosticEngine，用户输入卡信息时标注HealthTech_PatientRecords。然后直接调Stripe确认接口，标注HealthTech_LabAnalyzer和HealthTech_HIPAA_Vault。",
+      "elements_involved": [
+        "Phase 4: Paiement Stripe",
+        "Stripe.js",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_PatientRecords",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Stripe右边需要加PCI-DSS安全说明吗？比如Carte jamais envoyée à notre backend、Stripe gère tout、Tokenization automatique这些？",
+      "elements_involved": [
+        "PCI-DSS",
+        "Tokenization",
+        "Sécurité"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "要的，标注\"🔒 Sécurité PCI-DSS\"。然后加alt分支：支付成功显示✅ Paiement accepté；失败则Stripe返回错误，标注HealthTech_HIPAA_Vault，Web Client显示\"❌ Paiement refusé\"，标注HealthTech_EMR_Sync。",
+      "elements_involved": [
+        "PCI-DSS",
+        "alt Paiement Réussi",
+        "alt Paiement Échoué",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加第四阶段。第五阶段是Stripe Webhook回调，用HealthTech_PatientRecords色块。Stripe向Payment Service发POST /webhooks/stripe，带Stripe-Signature头，标注HealthTech_EMR_Sync。这里需要验证签名，标注HealthTech_HIPAA_Vault。",
+      "elements_involved": [
+        "Phase 5: Webhook Stripe",
+        "POST /webhooks/stripe",
+        "Stripe-Signature",
+        "HealthTech_EMR_Sync",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，加alt分支：签名无效返回400，标注Protection contre webhooks forgés；签名有效则更新PostgreSQL支付状态为SUCCEEDED，更新预订状态为CONFIRMED，删除Redis临时key，Kafka发布\"payment.succeeded\"事件标注HealthTech_PatientRecords，最后返回200 OK。",
+      "elements_involved": [
+        "alt Signature Invalide",
+        "alt Signature Valide",
+        "UPDATE payment",
+        "UPDATE booking",
+        "DELETE temp booking",
+        "payment.succeeded",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。第六阶段是异步处理，用HealthTech_HIPAA_Vault色块。Kafka向Voyage Service消费\"payment.succeeded\"事件，查询预订详情，生成确认邮件标注HealthTech_EMR_Sync，发送给用户带PDF机票。同时Kafka向AI Service消费\"voyage.booking.created\"事件。",
+      "elements_involved": [
+        "Phase 6: Traitement Async",
+        "Kafka consume payment.succeeded",
+        "Generate confirmation email",
+        "HealthTech_EMR_Sync",
+        "Kafka consume voyage.booking.created"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "AI Service这里要获取用户画像和预订历史，更新ML模型标注HealthTech_EMR_Sync，右边加注释\"🤖 AI learning from user behavior\"。然后更新Redis推荐缓存，key用\"reco:userId\"。",
+      "elements_involved": [
+        "AI Service",
+        "ML model",
+        "HealthTech_EMR_Sync",
+        "AI learning",
+        "Redis recommendations",
+        "reco:userId"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "第七阶段是前端确认，用HealthTech_HIPAA_Vault色块。Web Client轮询GET /api/v1/bookings/:bookingId，每2秒一次。需要loop循环结构，内部加alt分支判断状态是CONFIRMED还是PENDING。",
+      "elements_involved": [
+        "Phase 7: Confirmation Frontend",
+        "loop Polling every 2s",
+        "GET /api/v1/bookings/:bookingId",
+        "alt Status = CONFIRMED",
+        "alt Status = PENDING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。CONFIRMED时停止轮询，重定向到/bookings/:id，显示确认详情，标注HealthTech_LabAnalyzer。PENDING时继续轮询，右边注释说明15分钟后自动取消，标注HealthTech_EMR_Sync。",
+      "elements_involved": [
+        "CONFIRMED",
+        "Stop polling",
+        "Redirect /bookings/:id",
+        "HealthTech_LabAnalyzer",
+        "PENDING",
+        "15min réservation annulée",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加第七阶段。最后底部加一个性能说明的Note，跨越所有参与者。包含各阶段耗时：Create booking 100-150ms，Payment intent 500-800ms标注HealthTech_EMR_Sync，Confirmation 1-2s标注HealthTech_EMR_Sync，Email 3-5s标注HealthTech_EMR_Sync。",
+      "elements_involved": [
+        "Performance Réservation",
+        "Create booking: ~100-150ms",
+        "Payment intent: ~500-800ms",
+        "HealthTech_EMR_Sync",
+        "Confirmation: ~1-2s",
+        "Email: ~3-5s"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还要加可靠性说明：Transaction ACID标注HealthTech_HIPAA_Vault，Idempotency keys标注HealthTech_PatientRecords，Webhook retry标注HealthTech_EMR_Sync，Event sourcing标注HealthTech_DiagnosticEngine。",
+      "elements_involved": [
+        "Fiabilité",
+        "Transaction ACID",
+        "HealthTech_HIPAA_Vault",
+        "Idempotency keys",
+        "HealthTech_PatientRecords",
+        "Webhook retry",
+        "HealthTech_EMR_Sync",
+        "Event sourcing",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部添加完成。我检查一下整体结构：7个rect色块阶段，从Phase 1到Phase 7，使用了全部5种HealthTech标识，多个alt分支和loop结构，以及底部的性能和可靠性说明。",
+      "elements_involved": [
+        "Phase 1-7",
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords",
+        "alt branches",
+        "loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我注意到Phase 4的标题写的是\"Paiement Stripe (HealthTech_EMR_Sync)\"，但色块应该是HealthTech_EMR_Sync对吧？还有Phase 5的标题也有(HealthTech_EMR_Sync)，但色块是HealthTech_PatientRecords，这里需要统一吗？",
+      "elements_involved": [
+        "Phase 4",
+        "Phase 5",
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现了，Phase 4的色块确实是HealthTech_EMR_Sync，但Phase 5的色块应该是HealthTech_PatientRecords，标题里的(HealthTech_EMR_Sync)是标注错误。让我修正Phase 5的色块为HealthTech_PatientRecords，保持标题括号内的标注与色块一致。",
+      "elements_involved": [
+        "Phase 5",
+        "HealthTech_PatientRecords",
+        "repair color block"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "确认，Phase 5用HealthTech_PatientRecords色块。另外检查一下Phase 3，标题是\"Demande Paiement\"，色块是HealthTech_DiagnosticEngine，这个是对的。Phase 6是HealthTech_HIPAA_Vault，Phase 7也是HealthTech_HIPAA_Vault。",
+      "elements_involved": [
+        "Phase 3",
+        "HealthTech_DiagnosticEngine",
+        "Phase 6",
+        "Phase 7",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正Phase 5色块。现在再检查一遍所有标注：Phase 1-2是HealthTech_EMR_Sync，Phase 3是HealthTech_DiagnosticEngine，Phase 4是HealthTech_EMR_Sync，Phase 5是HealthTech_PatientRecords，Phase 6是HealthTech_HIPAA_Vault，Phase 7是HealthTech_HIPAA_Vault。结构正确。",
+      "elements_involved": [
+        "Phase 1-2",
+        "Phase 3",
+        "Phase 4",
+        "Phase 5",
+        "Phase 6",
+        "Phase 7"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Kafka的注释\"Event-Driven Architecture\"下面三个要点用\"-\"列表格式。还有Stripe的PCI-DSS注释也是列表格式。确认一下这些注释的位置都在对应参与者的右侧。",
+      "elements_involved": [
+        "Kafka Note",
+        "Event-Driven Architecture",
+        "Stripe Note",
+        "PCI-DSS",
+        "Note right of"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，Kafka的注释是\"Note left of Kafka\"，因为Kafka在中间偏右位置，左侧空间足够。Stripe的PCI-DSS是\"Note right of Stripe\"。PostgreSQL的ACID是\"Note right of PG\"，Redis的超时是\"Note right of Redis\"。",
+      "elements_involved": [
+        "Note left of Kafka",
+        "Note right of Stripe",
+        "Note right of PG",
+        "Note right of Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Voyage Service和Payment Service的端口标注正确吗？Voyage是3003，Payment是3005，AI是3004。还有PostgreSQL 5432，Redis 6379，Kafka 9092，NGINX是80。",
+      "elements_involved": [
+        "Voyage Service:3003",
+        "Payment Service:3005",
+        "AI Service:3004",
+        "PostgreSQL:5432",
+        "Redis:6379",
+        "Kafka:9092",
+        "Core NGINX:80"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部正确。参与者定义格式是\"participant Voyage as Voyage Service<br/:3003\"，使用<br/换行显示端口。Web Client和Stripe API没有端口，User是actor不是participant。",
+      "elements_involved": [
+        "participant format",
+        "actor User",
+        "br line break"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "所有的消息箭头类型检查一下：用户到Web Client是无箭头或实线，Web Client内部是WC-WC，异步返回用虚线箭头--，比如PG--Voyage。同步调用用实线箭头-。",
+      "elements_involved": [
+        "- solid arrow",
+        "-- dashed arrow",
+        "WC-WC self loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已检查。所有数据库返回和异步事件都用虚线箭头，比如PG--Voyage、Voyage--CN、Stripe--Payment等。服务内部处理如CN-CN、WC-WC、Voyage-Voyage都是实线自循环。用户操作如User-WC也是实线。",
+      "elements_involved": [
+        "PG--Voyage",
+        "Voyage--CN",
+        "Stripe--Payment",
+        "CN-CN",
+        "WC-WC",
+        "User-WC"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Redis的操作是SET还是Store？Kafka的操作是Publish还是Consume？需要统一动词。还有PostgreSQL的BEGIN transaction和INSERT、SELECT、UPDATE这些SQL关键字。",
+      "elements_involved": [
+        "Redis Store",
+        "Kafka Publish/Consume",
+        "PostgreSQL BEGIN/INSERT/SELECT/UPDATE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Redis用\"Store\"和\"Delete\"，Kafka生产者用\"Publish event\"，消费者用\"Consume event\"。PostgreSQL用标准SQL动词：BEGIN transaction、INSERT booking、SELECT * FROM bookings、UPDATE payment、UPDATE booking。",
+      "elements_involved": [
+        "Store booking temp",
+        "Delete temp booking",
+        "Publish event",
+        "Consume event",
+        "BEGIN transaction",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下所有法语术语：Sélection Vol、Réserver、Création Réservation、Demande Paiement、Affiche formulaire carte、Saisit infos carte、Paiement Réussi、Paiement Échoué、Confirmation Frontend。还有英文混用的JWT、ACID、PCI-DSS等。",
+      "elements_involved": [
+        "Sélection Vol",
+        "Réserver",
+        "Création Réservation",
+        "Demande Paiement",
+        "Affiche formulaire carte",
+        "Saisit infos carte",
+        "Paiement Réussi",
+        "Paiement Échoué",
+        "Confirmation Frontend",
+        "JWT",
+        "ACID",
+        "PCI-DSS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有法语术语正确。图标使用也确认：👤 Utilisateur、🔄 ACID、⏱️ Timeout、🔒 Sécurité、🤖 AI learning、📧 Email、✅ 成功标记、❌ 失败标记、💳 Stripe。底部性能指标前的📊和可靠性前的🔒也正确。",
+      "elements_involved": [
+        "👤",
+        "🔄",
+        "⏱️",
+        "🔒",
+        "🤖",
+        "📧",
+        "✅",
+        "❌",
+        "💳",
+        "📊"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "检查所有HealthTech标注的位置：Add to cart用HealthTech_HIPAA_Vault，Validate JWT用HealthTech_LabAnalyzer，INSERT booking用HealthTech_DiagnosticEngine，Booking created用HealthTech_PatientRecords，这些都在正确的消息上吗？",
+      "elements_involved": [
+        "Add to cart",
+        "HealthTech_HIPAA_Vault",
+        "Validate JWT",
+        "HealthTech_LabAnalyzer",
+        "INSERT booking",
+        "HealthTech_DiagnosticEngine",
+        "Booking created",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已全部核对。Add to cart在WC-WC自循环上，HealthTech_HIPAA_Vault；Validate JWT在CN-CN上，HealthTech_LabAnalyzer；INSERT booking在Voyage-PG上，HealthTech_DiagnosticEngine；Booking created在PG--Voyage返回上，HealthTech_PatientRecords。所有标注位置正确。",
+      "elements_involved": [
+        "WC-WC",
+        "CN-CN",
+        "Voyage-PG",
+        "PG--Voyage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Webhook阶段的签名验证，constructEvent是stripe.webhooks.constructEvent，标注HealthTech_HIPAA_Vault。还有alt分支的标注：Signature Invalide和Signature Valide，这些图标和文字格式对吗？",
+      "elements_involved": [
+        "stripe.webhooks.constructEvent",
+        "HealthTech_HIPAA_Vault",
+        "alt Signature Invalide ❌",
+        "alt Signature Valide ✅"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "格式正确。所有alt分支都使用❌和✅图标：Booking Non Trouvé ❌/Booking Trouvé ✅、Paiement Réussi ✅/Paiement Échoué ❌、Signature Invalide ❌/Signature Valide ✅、Status = CONFIRMED ✅/Status = PENDING ⏳。",
+      "elements_involved": [
+        "❌",
+        "✅",
+        "⏳"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认autonumber开启，所有消息自动编号。还有loop Polling every 2s的结构，内部包含alt分支，这是正确的嵌套吗？",
+      "elements_involved": [
+        "autonumber",
+        "loop Polling every 2s",
+        "nested alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认autonumber已开启。loop结构正确嵌套alt分支：loop Polling every 2s包含WC-CN请求，然后Voyage-PG查询，再进入alt Status = CONFIRMED/Status = PENDING分支。嵌套层级正确，没有语法错误。",
+      "elements_involved": [
+        "autonumber",
+        "loop",
+        "nested alt",
+        "syntax check"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，整个时序图涵盖了完整的航班预订流程，从选航班、创建预订、支付、Stripe回调到异步处理和前端确认。所有7个阶段、5种HealthTech色块标识、多个分支结构和性能可靠性说明都已完整。可以定稿了。",
+      "elements_involved": [
+        "complete flow",
+        "7 phases",
+        "5 HealthTech colors",
+        "final confirmation"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 47,
+    "repair_count": 1,
+    "grounding_acts_count": 47,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 141603.6365,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 46
+  }
+}

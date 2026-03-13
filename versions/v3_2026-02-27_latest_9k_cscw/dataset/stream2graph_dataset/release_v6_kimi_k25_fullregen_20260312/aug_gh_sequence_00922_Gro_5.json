@@ -1,0 +1,932 @@
+{
+  "id": "aug_gh_sequence_00922_Gro_5",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/security/authentication-flow.mmd",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "github_file_path": "docs/diagrams/security/authentication-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    %% Authentication and Authorization Flow for erlmcp\n    %% Shows: API key, JWT, OAuth2, mTLS authentication methods\n    %% Plus: RBAC permission checking with role-based access control\n\n    autonumber\n    actor Client\n    participant Transport as Transport Layer<br/>(Groupware_KanbanBoard)\n    participant Auth as erlmcp_auth<br/>(Groupware_ChatRoom)\n    participant RateLimiter as erlmcp_auth_rate_limiter\n    participant JWT as jose (Groupware_KanbanBoard)\n    participant OAuth2 as OAuth2 Provider<br/>(Groupware_IssueTracker)\n    participant MTLS as erlmcp_auth_mtls<br/>(Groupware_SprintBacklog)\n    participant RBAC as RBAC Engine<br/>(Groupware_ChatRoom)\n    participant Session as Session Manager<br/>(Groupware_SprintBacklog)\n\n    Note over Client,Session: Authentication Flow\n\n    %% API Key Authentication\n    Client->>Transport: authenticate(Groupware_IssueTracker)\n    Transport->>Auth: authenticate(Groupware_IssueTracker})\n\n    Auth->>RateLimiter: check_rate_limit(Groupware_IssueTracker)\n    RateLimiter-->>Auth: ok (Groupware_ChatRoom})\n\n    alt Rate Limited\n        Auth-->>Client: {Groupware_IssueTracker}\n        Note over Auth,RateLimiter: Blocked after 5 failed attempts<br/>15-minute cooldown\n    else Rate Check Passed\n        Auth->>Auth: do_validate_api_key(Groupware_SprintBacklog)\n        Note right of Auth: Lookup in ETS table<br/>auth_api_keys\n\n        alt API Key Invalid\n            Auth->>RateLimiter: record_failure(Groupware_IssueTracker)\n            Auth-->>Client: {Groupware_SprintBacklog}\n        else API Key Valid\n            Auth->>RateLimiter: record_success(Groupware_SprintBacklog)\n            Auth->>Session: create_session(Groupware_IssueTracker)\n\n            Session->>RBAC: get_user_roles(Groupware_IssueTracker)\n            RBAC-->>Session: [Groupware_KanbanBoard]\n\n            Session->>RBAC: Aggregate permissions from roles\n            RBAC-->>Session: [Groupware_SprintBacklog]\n\n            Session-->>Auth: {Groupware_KanbanBoard}\n            Auth-->>Client: {Groupware_WikiPage}\n\n            Note right of Session: Session expires in 1 hour<br/>Auto-cleanup timer\n        end\n    end\n\n    %% JWT Authentication\n    Client->>Transport: authenticate(Groupware_KanbanBoard})\n    Transport->>Auth: authenticate(Groupware_WikiPage})\n\n    Auth->>RateLimiter: check_rate_limit(Groupware_SprintBacklog)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_jwt(Groupware_ChatRoom)\n\n    alt Token Revoked\n        Auth-->>Client: {Groupware_SprintBacklog}\n        Note right of Auth: Check ETS: auth_revoked_tokens<br/>Cleanup after 7 days\n    else Token Active\n        Auth->>JWT: jose_jws:peek_protected(Groupware_SprintBacklog)\n        JWT-->>Auth: #{Groupware_ChatRoom}\n\n        Auth->>Auth: Lookup public key by kid\n        Note right of Auth: ETS: auth_jwt_keys<br/>Support key rotation\n\n        Auth->>JWT: jose_jws:verify(Groupware_WikiPage)\n        JWT-->>Auth: {Groupware_ChatRoom}\n\n        alt Signature Invalid\n            Auth-->>Client: {Groupware_IssueTracker}\n        else Signature Valid\n            Auth->>Auth: validate_jwt_claims(Groupware_SprintBacklog)\n\n            Note right of Auth: CRITICAL SECURITY CHECKS:<br/>✓ exp (Groupware_WikiPage) - Required<br/>✓ nbf (Groupware_SprintBacklog) - Optional<br/>✓ iss (Groupware_IssueTracker) - Configurable<br/>✓ aud (Groupware_SprintBacklog) - Configurable<br/>✓ sub (Groupware_KanbanBoard) - Required\n\n            alt Token Expired\n                Auth-->>Client: {Groupware_IssueTracker}\n            else Token Not Yet Valid\n                Auth-->>Client: {Groupware_IssueTracker}\n            else Issuer Mismatch\n                Auth-->>Client: {Groupware_WikiPage}\n            else Audience Mismatch\n                Auth-->>Client: {Groupware_ChatRoom}\n            else All Claims Valid\n                Auth->>RateLimiter: record_success(Groupware_IssueTracker)\n                Auth->>Session: create_session(Groupware_WikiPage)\n                Session-->>Auth: {Groupware_KanbanBoard}\n                Auth-->>Client: {Groupware_ChatRoom}\n            end\n        end\n    end\n\n    %% OAuth2 Authentication (Groupware_SprintBacklog)\n    Client->>Transport: authenticate(Groupware_IssueTracker})\n    Transport->>Auth: authenticate(Groupware_SprintBacklog})\n\n    Auth->>RateLimiter: check_rate_limit(Groupware_WikiPage)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_oauth2_token(Groupware_IssueTracker)\n\n    alt Cache Hit (Groupware_KanbanBoard)\n        Note right of Auth: ETS: auth_oauth2_cache<br/>Token -> {Groupware_WikiPage}\n        Auth-->>Client: {Groupware_IssueTracker}\n    else Cache Miss\n        Auth->>OAuth2: HTTP POST /introspect\n        Note right of Auth: RFC 7662 Introspection<br/>Basic Auth: client_id:secret<br/>Body: token + token_type_hint\n\n        OAuth2-->>Auth: 200 OK + TokenInfo\n\n        Auth->>Auth: validate_introspection_response(Groupware_SprintBacklog)\n\n        Note right of Auth: RFC 7662 REQUIRED fields:<br/>✓ active = true<br/>✓ exp (Groupware_KanbanBoard)<br/>✓ nbf (Groupware_IssueTracker)<br/>✓ iss (Groupware_WikiPage)\n\n        alt Token Inactive\n            Auth-->>Client: {Groupware_ChatRoom}\n        else Token Expired\n            Auth-->>Client: {Groupware_SprintBacklog}\n        else Token Valid\n            Auth->>Auth: cache_oauth2_token(Groupware_SprintBacklog)\n            Note right of Auth: Cache for up to 5 minutes<br/>or until exp (Groupware_ChatRoom)\n\n            Auth->>RateLimiter: record_success(Groupware_SprintBacklog)\n            Auth->>Session: create_session(Groupware_IssueTracker)\n            Session-->>Auth: {Groupware_IssueTracker}\n            Auth-->>Client: {Groupware_SprintBacklog}\n        end\n    end\n\n    %% mTLS Authentication\n    Client->>Transport: authenticate(Groupware_WikiPage})\n    Transport->>Auth: authenticate(Groupware_SprintBacklog)\n\n    Auth->>RateLimiter: check_rate_limit(Groupware_KanbanBoard)\n    RateLimiter-->>Auth: ok\n\n    Auth->>MTLS: validate(Groupware_IssueTracker)\n\n    Note right of MTLS: mTLS Validation Pipeline:<br/>1. Extract certificate from socket<br/>2. X.509 chain validation to trusted CAs<br/>3. Certificate expiration check<br/>4. OCSP/CRL revocation check<br/>5. Subject DN and CN pattern matching<br/>6. Certificate depth limit validation\n\n    MTLS-->>Auth: {Groupware_ChatRoom}\n\n    alt Certificate Invalid\n        Auth->>RateLimiter: record_failure(Groupware_IssueTracker)\n        Auth-->>Client: {Groupware_WikiPage}\n    else Certificate Valid\n        Auth->>RateLimiter: record_success(Groupware_IssueTracker)\n        Auth->>Session: create_session(Groupware_IssueTracker})\n        Session-->>Auth: {Groupware_WikiPage}\n        Auth-->>Client: {Groupware_SprintBacklog}\n    end\n\n    %% Authorization Flow (Groupware_IssueTracker)\n    Note over Client,Session: Authorization Flow\n\n    Client->>Transport: check_permission(Groupware_IssueTracker)\n    Transport->>Auth: check_permission(Groupware_KanbanBoard)\n\n    Auth->>Session: lookup session\n    Session-->>Auth: #session{Groupware_SprintBacklog}\n\n    alt Session Not Found\n        Auth-->>Client: {Groupware_KanbanBoard}\n    else Session Found\n        Auth->>RBAC: check_user_permission(Groupware_WikiPage)\n\n        RBAC->>RBAC: Get user roles from ETS\n        Note right of RBAC: auth_user_roles:<br/>UserId -> [Groupware_SprintBacklog]\n\n        RBAC->>RBAC: Get allowed roles for resource+permission\n        Note right of RBAC: auth_acls:<br/>{Groupware_KanbanBoard} -> [Groupware_IssueTracker]\n\n        RBAC->>RBAC: Check intersection\n        Note right of RBAC: lists:any/2<br/>UserRole ∩ AllowedRoles ≠ ∅\n\n        alt Permission Denied\n            RBAC-->>Auth: {Groupware_KanbanBoard}\n            Auth-->>Client: {Groupware_KanbanBoard}\n        else Permission Granted\n            RBAC-->>Auth: ok\n            Auth-->>Client: ok\n        end\n    end\n\n    %% Default RBAC Roles\n    Note over RBAC: Default Roles (Groupware_SprintBacklog):<br/>🔹 admin: [Groupware_IssueTracker]<br/>🔹 user: [Groupware_KanbanBoard]<br/>🔹 guest: [Groupware_ChatRoom]\n\n    %% Token Rotation\n    Note over Client,Session: Token Rotation (Groupware_KanbanBoard)\n\n    Client->>Auth: rotate_token(Groupware_KanbanBoard)\n    Auth->>Session: lookup session\n\n    Auth->>Auth: generate new SessionId\n    Note right of Auth: crypto:strong_rand_bytes(Groupware_ChatRoom)<br/>base64 encoded\n\n    Auth->>Session: insert new session\n    Auth->>Session: delete old session\n\n    Auth-->>Client: {Groupware_KanbanBoard}\n    Note right of Auth: Old session invalidated immediately<br/>Prevents session hijacking\n\n    %% Token Revocation\n    Note over Client,Session: Token Revocation (Groupware_ChatRoom)\n\n    Client->>Auth: revoke_token(Groupware_KanbanBoard)\n    Auth->>Auth: insert into auth_revoked_tokens\n    Note right of Auth: Store: Token -> RevokedAt<br/>Auto-cleanup after 7 days\n\n    Auth-->>Client: ok\n    Note over Auth,JWT: Revoked tokens rejected immediately<br/>Even if exp claim valid\n\n    %% Session Cleanup\n    Note over Session: Auto-cleanup every 60 seconds:<br/>• Expired sessions (Groupware_KanbanBoard)<br/>• Revoked tokens (Groupware_SprintBacklog)<br/>• OAuth2 cache (Groupware_KanbanBoard)\n",
+  "content_size": 8727,
+  "collected_at": "2026-02-06T01:50:47.821294",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "augmentation_domain": "Groupware",
+  "seed_id": "gh_sequence_00922",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为erlmcp系统绘制一个完整的认证授权流程图。核心是要展示四种认证方式：API Key、JWT、OAuth2和mTLS，以及后续的RBAC权限检查。",
+      "elements_involved": [
+        "erlmcp auth",
+        "API Key",
+        "JWT",
+        "OAuth2",
+        "mTLS",
+        "RBAC Engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我先确认一下参与者结构：Client作为调用方，Transport Layer作为入口，然后核心是erlmcp_auth模块。其他关键参与者包括RateLimiter、JWT验证用的jose库、OAuth2 Provider、MTLS模块、RBAC Engine和Session Manager。这样覆盖吗？",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "erlmcp auth",
+        "RateLimiter",
+        "jose",
+        "OAuth2 Provider",
+        "MTLS",
+        "RBAC Engine",
+        "Session Manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，但注意每个模块都要标注对应的Groupware组件。比如Transport Layer对应KanbanBoard，erlmcp_auth对应ChatRoom，这样运维时能快速定位。",
+      "elements_involved": [
+        "Transport Layer",
+        "Groupware_KanbanBoard",
+        "erlmcp auth",
+        "Groupware_ChatRoom"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出顶层框架，用autonumber开启自动编号。Client发起请求到Transport Layer，Transport转发给erlmcp_auth，然后并行接入RateLimiter做流控。",
+      "elements_involved": [
+        "Client",
+        "Transport Layer",
+        "erlmcp_auth",
+        "RateLimiter",
+        "autonumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "API Key认证是最基础的流程。Client调用authenticate时传入Groupware_IssueTracker标识，Transport要透传给Auth模块。关键是失败5次要触发15分钟冷却。",
+      "elements_involved": [
+        "API Key",
+        "authenticate",
+        "Groupware_IssueTracker",
+        "RateLimiter",
+        "5 failed attempts",
+        "15-minute cooldown"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了API Key分支。RateLimiter返回ok后，Auth内部调用do_validate_api_key，查ETS表auth_api_keys。这里画了个Note说明存储结构。",
+      "elements_involved": [
+        "RateLimiter",
+        "do_validate_api_key",
+        "ETS",
+        "auth_api_keys",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "API Key验证通过后，要创建Session。Session Manager需要向RBAC Engine获取用户角色，然后聚合权限。注意Session有效期1小时，要有自动清理。",
+      "elements_involved": [
+        "Session Manager",
+        "RBAC Engine",
+        "get_user_roles",
+        "Aggregate permissions",
+        "1 hour",
+        "Auto-cleanup timer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认一下聚合流程：Session调用get_user_roles得到角色列表，然后调用RBAC聚合权限，返回权限列表给Session，最后Session打包成session记录返回给Auth，Auth再返回给Client。中间数据都用Groupware组件标注。",
+      "elements_involved": [
+        "Session",
+        "RBAC",
+        "get_user_roles",
+        "Aggregate permissions",
+        "Groupware_KanbanBoard",
+        "Groupware_SprintBacklog",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。现在画JWT认证分支。这个更复杂，要用jose库做JWS验证，支持密钥轮换。",
+      "elements_involved": [
+        "JWT",
+        "jose",
+        "JWS",
+        "key rotation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "JWT分支画好了。Client传Groupware_KanbanBoard标识，RateLimiter检查通过后，Auth调用do_validate_jwt。先检查Token是否被吊销，查ETS auth_revoked_tokens。",
+      "elements_involved": [
+        "JWT",
+        "do_validate_jwt",
+        "Token Revoked",
+        "ETS",
+        "auth_revoked_tokens",
+        "7 days cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Token有效的话，用jose_jws:peek_protected取header，按kid查公钥，然后jose_jws:verify验签。公钥存在ETS auth_jwt_keys里。",
+      "elements_involved": [
+        "jose_jws:peek_protected",
+        "kid",
+        "public key",
+        "jose_jws:verify",
+        "auth_jwt_keys"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "验签通过后要验证claims。我画了个Note列出关键检查点：exp必需、nbf可选、iss可配置、aud可配置、sub必需。",
+      "elements_involved": [
+        "validate_jwt_claims",
+        "exp",
+        "nbf",
+        "iss",
+        "aud",
+        "sub",
+        "CRITICAL SECURITY CHECKS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "每个claim失败都要有独立分支返回错误。最后全部通过才创建Session。现在画OAuth2分支，这个要对接外部Provider。",
+      "elements_involved": [
+        "Token Expired",
+        "Token Not Yet Valid",
+        "Issuer Mismatch",
+        "Audience Mismatch",
+        "OAuth2",
+        "OAuth2 Provider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "OAuth2分支开始画了。Client传Groupware_SprintBacklog标识，Auth调用do_validate_oauth2_token。先做缓存检查，命中直接返回。",
+      "elements_involved": [
+        "OAuth2",
+        "do_validate_oauth2_token",
+        "Cache Hit",
+        "ETS",
+        "auth_oauth2_cache",
+        "5 minutes"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "缓存未命中时，要发HTTP POST到/introspect端点，按RFC 7662标准。用Basic Auth传client_id和secret，body里放token。",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了OAuth2交互。Provider返回200 OK和TokenInfo，Auth验证响应：active必须为true，检查exp、nbf、iss。通过的话缓存token，5分钟或到过期时间。",
+      "elements_involved": [
+        "TokenInfo",
+        "validate_introspection_response",
+        "active",
+        "cache_oauth2_token"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在画mTLS认证。这个在erlmcp_auth_mtls模块里处理，对应Groupware_SprintBacklog。验证流程比较复杂，要画详细点。",
+      "elements_involved": [
+        "mTLS",
+        "erlmcp_auth_mtls",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "mTLS分支画好了。Auth调用MTLS的validate方法，我画了个Note详细列出6步验证：提取证书、X.509链验证、过期检查、OCSP/CRL吊销检查、Subject匹配、深度限制。",
+      "elements_involved": [
+        "MTLS",
+        "validate",
+        "X.509",
+        "OCSP",
+        "CRL",
+        "Subject DN",
+        "CN pattern",
+        "Certificate depth"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "证书无效时要记录失败到RateLimiter，有效则记录成功并创建Session。三种认证方式都画完了，现在需要统一的授权流程。",
+      "elements_involved": [
+        "Certificate Invalid",
+        "record_failure",
+        "Certificate Valid",
+        "record_success",
+        "Authorization Flow"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了个Note标记Authorization Flow开始。Client调用check_permission，Transport透传到Auth，Auth查询Session Manager获取session记录。",
+      "elements_involved": [
+        "check_permission",
+        "lookup session",
+        "#session"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Session不存在直接返回错误。存在的话，Auth调用RBAC的check_user_permission，传入资源标识Groupware_WikiPage。",
+      "elements_involved": [
+        "Session Not Found",
+        "check_user_permission",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RBAC内部流程画好了：先从ETS auth_user_roles取用户角色，再从auth_acls取资源+权限对应的允许角色，最后用lists:any检查交集。",
+      "elements_involved": [
+        "auth_user_roles",
+        "auth_acls",
+        "lists:any",
+        "UserRole",
+        "AllowedRoles",
+        "intersection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "交集为空则权限拒绝，否则授予。最后画个Note展示默认角色：admin有全部权限，user有读写，guest只读。",
+      "elements_involved": [
+        "Permission Denied",
+        "Permission Granted",
+        "admin",
+        "user",
+        "guest",
+        "read:write",
+        "read"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "默认角色Note加好了，标注对应Groupware组件。现在补充两个管理功能：Token Rotation和Token Revocation。",
+      "elements_involved": [
+        "Default Roles",
+        "Groupware_SprintBacklog",
+        "Token Rotation",
+        "Token Revocation"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Token Rotation是安全关键功能。Client调用rotate_token，Auth查Session后生成新SessionId，用crypto:strong_rand_bytes生成随机字节，base64编码。",
+      "elements_involved": [
+        "rotate_token",
+        "SessionId",
+        "crypto:strong_rand_bytes",
+        "base64 encoded"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Rotation流程画好了：插入新session，立即删除旧session，防止会话劫持。返回新token给Client。",
+      "elements_involved": [
+        "insert new session",
+        "delete old session",
+        "session hijacking"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Token Revocation同样重要。Client调用revoke_token，Auth把token写入auth_revoked_tokens，带RevokedAt时间戳，7天后自动清理。",
+      "elements_involved": [
+        "revoke_token",
+        "auth_revoked_tokens",
+        "RevokedAt",
+        "7 days",
+        "Auto-cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Revocation画好了，加了Note说明吊销token立即拒绝，即使exp还没过期。最后画Session Cleanup的定时任务。",
+      "elements_involved": [
+        "Revoked tokens rejected immediately",
+        "exp claim",
+        "Session Cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Cleanup每60秒执行一次，清理三类数据：过期session、吊销token、OAuth2缓存。都用Groupware组件标注来源。",
+      "elements_involved": [
+        "Auto-cleanup every 60 seconds",
+        "Expired sessions",
+        "Revoked tokens",
+        "OAuth2 cache",
+        "Groupware_KanbanBoard",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "整个图基本完成了。我检查一下：四种认证方式、RBAC授权、Token管理、清理任务都齐了。但发现JWT分支里有个问题——Token Not Yet Valid分支的返回标注好像和Issuer Mismatch重复了。",
+      "elements_involved": [
+        "JWT",
+        "Token Not Yet Valid",
+        "Issuer Mismatch"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "确实，Token Not Yet Valid应该返回Groupware_IssueTracker，和Token Expired保持一致。Issuer Mismatch才是Groupware_WikiPage。",
+      "elements_involved": [
+        "Token Not Yet Valid",
+        "Groupware_IssueTracker",
+        "Issuer Mismatch",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修复。再检查一下OAuth2分支，发现Cache Hit的返回标注应该是Groupware_IssueTracker，不是Groupware_KanbanBoard。",
+      "elements_involved": [
+        "OAuth2",
+        "Cache Hit",
+        "Groupware_IssueTracker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "对的，Cache Hit直接返回，用Groupware_IssueTracker标识。还有mTLS的Session创建，返回给Auth的应该是Groupware_WikiPage。",
+      "elements_involved": [
+        "mTLS",
+        "create_session",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。再看API Key的最终返回，Auth给Client的是Groupware_WikiPage，这个对吗？",
+      "elements_involved": [
+        "API Key",
+        "Auth",
+        "Client",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，API Key认证成功返回WikiPage。JWT成功返回ChatRoom，OAuth2成功返回SprintBacklog，mTLS成功返回SprintBacklog。这样四种方式区分开。",
+      "elements_involved": [
+        "API Key",
+        "Groupware_WikiPage",
+        "JWT",
+        "Groupware_ChatRoom",
+        "OAuth2",
+        "mTLS",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下Session Manager的组件对应：创建session时OAuth2用Groupware_IssueTracker，mTLS用Groupware_IssueTracker带花括号，这是有意区分吗？",
+      "elements_involved": [
+        "Session Manager",
+        "OAuth2",
+        "Groupware_IssueTracker",
+        "mTLS",
+        "Groupware_IssueTracker}"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "mTLS的应该是Groupware_SprintBacklog不带花括号，和它的标识保持一致。花括号可能是复制错误。",
+      "elements_involved": [
+        "mTLS",
+        "Groupware_SprintBacklog",
+        "Groupware_IssueTracker}"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正为Groupware_SprintBacklog。再检查JWT的jose调用：peek_protected传SprintBacklog，verify传WikiPage，对吗？",
+      "elements_involved": [
+        "JWT",
+        "jose_jws:peek_protected",
+        "Groupware_SprintBacklog",
+        "jose_jws:verify",
+        "Groupware_WikiPage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，这是有意设计：peek取header用SprintBacklog标识，verify用WikiPage。返回的payload用ChatRoom。",
+      "elements_involved": [
+        "peek_protected",
+        "verify",
+        "payload",
+        "Groupware_ChatRoom"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的。现在检查所有alt分支的完整性：API Key有Rate Limited和Rate Check Passed；JWT有Token Revoked和Token Active；OAuth2有Cache Hit和Cache Miss；mTLS有Certificate Invalid和Valid。都齐全。",
+      "elements_involved": [
+        "alt",
+        "else",
+        "Rate Limited",
+        "Token Revoked",
+        "Cache Hit",
+        "Certificate Invalid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "JWT的Token Active下面还有多层嵌套：Signature Invalid/Valid，然后Valid下面又有Token Expired/Not Yet Valid/Issuer Mismatch/Audience Mismatch/All Claims Valid。要确保层级正确。",
+      "elements_involved": [
+        "JWT",
+        "nested alt",
+        "Signature Invalid",
+        "Token Expired",
+        "Audience Mismatch",
+        "All Claims Valid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "嵌套层级检查完毕，三层alt结构正确。OAuth2的Cache Miss下面也有多层：Token Inactive/Expired/Valid。",
+      "elements_involved": [
+        "OAuth2",
+        "Token Inactive",
+        "Token Expired",
+        "Token Valid",
+        "nested alt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Authorization Flow里的Session查询，返回的session记录格式是#session{Groupware_SprintBacklog}，这个SprintBacklog是指session数据存储的位置吗？",
+      "elements_involved": [
+        "Authorization Flow",
+        "#session",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解正确，表示session数据存储在SprintBacklog组件。Permission Denied返回KanbanBoard，Permission Granted返回ok。",
+      "elements_involved": [
+        "session storage",
+        "Permission Denied",
+        "Groupware_KanbanBoard",
+        "Permission Granted",
+        "ok"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后确认一下所有Note的位置和内容。Authentication Flow的Note横跨Client到Session；API Key的Note在RateLimiter旁边说明5次失败；JWT的Note在Auth右侧列claims检查点。",
+      "elements_involved": [
+        "Note over",
+        "Authentication Flow",
+        "Blocked after 5 failed attempts",
+        "CRITICAL SECURITY CHECKS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Note位置和样式都调整好了。OAuth2的Note说明RFC 7662字段；mTLS的Note列出6步验证流程；Default Roles的Note展示三个角色权限。",
+      "elements_involved": [
+        "RFC 7662 REQUIRED fields",
+        "mTLS Validation Pipeline",
+        "Default Roles",
+        "admin",
+        "user",
+        "guest"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Session Cleanup的Note在Session下方，列三项清理内容。Token Rotation的Note说明旧session立即失效。Token Revocation的Note强调立即拒绝。",
+      "elements_involved": [
+        "Session Cleanup Note",
+        "Token Rotation Note",
+        "Token Revocation Note",
+        "immediately invalidated",
+        "rejected immediately"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有Note都到位了。我再数一下总交互数：API Key约8条，JWT约14条，OAuth2约12条，mTLS约6条，Authorization约10条，加上管理功能，总共应该符合复杂度要求。",
+      "elements_involved": [
+        "message count",
+        "sequence complexity"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "检查最后几个细节：JWT的Audience Mismatch返回ChatRoom，这个和其他错误返回不一样，是设计如此吗？",
+      "elements_involved": [
+        "JWT",
+        "Audience Mismatch",
+        "Groupware_ChatRoom"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "发现确实不一致。Token Expired和Not Yet Valid都返回IssueTracker，Issuer Mismatch返回WikiPage，Audience Mismatch返回ChatRoom。这是有意用不同组件标识不同错误类型吗？",
+      "elements_involved": [
+        "error encoding",
+        "Groupware component",
+        "error type identification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，设计如此。aud错误用ChatRoom，iss错误用WikiPage，时间类错误用IssueTracker，这样日志里能快速识别错误类别。",
+      "elements_involved": [
+        "error category",
+        "aud",
+        "ChatRoom",
+        "iss",
+        "WikiPage",
+        "exp",
+        "nbf",
+        "IssueTracker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，保留这个设计。再确认mTLS的Client调用：authenticate传WikiPage，Transport到Auth传SprintBacklog，对吗？",
+      "elements_involved": [
+        "mTLS",
+        "Client",
+        "authenticate",
+        "Groupware_WikiPage}",
+        "Transport",
+        "Auth",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "Client传的应该是WikiPage不带花括号，Transport到Auth是SprintBacklog。花括号是复制错误。",
+      "elements_involved": [
+        "Client",
+        "Groupware_WikiPage",
+        "Transport",
+        "Auth",
+        "Groupware_SprintBacklog"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。现在检查所有参与者的别名定义：Transport as Transport Layer<br/(Groupware_KanbanBoard)，Auth as erlmcp_auth<br/(Groupware_ChatRoom)，等等，HTML换行符都正确。",
+      "elements_involved": [
+        "participant alias",
+        "HTML line break",
+        "erlmcp_auth",
+        "Groupware_ChatRoom"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "别名都正确。最后检查：JWT分支里Auth给自己发的do_validate_jwt调用，标注是ChatRoom，这个内部调用用组件标识有点奇怪，但保持和其他内部调用一致吧。",
+      "elements_involved": [
+        "Auth",
+        "do_validate_jwt",
+        "Groupware_ChatRoom",
+        "self-message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "保持了一致性。所有内部验证调用都带组件标识。图已经完成，包含：4种认证方式、完整的RBAC授权、Token生命周期管理、自动清理机制。",
+      "elements_involved": [
+        "completed diagram",
+        "4 authentication methods",
+        "RBAC",
+        "Token lifecycle",
+        "cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再补充一个细节：API Key的do_validate_api_key用SprintBacklog，和mTLS的session创建一致，表示都在SprintBacklog组件做密钥相关操作。",
+      "elements_involved": [
+        "do_validate_api_key",
+        "Groupware_SprintBacklog",
+        "key operations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，API Key密钥验证和mTLS证书验证都用SprintBacklog，JWT用ChatRoom和KanbanBoard，OAuth2用IssueTracker和WikiPage。密钥类操作集中在SprintBacklog。",
+      "elements_involved": [
+        "API Key",
+        "mTLS",
+        "SprintBacklog",
+        "JWT",
+        "ChatRoom",
+        "OAuth2",
+        "IssueTracker"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "OAuth2的HTTP POST /introspect，Note里要强调这是RFC 7662标准实现，包含Basic Auth和Body参数细节。",
+      "elements_involved": [
+        "OAuth2",
+        "HTTP POST",
+        "/introspect",
+        "RFC 7662",
+        "Basic Auth",
+        "client_id:secret"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Note内容已完善，包含RFC 7662、Basic Auth凭证格式、Body参数token+token_type_hint。所有技术细节都对应代码实现。",
+      "elements_involved": [
+        "RFC 7662 Introspection",
+        "Basic Auth",
+        "client_id:secret",
+        "token_type_hint"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后确认数字：autonumber应该覆盖所有消息，从Client第一次authenticate开始，到最后revoke_token结束，总共多少步？",
+      "elements_involved": [
+        "autonumber",
+        "message count",
+        "sequence numbering"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "估算约70-80个消息点，符合复杂序列图规模。每个alt分支的虚线返回也算编号。图已完成，可以生成最终Mermaid代码。",
+      "elements_involved": [
+        "message numbering",
+        "alt return messages",
+        "final diagram"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "好的，图结构确认完毕。确保所有Groupware组件标注正确：KanbanBoard、ChatRoom、IssueTracker、SprintBacklog、WikiPage各司其职，覆盖Transport、Auth、JWT、OAuth2、Session、RBAC等模块。",
+      "elements_involved": [
+        "Groupware_KanbanBoard",
+        "Groupware_ChatRoom",
+        "Groupware_IssueTracker",
+        "Groupware_SprintBacklog",
+        "Groupware_WikiPage",
+        "module mapping"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "最终检查完成。所有参与者、消息流、分支条件、注释说明都已确认，Groupware组件映射准确，安全关键点和RFC标准都已标注。准备输出最终Mermaid代码。",
+      "elements_involved": [
+        "final verification",
+        "participants",
+        "message flows",
+        "branch conditions",
+        "security notes",
+        "RFC standards"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 4,
+    "grounding_acts_count": 63,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 105877.1687,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

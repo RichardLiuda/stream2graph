@@ -1,0 +1,442 @@
+{
+  "id": "gh_ind_d12ae5f8de",
+  "source": "github_industrial",
+  "repo": "sidetrip-ai/ici-core",
+  "license": "mit",
+  "code": "sequenceDiagram\n    participant User\n    participant Orchestrator\n    participant ChatHistoryManager\n    participant Validator\n    participant Embedder\n    participant VectorStore\n    participant PromptBuilder\n    participant Generator\n    participant Logger\n\n    User->>Orchestrator: process_query(user_id, input, chat_id?)\n    \n    alt chat_id is None\n        Orchestrator->>ChatHistoryManager: create_chat(user_id)\n        ChatHistoryManager-->>Orchestrator: new_chat_id\n    else\n        Note over Orchestrator: Use provided chat_id\n    end\n    \n    Orchestrator->>Orchestrator: get_rules(user_id)\n    Orchestrator->>Orchestrator: build_context(user_id)\n    Orchestrator->>Validator: validate(input, context, rules)\n    Validator-->>Orchestrator: validation_result\n    \n    alt validation_result == True\n        Orchestrator->>ChatHistoryManager: get_messages(chat_id, limit)\n        ChatHistoryManager-->>Orchestrator: chat_history\n        \n        Orchestrator->>Embedder: embed(input)\n        Embedder-->>Orchestrator: query_vector\n        \n        Orchestrator->>VectorStore: search(query_vector, num_results, filters)\n        VectorStore-->>Orchestrator: documents\n        \n        Orchestrator->>PromptBuilder: build_prompt(input, documents, chat_history)\n        PromptBuilder-->>Orchestrator: prompt\n        \n        Orchestrator->>Generator: generate(prompt)\n        Generator-->>Orchestrator: response\n        \n        Orchestrator->>ChatHistoryManager: add_message(chat_id, input, \"user\")\n        Orchestrator->>ChatHistoryManager: add_message(chat_id, response, \"assistant\")\n        \n        alt New or short chat\n            Orchestrator->>ChatHistoryManager: generate_title(chat_id)\n            ChatHistoryManager-->>Orchestrator: title\n        end\n        \n        Orchestrator-->>User: {\"response\": response, \"chat_id\": chat_id}\n    else\n        Orchestrator-->>User: {\"error\": \"Access denied\"}\n    end\n    \n    Orchestrator->>Logger: Log query processing",
+  "diagram_type": "participant size:>1500",
+  "collected_at": "2026-02-27T03:31:08.873522",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个RAG对话系统的完整流程。核心是从User发起query开始，经过多个服务组件，最终返回response。",
+      "elements_involved": [
+        "User",
+        "process_query",
+        "response"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个典型的RAG架构。我理解的入口是User调用某个服务处理query，需要携带user_id、input，还有chat_id可能是可选的？",
+      "elements_involved": [
+        "User",
+        "user_id",
+        "input",
+        "chat_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，chat_id是可选的。如果没有提供，系统需要新建对话。这个逻辑应该由Orchestrator来协调。",
+      "elements_involved": [
+        "Orchestrator",
+        "chat_id",
+        "create_chat"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "那我画一个alt分支：chat_id为None时，Orchestrator调用ChatHistoryManager创建新对话，返回new_chat_id；否则直接使用传入的chat_id。",
+      "elements_involved": [
+        "Orchestrator",
+        "ChatHistoryManager",
+        "create_chat",
+        "new_chat_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。接下来Orchestrator需要获取当前用户的规则限制，以及构建基础上下文信息。",
+      "elements_involved": [
+        "Orchestrator",
+        "get_rules",
+        "build_context",
+        "user_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "这两个是Orchestrator内部处理对吧？我画成self-call。然后需要验证用户输入？",
+      "elements_involved": [
+        "Orchestrator",
+        "get_rules",
+        "build_context"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，引入Validator组件。Orchestrator把input、context、rules传给Validator做权限和内容校验。",
+      "elements_involved": [
+        "Orchestrator",
+        "Validator",
+        "validate",
+        "input",
+        "context",
+        "rules"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Validator返回validation_result。这里需要分支处理：验证通过走主流程，失败返回错误。",
+      "elements_involved": [
+        "Validator",
+        "validation_result"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "验证通过后，先获取历史对话记录。Orchestrator调用ChatHistoryManager的get_messages，带上chat_id和limit参数。",
+      "elements_involved": [
+        "Orchestrator",
+        "ChatHistoryManager",
+        "get_messages",
+        "chat_id",
+        "limit",
+        "chat_history"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，ChatHistoryManager返回chat_history。下一步是向量化检索？",
+      "elements_involved": [
+        "ChatHistoryManager",
+        "chat_history"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，RAG的核心步骤。Orchestrator调用Embedder把input转成query_vector。",
+      "elements_involved": [
+        "Orchestrator",
+        "Embedder",
+        "embed",
+        "input",
+        "query_vector"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "Embedder返回query_vector。然后用这个向量去VectorStore检索相关文档？",
+      "elements_involved": [
+        "Embedder",
+        "query_vector"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，Orchestrator调用VectorStore的search方法，参数包括query_vector、num_results和filters。",
+      "elements_involved": [
+        "Orchestrator",
+        "VectorStore",
+        "search",
+        "query_vector",
+        "num_results",
+        "filters",
+        "documents"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "VectorStore返回documents。现在有了input、documents、chat_history，可以构建prompt了。",
+      "elements_involved": [
+        "VectorStore",
+        "documents"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "引入PromptBuilder组件。Orchestrator把这三样数据传给它，生成最终prompt。",
+      "elements_involved": [
+        "Orchestrator",
+        "PromptBuilder",
+        "build_prompt",
+        "input",
+        "documents",
+        "chat_history",
+        "prompt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "PromptBuilder返回prompt。然后调用大模型生成回复？",
+      "elements_involved": [
+        "PromptBuilder",
+        "prompt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，Generator组件。Orchestrator传prompt给它，返回response。",
+      "elements_involved": [
+        "Orchestrator",
+        "Generator",
+        "generate",
+        "prompt",
+        "response"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Generator返回response。生成完成后需要保存对话记录吧？",
+      "elements_involved": [
+        "Generator",
+        "response"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，两次add_message：先存用户的input（标记为\"user\"），再存assistant的response（标记为\"assistant\"）。",
+      "elements_involved": [
+        "Orchestrator",
+        "ChatHistoryManager",
+        "add_message",
+        "chat_id",
+        "input",
+        "response",
+        "user",
+        "assistant"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下，两次调用都是Orchestrator发给ChatHistoryManager，角色标记用字符串\"user\"和\"assistant\"？",
+      "elements_involved": [
+        "Orchestrator",
+        "ChatHistoryManager",
+        "add_message"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。另外还有一个细节：如果是新对话或者对话很短，需要自动生成标题。",
+      "elements_involved": [
+        "Orchestrator",
+        "ChatHistoryManager",
+        "generate_title",
+        "title"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "用alt分支表示\"New or short chat\"的条件，满足时调用generate_title获取title。",
+      "elements_involved": [
+        "Orchestrator",
+        "ChatHistoryManager",
+        "generate_title",
+        "title"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。最后Orchestrator把response和chat_id一起返回给User，格式是JSON。",
+      "elements_involved": [
+        "Orchestrator",
+        "User",
+        "response",
+        "chat_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，主流程结束。那验证失败的分支呢？",
+      "elements_involved": [
+        "Orchestrator",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "validation_result为False时，Orchestrator直接返回错误信息给User，{\"error\": \"Access denied\"}。",
+      "elements_involved": [
+        "Orchestrator",
+        "User",
+        "error",
+        "Access denied"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了。整个流程最后还需要记录日志？",
+      "elements_involved": [
+        "Orchestrator",
+        "Logger"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，引入Logger组件。无论成功失败，Orchestrator最后都要调用Logger记录query processing。",
+      "elements_involved": [
+        "Orchestrator",
+        "Logger",
+        "Log query processing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我梳理一下所有参与者：User、Orchestrator、ChatHistoryManager、Validator、Embedder、VectorStore、PromptBuilder、Generator、Logger。共9个。",
+      "elements_involved": [
+        "User",
+        "Orchestrator",
+        "ChatHistoryManager",
+        "Validator",
+        "Embedder",
+        "VectorStore",
+        "PromptBuilder",
+        "Generator",
+        "Logger"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，我检查一下。在create_chat的分支里，你写的是ChatHistoryManager返回new_chat_id，但后面else分支的Note写的是\"Use provided chat_id\"，这个Note应该放在Orchestrator上方对吧？",
+      "elements_involved": [
+        "Orchestrator",
+        "Note",
+        "chat_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "抱歉，我确认一下Note的位置。应该放在else分支里，标注在Orchestrator上方，表示直接使用传入的chat_id。",
+      "elements_involved": [
+        "Orchestrator",
+        "Note",
+        "chat_id"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没问题了。整个流程完整覆盖了：会话管理、权限验证、RAG检索、大模型生成、对话存储和日志记录。可以定稿了。",
+      "elements_involved": [
+        "User",
+        "Orchestrator",
+        "ChatHistoryManager",
+        "Validator",
+        "Embedder",
+        "VectorStore",
+        "PromptBuilder",
+        "Generator",
+        "Logger"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 31,
+    "repair_count": 1,
+    "grounding_acts_count": 31,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 67670.4669,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 31
+  }
+}

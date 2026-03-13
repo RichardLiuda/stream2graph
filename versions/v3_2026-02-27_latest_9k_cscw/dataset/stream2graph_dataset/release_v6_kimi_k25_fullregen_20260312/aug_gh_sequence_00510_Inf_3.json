@@ -1,0 +1,604 @@
+{
+  "id": "aug_gh_sequence_00510_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/DREAMSCAPE-AI/dreamscape-docs/blob/24aa5a14265601b36ddbbb02c958eea524e6eb11/architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "github_repo": "DREAMSCAPE-AI/dreamscape-docs",
+  "github_file_path": "architecture/docker/hybride-bigpods/orderVoyage.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    autonumber\n    actor User as 👤 Utilisateur\n    participant WC as Web Client\n    participant CN as Core NGINX<br/>:80\n    participant Voyage as Voyage Service<br/>:3003\n    participant Payment as Payment Service<br/>:3005\n    participant AI as AI Service<br/>:3004\n    participant PG as PostgreSQL<br/>:5432\n    participant Redis as Redis<br/>:6379\n    participant Kafka as Kafka<br/>:9092\n    participant Stripe as 💳 Stripe API\n\n    rect rgb(Infra_WorkerNode)\n        Note over User,Voyage: Phase 1: Sélection Vol\n        User->>WC: Sélectionne vol<br/>(Infra_EtcdCluster)\n        WC->>WC: Add to cart<br/>(Infra_LoadBalancer)\n        User->>WC: Click \"Réserver\"\n        \n        WC->>CN: POST /api/v1/bookings<br/>{Infra_EtcdCluster}<br/>Authorization: Bearer JWT\n        CN->>CN: Validate JWT (Infra_EtcdCluster)\n        CN->>Voyage: Forward to Voyage<br/>localhost:3003/bookings\n    end\n\n    rect rgb(Infra_IngressController)\n        Note over Voyage,Kafka: Phase 2: Création Réservation\n        Voyage->>Voyage: Extract userId from JWT\n        Voyage->>PG: BEGIN transaction\n        Note right of PG: 🔄 ACID transaction<br/>pour cohérence\n        \n        Voyage->>PG: INSERT booking<br/>{Infra_LoadBalancer}\n        PG-->>Voyage: Booking created (Infra_IngressController)\n        \n        Voyage->>Redis: Store booking temp<br/>key: \"booking:temp:bookingId\"<br/>TTL: 15min\n        Note right of Redis: ⏱️ Timeout si paiement<br/>échoue après 15min\n        \n        Voyage->>Kafka: Publish event<br/>Topic: \"voyage.booking.created\"<br/>{Infra_WorkerNode}\n        Note left of Kafka: Event-Driven Architecture<br/>- Decoupling services<br/>- Async processing<br/>- Audit trail\n        \n        Voyage-->>CN: 201 Created<br/>{Infra_LoadBalancer}\n        CN-->>WC: 201 Created\n    end\n\n    rect rgb(Infra_IngressController)\n        Note over WC,Stripe: Phase 3: Demande Paiement\n        WC->>CN: POST /api/v1/payments/intent<br/>{Infra_RedisCache}<br/>Authorization: Bearer JWT\n        CN->>Payment: Forward to Payment<br/>localhost:3005/payments/intent\n        \n        Payment->>Payment: Extract userId from JWT\n        Payment->>PG: Verify booking exists<br/>SELECT * FROM bookings<br/>WHERE id = bookingId AND userId = userId\n        \n        alt Booking Non Trouvé ❌\n            PG-->>Payment: null\n            Payment-->>CN: 404 Not Found<br/>{Infra_EtcdCluster}\n            CN-->>WC: 404 Error\n            WC->>User: ❌ Erreur réservation\n        else Booking Trouvé ✅\n            PG-->>Payment: Booking found\n            Payment->>Stripe: Create PaymentIntent<br/>POST /v1/payment_intents<br/>{Infra_EtcdCluster),<br/>currency: \"eur\",<br/>metadata: {Infra_IngressController}}\n            \n            Stripe-->>Payment: PaymentIntent created<br/>{Infra_LoadBalancer}\n            \n            Payment->>PG: INSERT payment<br/>{Infra_IngressController}\n            Payment->>Kafka: Publish event<br/>Topic: \"payment.intent.created\"<br/>{Infra_IngressController}\n            \n            Payment-->>CN: 200 OK<br/>{Infra_EtcdCluster}\n            CN-->>WC: 200 OK\n        end\n    end\n\n    rect rgb(Infra_RedisCache)\n        Note over WC,Stripe: Phase 4: Paiement Stripe (Infra_WorkerNode)\n        WC->>WC: Initialize Stripe.js<br/>with clientSecret\n        WC->>User: Affiche formulaire carte<br/>(Infra_EtcdCluster)\n        \n        User->>WC: Saisit infos carte<br/>(Infra_RedisCache)\n        WC->>Stripe: POST /v1/payment_intents/:id/confirm<br/>(Infra_IngressController)<br/>{Infra_IngressController}\n        \n        Note right of Stripe: 🔒 Sécurité PCI-DSS<br/>- Carte jamais envoyée à notre backend<br/>- Stripe gère tout<br/>- Tokenization automatique\n        \n        alt Paiement Réussi ✅\n            Stripe-->>WC: PaymentIntent succeeded\n            WC->>WC: Display success message\n            WC->>User: ✅ Paiement accepté\n        else Paiement Échoué ❌\n            Stripe-->>WC: PaymentIntent failed<br/>(Infra_RedisCache)\n            WC->>User: ❌ \"Paiement refusé\"<br/>(Infra_LoadBalancer)\n        end\n    end\n\n    rect rgb(Infra_IngressController)\n        Note over Stripe,Kafka: Phase 5: Webhook Stripe (Infra_IngressController)\n        Stripe->>Payment: POST /webhooks/stripe<br/>Stripe-Signature header<br/>{Infra_IngressController}}\n        \n        Payment->>Payment: Verify signature<br/>stripe.webhooks.constructEvent(Infra_RedisCache)\n        \n        alt Signature Invalide ❌\n            Payment-->>Stripe: 400 Bad Request\n            Note right of Payment: Protection contre<br/>webhooks forgés\n        else Signature Valide ✅\n            Payment->>PG: UPDATE payment<br/>SET status = \"SUCCEEDED\"<br/>WHERE stripePaymentIntentId = id\n            \n            Payment->>PG: UPDATE booking<br/>SET status = \"CONFIRMED\"<br/>WHERE id = bookingId\n            \n            Payment->>Redis: Delete temp booking<br/>DEL \"booking:temp:bookingId\"\n            \n            Payment->>Kafka: Publish event<br/>Topic: \"payment.succeeded\"<br/>{Infra_IngressController}\n            \n            Payment-->>Stripe: 200 OK\n        end\n    end\n\n    rect rgb(Infra_EtcdCluster)\n        Note over Kafka,User: Phase 6: Traitement Async (Infra_IngressController)\n        Kafka->>Voyage: Consume event<br/>\"payment.succeeded\"\n        Voyage->>PG: SELECT booking details\n        Voyage->>Voyage: Generate confirmation email<br/>(Infra_LoadBalancer)\n        Voyage->>User: 📧 Email confirmation<br/>+ PDF billet\n        \n        Kafka->>AI: Consume event<br/>\"voyage.booking.created\"\n        AI->>PG: Get user profile<br/>+ booking history\n        AI->>AI: Update ML model<br/>(Infra_EtcdCluster)\n        Note right of AI: 🤖 AI learning<br/>from user behavior\n        AI->>Redis: Update recommendations<br/>key: \"reco:userId\"\n    end\n\n    rect rgb(Infra_RedisCache)\n        Note over WC,User: Phase 7: Confirmation Frontend\n        loop Polling every 2s\n            WC->>CN: GET /api/v1/bookings/:bookingId\n            CN->>Voyage: Forward request\n            Voyage->>PG: SELECT booking<br/>WHERE id = bookingId\n            \n            alt Status = CONFIRMED ✅\n                PG-->>Voyage: Booking confirmed\n                Voyage-->>CN: 200 OK<br/>{Infra_WorkerNode}\n                CN-->>WC: 200 OK\n                WC->>WC: Stop polling\n                WC->>WC: Redirect /bookings/:id\n                WC->>User: ✅ Affiche confirmation<br/>+ détails voyage\n            else Status = PENDING ⏳\n                PG-->>Voyage: Booking still pending\n                Voyage-->>CN: 200 OK<br/>{Infra_RedisCache}\n                CN-->>WC: 200 OK (Infra_LoadBalancer)\n                Note right of WC: ⏱️ Après 15min<br/>réservation annulée<br/>automatiquement\n            end\n        end\n    end\n\n    Note over User,Kafka: 📊 Performance Réservation<br/>Create booking: ~100-150ms<br/>Payment intent: ~500-800ms (Infra_EtcdCluster)<br/>Confirmation: ~1-2s (Infra_WorkerNode)<br/>Email: ~3-5s (Infra_IngressController)<br/><br/>🔒 Fiabilité<br/>- Transaction ACID (Infra_LoadBalancer)<br/>- Idempotency keys (Infra_EtcdCluster)<br/>- Webhook retry (Infra_LoadBalancer)<br/>- Event sourcing (Infra_EtcdCluster)",
+  "content_size": 7218,
+  "collected_at": "2026-02-06T01:33:16.963511",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "gh_sequence_00510",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为新的航班预订系统设计一个完整的时序图，涵盖从用户选航班到最终确认的全流程。核心是要体现我们的微服务架构，特别是Voyage Service和Payment Service的交互。",
+      "elements_involved": [
+        "Voyage Service",
+        "Payment Service",
+        "Web Client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，这是一个在线旅行社的预订系统。我需要确认一下参与者的层级关系——用户通过Web Client发起请求，然后经过Core NGINX做网关和负载均衡，对吗？",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，Core NGINX监听80端口，负责JWT验证和请求转发。Voyage Service跑在3003端口，处理预订核心业务；Payment Service在3005端口，对接Stripe。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我先把基础参与者画出来：用户、Web客户端、NGINX网关、两个业务服务，再加上PostgreSQL、Redis、Kafka这些基础设施。AI Service是做什么用的？",
+      "elements_involved": [
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "AI Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "AI Service在3004端口，异步处理用户行为分析，更新推荐模型。它不阻塞主流程，通过Kafka消费事件。另外我们需要用rect分组来标注基础设施层，比如Infra_WorkerNode、Infra_EtcdCluster这些。",
+      "elements_involved": [
+        "AI Service",
+        "Infra_WorkerNode",
+        "Infra_EtcdCluster",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "参与者框架已经搭建好了。现在开始第一阶段——用户选航班。用户点击预订后，Web Client往NGINX发POST /api/v1/bookings，携带JWT，这个请求会经过EtcdCluster做服务发现。",
+      "elements_involved": [
+        "User",
+        "Web Client",
+        "Core NGINX",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，NGINX先验证JWT，然后转发到Voyage Service。这里有个细节：加入购物车的动作是在Web Client本地完成的，经过LoadBalancer，不需要走后端。",
+      "elements_involved": [
+        "Core NGINX",
+        "Voyage Service",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "第二阶段是创建预订。Voyage Service开启ACID事务，先写PostgreSQL，然后把临时预订存Redis，TTL设15分钟。这个超时机制是为了防止用户占座不付款。",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "Redis",
+        "ACID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "对的，Redis的key格式是\"booking:temp:bookingId\"。同时我们要发Kafka事件到voyage.booking.created主题，这是事件驱动架构的核心，解耦服务、异步处理、还能留审计痕迹。",
+      "elements_involved": [
+        "Redis",
+        "Kafka",
+        "Infra_WorkerNode",
+        "Event-Driven Architecture"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第二阶段画完了，用了Infra_IngressController的rect分组。现在进入第三阶段——发起支付。Web Client请求POST /api/v1/payments/intent，经过Redis缓存层，转发到Payment Service。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Payment Service",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里需要加一个alt分支：如果预订不存在，返回404；找到了才继续走Stripe。Payment Service要先查PG确认预订归属，防止越权。",
+      "elements_involved": [
+        "Payment Service",
+        "PostgreSQL",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下Stripe的交互：创建PaymentIntent时传currency: \"eur\"，metadata里带预订信息。这个请求走EtcdCluster做出口网关，返回后我们存payment记录到PG，再发Kafka事件。",
+      "elements_involved": [
+        "Stripe API",
+        "Payment Service",
+        "PostgreSQL",
+        "Kafka",
+        "Infra_EtcdCluster",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。第四阶段是Stripe前端支付，这里要特别注意PCI-DSS合规——信用卡信息直接发给Stripe，我们的后端永远碰不到原始卡号，全靠Stripe的tokenization。",
+      "elements_involved": [
+        "Web Client",
+        "Stripe API",
+        "PCI-DSS",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第四阶段画好了，用了Infra_RedisCache分组。Stripe.js初始化后展示卡号输入表单，用户填完直接confirm到Stripe。这里又有一个alt分支：成功或失败的不同处理。",
+      "elements_involved": [
+        "Web Client",
+        "Stripe API",
+        "User",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第五阶段最关键——Stripe webhook回调。这是异步的，Stripe POST到我们的/webhooks/stripe，带Signature header。Payment Service要验证签名防伪造。",
+      "elements_involved": [
+        "Stripe API",
+        "Payment Service",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "验证签名用stripe.webhooks.constructEvent，走Redis缓存层。如果签名无效直接400拒绝；验证通过才更新PG里的payment和booking状态，清Redis临时key，发Kafka的payment.succeeded事件。",
+      "elements_involved": [
+        "Payment Service",
+        "Redis",
+        "PostgreSQL",
+        "Kafka",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "状态流转要准确：payment变成SUCCEEDED，booking变成CONFIRMED。第六阶段是异步处理，Kafka消费者包括Voyage Service和AI Service，分别处理邮件确认和ML模型更新。",
+      "elements_involved": [
+        "Kafka",
+        "Voyage Service",
+        "AI Service",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "第六阶段画完了，Voyage Service查PG详情，生成确认邮件和PDF机票；AI Service更新用户画像，把新推荐写回Redis。这里标注了AI learning from user behavior。",
+      "elements_involved": [
+        "Voyage Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "User",
+        "Infra_LoadBalancer",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "第七阶段是前端轮询确认。Web Client每2秒查一次/bookings/:bookingId，直到状态变成CONFIRMED。如果15分钟后还是PENDING，Redis过期，预订自动取消。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "PostgreSQL",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "loop循环画好了，alt分支区分CONFIRMED和PENDING。确认后停止轮询，跳转到预订详情页。最后需要加一个性能指标的note，汇总各阶段耗时吗？",
+      "elements_involved": [
+        "Web Client",
+        "User",
+        "Kafka"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "要的，标注一下：创建预订100-150ms，支付意图500-800ms，整体确认1-2秒，邮件3-5秒。还要强调可靠性机制：ACID事务、幂等键、webhook重试、事件溯源。",
+      "elements_involved": [
+        "Performance metrics",
+        "ACID",
+        "Idempotency keys",
+        "Webhook retry",
+        "Event sourcing",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完整时序图已经生成，七个阶段都清晰标注了。我检查一下分组颜色：Phase 1和6用Infra_WorkerNode/EtcdCluster，Phase 2-3-5用Infra_IngressController，Phase 4用Infra_RedisCache，符合基础设施层的语义。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，Phase 3的alt分支里，404返回的路径标注有问题。现在写的是Infra_EtcdCluster，但404是从Payment Service直接返回的，没有经过etcd的服务发现，应该改成更通用的标注或者去掉。",
+      "elements_involved": [
+        "Payment Service",
+        "Core NGINX",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修复，404返回路径现在标注为Infra_EtcdCluster保持风格一致，但实际上是内部直接返回。另外我注意到Phase 4里Stripe confirm请求重复标注了Infra_IngressController两次，需要清理。",
+      "elements_involved": [
+        "Stripe API",
+        "Web Client",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "对，那个重复标注是笔误。还有Phase 5的webhook路径，Stripe-Signature header的括号格式好像不太对，应该是Stripe-Signature header，然后整体走Infra_IngressController。",
+      "elements_involved": [
+        "Stripe API",
+        "Payment Service",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正，括号匹配现在正确了。再看Phase 6的AI Service部分，\"Update ML model\"后面标注Infra_EtcdCluster是合适的，因为模型配置存在etcd。但\"Generate confirmation email\"标注Infra_LoadBalancer会不会不太准确？",
+      "elements_involved": [
+        "AI Service",
+        "Voyage Service",
+        "Infra_EtcdCluster",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "邮件生成确实不直接走负载均衡，但邮件发送服务是独立部署的，通过LB调度。可以保留，或者改成更通用的Infra_WorkerNode？",
+      "elements_involved": [
+        "Voyage Service",
+        "Infra_LoadBalancer",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "保持Infra_LoadBalancer吧，和整体风格一致。最后检查autonumber，从1到整个流程结束连续编号，现在看起来是正确的。用户actor的图标👤和Stripe的💳也保留了。",
+      "elements_involved": [
+        "User",
+        "Stripe API",
+        "autonumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "很好。再确认一下跨服务调用的超时和重试策略有没有体现。比如Voyage到PG的事务，Kafka的发布，这些在note里提到了吗？",
+      "elements_involved": [
+        "Voyage Service",
+        "PostgreSQL",
+        "Kafka",
+        "ACID",
+        "Event-Driven Architecture"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "ACID事务在Phase 2的PG note里标注了，Kafka的解耦优势也在Phase 2说明了。但具体的超时重试参数没有写，需要补充吗？",
+      "elements_involved": [
+        "PostgreSQL",
+        "Kafka",
+        "Note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "参数不用写太细，保持架构图的可读性。最后那个性能note里的括号标注，Create booking和Payment intent后面的Infra标注需要核对一下是否和实际路径一致。",
+      "elements_involved": [
+        "Performance note",
+        "Infra_EtcdCluster",
+        "Infra_WorkerNode",
+        "Infra_IngressController",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "检查发现：Create booking ~100-150ms标注Infra_EtcdCluster是对的，因为涉及服务发现；但Confirmation ~1-2s标注Infra_WorkerNode不太准确，应该是用户感知的端到端时间。Payment intent的Infra_EtcdCluster是对的。",
+      "elements_involved": [
+        "Performance note",
+        "Infra_WorkerNode",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Confirmation时间确实包含前端轮询，标注Infra_WorkerNode是指邮件服务在worker节点异步处理。可以保留，或者改成更模糊的混合标注。",
+      "elements_involved": [
+        "Confirmation",
+        "Infra_WorkerNode",
+        "Email"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "理解了，保留原标注。现在整体检查一遍：七个rect分组完整，autonumber连续，所有alt分支闭合，note位置正确。法语术语如Sélection Vol、Création Réservation、Demande Paiement都保留了。",
+      "elements_involved": [
+        "rect groups",
+        "autonumber",
+        "alt branches",
+        "French terms"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Phase 4的Stripe.js初始化步骤，需要明确是Web Client本地完成的，不经过我们的后端。现在的表述\"Initialize Stripe.js with clientSecret\"够清楚吗？",
+      "elements_involved": [
+        "Web Client",
+        "Stripe.js",
+        "clientSecret"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "可以再加个note强调这是纯前端行为。另外\"Affiche formulaire carte\"这个法语，前面标注了Infra_EtcdCluster，但实际上是本地渲染，这个标注需要调整。",
+      "elements_involved": [
+        "Web Client",
+        "User",
+        "Infra_EtcdCluster",
+        "Affiche formulaire carte"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "对，展示卡号表单是本地UI渲染，不应该有基础设施标注。或者改成Infra_RedisCache表示静态资源缓存？不过严格来说这是浏览器本地行为。",
+      "elements_involved": [
+        "Web Client",
+        "User",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已调整，\"Affiche formulaire carte\"现在标注Infra_EtcdCluster，保持和前后步骤的基础设施层一致，理解为CDN/静态资源加载。同一步骤的\"Saisit infos carte\"改为Infra_RedisCache，表示输入状态缓存。",
+      "elements_involved": [
+        "Web Client",
+        "User",
+        "Infra_EtcdCluster",
+        "Infra_RedisCache",
+        "Infra_IngressController"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。再看Phase 7的轮询循环，GET请求返回200 OK的标注，CONFIRMED路径是Infra_WorkerNode，PENDING路径是Infra_RedisCache，这个区分是合理的——确认后走邮件worker，等待中走缓存。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Infra_WorkerNode",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "整体结构已经完整。最后确认一下颜色语义：Infra_WorkerNode（计算密集型）、Infra_EtcdCluster（配置/服务发现）、Infra_IngressController（流量入口）、Infra_RedisCache（缓存层）、Infra_LoadBalancer（负载均衡），这个映射在全图保持一致。",
+      "elements_involved": [
+        "Infra_WorkerNode",
+        "Infra_EtcdCluster",
+        "Infra_IngressController",
+        "Infra_RedisCache",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "颜色语义正确。最后检查：所有<br/换行符位置合适，没有破坏渲染；participant的别名如WC、CN、Voyage等简写清晰；端口号标注完整。可以定稿了。",
+      "elements_involved": [
+        "Web Client",
+        "Core NGINX",
+        "Voyage Service",
+        "Payment Service",
+        "AI Service",
+        "PostgreSQL",
+        "Redis",
+        "Kafka",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "定稿完成。最终时序图包含7个阶段、11个参与者、4个alt分支、1个loop循环，完整覆盖了航班预订从选座到确认的端到端流程，基础设施层通过rect颜色分组清晰标注。",
+      "elements_involved": [
+        "sequence diagram",
+        "7 phases",
+        "11 participants",
+        "4 alt branches",
+        "1 loop",
+        "infrastructure layers"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 42,
+    "repair_count": 4,
+    "grounding_acts_count": 42,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 79891.9485,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 45
+  }
+}

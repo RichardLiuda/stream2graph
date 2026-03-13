@@ -1,0 +1,883 @@
+{
+  "id": "aug_gh_sequence_00922_Sec_7",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/security/authentication-flow.mmd",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "github_file_path": "docs/diagrams/security/authentication-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    %% Authentication and Authorization Flow for erlmcp\n    %% Shows: API key, JWT, OAuth2, mTLS authentication methods\n    %% Plus: RBAC permission checking with role-based access control\n\n    autonumber\n    actor Client\n    participant Transport as Transport Layer<br/>(Security_Encryption)\n    participant Auth as erlmcp_auth<br/>(Security_Encryption)\n    participant RateLimiter as erlmcp_auth_rate_limiter\n    participant JWT as jose (Security_Firewall)\n    participant OAuth2 as OAuth2 Provider<br/>(Security_IntrusionDetection)\n    participant MTLS as erlmcp_auth_mtls<br/>(Security_ZeroTrust)\n    participant RBAC as RBAC Engine<br/>(Security_Encryption)\n    participant Session as Session Manager<br/>(Security_ZeroTrust)\n\n    Note over Client,Session: Authentication Flow\n\n    %% API Key Authentication\n    Client->>Transport: authenticate(Security_OAuth2)\n    Transport->>Auth: authenticate(Security_OAuth2})\n\n    Auth->>RateLimiter: check_rate_limit(Security_Encryption)\n    RateLimiter-->>Auth: ok (Security_ZeroTrust})\n\n    alt Rate Limited\n        Auth-->>Client: {Security_Firewall}\n        Note over Auth,RateLimiter: Blocked after 5 failed attempts<br/>15-minute cooldown\n    else Rate Check Passed\n        Auth->>Auth: do_validate_api_key(Security_Firewall)\n        Note right of Auth: Lookup in ETS table<br/>auth_api_keys\n\n        alt API Key Invalid\n            Auth->>RateLimiter: record_failure(Security_Firewall)\n            Auth-->>Client: {Security_Encryption}\n        else API Key Valid\n            Auth->>RateLimiter: record_success(Security_Encryption)\n            Auth->>Session: create_session(Security_IntrusionDetection)\n\n            Session->>RBAC: get_user_roles(Security_IntrusionDetection)\n            RBAC-->>Session: [Security_IntrusionDetection]\n\n            Session->>RBAC: Aggregate permissions from roles\n            RBAC-->>Session: [Security_ZeroTrust]\n\n            Session-->>Auth: {Security_ZeroTrust}\n            Auth-->>Client: {Security_Encryption}\n\n            Note right of Session: Session expires in 1 hour<br/>Auto-cleanup timer\n        end\n    end\n\n    %% JWT Authentication\n    Client->>Transport: authenticate(Security_Firewall})\n    Transport->>Auth: authenticate(Security_IntrusionDetection})\n\n    Auth->>RateLimiter: check_rate_limit(Security_OAuth2)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_jwt(Security_OAuth2)\n\n    alt Token Revoked\n        Auth-->>Client: {Security_Firewall}\n        Note right of Auth: Check ETS: auth_revoked_tokens<br/>Cleanup after 7 days\n    else Token Active\n        Auth->>JWT: jose_jws:peek_protected(Security_ZeroTrust)\n        JWT-->>Auth: #{Security_ZeroTrust}\n\n        Auth->>Auth: Lookup public key by kid\n        Note right of Auth: ETS: auth_jwt_keys<br/>Support key rotation\n\n        Auth->>JWT: jose_jws:verify(Security_OAuth2)\n        JWT-->>Auth: {Security_Encryption}\n\n        alt Signature Invalid\n            Auth-->>Client: {Security_IntrusionDetection}\n        else Signature Valid\n            Auth->>Auth: validate_jwt_claims(Security_ZeroTrust)\n\n            Note right of Auth: CRITICAL SECURITY CHECKS:<br/>✓ exp (Security_OAuth2) - Required<br/>✓ nbf (Security_Firewall) - Optional<br/>✓ iss (Security_IntrusionDetection) - Configurable<br/>✓ aud (Security_Firewall) - Configurable<br/>✓ sub (Security_ZeroTrust) - Required\n\n            alt Token Expired\n                Auth-->>Client: {Security_ZeroTrust}\n            else Token Not Yet Valid\n                Auth-->>Client: {Security_Encryption}\n            else Issuer Mismatch\n                Auth-->>Client: {Security_ZeroTrust}\n            else Audience Mismatch\n                Auth-->>Client: {Security_OAuth2}\n            else All Claims Valid\n                Auth->>RateLimiter: record_success(Security_IntrusionDetection)\n                Auth->>Session: create_session(Security_Firewall)\n                Session-->>Auth: {Security_IntrusionDetection}\n                Auth-->>Client: {Security_ZeroTrust}\n            end\n        end\n    end\n\n    %% OAuth2 Authentication (Security_OAuth2)\n    Client->>Transport: authenticate(Security_ZeroTrust})\n    Transport->>Auth: authenticate(Security_Encryption})\n\n    Auth->>RateLimiter: check_rate_limit(Security_Firewall)\n    RateLimiter-->>Auth: ok\n\n    Auth->>Auth: do_validate_oauth2_token(Security_OAuth2)\n\n    alt Cache Hit (Security_IntrusionDetection)\n        Note right of Auth: ETS: auth_oauth2_cache<br/>Token -> {Security_ZeroTrust}\n        Auth-->>Client: {Security_IntrusionDetection}\n    else Cache Miss\n        Auth->>OAuth2: HTTP POST /introspect\n        Note right of Auth: RFC 7662 Introspection<br/>Basic Auth: client_id:secret<br/>Body: token + token_type_hint\n\n        OAuth2-->>Auth: 200 OK + TokenInfo\n\n        Auth->>Auth: validate_introspection_response(Security_Firewall)\n\n        Note right of Auth: RFC 7662 REQUIRED fields:<br/>✓ active = true<br/>✓ exp (Security_Encryption)<br/>✓ nbf (Security_ZeroTrust)<br/>✓ iss (Security_Firewall)\n\n        alt Token Inactive\n            Auth-->>Client: {Security_OAuth2}\n        else Token Expired\n            Auth-->>Client: {Security_IntrusionDetection}\n        else Token Valid\n            Auth->>Auth: cache_oauth2_token(Security_Encryption)\n            Note right of Auth: Cache for up to 5 minutes<br/>or until exp (Security_IntrusionDetection)\n\n            Auth->>RateLimiter: record_success(Security_Encryption)\n            Auth->>Session: create_session(Security_Encryption)\n            Session-->>Auth: {Security_IntrusionDetection}\n            Auth-->>Client: {Security_Firewall}\n        end\n    end\n\n    %% mTLS Authentication\n    Client->>Transport: authenticate(Security_OAuth2})\n    Transport->>Auth: authenticate(Security_IntrusionDetection)\n\n    Auth->>RateLimiter: check_rate_limit(Security_OAuth2)\n    RateLimiter-->>Auth: ok\n\n    Auth->>MTLS: validate(Security_Firewall)\n\n    Note right of MTLS: mTLS Validation Pipeline:<br/>1. Extract certificate from socket<br/>2. X.509 chain validation to trusted CAs<br/>3. Certificate expiration check<br/>4. OCSP/CRL revocation check<br/>5. Subject DN and CN pattern matching<br/>6. Certificate depth limit validation\n\n    MTLS-->>Auth: {Security_Encryption}\n\n    alt Certificate Invalid\n        Auth->>RateLimiter: record_failure(Security_ZeroTrust)\n        Auth-->>Client: {Security_Firewall}\n    else Certificate Valid\n        Auth->>RateLimiter: record_success(Security_Firewall)\n        Auth->>Session: create_session(Security_Firewall})\n        Session-->>Auth: {Security_Firewall}\n        Auth-->>Client: {Security_IntrusionDetection}\n    end\n\n    %% Authorization Flow (Security_ZeroTrust)\n    Note over Client,Session: Authorization Flow\n\n    Client->>Transport: check_permission(Security_ZeroTrust)\n    Transport->>Auth: check_permission(Security_Firewall)\n\n    Auth->>Session: lookup session\n    Session-->>Auth: #session{Security_ZeroTrust}\n\n    alt Session Not Found\n        Auth-->>Client: {Security_Firewall}\n    else Session Found\n        Auth->>RBAC: check_user_permission(Security_Firewall)\n\n        RBAC->>RBAC: Get user roles from ETS\n        Note right of RBAC: auth_user_roles:<br/>UserId -> [Security_Encryption]\n\n        RBAC->>RBAC: Get allowed roles for resource+permission\n        Note right of RBAC: auth_acls:<br/>{Security_Encryption} -> [Security_ZeroTrust]\n\n        RBAC->>RBAC: Check intersection\n        Note right of RBAC: lists:any/2<br/>UserRole ∩ AllowedRoles ≠ ∅\n\n        alt Permission Denied\n            RBAC-->>Auth: {Security_Encryption}\n            Auth-->>Client: {Security_IntrusionDetection}\n        else Permission Granted\n            RBAC-->>Auth: ok\n            Auth-->>Client: ok\n        end\n    end\n\n    %% Default RBAC Roles\n    Note over RBAC: Default Roles (Security_OAuth2):<br/>🔹 admin: [Security_ZeroTrust]<br/>🔹 user: [Security_ZeroTrust]<br/>🔹 guest: [Security_IntrusionDetection]\n\n    %% Token Rotation\n    Note over Client,Session: Token Rotation (Security_ZeroTrust)\n\n    Client->>Auth: rotate_token(Security_Firewall)\n    Auth->>Session: lookup session\n\n    Auth->>Auth: generate new SessionId\n    Note right of Auth: crypto:strong_rand_bytes(Security_ZeroTrust)<br/>base64 encoded\n\n    Auth->>Session: insert new session\n    Auth->>Session: delete old session\n\n    Auth-->>Client: {Security_OAuth2}\n    Note right of Auth: Old session invalidated immediately<br/>Prevents session hijacking\n\n    %% Token Revocation\n    Note over Client,Session: Token Revocation (Security_OAuth2)\n\n    Client->>Auth: revoke_token(Security_IntrusionDetection)\n    Auth->>Auth: insert into auth_revoked_tokens\n    Note right of Auth: Store: Token -> RevokedAt<br/>Auto-cleanup after 7 days\n\n    Auth-->>Client: ok\n    Note over Auth,JWT: Revoked tokens rejected immediately<br/>Even if exp claim valid\n\n    %% Session Cleanup\n    Note over Session: Auto-cleanup every 60 seconds:<br/>• Expired sessions (Security_OAuth2)<br/>• Revoked tokens (Security_IntrusionDetection)<br/>• OAuth2 cache (Security_Encryption)\n",
+  "content_size": 8727,
+  "collected_at": "2026-02-06T01:50:47.821294",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "augmentation_domain": "Security",
+  "seed_id": "gh_sequence_00922",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为erlmcp系统绘制一个完整的认证授权时序图，涵盖API Key、JWT、OAuth2和mTLS四种认证方式，以及RBAC权限检查。这个图要能体现我们的安全分层设计。",
+      "elements_involved": [
+        "erlmcp auth",
+        "api",
+        "authentication",
+        "authorization",
+        "rbac engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。我注意到您提到了多种安全机制，比如Security_Encryption、Security_Firewall这些安全层级标签，我需要在参与者旁边标注这些吗？",
+      "elements_involved": [
+        "security encryption",
+        "security firewall",
+        "transport layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，每个核心组件都要标注其安全层级。比如Transport Layer和erlmcp_auth都标注Security_Encryption，JWT组件标注Security_Firewall，OAuth2 Provider标注Security_IntrusionDetection。",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "jose",
+        "oauth2 provider",
+        "security encryption",
+        "security firewall",
+        "security intrusiondetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我已经设置了参与者：Client、Transport Layer（Security_Encryption）、erlmcp_auth（Security_Encryption）、erlmcp_auth_rate_limiter、jose（Security_Firewall）、OAuth2 Provider（Security_IntrusionDetection）。还需要补充哪些参与者？",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "jose",
+        "oauth2 provider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要erlmcp_auth_mtls标注Security_ZeroTrust，RBAC Engine标注Security_Encryption，以及Session Manager标注Security_ZeroTrust。这三个都是授权流程的核心。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "rbac engine",
+        "session manager",
+        "security zerotrust",
+        "security encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加这三个参与者。现在我来绘制第一条认证流程——API Key认证。Client首先向Transport Layer发起authenticate调用，携带Security_OAuth2标签。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "security oauth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Transport Layer转发给erlmcp_auth，然后auth模块要先调用rate_limiter检查限流，这个很关键，防止暴力破解。",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已绘制：Auth调用RateLimiter的check_rate_limit，携带Security_Encryption标签，RateLimiter返回ok并携带Security_ZeroTrust标签。这里需要画出alt分支吗？",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "security encryption",
+        "security zerotrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "必须画alt分支。第一种情况是Rate Limited，Auth直接返回给Client，携带Security_Firewall标签，并标注'5次失败后阻断，15分钟冷却期'。",
+      "elements_involved": [
+        "erlmcp auth",
+        "client",
+        "security firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加限流阻断分支。那Rate Check Passed的分支呢？",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "通过限流后，Auth内部调用do_validate_api_key，标注Security_Firewall。需要在Note中说明是从ETS表auth_api_keys中查询。",
+      "elements_involved": [
+        "erlmcp auth",
+        "security firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。这里还需要嵌套一个alt分支处理API Key Invalid和Valid两种情况吗？",
+      "elements_involved": [
+        "erlmcp auth"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的。Invalid时，Auth调用RateLimiter的record_failure，返回Security_Firewall标签给Client；Valid时，record_success，然后创建session。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "session manager",
+        "security firewall",
+        "security encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已绘制。Session创建时，Session Manager要向RBAC Engine获取用户角色，对吧？",
+      "elements_involved": [
+        "session manager",
+        "rbac engine",
+        "security intrusiondetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，get_user_roles携带Security_IntrusionDetection，RBAC返回角色列表。然后Session要Aggregate permissions from roles，再次调用RBAC。",
+      "elements_involved": [
+        "session manager",
+        "rbac engine",
+        "aggregate",
+        "security intrusiondetection",
+        "security zerotrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加聚合权限调用，RBAC返回Security_ZeroTrust，Session返回给Auth，最后Auth返回Security_Encryption给Client。需要在Session旁标注会话过期时间吗？",
+      "elements_involved": [
+        "session manager",
+        "rbac engine",
+        "erlmcp auth",
+        "client",
+        "security zerotrust",
+        "security encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，标注'Session expires in 1 hour, Auto-cleanup timer'。现在进入JWT认证流程，Client向Transport发起authenticate，携带Security_Firewall标签。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "session manager",
+        "security firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已启动JWT流程。Transport转发给Auth，携带Security_IntrusionDetection，然后同样要先检查rate limit？",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "security intrusiondetection",
+        "security oauth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，check_rate_limit携带Security_OAuth2。通过后Auth内部调用do_validate_jwt，同样携带Security_OAuth2。这里要先检查token是否被revoke。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "security oauth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Token Revoked时返回Security_Firewall给Client，需要在Note中标注检查auth_revoked_tokens ETS表、7天清理吗？",
+      "elements_involved": [
+        "erlmcp auth",
+        "client",
+        "security firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要标注。Token Active时，Auth调用jose的jose_jws:peek_protected，携带Security_ZeroTrust，获取header信息。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "security zerotrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。JWT返回#{Security_ZeroTrust}给Auth，然后Auth内部Lookup public key by kid，从auth_jwt_keys ETS查询，支持key rotation。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "security zerotrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，然后Auth调用jose_jws:verify进行验签，携带Security_OAuth2。这里需要alt分支处理Signature Invalid和Valid。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "security oauth2",
+        "security encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加验签调用和分支。Invalid时返回Security_IntrusionDetection；Valid时进入claims验证，validate_jwt_claims携带Security_ZeroTrust。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "client",
+        "security intrusiondetection",
+        "security zerotrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "claims验证很关键，需要在Note中列出所有CRITICAL SECURITY CHECKS：exp（Security_OAuth2，Required）、nbf（Security_Firewall，Optional）、iss（Security_IntrusionDetection，Configurable）、aud（Security_Firewall，Configurable）、sub（Security_ZeroTrust，Required）。",
+      "elements_involved": [
+        "erlmcp auth",
+        "security oauth2",
+        "security firewall",
+        "security intrusiondetection",
+        "security zerotrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已详细标注claims检查。这里有多个alt分支：Token Expired、Token Not Yet Valid、Issuer Mismatch、Audience Mismatch，分别返回不同的安全标签？",
+      "elements_involved": [
+        "erlmcp auth",
+        "client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Expired返回Security_ZeroTrust，Not Yet Valid返回Security_Encryption，Issuer Mismatch返回Security_ZeroTrust，Audience Mismatch返回Security_OAuth2。",
+      "elements_involved": [
+        "erlmcp auth",
+        "client",
+        "security zerotrust",
+        "security encryption",
+        "security oauth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。All Claims Valid时，record_success（Security_IntrusionDetection），create_session（Security_Firewall），Session返回Security_IntrusionDetection，最后Client收到Security_ZeroTrust。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "session manager",
+        "client",
+        "security intrusiondetection",
+        "security firewall",
+        "security zerotrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在进入OAuth2认证流程，标注为Security_OAuth2。Client向Transport发起authenticate，携带Security_ZeroTrust标签。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "security oauth2",
+        "security zerotrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已启动OAuth2流程。Transport转发给Auth，携带Security_Encryption，然后检查rate limit，携带Security_Firewall。通过后调用do_validate_oauth2_token，携带Security_OAuth2。",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "security encryption",
+        "security firewall",
+        "security oauth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "这里要先检查Cache Hit，从auth_oauth2_cache ETS查询，Token映射到Security_ZeroTrust。Hit时直接返回Security_IntrusionDetection给Client。",
+      "elements_involved": [
+        "erlmcp auth",
+        "security intrusiondetection",
+        "security zerotrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Cache Hit分支。Cache Miss时，Auth向OAuth2 Provider发起HTTP POST /introspect，需要标注RFC 7662细节吗？",
+      "elements_involved": [
+        "erlmcp auth",
+        "oauth2 provider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要，标注RFC 7662 Introspection，Basic Auth用client_id:secret，Body包含token和token_type_hint。Provider返回200 OK + TokenInfo。",
+      "elements_involved": [
+        "erlmcp auth",
+        "oauth2 provider"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。然后Auth内部validate_introspection_response，携带Security_Firewall，需要列出RFC 7662 REQUIRED fields？",
+      "elements_involved": [
+        "erlmcp auth",
+        "security firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，标注active=true、exp（Security_Encryption）、nbf（Security_ZeroTrust）、iss（Security_Firewall）。然后alt分支处理Token Inactive、Expired、Valid。",
+      "elements_involved": [
+        "erlmcp auth",
+        "security firewall",
+        "security encryption",
+        "security zerotrust",
+        "security oauth2",
+        "security intrusiondetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。Inactive返回Security_OAuth2，Expired返回Security_IntrusionDetection，Valid时cache_oauth2_token携带Security_Encryption，需要标注缓存5分钟或到exp？",
+      "elements_involved": [
+        "erlmcp auth",
+        "client",
+        "security oauth2",
+        "security intrusiondetection",
+        "security encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，标注'Cache for up to 5 minutes or until exp（Security_IntrusionDetection）'。然后record_success（Security_Encryption），create_session（Security_Encryption），Session返回Security_IntrusionDetection，Client收到Security_Firewall。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "session manager",
+        "client",
+        "security encryption",
+        "security intrusiondetection",
+        "security firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成OAuth2流程。现在进入mTLS认证，Client向Transport发起authenticate，携带Security_OAuth2标签？",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "security oauth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不对，mTLS的第一次调用应该携带Security_OAuth2}，注意这个右花括号。Transport转发给Auth时携带Security_IntrusionDetection。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "security oauth2"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正。然后检查rate limit，携带Security_OAuth2，通过后Auth调用erlmcp_auth_mtls的validate，携带Security_Firewall。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "erlmcp auth mtls",
+        "security oauth2",
+        "security firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要在MTLS旁详细标注mTLS Validation Pipeline的6个步骤：提取证书、X.509链验证、过期检查、OCSP/CRL撤销检查、Subject DN和CN匹配、证书深度限制验证。",
+      "elements_involved": [
+        "erlmcp auth mtls"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加详细验证步骤。MTLS返回Security_Encryption给Auth，然后alt分支处理Certificate Invalid和Valid。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "erlmcp auth",
+        "security encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Invalid时，record_failure（Security_ZeroTrust），返回Security_Firewall给Client；Valid时，record_success（Security_Firewall），create_session（Security_Firewall}），注意这个右花括号，Session返回Security_Firewall，Client收到Security_IntrusionDetection。",
+      "elements_involved": [
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "session manager",
+        "client",
+        "security zerotrust",
+        "security firewall",
+        "security intrusiondetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成mTLS流程。现在进入Authorization Flow，标注Security_ZeroTrust。Client向Transport发起check_permission，携带Security_ZeroTrust？",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "security zerotrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Transport转发给Auth，携带Security_Firewall。Auth向Session Manager lookup session，Session返回#session{Security_ZeroTrust}。",
+      "elements_involved": [
+        "transport layer",
+        "erlmcp auth",
+        "session manager",
+        "security firewall",
+        "security zerotrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。然后alt分支：Session Not Found时返回Security_Firewall；Found时进入权限检查。",
+      "elements_involved": [
+        "erlmcp auth",
+        "session manager",
+        "client",
+        "security firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Found时，Auth调用RBAC的check_user_permission，携带Security_Firewall。RBAC内部先从auth_user_roles ETS获取用户角色，格式是UserId - [Security_Encryption]。",
+      "elements_involved": [
+        "erlmcp auth",
+        "rbac engine",
+        "security firewall",
+        "security encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。然后获取资源的allowed roles，从auth_acls ETS查询，格式是{Security_Encryption} - [Security_ZeroTrust]？",
+      "elements_involved": [
+        "rbac engine",
+        "security encryption",
+        "security zerotrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，然后Check intersection，用lists:any/2检查UserRole和AllowedRoles的交集是否非空。需要标注这个逻辑。",
+      "elements_involved": [
+        "rbac engine",
+        "allowedr"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已标注交集检查。Permission Denied时，RBAC返回Security_Encryption给Auth，Auth返回Security_IntrusionDetection给Client；Granted时返回ok。",
+      "elements_involved": [
+        "rbac engine",
+        "erlmcp auth",
+        "client",
+        "security encryption",
+        "security intrusiondetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要在RBAC旁标注Default Roles：admin有Security_ZeroTrust权限，user有Security_ZeroTrust，guest只有Security_IntrusionDetection。",
+      "elements_involved": [
+        "rbac engine",
+        "security oauth2",
+        "security zerotrust",
+        "security intrusiondetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加默认角色说明。现在绘制Token Rotation流程，标注Security_ZeroTrust。Client直接调用Auth的rotate_token，携带Security_Firewall。",
+      "elements_involved": [
+        "client",
+        "erlmcp auth",
+        "security zerotrust",
+        "security firewall"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Auth先lookup session，然后内部generate new SessionId，用crypto:strong_rand_bytes（Security_ZeroTrust）base64编码。",
+      "elements_involved": [
+        "erlmcp auth",
+        "session manager",
+        "security zerotrust"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。然后insert new session，delete old session，返回Security_OAuth2给Client。需要标注旧会话立即失效防止劫持吗？",
+      "elements_involved": [
+        "erlmcp auth",
+        "session manager",
+        "client",
+        "security oauth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要，标注'Old session invalidated immediately, Prevents session hijacking'。现在进入Token Revocation流程，标注Security_OAuth2。",
+      "elements_involved": [
+        "erlmcp auth",
+        "security oauth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已启动Token Revocation。Client调用Auth的revoke_token，携带Security_IntrusionDetection。Auth插入到auth_revoked_tokens，需要标注存储格式吗？",
+      "elements_involved": [
+        "client",
+        "erlmcp auth",
+        "security intrusiondetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "需要，标注'Store: Token - RevokedAt, Auto-cleanup after 7 days'。然后返回ok给Client。需要在Auth和JWT之间标注撤销令牌的即时生效说明。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "client"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：'Revoked tokens rejected immediately, Even if exp claim valid'。最后是Session Cleanup的Note，标注Auto-cleanup every 60 seconds？",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "session manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，列出三项：Expired sessions（Security_OAuth2）、Revoked tokens（Security_IntrusionDetection）、OAuth2 cache（Security_Encryption）。",
+      "elements_involved": [
+        "session manager",
+        "security oauth2",
+        "security intrusiondetection",
+        "security encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已完成所有流程绘制。我检查一下：四种认证方式（API Key、JWT、OAuth2、mTLS）、RBAC授权、Token Rotation、Token Revocation、Session Cleanup都完整了。需要调整什么吗？",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "rbac engine",
+        "session manager"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下JWT流程中，Auth调用jose_jws:peek_protected返回的是#{Security_ZeroTrust}，这个map格式对吗？还有verify返回的是{Security_Encryption}，是tuple格式。",
+      "elements_involved": [
+        "erlmcp auth",
+        "jose",
+        "security zerotrust",
+        "security encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认正确，peek_protected返回map格式#{Security_ZeroTrust}，verify返回tuple格式{Security_Encryption}。还有OAuth2的cache hit返回的是{Security_ZeroTrust}，也是tuple。",
+      "elements_involved": [
+        "jose",
+        "erlmcp auth",
+        "security zerotrust",
+        "security encryption"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再确认一下mTLS的create_session标签是Security_Firewall}，带右花括号，和其他的Security_Firewall区分。还有Transport的两个调用，一个是Security_OAuth2}，一个是Security_Firewall}，都带右花括号。",
+      "elements_involved": [
+        "erlmcp auth mtls",
+        "session manager",
+        "transport layer",
+        "security firewall",
+        "security oauth2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已全部确认并修正。最终图表包含：8个参与者、4种认证流程、完整的RBAC授权、Token生命周期管理，所有安全层级标签正确标注。图表已完成。",
+      "elements_involved": [
+        "client",
+        "transport layer",
+        "erlmcp auth",
+        "erlmcp auth rate limiter",
+        "jose",
+        "oauth2 provider",
+        "erlmcp auth mtls",
+        "rbac engine",
+        "session manager"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 1,
+    "grounding_acts_count": 64,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:32Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:15Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:15Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 104302.798,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

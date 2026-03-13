@@ -1,0 +1,171 @@
+{
+  "id": "aug_ot_stateDiagram_00046_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/aminshahid573/todo-grpc/blob/fc06a441c73b41687132aec6f3ef0641aa675617/docs/diagrams/token_lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "aminshahid573/todo-grpc",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_LoadBalancer] --> Login: User Credentials\n    Login --> TokensGenerated: Success\n    \n    state TokensGenerated {Infra_RedisCache] --> AccessToken_Stateless\n        [Infra_EtcdCluster] --> RefreshToken_Stateful\n    }\n    \n    AccessToken_Stateless --> Active: valid for 15m\n    Active --> Expired: after 15m\n    Expired --> Refresh: use RefreshToken\n    \n    RefreshToken_Stateful --> StoredInDB: Active for 7d\n    StoredInDB --> Rotated: Refresh RPC called\n    Rotated --> DeletedFromDB: Old Token\n    Rotated --> StoredInDB: New Token Pair Issued\n    \n    StoredInDB --> Revoked: DeleteUser called\n    Revoked --> [Infra_EtcdCluster]\n    \n    Expired --> [Infra_RedisCache]\n",
+  "content_size": 634,
+  "collected_at": "2026-02-06T10:37:11.344273",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00046",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个完整的认证令牌生命周期图。用户从负载均衡器进来，用凭证登录成功后生成一对Token——无状态的AccessToken放在Redis里，有状态的RefreshToken存在Etcd集群。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Login",
+        "TokensGenerated",
+        "Infra_RedisCache",
+        "AccessToken_Stateless",
+        "Infra_EtcdCluster",
+        "RefreshToken_Stateful"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，TokensGenerated是一个复合状态，里面同时包含AccessToken和RefreshToken的存储位置。那AccessToken的有效期怎么体现？",
+      "elements_involved": [
+        "TokensGenerated",
+        "AccessToken_Stateless",
+        "RefreshToken_Stateful"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "AccessToken只有15分钟有效期，从Active到Expired。Expired之后不能直接用，必须走Refresh流程，用RefreshToken去换新的。",
+      "elements_involved": [
+        "AccessToken_Stateless",
+        "Active",
+        "Expired",
+        "Refresh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把AccessToken的状态流转画好了：Stateless的Token进入Active状态，15分钟后变Expired，然后指向Refresh动作。现在处理RefreshToken那边？",
+      "elements_involved": [
+        "AccessToken_Stateless",
+        "Active",
+        "Expired",
+        "Refresh"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "RefreshToken是Stateful的，存在数据库里，默认7天有效。但有个关键机制：每次调用Refresh RPC，旧Token会被标记为Rotated，然后从数据库删除；同时签发新的Token Pair，新RefreshToken重新进入StoredInDB。",
+      "elements_involved": [
+        "RefreshToken_Stateful",
+        "StoredInDB",
+        "Rotated",
+        "DeletedFromDB",
+        "TokensGenerated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所以Rotated之后分两条线：一条到DeletedFromDB表示旧Token清理，另一条回到StoredInDB表示新Token入库。对吗？",
+      "elements_involved": [
+        "Rotated",
+        "DeletedFromDB",
+        "StoredInDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。另外还要考虑撤销场景：如果用户主动注销或者管理员删除用户，StoredInDB的Token直接变Revoked，然后清理Etcd里的状态。",
+      "elements_involved": [
+        "StoredInDB",
+        "Revoked",
+        "Infra_EtcdCluster"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画完了。最后Expired的AccessToken也需要回收到Redis吧？我加了一条从Expired指向Infra_RedisCache的线。",
+      "elements_involved": [
+        "Expired",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "稍等，Rotated到StoredInDB的标注要改一下，应该是\"New Token Pair Issued\"而不是简单的\"New Token\"，因为AccessToken也会一起刷新。",
+      "elements_involved": [
+        "Rotated",
+        "StoredInDB",
+        "TokensGenerated"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正标注。现在整个状态图完整了：从负载均衡器登录，双Token生成，AccessToken短周期失效后刷新，RefreshToken长周期轮换，支持主动撤销。",
+      "elements_involved": [
+        "Infra_LoadBalancer",
+        "Login",
+        "TokensGenerated",
+        "Refresh",
+        "Revoked"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 22485.0879,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

@@ -1,0 +1,165 @@
+{
+  "id": "aug_ot_stateDiagram_00350_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/jwt-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "stateDiagram",
+  "code": "%%{IoT_Industrial_TelemetryStream}\n}}%%\nstateDiagram-v2\n    [IoT_Industrial_MQTT_Broker] --> ChallengeRequested: User initiates login\n\n    ChallengeRequested --> ChallengeGenerated: Generate challenge\n    ChallengeGenerated --> ChallengeExpired: TTL expires (IoT_Industrial_EdgeNode)\n    ChallengeExpired --> [IoT_Industrial_TelemetryStream]: Challenge invalid\n\n    ChallengeGenerated --> SignatureCreated: User signs challenge\n    SignatureCreated --> SignatureVerified: Backend verifies\n    SignatureCreated --> VerificationFailed: Invalid signature\n    VerificationFailed --> [IoT_Industrial_TelemetryStream]: Authentication failed\n\n    SignatureVerified --> TokenGenerated: Create JWT\n    TokenGenerated --> SessionCreated: Create session\n    SessionCreated --> TokenActive: Token in use\n\n    TokenActive --> TokenUsed: API request\n    TokenUsed --> TokenActive: Update activity\n    TokenActive --> TokenRefreshed: Refresh request\n    TokenRefreshed --> NewTokenGenerated: Generate new token\n    NewTokenGenerated --> TokenActive: Continue session\n\n    TokenActive --> TokenExpired: 24h TTL\n    TokenExpired --> TokenRefreshed: Auto-refresh\n    TokenExpired --> SessionExpired: No refresh\n    SessionExpired --> [IoT_Industrial_PLC_Logic]: Requires re-authentication\n\n    TokenActive --> TokenRevoked: User logout\n    TokenRevoked --> SessionTerminated: Clear session\n    SessionTerminated --> [IoT_Industrial_MQTT_Broker]: Logged out\n\n    TokenActive --> SessionRevoked: Admin action\n    SessionRevoked --> [IoT_Industrial_TelemetryStream]: Force logout\n\n    note right of ChallengeGenerated\n        Challenge stored with:\n        - 5 minute TTL\n        - Unique nonce\n        - Pubkey binding\n    end note\n\n    note right of TokenActive\n        Token contains:\n        - NOSTR pubkey\n        - Session ID\n        - Role (IoT_Industrial_MQTT_Broker)\n        - Issue/Expiry times\n    end note\n\n    note right of TokenRefreshed\n        Refresh maintains:\n        - Same session\n        - Updated timestamps\n        - Activity tracking\n    end note",
+  "content_size": 2111,
+  "collected_at": "2026-02-06T10:41:04.795580",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "ot_stateDiagram_00350",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为工业IoT场景设计一个基于挑战-响应的认证状态机。边缘节点通过MQTT Broker发起登录，但PLC逻辑层要求严格的令牌生命周期管理。",
+      "elements_involved": [
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_EdgeNode",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "理解。挑战阶段需要包含TTL过期机制吗？另外，TelemetryStream在认证失败时应该作为终止状态还是错误出口？",
+      "elements_involved": [
+        "ChallengeExpired",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，ChallengeGenerated必须绑定5分钟TTL，过期后回到TelemetryStream表示挑战无效。签名验证失败也要走同样的出口。",
+      "elements_involved": [
+        "ChallengeGenerated",
+        "ChallengeExpired",
+        "SignatureCreated",
+        "VerificationFailed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加挑战生成节点及其过期转换。现在处理签名流程：SignatureCreated之后分叉到验证成功和失败两条路径。",
+      "elements_involved": [
+        "SignatureCreated",
+        "SignatureVerified",
+        "VerificationFailed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "验证通过后进入JWT令牌状态机。TokenActive是核心状态，需要支持正常使用、刷新和撤销三种转换。24小时TTL后优先自动刷新。",
+      "elements_involved": [
+        "TokenGenerated",
+        "SessionCreated",
+        "TokenActive",
+        "TokenExpired",
+        "TokenRefreshed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "TokenActive的状态循环已建立。我注意到刷新后生成NewTokenGenerated，然后回到TokenActive保持同一会话，这样对吗？",
+      "elements_involved": [
+        "TokenRefreshed",
+        "NewTokenGenerated",
+        "TokenActive"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确，Same session是关键。另外需要两条强制终止路径：用户主动logout走TokenRevoked，管理员强制下线走SessionRevoked，后者要回到TelemetryStream。",
+      "elements_involved": [
+        "TokenRevoked",
+        "SessionTerminated",
+        "SessionRevoked",
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_TelemetryStream"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "检查时发现TokenExpired如果只走Auto-refresh会遗漏无刷新场景。需要补充到SessionExpired的转换，最终要求重新认证并指向PLC Logic。",
+      "elements_involved": [
+        "TokenExpired",
+        "SessionExpired",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完善。最后给三个关键状态添加注释：ChallengeGenerated的nonce绑定、TokenActive的NOSTR pubkey载荷、以及TokenRefreshed的Activity tracking机制。",
+      "elements_involved": [
+        "ChallengeGenerated",
+        "TokenActive",
+        "TokenRefreshed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有注释已添加，状态机完整覆盖从MQTT Broker登录到PLC Logic重新认证的完整生命周期。",
+      "elements_involved": [
+        "IoT_Industrial_MQTT_Broker",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 10,
+    "repair_count": 1,
+    "grounding_acts_count": 10,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:22Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:22Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 25361.9475,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 9
+  }
+}

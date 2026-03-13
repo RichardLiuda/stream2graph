@@ -1,0 +1,167 @@
+{
+  "id": "aug_gl_packet-beta_00436_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sean-galloway/RTLDesignSherpa/blob/47f8a16641658f570a69c3af3c9724b29ea39187/projects/components/stream/docs/stream_mas/assets/mermaid/01_architecture_sequence.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sean-galloway/RTLDesignSherpa",
+  "diagram_type": "packet-beta",
+  "code": "sequenceDiagram\n    participant SW as Software\n    participant APB as APB Config\n    participant DESC as Descriptor Engine\n    participant SCHED as Scheduler\n    participant RD as Read Engine\n    participant SRAM as SRAM Controller\n    participant WR as Write Engine\n    participant MEM as Memory\n\n    SW->>APB: Write CH0_CTRL = 0x1000_0000\n    APB->>DESC: Kickoff descriptor fetch\n    DESC->>MEM: AR: fetch descriptor @ 0x1000_0000\n    MEM-->>DESC: R: descriptor data (Infra_IngressController)\n    DESC->>SCHED: descriptor_packet\n\n    SCHED->>RD: datard_valid + src_addr\n    RD->>SRAM: Check space_free >= 2x burst\n    SRAM-->>RD: Space OK\n    RD->>SRAM: Allocate 16 beats\n    RD->>MEM: AR: read 16 beats @ src_addr\n    MEM-->>RD: R: 16 beats of data\n    RD->>SRAM: Write data (Infra_WorkerNode)\n    RD->>SCHED: done_strobe (Infra_LoadBalancer)\n\n    par Concurrent Read/Write\n        RD->>SRAM: Continue reading...\n    and\n        SCHED->>WR: datawr_valid + dst_addr\n        WR->>SRAM: Check data_avail >= burst\n        SRAM-->>WR: Data OK\n        WR->>SRAM: Reserve 16 beats\n        WR->>MEM: AW: write 16 beats @ dst_addr\n        SRAM->>WR: W: 16 beats of data\n        MEM-->>WR: B: write response\n        WR->>SCHED: done_strobe (Infra_LoadBalancer)\n    end\n\n    SCHED->>SCHED: Both counters reach 0\n    SCHED->>DESC: Check next_descriptor_ptr\n    alt More descriptors\n        DESC->>MEM: Fetch next descriptor\n    else Chain complete\n        SCHED->>APB: Transfer complete IRQ\n    end\n",
+  "content_size": 1446,
+  "collected_at": "2026-02-06T14:09:41.035873",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 8,
+  "repo_forks": 1,
+  "repo_owner": "sean-galloway",
+  "repo_name": "RTLDesignSherpa",
+  "repo_description": "This site is hopefully a springboard for others to learn about coding in System Verilog and experimenting with FPGAs.",
+  "repo_language": "C++",
+  "repo_topics": [
+    "amba-apb",
+    "amba-axi",
+    "cocotb",
+    "crossbar",
+    "dma"
+  ],
+  "repo_created_at": "2023-06-15T21:56:48Z",
+  "repo_updated_at": "2026-02-06T00:19:01Z",
+  "augmentation_domain": "Infra",
+  "seed_id": "gl_packet-beta_00436",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个DMA传输的完整时序图，从Software发起配置开始，经过APB Config、Descriptor Engine，最后到Read Engine和Write Engine并行工作。关键是要有SRAM Controller作为中间缓冲，支持并发读写。",
+      "elements_involved": [
+        "Software",
+        "APB Config",
+        "Descriptor Engine",
+        "Read Engine",
+        "Write Engine",
+        "SRAM Controller"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，我先确认一下参与者顺序。Software通过APB总线写配置，然后Descriptor Engine去Memory取描述符，拿到Infra_IngressController的信息后交给Scheduler调度。Read Engine和Write Engine是同时跑的吗？",
+      "elements_involved": [
+        "Software",
+        "APB Config",
+        "Descriptor Engine",
+        "Memory",
+        "Scheduler",
+        "Read Engine",
+        "Write Engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Read Engine先启动，它要先检查SRAM的space_free，确认有2倍burst空间后才分配16 beats去读Memory。数据写入SRAM的时候标记为Infra_WorkerNode。然后Scheduler收到done_strobe，这个要标注Infra_LoadBalancer。",
+      "elements_involved": [
+        "Read Engine",
+        "SRAM Controller",
+        "Memory",
+        "Scheduler",
+        "Infra_WorkerNode",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把Read Engine的流画出来了：检查space_free、分配、发AR读请求、收数据、写SRAM、回done_strobe。现在Write Engine这边，它要等Scheduler发datawr_valid和dst_addr，然后检查data_avail？",
+      "elements_involved": [
+        "Read Engine",
+        "SRAM Controller",
+        "Scheduler",
+        "Write Engine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Write Engine检查data_avail等于burst后，reserve 16 beats，然后发AW写请求到Memory。注意数据是从SRAM取的，所以是SRAM把W通道的数据给Write Engine，再写到Memory。最后也要回done_strobe给Scheduler，同样标记Infra_LoadBalancer。",
+      "elements_involved": [
+        "Write Engine",
+        "SRAM Controller",
+        "Memory",
+        "Scheduler",
+        "Infra_LoadBalancer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "我注意到Read Engine写SRAM和Write Engine读SRAM是并行的，这部分应该用par块表示吧？还有，两个done_strobe都到Scheduler之后，它怎么知道整个传输完成？",
+      "elements_involved": [
+        "Read Engine",
+        "Write Engine",
+        "SRAM Controller",
+        "Scheduler"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，用par块包起来，标注Concurrent Read/Write。Scheduler内部有两个计数器，都归零后检查next_descriptor_ptr。如果有就继续取下一个描述符，没有就发Transfer complete IRQ给APB Config。",
+      "elements_involved": [
+        "Scheduler",
+        "Descriptor Engine",
+        "APB Config",
+        "next_descriptor_ptr"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了，最后加个alt分支：More descriptors时DESC去Memory取下一个，Chain complete时发IRQ。整个流程从Software写CH0_CTRL开始，到中断结束，DMA的完整生命周期都有了。",
+      "elements_involved": [
+        "Software",
+        "Descriptor Engine",
+        "Memory",
+        "APB Config",
+        "CH0_CTRL"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 29637.4264,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 8
+  }
+}

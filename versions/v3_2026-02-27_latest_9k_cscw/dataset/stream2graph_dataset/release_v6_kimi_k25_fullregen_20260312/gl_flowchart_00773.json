@@ -1,0 +1,569 @@
+{
+  "id": "gl_flowchart_00773",
+  "source": "gitlab",
+  "source_url": "https://github.com/arvopaukkunen/Construction/blob/34ce95d3d3d3a80b404d71b8a10f4a3927c514a4/diagrams/flowchart%20LR.mmd",
+  "source_note": "collected_from_github_final",
+  "github_repo": "arvopaukkunen/Construction",
+  "diagram_type": "flowchart",
+  "code": "flowchart LR\n    %% Edge / Device Layer\n    subgraph \"Edge Device Layer\"\n      S1[\"Critical Sensors (100)\"]\n      S2[\"HVAC Sensors\"]\n      S3[\"Appliance Sensors\"]\n      S4[\"Lighting Sensors\"]\n      TG[\"Telegram Bots & Integrations\"]\n    end\n\n    %% Brokers\n    subgraph \"Brokers (HA)\"\n      MQ1[\"MQTT/NATS A\"]\n      MQ2[\"MQTT/NATS B\"]\n    end\n\n    %% Processing & Orchestration\n    subgraph \"Processing & Orchestration\"\n      NR1[\"Node-RED – Ingest & Validate\"]\n      NR2[\"Node-RED – Enrich & Route\"]\n      NR3[\"Node-RED – DB Loader\"]\n      TF[\"Telegraf (optional)\"]\n    end\n\n    %% On-Prem Data Stores\n    subgraph \"On-Prem Data Stores\"\n      RS[\"Redis Streams – short buffer\"]\n      TS[\"InfluxDB – 1–7d retention\"]\n      SQL[\"Relational DB – MySQL/Postgres\"]\n      FS[\"SSD Staging – CSV/Parquet\"]\n    end\n\n    %% Cloud (Optional)\n    subgraph \"Cloud (Optional, Batch Only)\"\n      OB[\"Object Storage\"]\n      DW[\"Analytics / Data Warehouse\"]\n    end\n\n    %% Connections\n    S1 -->|QoS1/2, wired| MQ1\n    S1 -->|QoS1/2, wired| MQ2\n    S2 --> MQ1\n    S2 --> MQ2\n    S3 --> MQ1\n    S3 --> MQ2\n    S4 --> MQ1\n    S4 --> MQ2\n    TG --> MQ1\n    TG --> MQ2\n\n    MQ1 --> NR1\n    MQ2 --> NR1\n    NR1 --> NR2\n\n    NR2 -->|Batched Line Protocol| TS\n    NR2 -->|Stream| RS\n    NR2 -->|Batch Files| FS\n    FS -->|Bulk Load| SQL\n\n    TS -->|Daily/Weekly Export| OB\n    SQL -->|Daily/Weekly Export| OB\n    OB --> DW\n",
+  "content_size": 1401,
+  "collected_at": "2026-02-06T14:20:11.439870",
+  "compilation_status": "success",
+  "license": "gpl-2.0",
+  "license_name": "GNU General Public License v2.0",
+  "license_url": "https://api.github.com/licenses/gpl-2.0",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "arvopaukkunen",
+  "repo_name": "Construction",
+  "repo_description": "Powerplant, House plans and more",
+  "repo_language": "C#",
+  "repo_topics": [],
+  "repo_created_at": "2021-02-04T15:31:54Z",
+  "repo_updated_at": "2026-01-18T08:21:50Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个智能家居的数据流架构，核心是要处理四类传感器：关键传感器100个、HVAC、家电和照明。另外还有个Telegram机器人做远程控制。",
+      "elements_involved": [
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "TG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这四类传感器和Telegram集成都放在边缘设备层对吧？关键传感器有100个，需要高可用设计？",
+      "elements_involved": [
+        "S1",
+        "Edge Device Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，S1那100个关键传感器必须双活，其他传感器可以容忍短暂中断。整个边缘层统一归到\"Edge Device Layer\"子图里。",
+      "elements_involved": [
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "TG",
+        "Edge Device Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我把边缘层画好了。接下来是Broker层，您打算用什么消息中间件？",
+      "elements_involved": [
+        "Edge Device Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Broker要做HA双活，用MQTT和NATS混合，两个实例MQ1和MQ2。所有边缘设备都要连到这两个Broker上。",
+      "elements_involved": [
+        "MQ1",
+        "MQ2",
+        "Brokers (HA)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "S1关键传感器到Broker的连接需要标注吗？比如QoS等级？",
+      "elements_involved": [
+        "S1",
+        "MQ1",
+        "MQ2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，S1到MQ1和MQ2都要标QoS1/2，而且是有线连接。其他传感器S2-S4和TG到Broker就不用标这么细了。",
+      "elements_involved": [
+        "S1",
+        "MQ1",
+        "MQ2",
+        "S2",
+        "S3",
+        "S4",
+        "TG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Broker层和连接画好了。接下来是处理层，您打算怎么处理这些消息？",
+      "elements_involved": [
+        "MQ1",
+        "MQ2",
+        "Brokers (HA)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "处理层用三个Node-RED串联：NR1做摄取和校验，NR2做数据增强和路由，NR3专门负责数据库加载。再加个可选的Telegraf做辅助采集。",
+      "elements_involved": [
+        "NR1",
+        "NR2",
+        "NR3",
+        "TF",
+        "Processing & Orchestration"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所以流程是MQ1/MQ2 → NR1 → NR2 → NR3，同时TF作为可选组件也放在这层？",
+      "elements_involved": [
+        "MQ1",
+        "MQ2",
+        "NR1",
+        "NR2",
+        "NR3",
+        "TF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，TF是optional的，先画上去但标注清楚。NR2后面要分出多条路到不同的存储。",
+      "elements_involved": [
+        "NR2",
+        "TF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "处理层画好了。那存储层怎么设计？需要几种存储？",
+      "elements_involved": [
+        "Processing & Orchestration",
+        "NR1",
+        "NR2",
+        "NR3",
+        "TF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "本地存储分四种：Redis Streams做短期缓冲，InfluxDB存1-7天数据，MySQL/Postgres做关系型存储，还有个SSD暂存区放CSV和Parquet文件。这层叫\"On-Prem Data Stores\"。",
+      "elements_involved": [
+        "RS",
+        "TS",
+        "SQL",
+        "FS",
+        "On-Prem Data Stores"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "NR2到这几个存储的连接方式不一样吧？我看您提到了Stream、Batch这些关键词。",
+      "elements_involved": [
+        "NR2",
+        "RS",
+        "TS",
+        "FS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，NR2到TS是Batched Line Protocol，到RS是Stream实时流，到FS是Batch Files批量文件。然后FS要批量加载到SQL。",
+      "elements_involved": [
+        "NR2",
+        "TS",
+        "RS",
+        "FS",
+        "SQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "本地存储层和连接都画好了。那云端部分呢？",
+      "elements_involved": [
+        "On-Prem Data Stores",
+        "RS",
+        "TS",
+        "SQL",
+        "FS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "云端是可选的，只做批量同步。对象存储OB做中转，然后到数据仓库DW做分析。这层叫\"Cloud (Optional, Batch Only)\"。",
+      "elements_involved": [
+        "OB",
+        "DW",
+        "Cloud (Optional, Batch Only)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "云端的数据从哪来？TS和SQL都要导出吗？",
+      "elements_involved": [
+        "TS",
+        "SQL",
+        "OB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "TS和SQL都要做Daily/Weekly Export到OB，然后OB再到DW。注意标注这是批量-only的。",
+      "elements_involved": [
+        "TS",
+        "SQL",
+        "OB",
+        "DW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "整体架构初稿完成了，您看一下有没有问题？",
+      "elements_involved": [
+        "Cloud (Optional, Batch Only)",
+        "OB",
+        "DW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，NR3画上去了但还没连任何线。NR3是负责DB Loader的，应该连到SQL吧？",
+      "elements_involved": [
+        "NR3",
+        "SQL"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "NR3直接连SQL吗？还是通过FS间接加载？",
+      "elements_involved": [
+        "NR3",
+        "SQL",
+        "FS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "让我重新理一下：NR2输出到FS是批量文件，然后FS做Bulk Load到SQL。NR3专门处理其他直接加载场景，但在这个图里NR3可以先不画连接线，或者标注为扩展点。",
+      "elements_involved": [
+        "NR2",
+        "FS",
+        "SQL",
+        "NR3"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "明白了，那NR3保持为扩展节点，主要数据流是NR2→FS→SQL。还有其他要调整的吗？",
+      "elements_involved": [
+        "NR3",
+        "NR2",
+        "FS",
+        "SQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "S1的连接线标注\"QoS1/2, wired\"，其他传感器到Broker的线不用标注对吧？",
+      "elements_involved": [
+        "S1",
+        "MQ1",
+        "MQ2",
+        "S2",
+        "S3",
+        "S4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "对，只有S1的线有QoS1/2和wired标注，S2-S4和TG到MQ1/MQ2都是普通连线。",
+      "elements_involved": [
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "TG",
+        "MQ1",
+        "MQ2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Redis Streams的描述再精确一点，改成\"short buffer\"，强调短期缓冲特性。",
+      "elements_involved": [
+        "RS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已更新为\"Redis Streams – short buffer\"。InfluxDB的保留期标注为\"1–7d retention\"对吗？",
+      "elements_involved": [
+        "RS",
+        "TS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，TS是\"InfluxDB – 1–7d retention\"，SQL标注为\"Relational DB – MySQL/Postgres\"，FS是\"SSD Staging – CSV/Parquet\"。",
+      "elements_involved": [
+        "TS",
+        "SQL",
+        "FS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有存储标签都更新好了。Telegraf的optional标注要加括号吗？",
+      "elements_involved": [
+        "TF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，TF显示为\"Telegraf (optional)\"，和Cloud层的\"(Optional, Batch Only)\"风格一致。",
+      "elements_involved": [
+        "TF",
+        "Cloud (Optional, Batch Only)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "整体布局用LR横向流程对吗？从左到右：边缘层→Broker→处理层→本地存储→云端？",
+      "elements_involved": [
+        "Edge Device Layer",
+        "Brokers (HA)",
+        "Processing & Orchestration",
+        "On-Prem Data Stores",
+        "Cloud (Optional, Batch Only)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，flowchart LR横向布局。五个子图按这个顺序排列，数据流向清晰。",
+      "elements_involved": [
+        "flowchart LR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "布局调整完成。再确认一下NR2到TS的连接标注是\"Batched Line Protocol\"？",
+      "elements_involved": [
+        "NR2",
+        "TS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，NR2→TS标\"Batched Line Protocol\"，NR2→RS标\"Stream\"，NR2→FS标\"Batch Files\"。",
+      "elements_involved": [
+        "NR2",
+        "TS",
+        "RS",
+        "FS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有连接标注都检查过了。FS到SQL是\"Bulk Load\"，TS和SQL到OB都是\"Daily/Weekly Export\"。",
+      "elements_involved": [
+        "FS",
+        "SQL",
+        "TS",
+        "OB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "OB到DW的连接需要标注吗？",
+      "elements_involved": [
+        "OB",
+        "DW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "OB到DW是标准的数据仓库加载，可以不标注，或者简单理解为ETL流程？",
+      "elements_involved": [
+        "OB",
+        "DW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以不标注，保持简洁。整个图现在看起来完整了，各层职责清晰。",
+      "elements_involved": [
+        "OB",
+        "DW"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "最终确认一下：边缘层5个节点，Broker层2个HA节点，处理层4个组件（含可选TF），本地存储4种，云端2个组件。所有连接和标注都按您的要求完成了。",
+      "elements_involved": [
+        "Edge Device Layer",
+        "Brokers (HA)",
+        "Processing & Orchestration",
+        "On-Prem Data Stores",
+        "Cloud (Optional, Batch Only)"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美，这个架构图可以用了。从100个关键传感器的双活接入，到多级Node-RED处理，再到分层存储和可选的云端分析，整个数据流都覆盖到了。",
+      "elements_involved": [
+        "S1",
+        "MQ1",
+        "MQ2",
+        "NR1",
+        "NR2",
+        "NR3",
+        "RS",
+        "TS",
+        "SQL",
+        "FS",
+        "OB",
+        "DW"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 41,
+    "repair_count": 1,
+    "grounding_acts_count": 41,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 93275.7378,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 40
+  }
+}

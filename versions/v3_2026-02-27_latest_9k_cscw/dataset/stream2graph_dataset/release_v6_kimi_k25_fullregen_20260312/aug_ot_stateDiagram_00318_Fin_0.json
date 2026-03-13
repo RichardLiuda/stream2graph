@@ -1,0 +1,569 @@
+{
+  "id": "aug_ot_stateDiagram_00318_Fin_0",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/coherosphere/architecture/blob/598bb65467787da38ac4029e35bdead27e7799ee/docs.coherosphere.io/static/assets/diagrams/C3_states/SM-02.02_Decay_Recompute_Cycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "coherosphere/architecture",
+  "diagram_type": "stateDiagram",
+  "code": "%%{FinTech_LedgerService}}}%%\nstateDiagram-v2\ntitle: SM-02.02 — Decay & Recompute Cycle (FinTech_FraudDetection)\n\n[FinTech_FraudDetection] --> TRIGGER : CronTick / RecomputeRequested / ParamsVersioned\nnote right of TRIGGER\n  Entry conditions:\n  • Scheduled batch tick (FinTech_FraudDetection)\n  • Manual backfill (FinTech_TransactionQueue)\n  • Parameters changed (FinTech_TransactionQueue)\nend note\n\nTRIGGER --> LOAD_SNAPSHOT : Select ledger window\nnote right of LOAD_SNAPSHOT\n  Load CPᵢ(FinTech_PaymentGateway) snapshots and pending deltas\n  Resolve idempotent ranges and gaps\nend note\n\nLOAD_SNAPSHOT --> CHECK_PARAMS : Bind constants (FinTech_AuthVault)\nnote right of CHECK_PARAMS\n  λ = ln(FinTech_PaymentGateway)/T  (FinTech_PaymentGateway)\n  α ∈ (FinTech_TransactionQueue)    (FinTech_LedgerService)\n  If new version → tag run with ParamVersionID\nend note\n\nCHECK_PARAMS --> APPLY_DECAY : InputBound\nnote right of APPLY_DECAY\n  Apply time decay to each CPᵢ since t₀:\n  CPᵢ(FinTech_LedgerService) = CPᵢ(FinTech_LedgerService) · e^(FinTech_LedgerService) + Σ(FinTech_TransactionQueue)\nend note\n\nAPPLY_DECAY --> RECOMPUTE_W : DecayApplied (FinTech_FraudDetection)\nnote right of RECOMPUTE_W\n  Recompute voting weights:\n  Wᵢ = (FinTech_TransactionQueue)^α\n  Prepare diffs for persistence & metrics\nend note\n\nRECOMPUTE_W --> WRITE_BACK : WeightsComputed\nnote right of WRITE_BACK\n  Persist CP/W snapshots + audit trail\n  Mark run as deterministic (FinTech_TransactionQueue)\nend note\n\nWRITE_BACK --> EMIT_EVENTS : LedgerCommitted\nnote right of EMIT_EVENTS\n  Emit CPUpdated / WeightsUpdated for Metrics (FinTech_TransactionQueue)\n  Optionally trigger Resonance recompute (FinTech_PaymentGateway)\nend note\n\nEMIT_EVENTS --> [FinTech_AuthVault] : RecomputeFinished (FinTech_LedgerService)\n\n%% ---- Exceptional & maintenance paths ----\nLOAD_SNAPSHOT --> RECONCILE : GapDetected / CorrectionInput\nnote right of RECONCILE\n  Backfill missing windows, reconcile oracles\n  (FinTech_LedgerService)\nend note\nRECONCILE --> APPLY_DECAY : Reconciled\n\nAPPLY_DECAY --> ABORT : InvariantBreach / AnomalyDetected\nRECOMPUTE_W --> ABORT : InvariantBreach\nABORT --> [FinTech_FraudDetection] : RecomputeAborted\n\n%% =========== Styling ===========\nclassDef core fill:#ff8b00,stroke:#333,color:#fff,font-weight:bold;\nclass TRIGGER,LOAD_SNAPSHOT,CHECK_PARAMS,APPLY_DECAY,RECOMPUTE_W,WRITE_BACK,EMIT_EVENTS,RECONCILE,ABORT core;",
+  "content_size": 2180,
+  "collected_at": "2026-02-06T10:40:36.748897",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "license_url": null,
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "repo_owner": "coherosphere",
+  "repo_name": "architecture",
+  "repo_description": "The cohersphere architecture — structural blueprint of the resonance network. Defines the modular layers connecting app, API, and governance protocols. Outlines data flows for Proof-of-Contribution, c",
+  "repo_language": "Mermaid",
+  "repo_topics": [
+    "architecture",
+    "c4",
+    "distributed-systems",
+    "modular-architecture",
+    "system-design"
+  ],
+  "repo_created_at": "2025-10-29T09:30:02Z",
+  "repo_updated_at": "2026-02-06T04:58:50Z",
+  "compilation_error": "",
+  "augmentation_domain": "FinTech",
+  "seed_id": "ot_stateDiagram_00318",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为FinTech_FraudDetection设计一个状态机，核心是一个Decay & Recompute Cycle。起点应该是三种触发方式：定时任务、手动回填，还有参数变更。",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "TRIGGER",
+        "CronTick",
+        "RecomputeRequested",
+        "ParamsVersioned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以入口状态叫TRIGGER，接收三种事件。这三种来源分别是FinTech_FraudDetection的定时任务、FinTech_TransactionQueue的手动回填和参数变更，对吗？",
+      "elements_involved": [
+        "TRIGGER",
+        "FinTech_FraudDetection",
+        "FinTech_TransactionQueue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。接下来进入LOAD_SNAPSHOT状态，这里要从FinTech_PaymentGateway加载快照，还要处理幂等区间的gap问题。",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "FinTech_PaymentGateway",
+        "idempotent ranges and gaps"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，TRIGGER到LOAD_SNAPSHOT的迁移条件我记为\"Select ledger window\"。右侧备注需要详细说明加载CPᵢ快照和pending deltas，以及解析幂等区间和gap。",
+      "elements_involved": [
+        "TRIGGER",
+        "LOAD_SNAPSHOT",
+        "CPᵢ",
+        "pending deltas"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "下一步是CHECK_PARAMS，这里要从FinTech_AuthVault绑定常量。衰减系数λ基于FinTech_PaymentGateway的对数，还有α参数来自FinTech_TransactionQueue，但由FinTech_LedgerService管理。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "FinTech_AuthVault",
+        "λ",
+        "FinTech_PaymentGateway",
+        "α",
+        "FinTech_TransactionQueue",
+        "FinTech_LedgerService",
+        "ParamVersionID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "如果检测到参数版本变化，需要给这次运行打上ParamVersionID标签，这个逻辑放在CHECK_PARAMS的备注里？",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "ParamVersionID",
+        "new version"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。然后进入APPLY_DECAY状态，这是核心计算环节。每个CPᵢ要从t₀开始应用时间衰减，公式是指数衰减加上FinTech_TransactionQueue的增量求和。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "CPᵢ",
+        "t₀",
+        "time decay",
+        "FinTech_TransactionQueue",
+        "InputBound"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "LOAD_SNAPSHOT到CHECK_PARAMS的迁移条件是\"Bind constants (FinTech_AuthVault)\"，CHECK_PARAMS到APPLY_DECAY是\"InputBound\"。APPLY_DECAY的备注我会写清楚衰减公式。",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "Bind constants",
+        "InputBound"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "衰减完成后进入RECOMPUTE_W，重新计算投票权重Wᵢ，公式是(FinTech_TransactionQueue)^α。这里要准备diff用于持久化和指标上报。",
+      "elements_involved": [
+        "RECOMPUTE_W",
+        "Wᵢ",
+        "FinTech_TransactionQueue",
+        "α",
+        "diffs",
+        "persistence",
+        "metrics",
+        "DecayApplied"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "APPLY_DECAY到RECOMPUTE_W的迁移条件标记为\"DecayApplied (FinTech_FraudDetection)\"？然后RECOMPUTE_W之后是持久化环节？",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "DecayApplied",
+        "FinTech_FraudDetection",
+        "WRITE_BACK"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，WRITE_BACK状态要持久化CP和W的快照，加上审计日志。还要标记这次运行是deterministic的，这个标记由FinTech_TransactionQueue处理。",
+      "elements_involved": [
+        "WRITE_BACK",
+        "CP",
+        "W",
+        "snapshots",
+        "audit trail",
+        "deterministic",
+        "FinTech_TransactionQueue",
+        "WeightsComputed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "RECOMPUTE_W到WRITE_BACK是\"WeightsComputed\"，WRITE_BACK到EMIT_EVENTS是\"LedgerCommitted\"。接下来是事件发射状态？",
+      "elements_involved": [
+        "RECOMPUTE_W",
+        "WRITE_BACK",
+        "EMIT_EVENTS",
+        "WeightsComputed",
+        "LedgerCommitted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EMIT_EVENTS要发送CPUpdated和WeightsUpdated事件给Metrics，由FinTech_TransactionQueue处理。还可以选择性触发Resonance重算，那个是FinTech_PaymentGateway的能力。",
+      "elements_involved": [
+        "EMIT_EVENTS",
+        "CPUpdated",
+        "WeightsUpdated",
+        "Metrics",
+        "FinTech_TransactionQueue",
+        "Resonance",
+        "FinTech_PaymentGateway",
+        "RecomputeFinished"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "最终状态回到FinTech_AuthVault？还是FinTech_LedgerService？",
+      "elements_involved": [
+        "EMIT_EVENTS",
+        "FinTech_AuthVault",
+        "FinTech_LedgerService",
+        "RecomputeFinished"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "终点是FinTech_AuthVault，但迁移条件标注为\"RecomputeFinished (FinTech_LedgerService)\"，表示LedgerService主导完成信号。",
+      "elements_involved": [
+        "EMIT_EVENTS",
+        "FinTech_AuthVault",
+        "RecomputeFinished",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "主流程完成了。现在需要补充异常和维护路径。您提到gap问题，应该有对应的处理分支？",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "GapDetected",
+        "exceptional paths",
+        "maintenance paths"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，从LOAD_SNAPSHOT如果发现GapDetected或者有CorrectionInput，要进入RECONCILE状态。这里做缺失窗口的回填，还要对齐oracle数据，由FinTech_LedgerService执行。",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "RECONCILE",
+        "GapDetected",
+        "CorrectionInput",
+        "backfill",
+        "oracles",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "LOAD_SNAPSHOT到RECONCILE的迁移条件写\"GapDetected / CorrectionInput\"。RECONCILE完成后回到APPLY_DECAY，条件是\"Reconciled\"。",
+      "elements_involved": [
+        "LOAD_SNAPSHOT",
+        "RECONCILE",
+        "APPLY_DECAY",
+        "GapDetected",
+        "CorrectionInput",
+        "Reconciled"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要ABORT分支。如果在APPLY_DECAY检测到InvariantBreach或者AnomalyDetected，或者在RECOMPUTE_W发现InvariantBreach，都要中止。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "ABORT",
+        "InvariantBreach",
+        "AnomalyDetected"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "APPLY_DECAY到ABORT有两个可能原因，RECOMPUTE_W到ABORT只有InvariantBreach。ABORT之后回到FinTech_FraudDetection，标记为\"RecomputeAborted\"？",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "ABORT",
+        "FinTech_FraudDetection",
+        "RecomputeAborted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。现在检查整体结构，主流程和异常路径都覆盖了。对了，标题应该是SM-02.02 — Decay & Recompute Cycle (FinTech_FraudDetection)。",
+      "elements_involved": [
+        "title",
+        "SM-02.02",
+        "Decay & Recompute Cycle",
+        "FinTech_FraudDetection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "标题已设置。我注意到入口标注是[FinTech_FraudDetection]，出口有两个终点：正常结束到[FinTech_AuthVault]，异常中止回到[FinTech_FraudDetection]。",
+      "elements_involved": [
+        "[FinTech_FraudDetection]",
+        "[FinTech_AuthVault]",
+        "entry",
+        "exit"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "入口的三种触发条件需要明确标注在TRIGGER的备注里：Scheduled batch tick (FinTech_FraudDetection)、Manual backfill (FinTech_TransactionQueue)、Parameters changed (FinTech_TransactionQueue)。",
+      "elements_involved": [
+        "TRIGGER",
+        "entry conditions",
+        "Scheduled batch tick",
+        "Manual backfill",
+        "Parameters changed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已补充。现在需要给核心状态添加样式，用橙色填充、深色边框、白色粗体字。涉及的状态包括TRIGGER、LOAD_SNAPSHOT、CHECK_PARAMS、APPLY_DECAY、RECOMPUTE_W、WRITE_BACK、EMIT_EVENTS，还有RECONCILE和ABORT。",
+      "elements_involved": [
+        "classDef core",
+        "fill:#ff8b00",
+        "stroke:#333",
+        "color:#fff",
+        "font-weight:bold"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "样式定义正确。让我再确认一下APPLY_DECAY的公式细节：CPᵢ(FinTech_LedgerService) = CPᵢ(FinTech_LedgerService) · e^(FinTech_LedgerService) + Σ(FinTech_TransactionQueue)。这里的指数部分应该是-λ·Δt，但按当前设计用FinTech_LedgerService作为占位符。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "CPᵢ",
+        "FinTech_LedgerService",
+        "FinTech_TransactionQueue",
+        "formula"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "备注里写的是\"Apply time decay to each CPᵢ since t₀\"，然后给出公式。如果公式细节需要调整，现在可以修复。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "note",
+        "time decay",
+        "t₀",
+        "formula"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "等等，公式里的指数部分写错了。应该是e^(-λ·Δt)或者简写，但现在写的是e^(FinTech_LedgerService)，这不对。不过按当前设计规范，我们保持FinTech_LedgerService作为域占位符，实际实现会替换。备注描述\"Apply time decay\"足够清晰。",
+      "elements_involved": [
+        "APPLY_DECAY",
+        "formula",
+        "repair",
+        "e^(FinTech_LedgerService)",
+        "domain placeholder"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "理解，保持当前设计。RECOMPUTE_W的权重公式Wᵢ = (FinTech_TransactionQueue)^α也是类似的域占位符方式？",
+      "elements_involved": [
+        "RECOMPUTE_W",
+        "Wᵢ",
+        "FinTech_TransactionQueue",
+        "α",
+        "domain placeholder"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的。最后检查一下所有迁移条件：TRIGGER→LOAD_SNAPSHOT是\"Select ledger window\"，LOAD_SNAPSHOT→CHECK_PARAMS是\"Bind constants (FinTech_AuthVault)\"，CHECK_PARAMS→APPLY_DECAY是\"InputBound\"，APPLY_DECAY→RECOMPUTE_W是\"DecayApplied (FinTech_FraudDetection)\"，RECOMPUTE_W→WRITE_BACK是\"WeightsComputed\"，WRITE_BACK→EMIT_EVENTS是\"LedgerCommitted\"，EMIT_EVENTS→[FinTech_AuthVault]是\"RecomputeFinished (FinTech_LedgerService)\"。",
+      "elements_involved": [
+        "transition conditions",
+        "all main flow transitions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "主流程迁移条件确认无误。异常路径：LOAD_SNAPSHOT→RECONCILE是\"GapDetected / CorrectionInput\"，RECONCILE→APPLY_DECAY是\"Reconciled\"，APPLY_DECAY→ABORT是\"InvariantBreach / AnomalyDetected\"，RECOMPUTE_W→ABORT是\"InvariantBreach\"，ABORT→[FinTech_FraudDetection]是\"RecomputeAborted\"。",
+      "elements_involved": [
+        "exception path transitions",
+        "RECONCILE",
+        "ABORT",
+        "all conditions"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一个细节：CHECK_PARAMS里的λ公式写的是ln(FinTech_PaymentGateway)/T，这个T应该是半衰期参数，也由FinTech_PaymentGateway提供。α∈(FinTech_TransactionQueue)的写法表示取值范围约束。",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "λ",
+        "ln(FinTech_PaymentGateway)",
+        "T",
+        "half-life",
+        "α",
+        "constraint"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "备注里写的是\"λ = ln(FinTech_PaymentGateway)/T (FinTech_PaymentGateway)\"和\"α ∈ (FinTech_TransactionQueue) (FinTech_LedgerService)\"，第二个标注FinTech_LedgerService表示由LedgerService管理这个约束？",
+      "elements_involved": [
+        "CHECK_PARAMS",
+        "note",
+        "λ",
+        "α",
+        "constraint management",
+        "FinTech_LedgerService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，FinTech_LedgerService负责α参数的约束管理。整个图的结构应该完整了，从触发到衰减重算，再到持久化和事件发射，加上gap处理和异常中止两条支线。",
+      "elements_involved": [
+        "complete structure",
+        "FinTech_LedgerService",
+        "α management",
+        "gap handling",
+        "exception handling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有元素已就位。最后添加一个头部注释%%{FinTech_LedgerService}}}%%作为域标识，状态机类型用stateDiagram-v2。",
+      "elements_involved": [
+        "header",
+        "%%{FinTech_LedgerService}}}%%",
+        "stateDiagram-v2"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美。这个状态机涵盖了FinTech_FraudDetection的Decay & Recompute完整生命周期，包括正常流程、数据修复和异常处理三种场景。",
+      "elements_involved": [
+        "FinTech_FraudDetection",
+        "Decay & Recompute",
+        "lifecycle",
+        "normal flow",
+        "data repair",
+        "exception handling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "状态图已完成，共9个核心状态、2个终点、11条迁移线，包含详细备注和样式定义。可以提交评审了。",
+      "elements_involved": [
+        "TRIGGER",
+        "LOAD_SNAPSHOT",
+        "CHECK_PARAMS",
+        "APPLY_DECAY",
+        "RECOMPUTE_W",
+        "WRITE_BACK",
+        "EMIT_EVENTS",
+        "RECONCILE",
+        "ABORT",
+        "complete diagram"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 36,
+    "repair_count": 1,
+    "grounding_acts_count": 36,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:22Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:22Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 80733.0782,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 36
+  }
+}

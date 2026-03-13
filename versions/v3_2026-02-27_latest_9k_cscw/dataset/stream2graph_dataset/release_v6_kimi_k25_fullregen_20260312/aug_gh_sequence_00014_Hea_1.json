@@ -1,0 +1,712 @@
+{
+  "id": "aug_gh_sequence_00014_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/NagyZoltanPeter/nim-binding-demo/blob/3638c5f6ae197fecc4ae2ce14b78ed1b6ea02600/docs/sequence.mmd",
+  "github_repo": "NagyZoltanPeter/nim-binding-demo",
+  "github_file_path": "docs/sequence.mmd",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    %% Participants\n    box rgba(HealthTech_HIPAA_Vault) Process Threads\n    participant CPP as cpp_demo_app (HealthTech_PatientRecords)\n    participant CppBind as cpp_binding (HealthTech_HIPAA_Vault)\n    participant NimReq as libnimdemo Request Thread\n    participant NimEvt as libnimdemo Event Thread\n    end\n    participant Qreq as RequestQueue\n    participant Qevt as EventQueue\n\n    %% Startup\n    CPP->>CppBind: cpp_binding_initialize(HealthTech_LabAnalyzer)\n    activate CppBind\n    CppBind->>CppBind: GOOGLE_PROTOBUF_VERIFY_VERSION\n    CppBind->>NimReq: libnimdemo_initialize(HealthTech_LabAnalyzer)\n    deactivate CppBind\n\n    %% App init call\n    CPP->>CppBind: init(HealthTech_HIPAA_Vault)\n    activate CppBind\n    CppBind->>NimReq: asyncApiCall(HealthTech_PatientRecords)\n    Note right of NimReq: Enqueue init request\n    CppBind-->>CPP: return\n    deactivate CppBind\n    NimReq->>Qreq: push(HealthTech_EMR_Sync)\n\n    %% Request processing loop\n    activate NimReq\n    NimReq->>NimReq: worker loop\n    Qreq-->>NimReq: pop(HealthTech_PatientRecords)\n    NimReq->>NimReq: handle init\n    NimReq->>NimEvt: seed demo message(HealthTech_HIPAA_Vault)\n\n    %% Send message from app\n    CPP->>CppBind: send(HealthTech_LabAnalyzer)\n    activate CppBind\n    CppBind->>CppBind: SerializeToArray + allocateArgBuffer\n    CppBind->>NimReq: asyncApiCall(HealthTech_DiagnosticEngine)\n    CppBind-->>CPP: return\n    deactivate CppBind\n    NimReq->>Qreq: push(HealthTech_EMR_Sync)\n\n    %% Request:send processing\n    Qreq-->>NimReq: pop(HealthTech_EMR_Sync)\n    NimReq->>NimReq: parse WakuMessage\n    NimReq->>NimEvt: emit OnReceivedEvent(HealthTech_EMR_Sync)\n\n    %% Event dispatching\n    NimEvt->>Qevt: push(HealthTech_DiagnosticEngine)\n    activate NimEvt\n    NimEvt->>NimEvt: dispatcher loop\n    Qevt-->>NimEvt: pop(HealthTech_PatientRecords)\n    NimEvt->>CppBind: dispatchEvent(HealthTech_PatientRecords)\n    deactivate NimEvt\n\n    %% Callback invocation on app thread\n    CppBind->>CppBind: EventDispatcher::dispatch(HealthTech_PatientRecords)\n    CppBind->>CPP: invoke registered handler(HealthTech_LabAnalyzer)\n    CppBind->>CppBind: deallocateArgBuffer(HealthTech_DiagnosticEngine)\n\n    %% Teardown\n    CPP->>CppBind: cpp_binding_teardown(HealthTech_DiagnosticEngine)\n    activate CppBind\n    CppBind->>NimReq: libnimdemo_teardown(HealthTech_PatientRecords)\n    CppBind->>CppBind: google::protobuf::ShutdownProtobufLibrary(HealthTech_LabAnalyzer)\n    deactivate CppBind\n",
+  "content_size": 2161,
+  "collected_at": "2026-02-06T01:24:08.169665",
+  "compilation_status": "success",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "gh_sequence_00014",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为HealthTech系统画一个序列图，展示cpp demo app如何通过cpp binding与Nim库交互。核心场景是患者记录处理和HIPAA合规的数据流。",
+      "elements_involved": [
+        "cpp_demo_app",
+        "cpp_binding",
+        "libnimdemo",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我注意到有请求线程和事件线程两个独立的处理路径。需要把libnimdemo拆分成NimReq和NimEvt两个参与者吗？",
+      "elements_involved": [
+        "libnimdemo Request Thread",
+        "libnimdemo Event Thread",
+        "NimReq",
+        "NimEvt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这是关键设计。NimReq处理异步API调用，NimEvt处理事件回调。另外还需要两个队列：RequestQueue和EventQueue作为中间缓冲。",
+      "elements_involved": [
+        "NimReq",
+        "NimEvt",
+        "RequestQueue",
+        "EventQueue",
+        "Qreq",
+        "Qevt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "好的，我规划五个核心参与者：cpp_demo_app、cpp_binding、NimReq、NimEvt，以及两个队列Qreq和Qevt。用rgba色块把线程相关的包在一起，标注为HealthTech_HIPAA_Vault Process Threads。",
+      "elements_involved": [
+        "cpp_demo_app",
+        "cpp_binding",
+        "NimReq",
+        "NimEvt",
+        "RequestQueue",
+        "EventQueue",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "可以。启动流程要先画cpp_binding_initialize，传入HealthTech_LabAnalyzer参数。",
+      "elements_involved": [
+        "cpp_binding_initialize",
+        "HealthTech_LabAnalyzer",
+        "CPP",
+        "CppBind"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加启动消息：CPP调用CppBind的cpp_binding_initialize，激活CppBind生命周期。",
+      "elements_involved": [
+        "CPP",
+        "CppBind",
+        "cpp_binding_initialize",
+        "activate CppBind"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "初始化内部要做GOOGLE_PROTOBUF_VERIFY_VERSION检查，然后调用libnimdemo_initialize。注意这里CppBind是自调用。",
+      "elements_involved": [
+        "CppBind",
+        "GOOGLE_PROTOBUF_VERIFY_VERSION",
+        "libnimdemo_initialize",
+        "NimReq",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了自调用验证和向NimReq的初始化消息，随后关闭CppBind的激活状态。",
+      "elements_involved": [
+        "CppBind",
+        "NimReq",
+        "GOOGLE_PROTOBUF_VERIFY_VERSION",
+        "libnimdemo_initialize",
+        "deactivate CppBind"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是应用层的init调用，传入HealthTech_HIPAA_Vault。这是实际的业务初始化。",
+      "elements_involved": [
+        "CPP",
+        "CppBind",
+        "init",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画：CPP→CppBind的init调用，重新激活CppBind。",
+      "elements_involved": [
+        "CPP",
+        "CppBind",
+        "init",
+        "activate CppBind",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CppBind要调用asyncApiCall发给NimReq，参数是HealthTech_PatientRecords。这里需要加个注释说明是入队初始化请求。",
+      "elements_involved": [
+        "CppBind",
+        "NimReq",
+        "asyncApiCall",
+        "HealthTech_PatientRecords",
+        "Enqueue init request"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了asyncApiCall消息，并在NimReq右侧加了Note标注Enqueue init request。",
+      "elements_involved": [
+        "CppBind",
+        "NimReq",
+        "asyncApiCall",
+        "Note right of NimReq",
+        "Enqueue init request"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "async调用要立即返回，所以CppBind要回返CPP，然后CppBind生命周期结束。",
+      "elements_involved": [
+        "CppBind",
+        "CPP",
+        "return",
+        "deactivate CppBind"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加虚线返回和CppBind去激活。",
+      "elements_involved": [
+        "CppBind",
+        "CPP",
+        "return",
+        "deactivate CppBind"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在NimReq要把请求推入队列，参数是HealthTech_EMR_Sync。然后激活NimReq进入工作循环。",
+      "elements_involved": [
+        "NimReq",
+        "Qreq",
+        "push",
+        "HealthTech_EMR_Sync",
+        "activate NimReq"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了NimReq→Qreq的push消息，激活NimReq，并标注worker loop自调用。",
+      "elements_involved": [
+        "NimReq",
+        "Qreq",
+        "push",
+        "HealthTech_EMR_Sync",
+        "activate NimReq",
+        "worker loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "队列弹出用虚线箭头，参数HealthTech_PatientRecords。然后NimReq自调用handle init处理。",
+      "elements_involved": [
+        "Qreq",
+        "NimReq",
+        "pop",
+        "HealthTech_PatientRecords",
+        "handle init"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已画Qreq--NimReq的pop虚线返回，以及handle init自处理。",
+      "elements_involved": [
+        "Qreq",
+        "NimReq",
+        "pop",
+        "HealthTech_PatientRecords",
+        "handle init"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "初始化完成后，NimReq要向NimEvt发送seed demo message，参数HealthTech_HIPAA_Vault，用于演示事件机制。",
+      "elements_involved": [
+        "NimReq",
+        "NimEvt",
+        "seed demo message",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加NimReq到NimEvt的seed demo message消息。",
+      "elements_involved": [
+        "NimReq",
+        "NimEvt",
+        "seed demo message",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在进入主业务场景：CPP发送实际消息。调用send，参数HealthTech_LabAnalyzer。",
+      "elements_involved": [
+        "CPP",
+        "CppBind",
+        "send",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了CPP→CppBind的send调用，激活CppBind。",
+      "elements_involved": [
+        "CPP",
+        "CppBind",
+        "send",
+        "HealthTech_LabAnalyzer",
+        "activate CppBind"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CppBind内部要做SerializeToArray和allocateArgBuffer，然后调用asyncApiCall发给NimReq，参数换成HealthTech_DiagnosticEngine。",
+      "elements_involved": [
+        "CppBind",
+        "SerializeToArray",
+        "allocateArgBuffer",
+        "asyncApiCall",
+        "NimReq",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加CppBind自调用序列化+缓冲区分配，以及向NimReq的asyncApiCall。",
+      "elements_involved": [
+        "CppBind",
+        "SerializeToArray",
+        "allocateArgBuffer",
+        "NimReq",
+        "asyncApiCall",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "同样是异步，要立即返回CPP，CppBind去激活。",
+      "elements_involved": [
+        "CppBind",
+        "CPP",
+        "return",
+        "deactivate CppBind"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了虚线返回和CppBind去激活。",
+      "elements_involved": [
+        "CppBind",
+        "CPP",
+        "return",
+        "deactivate CppBind"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "NimReq继续push到队列，还是HealthTech_EMR_Sync。然后处理这个send请求。",
+      "elements_involved": [
+        "NimReq",
+        "Qreq",
+        "push",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加push消息。接下来画pop和处理？",
+      "elements_involved": [
+        "NimReq",
+        "Qreq",
+        "push",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Qreq虚线pop返回HealthTech_EMR_Sync，NimReq解析WakuMessage，然后触发事件。",
+      "elements_involved": [
+        "Qreq",
+        "NimReq",
+        "pop",
+        "HealthTech_EMR_Sync",
+        "parse WakuMessage"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了pop虚线、解析处理，以及emit OnReceivedEvent发给NimEvt，参数HealthTech_EMR_Sync。",
+      "elements_involved": [
+        "Qreq",
+        "NimReq",
+        "pop",
+        "HealthTech_EMR_Sync",
+        "parse WakuMessage",
+        "emit OnReceivedEvent",
+        "NimEvt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "事件线程这边，NimEvt要push到EventQueue，参数HealthTech_DiagnosticEngine，然后激活NimEvt进入dispatcher loop。",
+      "elements_involved": [
+        "NimEvt",
+        "Qevt",
+        "push",
+        "HealthTech_DiagnosticEngine",
+        "activate NimEvt",
+        "dispatcher loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加NimEvt→Qevt的push，激活NimEvt，标注dispatcher loop。",
+      "elements_involved": [
+        "NimEvt",
+        "Qevt",
+        "push",
+        "HealthTech_DiagnosticEngine",
+        "activate NimEvt",
+        "dispatcher loop"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Qevt虚线pop返回HealthTech_PatientRecords，然后NimEvt调用dispatchEvent回传给CppBind。",
+      "elements_involved": [
+        "Qevt",
+        "NimEvt",
+        "pop",
+        "HealthTech_PatientRecords",
+        "dispatchEvent",
+        "CppBind"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了pop虚线和dispatchEvent消息，NimEvt去激活。",
+      "elements_involved": [
+        "Qevt",
+        "NimEvt",
+        "pop",
+        "HealthTech_PatientRecords",
+        "dispatchEvent",
+        "CppBind",
+        "deactivate NimEvt"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CppBind内部调用EventDispatcher::dispatch，参数HealthTech_PatientRecords，然后invoke registered handler回调给CPP，参数HealthTech_LabAnalyzer。",
+      "elements_involved": [
+        "CppBind",
+        "EventDispatcher::dispatch",
+        "HealthTech_PatientRecords",
+        "invoke registered handler",
+        "CPP",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加CppBind自调用dispatch，以及向CPP的handler调用。",
+      "elements_involved": [
+        "CppBind",
+        "EventDispatcher::dispatch",
+        "HealthTech_PatientRecords",
+        "CPP",
+        "invoke registered handler",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后清理，deallocateArgBuffer，参数HealthTech_DiagnosticEngine。",
+      "elements_involved": [
+        "CppBind",
+        "deallocateArgBuffer",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "添加了deallocateArgBuffer自调用。事件流程完整了。",
+      "elements_involved": [
+        "CppBind",
+        "deallocateArgBuffer",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "补充销毁流程。CPP调用cpp_binding_teardown，参数HealthTech_DiagnosticEngine。",
+      "elements_involved": [
+        "CPP",
+        "CppBind",
+        "cpp_binding_teardown",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加teardown调用，激活CppBind。",
+      "elements_involved": [
+        "CPP",
+        "CppBind",
+        "cpp_binding_teardown",
+        "HealthTech_DiagnosticEngine",
+        "activate CppBind"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "CppBind调用libnimdemo_teardown传给NimReq，参数HealthTech_PatientRecords。",
+      "elements_involved": [
+        "CppBind",
+        "NimReq",
+        "libnimdemo_teardown",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加libnimdemo_teardown消息。",
+      "elements_involved": [
+        "CppBind",
+        "NimReq",
+        "libnimdemo_teardown",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "最后google::protobuf::ShutdownProtobufLibrary，参数HealthTech_LabAnalyzer，然后CppBind去激活。",
+      "elements_involved": [
+        "CppBind",
+        "google::protobuf::ShutdownProtobufLibrary",
+        "HealthTech_LabAnalyzer",
+        "deactivate CppBind"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加ShutdownProtobufLibrary自调用和CppBind去激活。整个生命周期完整了。",
+      "elements_involved": [
+        "CppBind",
+        "google::protobuf::ShutdownProtobufLibrary",
+        "HealthTech_LabAnalyzer",
+        "deactivate CppBind"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下，启动时的libnimdemo_initialize参数应该是HealthTech_LabAnalyzer，销毁时的libnimdemo_teardown是HealthTech_PatientRecords，对吗？",
+      "elements_involved": [
+        "libnimdemo_initialize",
+        "HealthTech_LabAnalyzer",
+        "libnimdemo_teardown",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。初始化用LabAnalyzer，销毁用PatientRecords，符合代码逻辑。",
+      "elements_involved": [
+        "libnimdemo_initialize",
+        "HealthTech_LabAnalyzer",
+        "libnimdemo_teardown",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再看一下asyncApiCall的参数：第一次init是HealthTech_PatientRecords，第二次send是HealthTech_DiagnosticEngine，对吗？",
+      "elements_involved": [
+        "asyncApiCall",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "发现个问题，我检查一下...第一次asyncApiCall确实是HealthTech_PatientRecords，第二次是HealthTech_DiagnosticEngine。但让我再核对send流程的push参数——应该是HealthTech_EMR_Sync，不是DiagnosticEngine。之前第27步是对的。",
+      "elements_involved": [
+        "asyncApiCall",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine",
+        "push",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "push到队列的都是HealthTech_EMR_Sync，只有asyncApiCall的参数不同。图是对的。整个序列图覆盖了从初始化、异步请求处理、事件分发到销毁的完整流程，HIPAA合规的数据流也清晰了。",
+      "elements_involved": [
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_EMR_Sync",
+        "HealthTech_PatientRecords",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 49,
+    "repair_count": 1,
+    "grounding_acts_count": 49,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "license": "mit",
+  "repaired_at": "2026-03-11T04:48:31Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:14Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:14Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 92585.5303,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 49
+  }
+}

@@ -1,0 +1,665 @@
+{
+  "id": "aug_ot_stateDiagram_00025_Log_9",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/seanchatmangpt/erlmcp/blob/1356e12d778f4f4908360bdb3af445db8caff50d/docs/diagrams/protocol/session-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "seanchatmangpt/erlmcp",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Logistics_DeliveryRoute] --> Initializing: start_link(Logistics_Warehouse)\n\n    state Initializing {Logistics_Warehouse] --> LoadConfig\n        LoadConfig --> InitTransport\n        InitTransport --> EstablishConnection\n        EstablishConnection --> SendInitialize\n        SendInitialize --> WaitForInitialized\n        WaitForInitialized --> [Logistics_TrackingNumber]\n    }\n\n    Initializing --> Connected: initialized received\n\n    state Connected {Logistics_Warehouse] --> Active\n\n        Active --> ResourceOperations: list/read/subscribe\n        Active --> ToolOperations: call_tool\n        Active --> PromptOperations: list/get\n\n        ResourceOperations --> Active\n        ToolOperations --> Active\n        PromptOperations --> Active\n\n        Active --> Subscribing: subscribe_resource\n        Subscribing --> Active: subscription_confirmed\n    }\n\n    Connected --> Paused: pause_requested\n    Paused --> Connected: resume_requested\n\n    Connected --> Reconnecting: transport_error\n    Reconnecting --> Connected: reconnect_success\n    Reconnecting --> Failed: reconnect_failed(Logistics_FleetManagement)\n\n    Connected --> GracefulShutdown: shutdown notification\n    GracefulShutdown --> [Logistics_StockLevel]: cleanup_complete\n\n    Connected --> AbnormalShutdown: critical_error\n    AbnormalShutdown --> [Logistics_TrackingNumber]: cleanup_complete\n\n    %% Session Backend Transitions\n    note right of Connected\n        Session Persistence:\n        - ETS: In-memory\n        - DETS: Disk-based\n        - Mnesia: Cluster\n    end note\n\n    %% Reconnection Strategy\n    state Reconnecting {Logistics_DeliveryRoute] --> Backoff\n        Backoff --> ReconnectAttempt\n        ReconnectAttempt --> Success\n        ReconnectAttempt --> Failure\n\n        Success --> [Logistics_StockLevel]\n        Failure --> IncrementRetryCount\n        IncrementRetryCount --> CheckMaxRetries\n\n        CheckMaxRetries --> Backoff: below_max\n        CheckMaxRetries --> [Logistics_FleetManagement]: exceeded_max\n    }\n\n    %% State Transition Details\n    Connected --> SessionValidation: periodic_health_check\n    SessionValidation --> Connected: healthy\n    SessionValidation --> Failed: unhealthy(Logistics_DeliveryRoute)\n\n    %% Session Restoration (Logistics_StockLevel)\n    note right of Reconnecting\n        Failover Modes:\n        - Local: Restart process\n        - Remote: Mnesia replica\n        - Recovery: Load from DETS\n    end note\n\n    %% Subscription Management\n    state Subscribing {Logistics_FleetManagement] --> RegisterSubscription\n        RegisterSubscription --> SetupWatcher\n        SetupWatcher --> ConfirmSubscription\n        ConfirmSubscription --> [Logistics_StockLevel]\n    }\n\n    %% Cleanup on Shutdown\n    state GracefulShutdown {Logistics_TrackingNumber] --> UnsubscribeResources\n        UnsubscribeResources --> DrainPendingRequests\n        DrainPendingRequests --> CloseTransport\n        CloseTransport --> PersistSession\n        PersistSession --> TerminateProcess\n        TerminateProcess --> [Logistics_DeliveryRoute]\n    }\n\n    %% Error States\n    state AbnormalShutdown {Logistics_StockLevel] --> LogError\n        LogError --> PersistCrashDump\n        PersistCrashDump --> NotifyDependents\n        NotifyDependents --> TerminateProcess\n        TerminateProcess --> [Logistics_StockLevel]\n    }\n\n    %% Session State Fields\n    note right of Connected\n        Session State:\n        - session_id: UUID\n        - transport_pid: PID\n        - pending_requests: map(Logistics_StockLevel)\n        - subscriptions: map(Logistics_DeliveryRoute)\n        - capabilities: #capabilities{Logistics_StockLevel}\n        - last_activity: timestamp(Logistics_TrackingNumber)\n        - backend: ets | dets | mnesia\n    end note\n\n    %% Activity Monitoring\n    Connected --> IdleTimeout: no_activity(Logistics_FleetManagement)\n    IdleTimeout --> [Logistics_DeliveryRoute]: session_expired\n\n    %% Rate Limiting\n    Connected --> RateLimited: request_rate_exceeded\n    RateLimited --> Connected: backoff_complete\n    RateLimited --> Failed: rate_limit_persistent\n\n    %% Resource Watcher Lifecycle\n    state ResourceOperations {Logistics_FleetManagement] --> Watching\n        Watching --> NotificationReceived: resource_changed\n        NotificationReceived --> DeliverNotification\n        DeliverNotification --> Watching\n    }\n\n    %% Tool Execution Lifecycle\n    state ToolOperations {Logistics_DeliveryRoute] --> Executing\n        Executing --> InProgress: long_running_op\n        InProgress --> ProgressUpdate: send_progress\n        ProgressUpdate --> InProgress\n        InProgress --> Complete: finished\n        Complete --> [Logistics_TrackingNumber]\n    }\n\n    %% Session Backend Selection\n    note left of Initializing\n        Backend Selection:\n        {Logistics_DeliveryRoute}\n        - Fastest: O(Logistics_Warehouse) access\n        - Volatile: Lost on crash\n\n        {Logistics_Warehouse}\n        - Durable: Disk persistence\n        - Slower: I/O overhead\n\n        {Logistics_StockLevel}\n        - Distributed: Cluster sync\n        - CAP: Consistency trade-offs\n    end note\n\n    %% Health Check States\n    Connected --> HealthCheck: periodic_timer\n    HealthCheck --> Connected: all_systems_go\n    HealthCheck --> Degraded: subsystem_failure\n    Degraded --> Connected: recovery_complete\n    Degraded --> Failed: recovery_failed\n\n    %% Session Restoration Flow\n    note right of Reconnecting\n        Restoration Priority:\n        1. Restore subscriptions\n        2. Replay pending requests\n        3. Restore capabilities\n        4. Resume monitoring\n    end note",
+  "content_size": 5160,
+  "collected_at": "2026-02-06T10:36:55.656398",
+  "compilation_status": "success",
+  "license": "apache-2.0",
+  "license_name": "Apache License 2.0",
+  "license_url": "https://api.github.com/licenses/apache-2.0",
+  "repo_stars": 0,
+  "repo_forks": 0,
+  "repo_owner": "seanchatmangpt",
+  "repo_name": "erlmcp",
+  "repo_description": "Model Context Protocol (MCP) SDK for Erlang",
+  "repo_language": "Erlang",
+  "repo_topics": [],
+  "repo_created_at": "2025-08-26T03:19:12Z",
+  "repo_updated_at": "2026-02-05T01:44:49Z",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Logistics",
+  "seed_id": "ot_stateDiagram_00025",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为物流系统画一个状态图，核心是DeliveryRoute的生命周期管理。从Warehouse启动开始，到最终的各种终止状态。",
+      "elements_involved": [
+        "Logistics_DeliveryRoute",
+        "Logistics_Warehouse"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。所以起点是Logistics_Warehouse触发start_link，然后进入Initializing状态？这个初始化阶段需要细化吗？",
+      "elements_involved": [
+        "Initializing",
+        "start_link"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要细化。Initializing里面要有LoadConfig、InitTransport、EstablishConnection这几个步骤，最后发送初始化消息并等待确认，拿到TrackingNumber才算完成。",
+      "elements_involved": [
+        "LoadConfig",
+        "InitTransport",
+        "EstablishConnection",
+        "SendInitialize",
+        "WaitForInitialized",
+        "Logistics_TrackingNumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Initializing复合状态已经画好了，包含这五个内部步骤。当收到initialized消息后，应该进入Connected状态对吧？",
+      "elements_involved": [
+        "Initializing",
+        "Connected",
+        "initialized received"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Connected是核心运行状态。里面要有Active状态，然后Active分出三条操作线：ResourceOperations、ToolOperations、PromptOperations。",
+      "elements_involved": [
+        "Connected",
+        "Active",
+        "ResourceOperations",
+        "ToolOperations",
+        "PromptOperations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这三条操作线都是Active的子状态吗？还是并行的行为？",
+      "elements_involved": [
+        "Active",
+        "ResourceOperations",
+        "ToolOperations",
+        "PromptOperations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是并行的行为模式。Active可以进入任意一种操作，操作完成后都回到Active。另外还要有个Subscribing状态，专门处理资源订阅。",
+      "elements_involved": [
+        "Active",
+        "ResourceOperations",
+        "ToolOperations",
+        "PromptOperations",
+        "Subscribing"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Connected复合状态已添加，包含Active和Subscribing。三条操作线都画了双向箭头回到Active，Subscribing确认后也回到Active。",
+      "elements_involved": [
+        "Connected",
+        "Active",
+        "Subscribing",
+        "subscription_confirmed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Connected状态还需要能暂停和恢复。pause_requested转到Paused，resume_requested再回到Connected。",
+      "elements_involved": [
+        "Connected",
+        "Paused",
+        "pause_requested",
+        "resume_requested"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "暂停机制加上了。那网络异常怎么处理？应该有重连逻辑吧。",
+      "elements_involved": [
+        "Connected",
+        "Paused"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，transport_error触发Reconnecting状态。重连成功回Connected，失败则进入Failed状态，并记录到FleetManagement。",
+      "elements_involved": [
+        "Connected",
+        "Reconnecting",
+        "Failed",
+        "transport_error",
+        "reconnect_success",
+        "reconnect_failed",
+        "Logistics_FleetManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "Reconnecting应该也是个复合状态吧？需要包含退避策略和重试计数。",
+      "elements_involved": [
+        "Reconnecting",
+        "Backoff",
+        "CheckMaxRetries"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。Backoff之后尝试重连，成功的话到StockLevel，失败则增加计数，检查是否超过最大重试次数。没超过继续退避，超过了就进Failed。",
+      "elements_involved": [
+        "Reconnecting",
+        "Backoff",
+        "ReconnectAttempt",
+        "Success",
+        "Failure",
+        "IncrementRetryCount",
+        "CheckMaxRetries",
+        "Logistics_StockLevel",
+        "Logistics_FleetManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Reconnecting复合状态已完成，包含完整的退避和重试逻辑。我注意到有两个终止路径，都用方括号标注了。",
+      "elements_involved": [
+        "Reconnecting",
+        "Success",
+        "CheckMaxRetries"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要两种关闭方式。GracefulShutdown是正常关闭，AbnormalShutdown是异常关闭。前者从shutdown notification触发，后者从critical_error触发。",
+      "elements_involved": [
+        "Connected",
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "shutdown notification",
+        "critical_error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "这两个关闭状态都需要细化内部步骤吗？",
+      "elements_involved": [
+        "GracefulShutdown",
+        "AbnormalShutdown"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "都需要。GracefulShutdown要依次执行：取消订阅、排空请求、关闭传输、持久化会话、终止进程，最后回到DeliveryRoute。AbnormalShutdown则是记录错误、保存崩溃转储、通知依赖方、终止进程，回到StockLevel。",
+      "elements_involved": [
+        "GracefulShutdown",
+        "UnsubscribeResources",
+        "DrainPendingRequests",
+        "CloseTransport",
+        "PersistSession",
+        "TerminateProcess",
+        "Logistics_DeliveryRoute",
+        "AbnormalShutdown",
+        "LogError",
+        "PersistCrashDump",
+        "NotifyDependents",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两种关闭流程都画好了。另外我想在Connected旁边加个注释，说明会话持久化的三种后端：ETS内存、DETS磁盘、Mnesia集群。",
+      "elements_involved": [
+        "Connected",
+        "ETS",
+        "DETS",
+        "Mnesia"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个注释很重要。Initializer那边也加一个后端选择的注释，对比三种方案的优缺点。",
+      "elements_involved": [
+        "Initializing",
+        "Logistics_DeliveryRoute",
+        "Logistics_Warehouse",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Initializer左侧的注释已添加，说明了DeliveryRoute最快但易失、Warehouse持久但有IO开销、StockLevel分布式但有CAP权衡。",
+      "elements_involved": [
+        "Initializing",
+        "Backend Selection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还需要健康检查机制。Connected可以进入SessionValidation，健康就保持，不健康且无法恢复就进Failed。",
+      "elements_involved": [
+        "Connected",
+        "SessionValidation",
+        "periodic_health_check",
+        "healthy",
+        "unhealthy",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "健康检查加上了。Reconnecting旁边也加个注释说明故障恢复模式吧？",
+      "elements_involved": [
+        "SessionValidation",
+        "Reconnecting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，加上Failover Modes：本地重启进程、远程Mnesia副本、从DETS恢复。还有恢复优先级：先恢复订阅，再重放请求，然后恢复能力，最后恢复监控。",
+      "elements_involved": [
+        "Reconnecting",
+        "Local",
+        "Remote",
+        "Recovery",
+        "Restoration Priority"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Reconnecting的两个注释都加好了。Subscribing状态需要细化吗？",
+      "elements_involved": [
+        "Subscribing",
+        "Reconnecting"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，Subscribing是个复合状态。从FleetManagement开始，注册订阅、设置观察者、确认订阅，最后到StockLevel。",
+      "elements_involved": [
+        "Subscribing",
+        "Logistics_FleetManagement",
+        "RegisterSubscription",
+        "SetupWatcher",
+        "ConfirmSubscription",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Subscribing复合状态已完成。现在ResourceOperations也需要细化内部流程吧？",
+      "elements_involved": [
+        "Subscribing",
+        "ResourceOperations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，ResourceOperations里要有Watching状态，资源变化时收到通知，然后投递通知，再回到Watching。这是从FleetManagement开始的。",
+      "elements_involved": [
+        "ResourceOperations",
+        "Logistics_FleetManagement",
+        "Watching",
+        "NotificationReceived",
+        "resource_changed",
+        "DeliverNotification"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ResourceOperations的观察者生命周期已添加。ToolOperations也需要类似的细化吗？",
+      "elements_involved": [
+        "ResourceOperations",
+        "Watching"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ToolOperations更复杂一些。从DeliveryRoute开始执行，长操作进入InProgress，可以发送进度更新，最终完成后到TrackingNumber。",
+      "elements_involved": [
+        "ToolOperations",
+        "Logistics_DeliveryRoute",
+        "Executing",
+        "InProgress",
+        "long_running_op",
+        "ProgressUpdate",
+        "send_progress",
+        "Complete",
+        "Logistics_TrackingNumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ToolOperations的工具执行生命周期已完成。还需要其他机制吗？",
+      "elements_involved": [
+        "ToolOperations",
+        "Executing",
+        "InProgress",
+        "Complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "加上空闲超时和速率限制。Connected长时间无活动（FleetManagement判定）进入IdleTimeout，会话过期回到DeliveryRoute。请求速率超限进入RateLimited，退避完成回Connected，持续超限则进Failed。",
+      "elements_involved": [
+        "Connected",
+        "IdleTimeout",
+        "no_activity",
+        "Logistics_FleetManagement",
+        "session_expired",
+        "RateLimited",
+        "request_rate_exceeded",
+        "backoff_complete",
+        "rate_limit_persistent"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "空闲超时和速率限制机制已添加。Connected旁边再加个会话状态字段的注释？",
+      "elements_involved": [
+        "Connected",
+        "IdleTimeout",
+        "RateLimited"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，包含session_id、transport_pid、pending_requests（StockLevel）、subscriptions（DeliveryRoute）、capabilities、last_activity（TrackingNumber）、backend类型。",
+      "elements_involved": [
+        "Connected",
+        "session_id",
+        "transport_pid",
+        "pending_requests",
+        "subscriptions",
+        "capabilities",
+        "last_activity",
+        "backend",
+        "Logistics_StockLevel",
+        "Logistics_DeliveryRoute",
+        "Logistics_TrackingNumber"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "会话状态注释已添加。还需要其他健康相关状态吗？",
+      "elements_involved": [
+        "Connected",
+        "Session State"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "再加一个更细的健康检查。periodic_timer触发HealthCheck，全部正常保持Connected，子系统故障进入Degraded，恢复完成回Connected，恢复失败进Failed。",
+      "elements_involved": [
+        "Connected",
+        "HealthCheck",
+        "periodic_timer",
+        "all_systems_go",
+        "Degraded",
+        "subsystem_failure",
+        "recovery_complete",
+        "recovery_failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Degraded状态和完整的健康检查流程已添加。图看起来比较完整了，需要检查什么吗？",
+      "elements_involved": [
+        "Connected",
+        "HealthCheck",
+        "Degraded",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查一下GracefulShutdown的终止状态，应该是回到DeliveryRoute对吧？",
+      "elements_involved": [
+        "GracefulShutdown",
+        "Logistics_DeliveryRoute"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确认一下，GracefulShutdown的TerminateProcess之后是回到DeliveryRoute，但AbnormalShutdown是回到StockLevel，这样设计对吗？",
+      "elements_involved": [
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "Logistics_DeliveryRoute",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的，正常关闭可以重新调度路线，异常关闭需要重新盘点库存。设计意图就是这样。",
+      "elements_involved": [
+        "GracefulShutdown",
+        "AbnormalShutdown",
+        "Logistics_DeliveryRoute",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Reconnecting的Success终点是StockLevel，但重连成功应该恢复运行，这个设计是？",
+      "elements_involved": [
+        "Reconnecting",
+        "Success",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "这里需要修正。Success之后应该回到Connected，不是直接到StockLevel。让我重新确认一下流程。",
+      "elements_involved": [
+        "Reconnecting",
+        "Success",
+        "Connected",
+        "Logistics_StockLevel"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已修正，Reconnecting的Success现在指向Connected。另外ReconnectAttempt的Failure到IncrementRetryCount这条线也确认无误。",
+      "elements_involved": [
+        "Reconnecting",
+        "Success",
+        "Connected",
+        "ReconnectAttempt",
+        "Failure",
+        "IncrementRetryCount"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "SessionValidation的unhealthy transition标注了Logistics_DeliveryRoute，这是参数还是目标状态？",
+      "elements_involved": [
+        "SessionValidation",
+        "unhealthy",
+        "Logistics_DeliveryRoute",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "这是参数标注，表示不健康状态会记录到DeliveryRoute，实际目标是Failed状态。和reconnect_failed(Logistics_FleetManagement)的标注方式一致。",
+      "elements_involved": [
+        "SessionValidation",
+        "unhealthy",
+        "Logistics_DeliveryRoute",
+        "Failed",
+        "reconnect_failed",
+        "Logistics_FleetManagement"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "明白了，这样标注很清晰。图基本完成，涵盖了DeliveryRoute从Warehouse初始化、Connected运行、各种异常处理、到最终关闭的完整生命周期，以及FleetManagement和StockLevel的关联。",
+      "elements_involved": [
+        "Logistics_DeliveryRoute",
+        "Logistics_Warehouse",
+        "Connected",
+        "Logistics_FleetManagement",
+        "Logistics_StockLevel",
+        "Initializing",
+        "Reconnecting",
+        "GracefulShutdown",
+        "AbnormalShutdown"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 45,
+    "repair_count": 2,
+    "grounding_acts_count": 45,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 79846.5273,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 45
+  }
+}

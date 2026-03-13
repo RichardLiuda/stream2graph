@@ -1,0 +1,593 @@
+{
+  "id": "gl_packet-beta_00432",
+  "source": "gitlab",
+  "source_url": "https://github.com/sean-galloway/RTLDesignSherpa/blob/47f8a16641658f570a69c3af3c9724b29ea39187/docs/markdown/assets/RTLAmba/axi_monitor_reporter.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "sean-galloway/RTLDesignSherpa",
+  "diagram_type": "packet-beta",
+  "code": "%%{init: {'theme': 'neutral', 'themeVariables': { 'fontSize': '14px'}}}%%\nflowchart LR\n    subgraph Events[\"Event Inputs\"]\n        COMPL[\"event_complete\"]\n        ERR[\"event_error\"]\n        TMO[\"event_timeout\"]\n        THRESH[\"event_threshold\"]\n        PERF[\"event_perf\"]\n    end\n\n    subgraph Config[\"Configuration\"]\n        CFG[\"cfg_*_enable\\nUNIT_ID, AGENT_ID\"]\n    end\n\n    subgraph axi_monitor_reporter[\"axi_monitor_reporter\"]\n        subgraph Priority[\"Event Priority\"]\n            PRI[\"Error > Timeout >\\nThreshold > Compl > Perf\"]\n        end\n\n        subgraph Format[\"Packet Formatter\"]\n            FMT[\"64-bit packet:\\n[63:60] type\\n[59:56] unit_id\\n[55:48] agent_id\\n[47:0] payload\"]\n        end\n\n        subgraph Queue[\"Output Queue\"]\n            QUE[\"Event FIFO\\nBackpressure handling\"]\n        end\n    end\n\n    subgraph Output[\"Monitor Bus\"]\n        MONBUS[\"monbus_packet[63:0]\\nmonbus_valid\\nmonbus_ready\"]\n    end\n\n    Events --> Priority\n    Config --> Format\n    Priority --> Format\n    Format --> Queue\n    Queue --> MONBUS\n",
+  "content_size": 1043,
+  "collected_at": "2026-02-06T14:09:36.490826",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要给AXI Monitor设计一个reporter模块，核心是把各种事件打包成统一的64-bit packet输出到monitor bus上。你先理解一下整体架构？",
+      "elements_involved": [
+        "axi_monitor_reporter",
+        "monbus_packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，所以这个reporter要接收多种事件输入，然后格式化输出。事件类型大概有哪些？是complete、error这些吗？",
+      "elements_involved": [
+        "event_complete",
+        "event_error",
+        "Events"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，事件输入这块我梳理了五种：event_complete、event_error、event_timeout、event_threshold、event_perf。前三个是功能性的，后两个是诊断性的。",
+      "elements_involved": [
+        "event_complete",
+        "event_error",
+        "event_timeout",
+        "event_threshold",
+        "event_perf",
+        "Events"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好，我把Events做成一个子图，里面放这五个事件节点。接下来这些事件怎么处理优先级？",
+      "elements_involved": [
+        "Events",
+        "event_complete",
+        "event_error",
+        "event_timeout",
+        "event_threshold",
+        "event_perf"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "优先级很关键，error和timeout必须最高，threshold次之，complete和perf最低。我打算在reporter内部放一个Priority模块来做仲裁。",
+      "elements_involved": [
+        "Priority",
+        "Error",
+        "Timeout",
+        "Threshold",
+        "Compl",
+        "Perf"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Priority是子图还是独立节点？还有配置信息从哪来，比如unit_id和agent_id？",
+      "elements_involved": [
+        "Priority",
+        "CFG",
+        "UNIT_ID",
+        "AGENT_ID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Priority做成子图，里面用PRI节点标注优先级顺序。配置单独一个Config子图，包含cfg_*_enable和那两个ID字段。",
+      "elements_involved": [
+        "Priority",
+        "PRI",
+        "Config",
+        "CFG",
+        "UNIT_ID",
+        "AGENT_ID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Config子图画好了，标注了cfg_*_enable和UNIT_ID、AGENT_ID。现在看packet格式怎么设计？",
+      "elements_involved": [
+        "Config",
+        "CFG",
+        "UNIT_ID",
+        "AGENT_ID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Packet用64-bit，高4位是type，接下来4位unit_id，8位agent_id，低48位payload。这个Format模块要负责把事件和配置信息编码进去。",
+      "elements_involved": [
+        "Format",
+        "FMT",
+        "64-bit packet",
+        "type",
+        "unit_id",
+        "agent_id",
+        "payload"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Format也是子图？那Priority和Config都要连到Format对吧，一个提供事件类型，一个提供ID信息？",
+      "elements_involved": [
+        "Format",
+        "Priority",
+        "Config",
+        "PRI",
+        "CFG"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Events到Priority，Priority和Config都连到Format。Format输出到Queue做缓冲。",
+      "elements_involved": [
+        "Events",
+        "Priority",
+        "Format",
+        "Config",
+        "Queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Format子图完成了，标注了[63:60] type、[59:56] unit_id、[55:48] agent_id、[47:0] payload。Queue怎么设计？",
+      "elements_involved": [
+        "Format",
+        "FMT",
+        "type",
+        "unit_id",
+        "agent_id",
+        "payload"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Queue是Event FIFO，要有backpressure处理，下游ready为低时停住。最后输出到Monitor Bus。",
+      "elements_involved": [
+        "Queue",
+        "QUE",
+        "Event FIFO",
+        "Backpressure handling",
+        "Monitor Bus",
+        "MONBUS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Monitor Bus具体信号有哪些？valid/ready握手？",
+      "elements_involved": [
+        "MONBUS",
+        "monbus_valid",
+        "monbus_ready"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，monbus_packet[63:0]、monbus_valid、monbus_ready，标准的valid-ready握手。",
+      "elements_involved": [
+        "MONBUS",
+        "monbus_packet",
+        "monbus_valid",
+        "monbus_ready"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Output子图画好了，包含monbus_packet[63:0]、monbus_valid、monbus_ready。现在连线关系：Queue到MONBUS，Format到Queue，对吗？",
+      "elements_involved": [
+        "Output",
+        "MONBUS",
+        "Queue",
+        "Format"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，还有Events到Priority，Priority到Format，Config到Format。总共五条连接。",
+      "elements_involved": [
+        "Events",
+        "Priority",
+        "Config",
+        "Format",
+        "Queue",
+        "MONBUS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "所有连线画完了。我检查一下：Events--Priority，Config--Format，Priority--Format，Format--Queue，Queue--MONBUS。结构完整。",
+      "elements_involved": [
+        "Events",
+        "Priority",
+        "Config",
+        "Format",
+        "Queue",
+        "MONBUS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，Priority到Format的箭头方向对吗？Priority只是仲裁出哪个事件，实际数据流是Events经过Priority再到Format？",
+      "elements_involved": [
+        "Priority",
+        "Format",
+        "Events"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "你说得对，我重新理一下：Events进入Priority做仲裁，仲裁结果连到Format，Config也连到Format提供ID信息。这样逻辑通顺。",
+      "elements_involved": [
+        "Events",
+        "Priority",
+        "Format",
+        "Config"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，这样清晰了。Priority输出的是选中的事件类型，Format把它和Config里的ID打包成64-bit packet。",
+      "elements_involved": [
+        "Priority",
+        "Format",
+        "Config",
+        "64-bit packet"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "那Priority子图内部要体现仲裁顺序吗？还是只写个PRI节点？",
+      "elements_involved": [
+        "Priority",
+        "PRI"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "PRI节点里写上顺序：Error、Timeout、Threshold、Compl、Perf。这样一眼能看到优先级排列。",
+      "elements_involved": [
+        "PRI",
+        "Error",
+        "Timeout",
+        "Threshold",
+        "Compl",
+        "Perf"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "改好了，PRI里标注了Error Timeout Threshold Compl Perf。Queue的FIFO深度需要标吗？",
+      "elements_involved": [
+        "PRI",
+        "Error",
+        "Timeout",
+        "Threshold",
+        "Compl",
+        "Perf",
+        "Queue",
+        "QUE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "深度先不标具体数字，写Event FIFO和Backpressure handling就够了，实现时再定。",
+      "elements_involved": [
+        "Queue",
+        "QUE",
+        "Event FIFO",
+        "Backpressure handling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白。现在整体结构：Events子图、Config子图、axi_monitor_reporter大子图（里面包含Priority、Format、Queue）、Output子图。",
+      "elements_involved": [
+        "Events",
+        "Config",
+        "axi_monitor_reporter",
+        "Priority",
+        "Format",
+        "Queue",
+        "Output"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "axi_monitor_reporter这个名字要不要简化？或者保持全称？",
+      "elements_involved": [
+        "axi_monitor_reporter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "全称比较好，和代码模块名一致。不过显示会不会太长？",
+      "elements_involved": [
+        "axi_monitor_reporter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "保持全称，这是顶层模块名。子图用大括号包起来，层次清晰。",
+      "elements_involved": [
+        "axi_monitor_reporter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，顶层子图命名为axi_monitor_reporter，里面三个子图Priority、Format、Queue。连线关系再确认一遍？",
+      "elements_involved": [
+        "axi_monitor_reporter",
+        "Priority",
+        "Format",
+        "Queue"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Events指向Priority，Config指向Format，Priority指向Format，Format指向Queue，Queue指向MONBUS。",
+      "elements_involved": [
+        "Events",
+        "Priority",
+        "Config",
+        "Format",
+        "Queue",
+        "MONBUS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Config直接连Format，不经过Priority，是因为ID信息直接编码，不参与仲裁？",
+      "elements_involved": [
+        "Config",
+        "Format",
+        "Priority"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Config是静态配置，每个packet都带同样的unit_id和agent_id，不需要仲裁。",
+      "elements_involved": [
+        "Config",
+        "Format",
+        "unit_id",
+        "agent_id"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "理解。最后检查节点标签：event_complete、event_error、event_timeout、event_threshold、event_perf都带event_前缀，统一风格。",
+      "elements_involved": [
+        "event_complete",
+        "event_error",
+        "event_timeout",
+        "event_threshold",
+        "event_perf"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "cfg_*_enable的星号代表多种enable位，比如error_enable、timeout_enable这些，图里用cfg_*_enable概括。",
+      "elements_involved": [
+        "CFG",
+        "cfg_*_enable"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，CFG节点里保留cfg_*_enable和UNIT_ID、AGENT_ID的说明。还有需要调整的吗？",
+      "elements_involved": [
+        "CFG",
+        "cfg_*_enable",
+        "UNIT_ID",
+        "AGENT_ID"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "FMT的64-bit packet格式，[63:60]是type，这个type对应事件的编码，和Priority选出的类型一致。",
+      "elements_involved": [
+        "FMT",
+        "64-bit packet",
+        "type"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，type字段4位可以编码16种事件类型，现在5种足够。payload[47:0]是事件具体数据。",
+      "elements_involved": [
+        "FMT",
+        "type",
+        "payload"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "差不多完整了。最后确认一下Output子图名字用Monitor Bus，节点用MONBUS，信号标注清楚。",
+      "elements_involved": [
+        "Output",
+        "Monitor Bus",
+        "MONBUS",
+        "monbus_packet",
+        "monbus_valid",
+        "monbus_ready"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部完成。Events、Config、axi_monitor_reporter（含Priority/Format/Queue）、Output四个子图，五条数据流，所有节点和连线都按你要求实现了。",
+      "elements_involved": [
+        "Events",
+        "Config",
+        "axi_monitor_reporter",
+        "Priority",
+        "Format",
+        "Queue",
+        "Output"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，这个结构清晰表达了AXI Monitor Reporter的数据流：事件输入→优先级仲裁→配置编码→包格式化→FIFO缓冲→总线输出。可以定稿了。",
+      "elements_involved": [
+        "Events",
+        "Priority",
+        "Config",
+        "Format",
+        "Queue",
+        "Output"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 41,
+    "repair_count": 1,
+    "grounding_acts_count": 41,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 50564.4426,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 41
+  }
+}

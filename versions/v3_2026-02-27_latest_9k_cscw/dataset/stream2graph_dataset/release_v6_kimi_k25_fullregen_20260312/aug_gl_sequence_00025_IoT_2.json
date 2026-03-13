@@ -1,0 +1,193 @@
+{
+  "id": "aug_gl_sequence_00025_IoT_2",
+  "source": "augmented_real_structure",
+  "source_url": "https://gitlab.com/WarheadsSE/gitlab-diagrams",
+  "gitlab_project": "WarheadsSE/gitlab-diagrams",
+  "diagram_type": "sequence",
+  "code": "sequenceDiagram\n    Git Client->>+LoadBalancer: HTTPS GET /\n    LoadBalancer->>+NGINX: HTTP(IoT_Industrial_PLC_Logic) GET /\n    NGINX->>+Workhorse: HTTP GET /\n    Workhorse->>+Puma: HTTP GET /\n    Puma->>-Workhorse: 200 OK\n    Workhorse->>+Gitaly: gRPC Request\n\n    Gitaly->>+Workhorse: Auth Verify\n    Workhorse->>+Puma: Auth Confirm\n    Puma->>-Workhorse: Auth OK\n    Workhorse->>-Gitaly: Auth OK\n\n    Gitaly->>-Workhorse: gRPC Response\n    Workhorse->>-NGINX: HTTP Response\n    NGINX->>-LoadBalancer: HTTP Response\n    LoadBalancer->>-Git Client: HTTP Response",
+  "content_size": 542,
+  "collected_at": "2026-02-06T10:57:07.060524",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository (refer to project page)",
+  "augmentation_domain": "IoT_Industrial",
+  "seed_id": "gl_sequence_00025",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个GitLab请求流转的时序图，场景是IoT工业PLC逻辑相关的认证流程。用户从Git Client发起HTTPS请求，经过多层代理最终到达Puma，还要涉及Gitaly的gRPC认证交互。",
+      "elements_involved": [
+        "Git Client",
+        "LoadBalancer",
+        "NGINX",
+        "Workhorse",
+        "Puma",
+        "Gitaly",
+        "HTTPS",
+        "HTTP",
+        "gRPC",
+        "Auth"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这个流程有几个关键点我需要确认：第一，LoadBalancer到NGINX之间是用HTTP还是保持HTTPS？第二，Gitaly的认证是双向的还是Workhorse单向请求？第三，那个IoT_Industrial_PLC_Logic是标注在LoadBalancer到NGINX的链路上吗？",
+      "elements_involved": [
+        "LoadBalancer",
+        "NGINX",
+        "Workhorse",
+        "Gitaly",
+        "HTTPS",
+        "HTTP",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "好问题。LoadBalancer到NGINX是HTTP，但要在协议标注里带上IoT_Industrial_PLC_Logic这个业务标识。Gitaly那边是Workhorse发gRPC请求过去，Gitaly先回一个Auth Verify，然后Workhorse再告诉Puma做Auth Confirm，最后两边都返回Auth OK才算过。整个认证是串行的。",
+      "elements_involved": [
+        "LoadBalancer",
+        "NGINX",
+        "Workhorse",
+        "Gitaly",
+        "Puma",
+        "HTTP",
+        "gRPC",
+        "Auth Verify",
+        "Auth Confirm",
+        "Auth OK",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先画出主干流程：Git Client同步调用LoadBalancer，LoadBalancer同步到NGINX并标注HTTP(IoT_Industrial_PLC_Logic)，NGINX到Workhorse，Workhorse到Puma，Puma返回200 OK给Workhorse。然后Workhorse发起gRPC Request到Gitaly。",
+      "elements_involved": [
+        "Git Client",
+        "LoadBalancer",
+        "NGINX",
+        "Workhorse",
+        "Puma",
+        "Gitaly",
+        "HTTPS",
+        "HTTP",
+        "gRPC",
+        "200 OK",
+        "IoT_Industrial_PLC_Logic"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对的，但认证部分要画完整：Gitaly收到gRPC请求后，先给Workhorse回Auth Verify，然后Workhorse去Puma那边做Auth Confirm，Puma返回Auth OK给Workhorse，Workhorse再把Auth OK回给Gitaly，最后Gitaly才返回gRPC Response。这个顺序不能乱，是工业PLC场景的安全要求。",
+      "elements_involved": [
+        "Gitaly",
+        "Workhorse",
+        "Puma",
+        "gRPC",
+        "Auth Verify",
+        "Auth Confirm",
+        "Auth OK",
+        "gRPC Response"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已补充认证链：Gitaly→Workhorse（Auth Verify），Workhorse→Puma（Auth Confirm），Puma→Workhorse（Auth OK），Workhorse→Gitaly（Auth OK），然后Gitaly→Workhorse（gRPC Response）。最后是响应返回链：Workhorse→NGINX→LoadBalancer→Git Client，都是HTTP Response对吧？",
+      "elements_involved": [
+        "Gitaly",
+        "Workhorse",
+        "Puma",
+        "NGINX",
+        "LoadBalancer",
+        "Git Client",
+        "Auth Verify",
+        "Auth Confirm",
+        "Auth OK",
+        "gRPC Response",
+        "HTTP Response"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，响应都是异步返回。再检查一下：所有请求用实线箭头，响应用虚线箭头；同步调用用实心箭头，异步回应用空心箭头。认证那四步都是同步的，最后gRPC Response也是同步返回给Workhorse。",
+      "elements_involved": [
+        "Workhorse",
+        "Gitaly",
+        "Puma",
+        "NGINX",
+        "LoadBalancer",
+        "Git Client",
+        "同步调用",
+        "异步响应",
+        "实线箭头",
+        "虚线箭头"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认完毕。完整流程：Git Client通过HTTPS GET请求进入，经LoadBalancer、NGINX（带IoT_Industrial_PLC_Logic标识）、Workhorse到达Puma，Puma先回200 OK；然后Workhorse与Gitaly通过gRPC完成双向认证（Verify→Confirm→双OK），Gitaly返回gRPC Response，再逐层HTTP Response返回给客户端。这个结构符合工业PLC的认证安全要求。",
+      "elements_involved": [
+        "Git Client",
+        "LoadBalancer",
+        "NGINX",
+        "Workhorse",
+        "Puma",
+        "Gitaly",
+        "HTTPS",
+        "HTTP",
+        "gRPC",
+        "IoT_Industrial_PLC_Logic",
+        "Auth Verify",
+        "Auth Confirm",
+        "Auth OK",
+        "200 OK",
+        "gRPC Response",
+        "HTTP Response"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 33739.044,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

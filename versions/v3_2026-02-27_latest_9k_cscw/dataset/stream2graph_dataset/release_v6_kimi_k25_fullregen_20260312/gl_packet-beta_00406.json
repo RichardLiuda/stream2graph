@@ -1,0 +1,434 @@
+{
+  "id": "gl_packet-beta_00406",
+  "source": "gitlab",
+  "source_url": "https://github.com/Lucascis/discord_bot/blob/3c98f8c01a7f4e2f2e4770f9209b19c752940a0f/docs/architecture/diagrams/container.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "Lucascis/discord_bot",
+  "diagram_type": "packet-beta",
+  "code": "%% Container Diagram (C4 Model - Level 2)\n%% Purpose: Shows the internal architecture of the Discord Music Bot system\n%% Author: Discord Bot Team\n%% Last Updated: 2025-11-03\n\ngraph TB\n    %% External Users/Systems\n    User[\"👤 Discord User<br/>[Person]\"]\n    Discord[\"Discord API<br/>[External System]\"]\n    MusicAPIs[\"Music APIs<br/>[External System]<br/>YouTube, Spotify,<br/>SoundCloud\"]\n    Stripe[\"Stripe API<br/>[External System]\"]\n\n    %% Application Layer\n    subgraph DiscordBot[\"Discord Music Bot [Software System]\"]\n\n        %% Gateway Service\n        Gateway[\"Gateway Service<br/>[Node.js Container]<br/><br/>Handles Discord<br/>interactions, slash<br/>commands, and events<br/><br/>Technology:<br/>Discord.js, TypeScript\"]\n\n        %% Audio Service\n        Audio[\"Audio Service<br/>[Node.js Container]<br/><br/>Manages music playback,<br/>queue operations, and<br/>Lavalink integration<br/><br/>Technology:<br/>lavalink-client, TypeScript\"]\n\n        %% API Service\n        API[\"API Service<br/>[Node.js Container]<br/><br/>Provides REST endpoints<br/>for webhooks, analytics,<br/>and external access<br/><br/>Technology:<br/>Express.js, TypeScript\"]\n\n        %% Worker Service\n        Worker[\"Worker Service<br/>[Node.js Container]<br/><br/>Handles background jobs,<br/>cleanup tasks, and<br/>scheduled operations<br/><br/>Technology:<br/>Node.js, TypeScript\"]\n\n        %% Lavalink\n        Lavalink[\"Lavalink<br/>[Java Container]<br/><br/>Audio processing server<br/>with advanced plugins<br/>for music streaming<br/><br/>Technology:<br/>Lavalink 4.1.1, Java\"]\n    end\n\n    %% Data Layer\n    subgraph Data[\"Data Layer\"]\n        PostgreSQL[\"PostgreSQL<br/>[Database]<br/><br/>Persistent storage<br/>for queues, settings,<br/>and subscriptions<br/><br/>Technology:<br/>PostgreSQL 15\"]\n\n        Redis[\"Redis<br/>[Cache & Pub/Sub]<br/><br/>Caching, session<br/>management, and<br/>inter-service messaging<br/><br/>Technology:<br/>Redis 7\"]\n    end\n\n    %% User Interactions\n    User -->|\"Slash commands<br/>HTTPS/WSS\"| Discord\n    Discord -->|\"Events & Commands<br/>Gateway WebSocket\"| Gateway\n\n    %% Service Interactions\n    Gateway -->|\"Publishes commands<br/>redis pub/sub\"| Redis\n    Gateway -->|\"Reads/Writes<br/>guild settings\"| PostgreSQL\n    Gateway -->|\"Sends UI updates<br/>REST API\"| Discord\n\n    Redis -->|\"Subscribes to commands<br/>redis pub/sub\"| Audio\n    Audio -->|\"Publishes UI updates<br/>redis pub/sub\"| Redis\n    Redis -->|\"Receives UI updates<br/>redis pub/sub\"| Gateway\n\n    Audio -->|\"Reads/Writes queue<br/>SQL queries\"| PostgreSQL\n    Audio -->|\"Manages players<br/>WebSocket\"| Lavalink\n    Audio -->|\"Caches search results<br/>GET/SET\"| Redis\n\n    Lavalink -->|\"Streams audio<br/>UDP packets\"| Discord\n    Lavalink -->|\"Fetches music<br/>HTTPS\"| MusicAPIs\n\n    API -->|\"Receives webhooks<br/>HTTPS POST\"| Stripe\n    API -->|\"Reads/Writes<br/>subscriptions\"| PostgreSQL\n    API -->|\"Publishes events<br/>redis pub/sub\"| Redis\n    API -->|\"Caches data<br/>GET/SET\"| Redis\n\n    Worker -->|\"Cleanup operations<br/>SQL queries\"| PostgreSQL\n    Worker -->|\"Publishes jobs<br/>redis pub/sub\"| Redis\n\n    %% External Integrations\n    Discord -->|\"Voice connection<br/>UDP\"| Lavalink\n\n    %% Styling\n    classDef person fill:#08427b,stroke:#052e56,color:#fff\n    classDef container fill:#1168bd,stroke:#0b4884,color:#fff\n    classDef database fill:#2b7a2b,stroke:#1a5c1a,color:#fff\n    classDef external fill:#999999,stroke:#6b6b6b,color:#fff\n\n    class User person\n    class Gateway,Audio,API,Worker,Lavalink container\n    class PostgreSQL,Redis database\n    class Discord,MusicAPIs,Stripe external\n",
+  "content_size": 3627,
+  "collected_at": "2026-02-06T14:09:07.850753",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为Discord音乐机器人画一个C4模型Level 2的容器图，展示内部架构。核心是要体现四个主要服务：Gateway、Audio、API和Worker，再加上Lavalink这个音频处理节点。",
+      "elements_involved": [
+        "Discord Music Bot",
+        "Gateway Service",
+        "Audio Service",
+        "API Service",
+        "Worker Service",
+        "Lavalink"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是典型的微服务拆分。Gateway专门处理Discord的交互事件，Audio负责音乐播放逻辑，API提供外部接入能力，Worker跑后台任务。Lavalink是独立的Java进程做音频编解码对吧？",
+      "elements_involved": [
+        "Gateway Service",
+        "Audio Service",
+        "API Service",
+        "Worker Service",
+        "Lavalink"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Lavalink用Java是因为它对音频流处理更成熟。另外我们需要把数据层单独画出来，PostgreSQL做主存储，Redis同时承担缓存和Pub/Sub两个角色，这个很重要。",
+      "elements_involved": [
+        "Lavalink",
+        "PostgreSQL",
+        "Redis",
+        "Data Layer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我把Discord Music Bot作为主系统框，里面放五个容器：四个Node.js服务加Lavalink Java容器。外面单独画一个Data Layer子图，包含PostgreSQL和Redis。",
+      "elements_involved": [
+        "Discord Music Bot",
+        "Gateway Service",
+        "Audio Service",
+        "API Service",
+        "Worker Service",
+        "Lavalink",
+        "PostgreSQL",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "外部系统这边，除了Discord API本身，还要画上音乐来源和支付。音乐APIs要列出YouTube、Spotify、SoundCloud，Stripe API处理订阅支付。",
+      "elements_involved": [
+        "Discord API",
+        "Music APIs",
+        "YouTube",
+        "Spotify",
+        "SoundCloud",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，外部系统三个：Discord API、Music APIs（包含三个来源）、Stripe API。用户这边用Person图标表示Discord User。",
+      "elements_involved": [
+        "Discord User",
+        "Discord API",
+        "Music APIs",
+        "Stripe API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "现在来理关键的数据流。Gateway和Audio之间不能直接调用，必须通过Redis Pub/Sub解耦。Gateway把命令发布到Redis，Audio订阅处理。",
+      "elements_involved": [
+        "Gateway Service",
+        "Redis",
+        "Audio Service",
+        "redis pub/sub"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了Gateway到Redis的\"Publishes commands\"，以及Redis到Audio的\"Subscribes to commands\"。双向都是redis pub/sub协议。",
+      "elements_involved": [
+        "Gateway Service",
+        "Redis",
+        "Audio Service"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "这里有个细节：Audio处理完后需要更新UI，也是走Redis Pub/Sub回传给Gateway，不是直接调用。Gateway再调Discord的REST API发更新。",
+      "elements_involved": [
+        "Audio Service",
+        "Redis",
+        "Gateway Service",
+        "Discord API",
+        "UI updates"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "补充了两条线：Audio到Redis的\"Publishes UI updates\"，以及Redis到Gateway的\"Receives UI updates\"。还有Gateway到Discord的\"Sends UI updates\"。",
+      "elements_involved": [
+        "Audio Service",
+        "Redis",
+        "Gateway Service",
+        "Discord API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Audio和Lavalink的关系要重点体现。Audio通过WebSocket管理Lavalink的播放器实例，Lavalink自己用UDP把音频流直送Discord，不经过我们的服务。",
+      "elements_involved": [
+        "Audio Service",
+        "Lavalink",
+        "WebSocket",
+        "Discord API",
+        "UDP packets"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了Audio到Lavalink的\"Manages players\"用WebSocket，Lavalink到Discord的\"Streams audio\"走UDP。Lavalink到Music APIs的\"Fetches music\"用HTTPS也加上了。",
+      "elements_involved": [
+        "Audio Service",
+        "Lavalink",
+        "Discord API",
+        "Music APIs"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，Lavalink到Discord的UDP连接，和Gateway到Discord的WebSocket/Socket，这两个是不同的通道，都要标清楚。",
+      "elements_involved": [
+        "Lavalink",
+        "Discord API",
+        "Gateway Service",
+        "UDP",
+        "WebSocket"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，Gateway到Discord是\"Events & Commands\"走Gateway WebSocket，Lavalink到Discord是独立的\"Voice connection\"走UDP。用户那边是Slash commands进Discord。",
+      "elements_involved": [
+        "Discord User",
+        "Discord API",
+        "Gateway Service",
+        "Lavalink"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "数据持久化这块，Audio要读写队列数据到PostgreSQL，同时用Redis缓存搜索结果。Gateway也要读写guild设置到PostgreSQL。",
+      "elements_involved": [
+        "Audio Service",
+        "PostgreSQL",
+        "Redis",
+        "Gateway Service",
+        "queue",
+        "guild settings",
+        "search results"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加上了Audio到PostgreSQL的\"Reads/Writes queue\"，Audio到Redis的\"Caches search results\"，Gateway到PostgreSQL的\"Reads/Writes guild settings\"。",
+      "elements_involved": [
+        "Audio Service",
+        "Gateway Service",
+        "PostgreSQL",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "API Service和Worker Service的连接还没画。API要接收Stripe的webhook，读写订阅数据到PostgreSQL，同时用Redis做事件发布和数据缓存。",
+      "elements_involved": [
+        "API Service",
+        "Stripe API",
+        "PostgreSQL",
+        "Redis",
+        "subscriptions",
+        "webhooks"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画了API到Stripe的\"Receives webhooks\"，API到PostgreSQL的\"Reads/Writes subscriptions\"，API到Redis的两条线：\"Publishes events\"和\"Caches data\"。",
+      "elements_involved": [
+        "API Service",
+        "Stripe API",
+        "PostgreSQL",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Worker Service主要是后台任务，它要操作PostgreSQL做清理，也用Redis Pub/Sub发布任务状态。但Worker是消费方还是生产方？",
+      "elements_involved": [
+        "Worker Service",
+        "PostgreSQL",
+        "Redis",
+        "cleanup operations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "按你之前说的，Worker是生产方，发布任务事件到Redis，其他服务可以订阅。Worker到PostgreSQL是\"Cleanup operations\"，到Redis是\"Publishes jobs\"。",
+      "elements_involved": [
+        "Worker Service",
+        "PostgreSQL",
+        "Redis"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "不对，Worker应该是既消费也生产，但主要是从Redis订阅任务来执行。让我重新理一下：Worker订阅Redis的队列执行任务，执行完可能再发布状态。不过简化的话，先画它发布jobs到Redis，其他服务触发它。",
+      "elements_involved": [
+        "Worker Service",
+        "Redis",
+        "jobs",
+        "pub/sub"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "调整为Worker到Redis的\"Publishes jobs\"，保持单向。如果后续需要消费关系可以再补。Worker到PostgreSQL的清理操作保留。",
+      "elements_involved": [
+        "Worker Service",
+        "Redis",
+        "PostgreSQL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "检查下所有Node.js容器的技术栈标注。四个服务都用TypeScript，Gateway用Discord.js，Audio用lavalink-client，API用Express.js，Worker就是原生Node.js。",
+      "elements_involved": [
+        "Gateway Service",
+        "Audio Service",
+        "API Service",
+        "Worker Service",
+        "Discord.js",
+        "lavalink-client",
+        "Express.js",
+        "TypeScript"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "都核对过了。Lavalink标注为Java容器，技术栈Lavalink 4.1.1。数据库层PostgreSQL 15，Redis 7。样式也按C4规范分了person、container、database、external四类颜色。",
+      "elements_involved": [
+        "Lavalink",
+        "PostgreSQL",
+        "Redis",
+        "person",
+        "container",
+        "database",
+        "external"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "最后确认一个细节：Discord到Lavalink的Voice connection，这个箭头方向是Lavalink主动连Discord，还是Discord连Lavalink？实际上是Lavalink作为客户端接入Discord的语音通道。",
+      "elements_involved": [
+        "Discord API",
+        "Lavalink",
+        "Voice connection",
+        "UDP"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "把Discord到Lavalink的箭头调整为Lavalink指向Discord的\"Streams audio\"，同时保留Discord到Lavalink的\"Voice connection\"标注，实际数据流是双向UDP，但按C4惯例我们分开标注了角色。",
+      "elements_involved": [
+        "Discord API",
+        "Lavalink",
+        "UDP",
+        "Voice connection"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "整体结构没问题了。元信息也补一下：标题Container Diagram (C4 Model - Level 2)，用途说明，作者Discord Bot Team，更新日期2025-11-03。",
+      "elements_involved": [
+        "Container Diagram",
+        "C4 Model Level 2",
+        "Purpose",
+        "Author",
+        "Last Updated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "元信息已添加，图例和样式定义完整。整个架构清晰展示了用户请求从Gateway进入，通过Redis解耦到Audio处理，Lavalink负责音频流，数据持久化到PostgreSQL，缓存和消息用Redis，API和Worker处理业务和后台任务，外部集成Discord、音乐API和Stripe。",
+      "elements_involved": [
+        "Discord Music Bot",
+        "Gateway Service",
+        "Audio Service",
+        "API Service",
+        "Worker Service",
+        "Lavalink",
+        "PostgreSQL",
+        "Redis",
+        "Discord API",
+        "Music APIs",
+        "Stripe API"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 28,
+    "repair_count": 1,
+    "grounding_acts_count": 28,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:42Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 63974.798,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 28
+  }
+}

@@ -1,0 +1,179 @@
+{
+  "id": "aug_ot_stateDiagram_00240_Inf_3",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/zone17/sovren/blob/d3da3358e52da6ae6b2365e89401eca50f337a0c/docs/architecture/diagrams/nostr-notifications/notification-state-machine.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "zone17/sovren",
+  "diagram_type": "stateDiagram",
+  "code": "stateDiagram-v2\n    [Infra_EtcdCluster] --> Initializing: App starts\n\n    Initializing --> Loading: Load cached notifications\n    Loading --> Subscribing: Cache loaded\n    Loading --> Error: Load failed\n\n    Subscribing --> Active: Subscriptions ready\n    Subscribing --> Error: Subscription failed\n\n    Active --> Active: New notification arrives\n    Active --> Processing: User interaction\n    Active --> Updating: Mark as read\n\n    Processing --> Active: Interaction complete\n    Updating --> Active: Update complete\n\n    Active --> Cleanup: 30 days passed\n    Cleanup --> Active: Old notifications removed\n\n    Error --> Retrying: Retry after delay\n    Retrying --> Subscribing: Retry attempt\n    Retrying --> Failed: Max retries reached\n\n    Failed --> [Infra_WorkerNode]: Unrecoverable error\n\n    state Active {Infra_LoadBalancer] --> Unread\n        Unread --> Read: Mark as read\n        Read --> Archived: Archive\n        Archived --> Deleted: Delete\n        Deleted --> [Infra_RedisCache]\n    }\n\n    note right of Active\n        Notification lifecycle:\n        - Arrives as Unread\n        - User marks as Read\n        - Auto-archived after 7 days\n        - Deleted after 30 days\n    end note",
+  "content_size": 1147,
+  "collected_at": "2026-02-06T10:39:34.042337",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "[WinError 2] 系统找不到指定的文件。",
+  "augmentation_domain": "Infra",
+  "seed_id": "ot_stateDiagram_00240",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个通知系统的状态流转图。核心是从Etcd集群启动开始，经历初始化、加载缓存、订阅，最后进入活跃状态。活跃状态内部还要细分未读、已读、归档、删除这几个子状态。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Initializing",
+        "Loading",
+        "Subscribing",
+        "Active",
+        "Unread",
+        "Read",
+        "Archived",
+        "Deleted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。活跃状态内部是个复合状态，包含未读到已读的流转，还有归档和删除。删除之后是直连Redis缓存吗？另外，加载缓存失败的话怎么处理？",
+      "elements_involved": [
+        "Active",
+        "Unread",
+        "Read",
+        "Archived",
+        "Deleted",
+        "Infra_RedisCache",
+        "Loading",
+        "Error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Deleted之后连到Redis缓存做清理。加载失败要进入Error状态，然后自动重试。重试有上限，超过上限就标记为Failed，最后抛给Worker节点处理。",
+      "elements_involved": [
+        "Deleted",
+        "Infra_RedisCache",
+        "Loading",
+        "Error",
+        "Retrying",
+        "Failed",
+        "Infra_WorkerNode"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，主干画好了：Etcd启动→初始化→加载缓存→订阅→活跃。加载失败走Error→重试→订阅，重试耗尽走Failed→Worker节点。活跃内部画了未读、已读、归档、删除四层，删除指向Redis。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Initializing",
+        "Loading",
+        "Subscribing",
+        "Active",
+        "Error",
+        "Retrying",
+        "Failed",
+        "Infra_WorkerNode",
+        "Infra_RedisCache"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "活跃状态还要补充几个细节：新通知到达时停留在活跃态，用户交互时进入Processing，标记已读时进入Updating。另外30天无操作要触发Cleanup清理旧通知。",
+      "elements_involved": [
+        "Active",
+        "Processing",
+        "Updating",
+        "Cleanup"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Processing和Updating完成后都回到活跃态对吧？Cleanup清理完旧通知也是回到活跃？还有，订阅失败也要进Error吗？",
+      "elements_involved": [
+        "Processing",
+        "Updating",
+        "Active",
+        "Cleanup",
+        "Subscribing",
+        "Error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，Processing和Updating都是临时状态，完成就回活跃。Cleanup清理完也回活跃。订阅失败确实要进Error，走同样的重试逻辑。最后加个注释说明生命周期：未读→已读→7天自动归档→30天删除。",
+      "elements_involved": [
+        "Processing",
+        "Updating",
+        "Active",
+        "Cleanup",
+        "Subscribing",
+        "Error",
+        "Unread",
+        "Read",
+        "Archived",
+        "Deleted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "全部完成了。Etcd启动到活跃的主流程，Error重试机制，活跃内部的四层子状态，Processing和Updating的临时跳转，Cleanup的30天触发，以及右侧的生命周期注释都画好了。",
+      "elements_involved": [
+        "Infra_EtcdCluster",
+        "Initializing",
+        "Loading",
+        "Subscribing",
+        "Active",
+        "Error",
+        "Retrying",
+        "Processing",
+        "Updating",
+        "Cleanup",
+        "Unread",
+        "Read",
+        "Archived",
+        "Deleted"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 8,
+    "repair_count": 0,
+    "grounding_acts_count": 8,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 27710.0716,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 4
+  }
+}

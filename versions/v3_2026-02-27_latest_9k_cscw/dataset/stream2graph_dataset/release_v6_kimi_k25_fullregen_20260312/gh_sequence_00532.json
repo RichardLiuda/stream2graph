@@ -1,0 +1,166 @@
+{
+  "id": "gh_sequence_00532",
+  "source": "github",
+  "source_url": "https://github.com/guglxni/amplifi/blob/2b2cbbb17dc15f7b550940cdfe97d27ef858ab58/docs/diagrams/yield-flow.mmd",
+  "github_repo": "guglxni/amplifi",
+  "github_file_path": "docs/diagrams/yield-flow.mmd",
+  "diagram_type": "sequence",
+  "code": "%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#667eea', 'secondaryColor': '#764ba2', 'tertiaryColor': '#1e1e2e', 'primaryTextColor': '#ffffff'}}}%%\n\nsequenceDiagram\n    participant User\n    participant Vault as YieldVaultMultiAsset<br/>(Sepolia)\n    participant Aave as Aave V3 Pool<br/>(Sepolia)\n    participant RSC as YieldOptimizerRsc<br/>(Lasna)\n    participant Callback as Callback Proxy<br/>(Sepolia)\n\n    Note over User,Callback: Yield Monitoring and Rebalancing Flow\n\n    User->>Vault: triggerYieldSnapshot()\n    Vault->>Aave: getReserveData(asset)\n    Aave-->>Vault: liquidityRate, APY data\n    Vault->>Vault: Calculate APYs for all assets\n    Vault-->>RSC: emit YieldSnapshot(assetIds, apys, allocations)\n    \n    Note over RSC: RSC analyzes yield data\n    RSC->>RSC: Compare APYs across assets\n    RSC->>RSC: Determine optimal allocation\n    \n    alt Yield difference exceeds threshold\n        RSC->>Callback: emit Callback(executeRebalance)\n        Callback->>Vault: executeRebalance(newAllocations)\n        Vault->>Vault: Update asset allocations\n        Vault-->>User: Funds rebalanced to higher yield\n    else Yield difference below threshold\n        Note over RSC: No rebalance needed\n    end\n",
+  "content_size": 1227,
+  "collected_at": "2026-02-06T01:33:34.001671",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 1,
+  "repo_forks": 0,
+  "compilation_error": "",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个多资产收益金库的自动再平衡流程图。核心场景是：用户在Sepolia测试网上的YieldVaultMultiAsset触发收益快照，然后系统要对比Aave V3 Pool里各个资产的APY，最后由Lasna上的RSC模块决定是否调仓。",
+      "elements_involved": [
+        "User",
+        "YieldVaultMultiAsset",
+        "Aave V3 Pool",
+        "YieldOptimizerRsc",
+        "Sepolia",
+        "Lasna"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，RSC是在Lasna链上，Vault和Aave在Sepolia。那跨链的数据是怎么传过去的？是Vault直接发消息给RSC吗？",
+      "elements_involved": [
+        "YieldVaultMultiAsset",
+        "YieldOptimizerRsc",
+        "Sepolia",
+        "Lasna"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Vault通过emit一个YieldSnapshot事件把assetIds、apys和当前allocations发出去，RSC在Lasna上监听这个事件。然后RSC本地做计算：compare APYs across assets，determine optimal allocation。这里要画一个自循环表示RSC的分析过程。",
+      "elements_involved": [
+        "YieldVaultMultiAsset",
+        "YieldOptimizerRsc",
+        "YieldSnapshot",
+        "assetIds",
+        "apys",
+        "allocations"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把主流程画出来：User调用triggerYieldSnapshot()，Vault去Aave getReserveData拿流动性利率和APY数据，然后Vault自己计算所有资产的APY，再emit事件给RSC。RSC那边我画两个自循环表示compare和determine。",
+      "elements_involved": [
+        "User",
+        "triggerYieldSnapshot",
+        "YieldVaultMultiAsset",
+        "Aave V3 Pool",
+        "getReserveData",
+        "YieldOptimizerRsc"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "接下来是关键的分支逻辑。RSC判断如果yield difference超过阈值，就要触发再平衡。这里需要引入一个Callback Proxy作为中间层，因为RSC在Lasna没法直接回调Sepolia上的Vault。RSC emit Callback事件给Proxy，Proxy再调用Vault的executeRebalance。",
+      "elements_involved": [
+        "YieldOptimizerRsc",
+        "Callback Proxy",
+        "YieldVaultMultiAsset",
+        "executeRebalance",
+        "Lasna",
+        "Sepolia"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白了，Callback Proxy在Sepolia上，作为跨链回调的桥梁。那如果yield difference没超过阈值呢？",
+      "elements_involved": [
+        "Callback Proxy",
+        "Sepolia"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "那就走else分支，不需要再平衡，RSC那边直接note一下\"No rebalance needed\"。整个alt-else结构要包住RSC判断后的两种走向。",
+      "elements_involved": [
+        "YieldOptimizerRsc",
+        "alt",
+        "else"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了。alt分支里：RSC→Callback emit Callback(executeRebalance)，Callback→Vault调用executeRebalance(newAllocations)，然后Vault自循环Update asset allocations，最后Vault返回给用户Funds rebalanced to higher yield。else分支就是简单的note。",
+      "elements_involved": [
+        "YieldOptimizerRsc",
+        "Callback Proxy",
+        "YieldVaultMultiAsset",
+        "executeRebalance",
+        "newAllocations",
+        "User"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完美，这个流程准确表达了收益监控和自动再平衡的完整闭环。顶部再加一个总览note：Yield Monitoring and Rebalancing Flow。",
+      "elements_involved": [
+        "Note",
+        "User",
+        "Callback Proxy"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 9,
+    "repair_count": 0,
+    "grounding_acts_count": 9,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 26895.8697,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 9
+  }
+}

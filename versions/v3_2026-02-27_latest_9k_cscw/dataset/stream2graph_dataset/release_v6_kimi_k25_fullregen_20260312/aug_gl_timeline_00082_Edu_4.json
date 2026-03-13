@@ -1,0 +1,260 @@
+{
+  "id": "aug_gl_timeline_00082_Edu_4",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/blyzer/interfell-epayco/blob/cd0ebd25836c2fa6ef15976bd2778ed537eb8451/diagrams/timelinePayment.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "blyzer/interfell-epayco",
+  "diagram_type": "timeline",
+  "code": "timeline\ntitle Timeline de Pago (Education_LMS_Portal)\nT0ms : Usuario submit pago form\nT10ms : Payment service recibe request\n: 5ms idempotency check (Education_LMS_Portal)\n: 8ms JWT validation (Education_StudentDB)\nT25ms : 12ms wallet balance check (Education_ContentCDN)\n: 15ms reserve funds (Education_ClassroomService)\n: Total sync: 40ms\nT50ms : Response enviada a usuario\n: 10ms network latency\nT60ms : Usuario ve: Transaction ID + éxito\n: (Education_ClassroomService)\nT150ms : Fraud service recibe evento\n: 30ms historical data query (Education_GradeSync)\n: 40ms ML inference (Education_GradeSync)\n: 20ms DynamoDB writes\n: Total: ~90ms\nT250ms : Payment service enqueue a SQS\n: (Education_GradeSync)\nT400ms : Bank responds + ePayco confirms\n: 100ms network time\n: 100ms bank processing\n: 50ms response + parse\n: Total: ~250ms\nT420ms : Transaction update + publish\n: 5ms transaction update\n: 10ms idempotency store\n: 5ms SNS publish\nT500ms : Notifications sent (Education_ContentCDN)\n: Email enqueued\n: SMS enqueued\nT1000ms : User checks app\n: Sees \"Confirmed\"",
+  "content_size": 960,
+  "collected_at": "2026-02-06T14:02:26.722863",
+  "compilation_status": "success",
+  "license": "gitlab_repo",
+  "license_name": "GitLab Repository",
+  "license_url": "https://gitlab.com",
+  "compilation_error": "",
+  "augmentation_domain": "Education",
+  "seed_id": "gl_timeline_00082",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要给教育支付流程画一个时序图，从用户提交表单开始，到最终在App里看到确认状态为止。核心场景是Education_LMS_Portal这个入口。",
+      "elements_involved": [
+        "Education_LMS_Portal",
+        "Usuario submit pago form",
+        "T0ms"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个完整的支付链路。我先确认一下时间粒度——您希望用毫秒级还是秒级？我看到有T0ms、T10ms这种标记方式。",
+      "elements_involved": [
+        "T0ms",
+        "T10ms",
+        "timeline scale"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，用毫秒级，因为前60毫秒是关键路径，后面银行回调会比较慢。Payment service在T10ms收到请求后，要做几个检查。",
+      "elements_involved": [
+        "T10ms",
+        "Payment service",
+        "T60ms"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我在T10ms下面加了Payment service recibe request，然后画了两个并行检查：5ms的idempotency check归属到Education_LMS_Portal，8ms的JWT validation需要调Education_StudentDB。",
+      "elements_involved": [
+        "T10ms",
+        "idempotency check",
+        "JWT validation",
+        "Education_LMS_Portal",
+        "Education_StudentDB"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "JWT验证之后，T25ms要做钱包余额检查，这个走Education_ContentCDN，然后Education_ClassroomService负责预留资金，这两步加起来40毫秒。",
+      "elements_involved": [
+        "T25ms",
+        "wallet balance check",
+        "reserve funds",
+        "Education_ContentCDN",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加：T25ms下12ms余额检查（Education_ContentCDN）和15ms预留资金（Education_ClassroomService），标注了Total sync: 40ms。然后T50ms返回给用户，对吧？",
+      "elements_involved": [
+        "T25ms",
+        "T50ms",
+        "Response enviada a usuario"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，T50ms返回，但还要算10ms网络延迟，所以T60ms用户才能看到Transaction ID和成功状态。这个成功提示也是Education_ClassroomService负责的。",
+      "elements_involved": [
+        "T50ms",
+        "T60ms",
+        "network latency",
+        "Transaction ID + éxito",
+        "Education_ClassroomService"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "T60ms部分画好了。接下来是异步流程——T150ms Fraud service收到事件，这里需要调Education_GradeSync查历史数据和做ML推理。",
+      "elements_involved": [
+        "T150ms",
+        "Fraud service",
+        "Education_GradeSync",
+        "historical data query",
+        "ML inference"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，ML推理也是Education_GradeSync吗？我记成另一个服务了。确认一下：历史查询30ms，推理40ms，然后20ms写DynamoDB，总共90ms左右。",
+      "elements_involved": [
+        "Education_GradeSync",
+        "historical data query",
+        "ML inference",
+        "DynamoDB writes"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认，都是Education_GradeSync。然后T250ms Payment service把消息塞进SQS，这个操作也归属GradeSync。接下来是银行回调部分？",
+      "elements_involved": [
+        "T250ms",
+        "SQS",
+        "Education_GradeSync",
+        "Bank responds"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，T400ms银行返回结果，ePayco确认。这里网络100ms，银行处理100ms，响应解析50ms，总共250ms。然后T420ms做事务更新和发布。",
+      "elements_involved": [
+        "T400ms",
+        "Bank responds",
+        "ePayco confirms",
+        "T420ms",
+        "transaction update"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "T400ms和T420ms已添加。T420ms下面我放了：5ms事务更新、10ms幂等存储、5ms SNS发布。然后T500ms发通知，走Education_ContentCDN，邮件和短信都进队列。",
+      "elements_involved": [
+        "T420ms",
+        "transaction update",
+        "idempotency store",
+        "SNS publish",
+        "T500ms",
+        "Education_ContentCDN",
+        "Email enqueued",
+        "SMS enqueued"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "T500ms的通知服务不对，应该是Education_ClassroomService负责最终通知，不是ContentCDN。ContentCDN只做了前面的余额检查。",
+      "elements_involved": [
+        "T500ms",
+        "Education_ContentCDN",
+        "Education_ClassroomService",
+        "Notifications sent"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "抱歉搞混了，已修正：T500ms Notifications sent归属到Education_ClassroomService。最后还有一步用户检查App看到Confirmed状态？",
+      "elements_involved": [
+        "T500ms",
+        "Education_ClassroomService",
+        "User checks app",
+        "Sees Confirmed"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，放在T1000ms，用户打开App看到\"Confirmed\"，整个流程闭环。标题用\"Timeline de Pago (Education_LMS_Portal)\"。",
+      "elements_involved": [
+        "T1000ms",
+        "User checks app",
+        "Sees Confirmed",
+        "Education_LMS_Portal"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "全部完成。我检查一下：从T0ms用户提交，经过Payment service、StudentDB、ContentCDN、ClassroomService的同步处理，60ms内返回成功；然后异步走Fraud检查、银行回调、最终通知，T1000ms用户确认状态。结构清晰。",
+      "elements_involved": [
+        "T0ms",
+        "T60ms",
+        "T1000ms",
+        "Education_LMS_Portal",
+        "Education_StudentDB",
+        "Education_ContentCDN",
+        "Education_ClassroomService",
+        "Education_GradeSync"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 16,
+    "repair_count": 2,
+    "grounding_acts_count": 16,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:34Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:17Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:17Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 38410.8634,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 16
+  }
+}

@@ -1,0 +1,817 @@
+{
+  "id": "gl_block-beta_00280",
+  "source": "gitlab",
+  "source_url": "https://github.com/YaduEnc/PlasticWorld/blob/0b9863fbe608d4756537b8e0bd846bb707645b90/SystemDesign/Backend%20Architecture-2026-01-09-023316.mmd",
+  "source_note": "collected_from_github_additional",
+  "github_repo": "YaduEnc/PlasticWorld",
+  "diagram_type": "block-beta",
+  "code": "---\nconfig:\n  layout: dagre\n---\nflowchart TB\n subgraph subGraph0[\"Client Layer\"]\n        WEB[\"Web App<br>React.js/Next.js\"]\n        MOBILE[\"Mobile Apps<br>React Native<br>iOS &amp; Android\"]\n        WEB_SOCKET_CLIENT[\"WebSocket Client<br>Socket.io-client\"]\n        ENCRYPTION_CLIENT[\"E2E Encryption<br>Signal Protocol<br>Client-side Keys\"]\n  end\n subgraph subGraph1[\"CDN & Security Layer\"]\n        CF[\"Cloudflare<br>DNS + DDoS Protection\"]\n        CF_TUNNEL[\"Cloudflare Tunnel<br>cloudflared daemon\"]\n        SSL[\"SSL/TLS 1.3<br>Certificate Management\"]\n  end\n subgraph subGraph2[\"Reverse Proxy Layer\"]\n        NGINX[\"Nginx<br>Reverse Proxy<br>Load Balancer<br>Rate Limiting\"]\n  end\n subgraph subGraph3[\"API Gateway\"]\n        API_GATEWAY[\"API Gateway<br>Request Routing<br>JWT Validation<br>Version Control /api/v1/\"]\n  end\n subgraph subGraph4[\"Authentication Service\"]\n        AUTH_API[\"Auth API<br>REST Endpoints\"]\n        FIREBASE_ADMIN[\"Firebase Admin SDK<br>Token Verification\"]\n        JWT_SERVICE[\"JWT Service<br>Access &amp; Refresh Tokens\"]\n        SESSION_MGR[\"Session Manager<br>Redis-based Sessions\"]\n  end\n subgraph subGraph5[\"User Service\"]\n        USER_API[\"User API<br>Profile CRUD\"]\n        USER_SEARCH[\"Search Engine<br>Indexed Queries<br>Username/Email/Phone\"]\n        USER_VALIDATOR[\"Validation Service<br>Uniqueness Checks\"]\n  end\n subgraph subGraph6[\"Friendship Service\"]\n        FRIEND_API[\"Friendship API<br>Request Management\"]\n        FRIEND_STATE[\"State Machine<br>Pending→Accepted/Denied\"]\n        BLOCK_SERVICE[\"Block/Unblock Service\"]\n  end\n subgraph subGraph7[\"Messaging Service\"]\n        MSG_API[\"Message API<br>REST Endpoints\"]\n        WS_SERVER[\"WebSocket Server<br>Socket.io<br>Real-time Events\"]\n        MSG_QUEUE[\"Message Queue<br>Offline User Handling\"]\n        TYPING_SERVICE[\"Typing Indicators<br>Ephemeral Events\"]\n        RECEIPT_SERVICE[\"Read Receipts<br>Delivery Status\"]\n  end\n subgraph subGraph8[\"Encryption Service\"]\n        KEY_EXCHANGE[\"Key Exchange<br>X3DH Protocol\"]\n        DOUBLE_RATCHET[\"Double Ratchet<br>Forward Secrecy\"]\n        KEY_STORAGE[\"Server Key Store<br>Public Keys Only\"]\n  end\n subgraph subGraph9[\"Application Services Layer\"]\n        subGraph4\n        subGraph5\n        subGraph6\n        subGraph7\n        subGraph8\n  end\n subgraph subGraph10[\"PostgreSQL Database\"]\n        DB_USERS[(\"Users Table<br>id, firebase_uid<br>username, email<br>phone, name, age\")]\n        DB_FRIENDS[(\"Friendships Table<br>requester_id<br>addressee_id<br>status, timestamps\")]\n        DB_MESSAGES[(\"Messages Table<br>sender_id, recipient_id<br>encrypted_content<br>status, timestamps\")]\n        DB_KEYS[(\"Encryption Keys<br>user_id, device_id<br>identity_key<br>prekeys\")]\n  end\n subgraph subGraph11[\"Redis Cache\"]\n        REDIS_SESSION[\"Session Store<br>session:user_id\"]\n        REDIS_ONLINE[\"Online Status<br>online:user_id<br>TTL: 30s\"]\n        REDIS_TYPING[\"Typing Indicators<br>typing:conv_id:user_id<br>TTL: 3s\"]\n        REDIS_QUEUE[\"Message Queue<br>msg_queue:user_id\"]\n        REDIS_RATE[\"Rate Limiting<br>rate_limit:user_id\"]\n  end\n subgraph subGraph12[\"Data Layer\"]\n        subGraph10\n        subGraph11\n  end\n subgraph subGraph13[\"External Services\"]\n        FIREBASE[\"Firebase Auth<br>Google Sign-In<br>OAuth Provider\"]\n  end\n subgraph subGraph14[\"Monitoring & Logging\"]\n        PROMETHEUS[\"Prometheus<br>Metrics Collection<br>API/WebSocket/DB metrics\"]\n        GRAFANA[\"Grafana<br>Dashboards<br>Alerts\"]\n        LOGS[\"Application Logs<br>Winston/Python Logging<br>Structured JSON\"]\n  end\n subgraph Infrastructure[\"Infrastructure\"]\n        DOCKER[\"Docker Containers<br>Isolated Services\"]\n        LINUX[\"Linux Server<br>Ubuntu/Debian<br>Self-hosted\"]\n  end\n    WEB --> CF\n    MOBILE --> CF\n    CF --> CF_TUNNEL\n    CF_TUNNEL --> SSL\n    SSL --> NGINX\n    NGINX --> API_GATEWAY & REDIS_RATE\n    API_GATEWAY --> AUTH_API & USER_API & FRIEND_API & MSG_API\n    NGINX -. ws:// .-> WS_SERVER\n    AUTH_API --> FIREBASE_ADMIN & JWT_SERVICE\n    FIREBASE_ADMIN --> FIREBASE\n    JWT_SERVICE --> SESSION_MGR\n    SESSION_MGR --> REDIS_SESSION\n    USER_API --> USER_SEARCH & USER_VALIDATOR & DB_USERS\n    FRIEND_API --> FRIEND_STATE & BLOCK_SERVICE & DB_FRIENDS\n    MSG_API --> MSG_QUEUE & DB_MESSAGES & KEY_EXCHANGE\n    WS_SERVER --> TYPING_SERVICE & RECEIPT_SERVICE & REDIS_ONLINE\n    MSG_QUEUE --> REDIS_QUEUE\n    TYPING_SERVICE --> REDIS_TYPING\n    RECEIPT_SERVICE --> DB_MESSAGES\n    KEY_EXCHANGE --> DOUBLE_RATCHET\n    DOUBLE_RATCHET --> KEY_STORAGE\n    KEY_STORAGE --> DB_KEYS\n    WEB_SOCKET_CLIENT --> ENCRYPTION_CLIENT\n    ENCRYPTION_CLIENT -. Encrypted Payload .-> WS_SERVER\n    AUTH_API -. Metrics .-> PROMETHEUS\n    USER_API -. Metrics .-> PROMETHEUS\n    FRIEND_API -. Metrics .-> PROMETHEUS\n    MSG_API -. Metrics .-> PROMETHEUS\n    WS_SERVER -. Metrics .-> PROMETHEUS\n    DB_USERS -. Metrics .-> PROMETHEUS\n    PROMETHEUS --> GRAFANA\n    AUTH_API -. Logs .-> LOGS\n    USER_API -. Logs .-> LOGS\n    FRIEND_API -. Logs .-> LOGS\n    MSG_API -. Logs .-> LOGS\n    WS_SERVER -. Logs .-> LOGS\n    DOCKER --> AUTH_API & USER_API & FRIEND_API & MSG_API & WS_SERVER & DB_USERS & REDIS_SESSION & NGINX\n    LINUX --> DOCKER\n\n    style WEB fill:#61dafb\n    style MOBILE fill:#61dafb\n    style CF fill:#f38020\n    style NGINX fill:#009639\n    style DB_USERS fill:#336791\n    style DB_FRIENDS fill:#336791\n    style DB_MESSAGES fill:#336791\n    style DB_KEYS fill:#336791\n    style REDIS_SESSION fill:#dc382d\n    style REDIS_ONLINE fill:#dc382d\n    style REDIS_TYPING fill:#dc382d\n    style REDIS_QUEUE fill:#dc382d\n    style FIREBASE fill:#ffca28\n    style PROMETHEUS fill:#e6522c\n    style GRAFANA fill:#f46800\n    style DOCKER fill:#2496ed\n    style LINUX fill:#fcc624",
+  "content_size": 5715,
+  "collected_at": "2026-02-06T14:06:10.273792",
+  "compilation_status": "success",
+  "license": "mit",
+  "license_name": "MIT License",
+  "license_url": "https://api.github.com/licenses/mit",
+  "repo_stars": 2,
+  "repo_forks": 0,
+  "repo_owner": "YaduEnc",
+  "repo_name": "PlasticWorld",
+  "repo_description": "Production-grade messaging platform backend with E2E encryption",
+  "repo_language": "TypeScript",
+  "repo_topics": [],
+  "repo_created_at": "2026-01-09T03:28:09Z",
+  "repo_updated_at": "2026-01-25T13:07:52Z",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要设计一个端到端加密即时通讯系统的完整架构图。首先考虑客户端层，要有Web App和Mobile Apps，Web用React.js/Next.js，Mobile用React Native覆盖iOS和Android。",
+      "elements_involved": [
+        "WEB",
+        "MOBILE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了，Web和Mobile作为两个独立节点。那客户端的实时通信和加密怎么处理？需要单独拆出来吗？",
+      "elements_involved": [
+        "WEB",
+        "MOBILE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，客户端层还要包含WebSocket Client用Socket.io-client，以及E2E Encryption模块，基于Signal Protocol做客户端密钥管理。这两个和Web、Mobile放在一起，组成Client Layer子图。",
+      "elements_involved": [
+        "WEB_SOCKET_CLIENT",
+        "ENCRYPTION_CLIENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Client Layer子图已创建，包含四个节点。接下来是安全层？",
+      "elements_involved": [
+        "subGraph0"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，CDN & Security Layer放Cloudflare，负责DNS和DDoS防护，还有Cloudflare Tunnel用cloudflared daemon做安全入口，以及SSL/TLS 1.3证书管理。",
+      "elements_involved": [
+        "CF",
+        "CF_TUNNEL",
+        "SSL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "CF到CF_TUNNEL再到SSL，这个流向对吗？然后SSL连到反向代理？",
+      "elements_involved": [
+        "CF",
+        "CF_TUNNEL",
+        "SSL"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错。反向代理层用Nginx，做反向代理、负载均衡和限流。然后Nginx连到API Gateway。",
+      "elements_involved": [
+        "NGINX",
+        "API_GATEWAY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Nginx节点和API Gateway已添加。API Gateway的具体职责是？",
+      "elements_involved": [
+        "subGraph2",
+        "subGraph3"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "API Gateway负责请求路由、JWT验证和版本控制，路径是/api/v1/。它要连到后面的各个服务。",
+      "elements_involved": [
+        "API_GATEWAY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "服务层怎么组织？需要按功能划分子图吗？",
+      "elements_involved": [
+        "API_GATEWAY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要。Application Services Layer作为大子图，里面包含五个功能子图：Authentication Service、User Service、Friendship Service、Messaging Service、Encryption Service。",
+      "elements_involved": [
+        "subGraph9",
+        "subGraph4",
+        "subGraph5",
+        "subGraph6",
+        "subGraph7",
+        "subGraph8"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "五个服务子图已创建。先从Authentication Service开始细化？",
+      "elements_involved": [
+        "subGraph4"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Auth Service包含Auth API提供REST端点，Firebase Admin SDK做Token验证，JWT Service生成访问令牌和刷新令牌，还有基于Redis的Session Manager。",
+      "elements_involved": [
+        "AUTH_API",
+        "FIREBASE_ADMIN",
+        "JWT_SERVICE",
+        "SESSION_MGR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Firebase Admin要连到外部Firebase Auth吗？",
+      "elements_involved": [
+        "FIREBASE_ADMIN",
+        "FIREBASE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，FIREBASE_ADMIN连到External Services里的Firebase Auth，支持Google Sign-In和OAuth。JWT_SERVICE连SESSION_MGR，SESSION_MGR再连Redis的Session Store。",
+      "elements_involved": [
+        "FIREBASE",
+        "REDIS_SESSION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Auth Service的连接关系已建立。User Service怎么设计？",
+      "elements_involved": [
+        "subGraph5"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "User Service有User API做Profile的CRUD，Search Engine做索引查询支持用户名/邮箱/手机号搜索，还有Validation Service做唯一性检查。User API要连DB_USERS。",
+      "elements_involved": [
+        "USER_API",
+        "USER_SEARCH",
+        "USER_VALIDATOR",
+        "DB_USERS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "User API同时连Search和Validator，再落到Users表。Friendship Service呢？",
+      "elements_involved": [
+        "USER_API",
+        "USER_SEARCH",
+        "USER_VALIDATOR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Friendship Service包含Friendship API管理好友请求，State Machine处理Pending到Accepted/Denied的状态流转，还有Block/Unblock Service。落到Friendships表。",
+      "elements_involved": [
+        "FRIEND_API",
+        "FRIEND_STATE",
+        "BLOCK_SERVICE",
+        "DB_FRIENDS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Friendship Service已完成。Messaging Service比较复杂，需要详细说明？",
+      "elements_involved": [
+        "subGraph6"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Messaging Service是核心。Message API提供REST端点，WebSocket Server用Socket.io处理实时事件，Message Queue处理离线用户，Typing Indicators处理短暂事件，Read Receipts处理送达状态。",
+      "elements_involved": [
+        "MSG_API",
+        "WS_SERVER",
+        "MSG_QUEUE",
+        "TYPING_SERVICE",
+        "RECEIPT_SERVICE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "WebSocket Server和Nginx的连接方式？还有这些组件的数据流？",
+      "elements_involved": [
+        "WS_SERVER",
+        "NGINX"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Nginx用ws://协议虚线连接到WebSocket Server。WS_SERVER连Typing Service和Receipt Service，还有Redis的Online Status。MSG_QUEUE连Redis的Message Queue。TYPING_SERVICE连Redis的Typing Indicators。RECEIPT_SERVICE连Messages表。",
+      "elements_involved": [
+        "WS_SERVER",
+        "MSG_QUEUE",
+        "TYPING_SERVICE",
+        "RECEIPT_SERVICE",
+        "REDIS_ONLINE",
+        "REDIS_QUEUE",
+        "REDIS_TYPING",
+        "DB_MESSAGES"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Messaging Service连接已建立。Encryption Service是Signal Protocol的服务端部分？",
+      "elements_involved": [
+        "subGraph7"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，Encryption Service包含Key Exchange用X3DH协议，Double Ratchet实现前向安全，Server Key Store只存公钥。Key Exchange要连Double Ratchet，再连Key Storage，最后落到Encryption Keys表。",
+      "elements_involved": [
+        "KEY_EXCHANGE",
+        "DOUBLE_RATCHET",
+        "KEY_STORAGE",
+        "DB_KEYS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "MSG_API也要连Key Exchange吗？",
+      "elements_involved": [
+        "MSG_API",
+        "KEY_EXCHANGE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，MSG_API连到Key Exchange获取加密相关能力。还有，客户端的WebSocket Client和Encryption Client要连起来，然后Encryption Client用虚线标注Encrypted Payload连到WS_SERVER。",
+      "elements_involved": [
+        "WEB_SOCKET_CLIENT",
+        "ENCRYPTION_CLIENT",
+        "WS_SERVER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "加密链路已补充。数据层怎么设计？",
+      "elements_involved": [
+        "subGraph8"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Data Layer包含PostgreSQL和Redis两个子图。PostgreSQL有Users、Friendships、Messages、Encryption Keys四张表。Redis有Session Store、Online Status、Typing Indicators、Message Queue、Rate Limiting五个用途。",
+      "elements_involved": [
+        "subGraph12",
+        "subGraph10",
+        "subGraph11",
+        "DB_USERS",
+        "DB_FRIENDS",
+        "DB_MESSAGES",
+        "DB_KEYS",
+        "REDIS_SESSION",
+        "REDIS_ONLINE",
+        "REDIS_TYPING",
+        "REDIS_QUEUE",
+        "REDIS_RATE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Nginx要连Redis的Rate Limiting吗？",
+      "elements_involved": [
+        "NGINX",
+        "REDIS_RATE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，Nginx连到REDIS_RATE做限流。Online Status的TTL设30秒，Typing Indicators设3秒。",
+      "elements_involved": [
+        "NGINX",
+        "REDIS_RATE",
+        "REDIS_ONLINE",
+        "REDIS_TYPING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Data Layer已完成。还需要External Services和Monitoring吗？",
+      "elements_involved": [
+        "subGraph12"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要。External Services放Firebase Auth。Monitoring & Logging包含Prometheus做指标采集、Grafana做仪表盘和告警、Application Logs做结构化JSON日志。",
+      "elements_involved": [
+        "subGraph13",
+        "subGraph14",
+        "FIREBASE",
+        "PROMETHEUS",
+        "GRAFANA",
+        "LOGS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Prometheus要采集哪些服务的指标？",
+      "elements_involved": [
+        "PROMETHEUS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "AUTH_API、USER_API、FRIEND_API、MSG_API、WS_SERVER、DB_USERS都用虚线连到Prometheus，标注Metrics。Prometheus再连Grafana。",
+      "elements_involved": [
+        "PROMETHEUS",
+        "GRAFANA"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "日志呢？哪些服务要连LOGS？",
+      "elements_involved": [
+        "LOGS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "同样的五个API服务加WS_SERVER，用虚线连到LOGS，标注Logs。用Winston或Python Logging。",
+      "elements_involved": [
+        "AUTH_API",
+        "USER_API",
+        "FRIEND_API",
+        "MSG_API",
+        "WS_SERVER",
+        "LOGS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Monitoring层已完成。Infrastructure层需要吗？",
+      "elements_involved": [
+        "subGraph14"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要Infrastructure子图，包含Docker Containers做服务隔离，Linux Server用Ubuntu/Debian自托管。Docker要包含所有核心服务和数据库。",
+      "elements_involved": [
+        "Infrastructure",
+        "DOCKER",
+        "LINUX"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Docker具体包含哪些？全部列出来？",
+      "elements_involved": [
+        "DOCKER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Docker包含AUTH_API、USER_API、FRIEND_API、MSG_API、WS_SERVER、DB_USERS、REDIS_SESSION、NGINX。Linux连Docker。",
+      "elements_involved": [
+        "DOCKER",
+        "LINUX"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Infrastructure层已完成。现在检查整体连接，Web和Mobile连到CF对吗？",
+      "elements_involved": [
+        "WEB",
+        "MOBILE",
+        "CF"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。还有API Gateway要连到AUTH_API、USER_API、FRIEND_API、MSG_API。",
+      "elements_involved": [
+        "API_GATEWAY",
+        "AUTH_API",
+        "USER_API",
+        "FRIEND_API",
+        "MSG_API"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "API Gateway的连接已补充。检查样式配置，需要给不同组件上色吗？",
+      "elements_involved": [
+        "API_GATEWAY"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要。Web和Mobile用React蓝#61dafb，Cloudflare用橙#f38020，Nginx用绿#009639，PostgreSQL表用#336791，Redis用#dc382d，Firebase用#ffca28，Prometheus用#e6522c，Grafana用#f46800，Docker用#2496ed，Linux用#fcc624。",
+      "elements_involved": [
+        "WEB",
+        "MOBILE",
+        "CF",
+        "NGINX",
+        "DB_USERS",
+        "DB_FRIENDS",
+        "DB_MESSAGES",
+        "DB_KEYS",
+        "REDIS_SESSION",
+        "REDIS_ONLINE",
+        "REDIS_TYPING",
+        "REDIS_QUEUE",
+        "FIREBASE",
+        "PROMETHEUS",
+        "GRAFANA",
+        "DOCKER"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 46,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "样式已应用。我注意到Redis Typing的TTL是3秒，这个在图里需要标注吗？",
+      "elements_involved": [
+        "REDIS_TYPING"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 47,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "已经在节点描述里标注了，typing:conv_id:user_id和TTL: 3s。Online Status也是，标注了TTL: 30s。",
+      "elements_involved": [
+        "REDIS_TYPING",
+        "REDIS_ONLINE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 48,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Users表的字段确认一下：id, firebase_uid, username, email, phone, name, age？",
+      "elements_involved": [
+        "DB_USERS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 49,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对。Friendships表是requester_id, addressee_id, status, timestamps。Messages表是sender_id, recipient_id, encrypted_content, status, timestamps。Encryption Keys表是user_id, device_id, identity_key, prekeys。",
+      "elements_involved": [
+        "DB_USERS",
+        "DB_FRIENDS",
+        "DB_MESSAGES",
+        "DB_KEYS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 50,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "数据库表结构已确认。再检查一下WebSocket的完整链路：客户端WebSocket Client - 加密 - WS_SERVER，同时Nginx也有ws://连接到WS_SERVER？",
+      "elements_involved": [
+        "WEB_SOCKET_CLIENT",
+        "ENCRYPTION_CLIENT",
+        "WS_SERVER",
+        "NGINX"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 51,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，链路完整。Nginx作为反向代理用ws://协议转发WebSocket，客户端的加密payload直接打到WS_SERVER。",
+      "elements_involved": [
+        "NGINX",
+        "WS_SERVER",
+        "ENCRYPTION_CLIENT"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 52,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "Session Manager只连Redis Session，不连其他的Redis？",
+      "elements_involved": [
+        "SESSION_MGR",
+        "REDIS_SESSION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 53,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，SESSION_MGR只连REDIS_SESSION。其他Redis由各自的服务连接。",
+      "elements_involved": [
+        "SESSION_MGR",
+        "REDIS_SESSION"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 54,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "Redis连接关系已确认。检查子图层级，Application Services Layer正确包含五个服务子图吗？",
+      "elements_involved": [
+        "subGraph9"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 55,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，subGraph9包含subGraph4到subGraph8。Data Layer包含PostgreSQL和Redis两个子图。",
+      "elements_involved": [
+        "subGraph9",
+        "subGraph12"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 56,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "layout用dagre对吗？",
+      "elements_involved": [
+        "layout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 57,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，config里layout设dagre，flowchart方向TB。",
+      "elements_involved": [
+        "layout"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 58,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "布局配置已设置。整体检查完成，所有连接和样式都正确。需要我再确认什么吗？",
+      "elements_involved": [],
+      "is_repair": false
+    },
+    {
+      "turn_id": 59,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "Double Ratchet和Key Storage的连接确认一下，是单向还是双向？",
+      "elements_involved": [
+        "DOUBLE_RATCHET",
+        "KEY_STORAGE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 60,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "当前是DOUBLE_RATCHET单向连到KEY_STORAGE，需要调整吗？",
+      "elements_involved": [
+        "DOUBLE_RATCHET",
+        "KEY_STORAGE"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 61,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "单向正确，Double Ratchet生成密钥后存入Key Storage。最后确认一下，所有API服务都有Metrics和Logs的虚线连接到Prometheus和LOGS？",
+      "elements_involved": [
+        "AUTH_API",
+        "USER_API",
+        "FRIEND_API",
+        "MSG_API",
+        "WS_SERVER",
+        "PROMETHEUS",
+        "LOGS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 62,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已确认，五个服务都有双向虚线连接：Metrics到Prometheus，Logs到LOGS。DB_USERS也有Metrics到Prometheus。",
+      "elements_involved": [
+        "PROMETHEUS",
+        "LOGS",
+        "DB_USERS"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 63,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "架构图完整了。最后确认命名：Client Layer、CDN & Security Layer、Reverse Proxy Layer、API Gateway、Authentication Service、User Service、Friendship Service、Messaging Service、Encryption Service、Application Services Layer、PostgreSQL Database、Redis Cache、Data Layer、External Services、Monitoring & Logging、Infrastructure。",
+      "elements_involved": [
+        "subGraph0",
+        "subGraph1",
+        "subGraph2",
+        "subGraph3",
+        "subGraph4",
+        "subGraph5",
+        "subGraph6",
+        "subGraph7",
+        "subGraph8",
+        "subGraph9",
+        "subGraph10",
+        "subGraph11",
+        "subGraph12",
+        "subGraph13",
+        "subGraph14",
+        "Infrastructure"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 64,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "所有子图命名已核对无误，端到端加密即时通讯系统架构图已完成。",
+      "elements_involved": [],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 64,
+    "repair_count": 0,
+    "grounding_acts_count": 62,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "dialogue_trimmed"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:26Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:26Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 104479.5566,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 120
+  }
+}

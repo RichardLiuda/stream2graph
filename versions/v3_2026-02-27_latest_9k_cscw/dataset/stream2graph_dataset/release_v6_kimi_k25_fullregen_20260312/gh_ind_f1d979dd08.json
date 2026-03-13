@@ -1,0 +1,297 @@
+{
+  "id": "gh_ind_f1d979dd08",
+  "source": "github_industrial",
+  "repo": "microsoft/DirectStorage",
+  "license": "mit",
+  "code": "%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#ffffff', 'nodeBorder':'#000000', 'clusterBorder':'#000000'}}}%%\n\nflowchart LR\n\nsubgraph SSD\n%%SSDSourceUncompressed[(\"Source\\n(uncompressed)\")]\n%%SSDSourceCustomCompressed[(\"Source\\n(custom compressed)\")]\nSSDSourceCompressed[(\"Source\\n(compressed)\")]\nend\n\nsubgraph SystemMemory\n StagingBuffer[Staging Buffer]\n SysMemDestination[[Destination]]\n UploadHeap[Upload Heap]\nend\n\nsubgraph VRAM\n VRAMDestination[[Destination]]\n InputStaging[Input Staging Buffer]\n OutputStaging[Output Staging Buffer]\nend\n\n%% Uncompressed\n%%SSDSourceUncompressed --IOP--> StagingBuffer -- memcpy --> SysMemDestination\n%%SSDSourceUncompressed --IOP--> UploadHeap -- GPUCopy ---> VRAMDestination\n\n%% Custom Compressed\n%%SSDSourceCustomCompressed --IOP--> StagingBuffer -- Decompress --> SysMemDestination\n%%StagingBuffer -- Decompress --> UploadHeap -- GPUCopy ---> VRAMDestination\n\n%% Compressed\nStagingBuffer -- \"Decompress\" --> SysMemDestination\nSSDSourceCompressed --IOP--> StagingBuffer\nSSDSourceCompressed --IOP--> UploadHeap -- GPUCopy ---> InputStaging -- Decompress --> OutputStaging -- GPUCopy --> VRAMDestination\n",
+  "diagram_type": "size:1000..1500",
+  "collected_at": "2026-02-27T03:26:01.097771",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要画一个数据流图，展示SSD到系统内存再到VRAM的完整传输链路。核心场景是处理压缩数据，从SSD读取后解压到目的地。",
+      "elements_involved": [
+        "SSDSourceCompressed",
+        "StagingBuffer",
+        "SysMemDestination",
+        "VRAMDestination"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白了。我先确认一下结构：需要三个主要区域——SSD、SystemMemory、VRAM，每个作为子图（subgraph）呈现，对吗？",
+      "elements_involved": [
+        "SSD",
+        "SystemMemory",
+        "VRAM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对的。SSD里放压缩数据源，标注为Source (compressed)。系统内存这边需要Staging Buffer、Destination，还有一个Upload Heap用于上传路径。",
+      "elements_involved": [
+        "SSDSourceCompressed",
+        "StagingBuffer",
+        "SysMemDestination",
+        "UploadHeap"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先把这三个子图和基础节点画出来。SSDSourceCompressed用圆柱形表示数据源，StagingBuffer用矩形，Destination用双边框。",
+      "elements_involved": [
+        "SSDSourceCompressed",
+        "StagingBuffer",
+        "SysMemDestination",
+        "UploadHeap",
+        "InputStaging",
+        "OutputStaging",
+        "VRAMDestination"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "VRAM部分需要Input Staging Buffer和Output Staging Buffer，这是GPU解压的双缓冲设计，最后到VRAM Destination。",
+      "elements_involved": [
+        "InputStaging",
+        "OutputStaging",
+        "VRAMDestination"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已添加。现在我来连第一条路径：SSDSourceCompressed通过IOP到StagingBuffer，然后解压到SysMemDestination。",
+      "elements_involved": [
+        "SSDSourceCompressed",
+        "StagingBuffer",
+        "SysMemDestination"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "等等，IOP是SSD到系统内存的传输操作，Decompress是解压步骤。这条路径是CPU解压方案，直接到系统内存目的地。",
+      "elements_involved": [
+        "IOP",
+        "Decompress"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "画好了：StagingBuffer -- \"Decompress\" -- SysMemDestination，以及SSDSourceCompressed -- IOP -- StagingBuffer。",
+      "elements_involved": [
+        "SSDSourceCompressed",
+        "StagingBuffer",
+        "SysMemDestination"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "还有一条GPU解压路径更复杂：数据从SSD直接IOP到Upload Heap，然后GPUCopy到Input Staging，在GPU上Decompress到Output Staging，最后GPUCopy到VRAM Destination。",
+      "elements_involved": [
+        "SSDSourceCompressed",
+        "UploadHeap",
+        "GPUCopy",
+        "InputStaging",
+        "Decompress",
+        "OutputStaging",
+        "VRAMDestination"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下顺序：UploadHeap → GPUCopy → InputStaging → Decompress → OutputStaging → GPUCopy → VRAMDestination。中间两个GPUCopy步骤，对吧？",
+      "elements_involved": [
+        "UploadHeap",
+        "InputStaging",
+        "OutputStaging",
+        "VRAMDestination",
+        "GPUCopy"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "正确。第一个GPUCopy是上传压缩数据到GPU，第二个是把解压后的数据送到最终显存目的地。",
+      "elements_involved": [
+        "GPUCopy",
+        "VRAMDestination"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "完成。现在图中SSDSourceCompressed有两条出边：一条到StagingBuffer（CPU解压），一条到UploadHeap（GPU解压）。",
+      "elements_involved": [
+        "SSDSourceCompressed",
+        "StagingBuffer",
+        "UploadHeap"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "我注意到之前提过未压缩和自定义压缩的变体，但当前需求只保留标准压缩路径。那些注释掉的节点不需要显示。",
+      "elements_involved": [
+        "SSDSourceCompressed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "明白，我保留了注释但不在图中渲染。当前只显示SSDSourceCompressed相关的活跃路径。需要调整任何样式吗？",
+      "elements_involved": [
+        "SSDSourceCompressed",
+        "StagingBuffer",
+        "SysMemDestination",
+        "UploadHeap",
+        "InputStaging",
+        "OutputStaging",
+        "VRAMDestination"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "把主题设为基础白底吧，节点边框黑色，cluster边框也用黑色，整体简洁专业。流程图方向用LR（从左到右）。",
+      "elements_involved": [
+        "theme",
+        "nodeBorder",
+        "clusterBorder"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已应用基础主题：primaryColor #ffffff，nodeBorder和clusterBorder都是#000000。整体布局从左到右，SSD在左，SystemMemory居中，VRAM在右。",
+      "elements_involved": [
+        "SSD",
+        "SystemMemory",
+        "VRAM"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "clarify",
+      "utterance": "再检查一下：StagingBuffer到SysMemDestination的Decompress标签要加引号，因为中间有空格。其他标签如IOP、GPUCopy是单词，不需要引号。",
+      "elements_involved": [
+        "StagingBuffer",
+        "SysMemDestination",
+        "Decompress"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "修正：StagingBuffer -- \"Decompress\" -- SysMemDestination 已加引号。确认其他边标签：IOP、GPUCopy、Decompress（InputStaging到OutputStaging那段）都正确。",
+      "elements_involved": [
+        "StagingBuffer",
+        "SysMemDestination",
+        "InputStaging",
+        "OutputStaging"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "看起来对了。最后确认GPU解压链的完整路径：SSDSourceCompressed -- IOP -- UploadHeap -- GPUCopy -- InputStaging -- Decompress -- OutputStaging -- GPUCopy -- VRAMDestination。",
+      "elements_involved": [
+        "SSDSourceCompressed",
+        "UploadHeap",
+        "GPUCopy",
+        "InputStaging",
+        "Decompress",
+        "OutputStaging",
+        "VRAMDestination"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "完全匹配。图中包含两条完整路径：CPU解压路径（经StagingBuffer到SysMemDestination）和GPU解压路径（经UploadHeap双缓冲到VRAMDestination）。所有节点和边都已就位。",
+      "elements_involved": [
+        "SSDSourceCompressed",
+        "StagingBuffer",
+        "SysMemDestination",
+        "UploadHeap",
+        "InputStaging",
+        "OutputStaging",
+        "VRAMDestination"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 20,
+    "repair_count": 1,
+    "grounding_acts_count": 20,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "compilation_status": "success",
+  "compilation_error": "",
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:41Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:25Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:25Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 56598.2761,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 20
+  }
+}

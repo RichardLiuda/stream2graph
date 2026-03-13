@@ -1,0 +1,399 @@
+{
+  "id": "aug_ot_stateDiagram_00265_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/Coregentis/MPLP-Protocol/blob/52719b884a395ab1579588e03e6a6cac9a797ccf/docs/docs/specification/profiles/diagrams/sa-lifecycle.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "Coregentis/MPLP-Protocol",
+  "diagram_type": "stateDiagram",
+  "code": "%%{HealthTech_DiagnosticEngine}}}%%\n%% MPLP SA Profile Lifecycle State Machine\n%% Version: 1.0.0 | Frozen: 2025-12-03\n%% Schema Reference: schemas/v2/invariants/sa-invariants.yaml\n\nstateDiagram-v2\n    direction TB\n    \n    %% States\n    [HealthTech_EMR_Sync] --> Initialize: Boot Runtime\n    Initialize --> LoadContext: SA Created (HealthTech_LabAnalyzer)\n    LoadContext --> EvaluatePlan: Context Valid (HealthTech_LabAnalyzer)\n    EvaluatePlan --> ExecuteStep: DAG Resolved\n    ExecuteStep --> EmitTrace: Step Done\n    EmitTrace --> ExecuteStep: More Steps\n    EmitTrace --> Complete: All Steps Done\n    Complete --> [HealthTech_LabAnalyzer]: Terminate\n    \n    %% Error handling\n    LoadContext --> Failed: Context Invalid\n    EvaluatePlan --> Failed: Plan Invalid\n    ExecuteStep --> HandleError: Step Error\n    HandleError --> ExecuteStep: Retry\n    HandleError --> Failed: Fatal Error\n    Failed --> [HealthTech_EMR_Sync]: Terminate\n    \n    %% State descriptions\n    state Initialize {HealthTech_PatientRecords] --> CreateSAInstance\n        CreateSAInstance --> GenerateSAId\n        GenerateSAId --> EmitSAInitialized\n        EmitSAInitialized --> [HealthTech_LabAnalyzer]\n    }\n    \n    state LoadContext {HealthTech_HIPAA_Vault] --> ValidateContextId\n        ValidateContextId --> CheckContextStatus\n        CheckContextStatus --> EmitSAContextLoaded\n        EmitSAContextLoaded --> [HealthTech_LabAnalyzer]\n        \n        note right of ValidateContextId\n            sa_requires_context:\n            context_id must be UUID v4\n        end note\n        \n        note right of CheckContextStatus\n            sa_context_must_be_active:\n            context.status == 'active'\n        end note\n    }\n    \n    state EvaluatePlan {HealthTech_LabAnalyzer] --> ValidatePlanBinding\n        ValidatePlanBinding --> ParseSteps\n        ParseSteps --> ResolveDependencies\n        ResolveDependencies --> BuildExecutionDAG\n        BuildExecutionDAG --> EmitSAPlanEvaluated\n        EmitSAPlanEvaluated --> [HealthTech_HIPAA_Vault]\n        \n        note right of ValidatePlanBinding\n            sa_plan_context_binding:\n            plan.context_id == context.context_id\n        end note\n        \n        note right of ParseSteps\n            sa_plan_has_steps:\n            steps.length >= 1\n            sa_steps_agent_role_if_present:\n            if agent_role present, non-empty\n        end note\n    }\n    \n    state ExecuteStep {HealthTech_HIPAA_Vault] --> SelectExecutor\n        SelectExecutor --> RunExecution\n        RunExecution --> UpdateStepStatus\n        UpdateStepStatus --> [HealthTech_LabAnalyzer]\n        \n        note right of SelectExecutor\n            Match agent_role to executor\n            (HealthTech_LabAnalyzer)\n        end note\n    }\n    \n    state EmitTrace {HealthTech_LabAnalyzer] --> WriteSegment\n        WriteSegment --> RecordOutcome\n        RecordOutcome --> EmitSATraceEmitted\n        EmitSATraceEmitted --> [HealthTech_DiagnosticEngine]\n        \n        note right of WriteSegment\n            sa_trace_context_binding:\n            trace.context_id == context.context_id\n            sa_trace_plan_binding:\n            trace.plan_id == plan.plan_id\n        end note\n    }\n    \n    state Complete {HealthTech_PatientRecords] --> FinalizeTrace\n        FinalizeTrace --> EmitSACompleted\n        EmitSACompleted --> [HealthTech_DiagnosticEngine]\n    }\n    \n    state HandleError {HealthTech_EMR_Sync] --> ClassifyError\n        ClassifyError --> DecideAction\n        DecideAction --> [HealthTech_EMR_Sync]\n    }\n",
+  "content_size": 3394,
+  "collected_at": "2026-02-06T10:39:54.536966",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "ot_stateDiagram_00265",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为HealthTech的诊断引擎设计一个SA（智能体实例）的完整生命周期状态机。核心场景是LabAnalyzer从EMR同步启动，经过初始化、上下文加载、计划执行到最终完成。",
+      "elements_involved": [
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer",
+        "Initialize",
+        "Complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白，这是一个纵向流程。我理解为：EMR_Sync触发Initialize，最终回到LabAnalyzer终止。但初始化阶段内部需要展开吗？比如创建SA实例的具体步骤？",
+      "elements_involved": [
+        "Initialize",
+        "CreateSAInstance",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，Initialize需要内嵌状态。包括从PatientRecords创建实例、生成SA_ID、然后发出SAInitialized事件。这是启动的关键契约点。",
+      "elements_involved": [
+        "Initialize",
+        "CreateSAInstance",
+        "GenerateSAId",
+        "EmitSAInitialized"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，Initialize内部结构已添加。现在主流程进入LoadContext，这里标注了SA Created (HealthTech_LabAnalyzer)。需要内嵌验证逻辑吗？",
+      "elements_involved": [
+        "Initialize",
+        "LoadContext",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "LoadContext必须内嵌，而且要和HIPAA_Vault交互。需要验证context_id是UUID v4，检查context状态为active。这两个是不变式约束，要加注释说明。",
+      "elements_involved": [
+        "LoadContext",
+        "HealthTech_HIPAA_Vault",
+        "ValidateContextId",
+        "CheckContextStatus",
+        "EmitSAContextLoaded"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "收到，已添加ValidateContextId和CheckContextStatus，以及两条note注释。验证通过后发出EmitSAContextLoaded回到LabAnalyzer。接下来是EvaluatePlan？",
+      "elements_involved": [
+        "LoadContext",
+        "EvaluatePlan",
+        "EmitSAContextLoaded"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，EvaluatePlan是核心决策点。需要验证plan和context的绑定关系，解析步骤、解析依赖，最终构建执行DAG。这里也有两条不变式：plan必须至少有一个step，如果指定了agent_role则不能为空。",
+      "elements_involved": [
+        "EvaluatePlan",
+        "ValidatePlanBinding",
+        "ParseSteps",
+        "ResolveDependencies",
+        "BuildExecutionDAG",
+        "EmitSAPlanEvaluated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "EvaluatePlan内嵌结构已完成，包含四条步骤和两条note。DAG构建完成后发出EmitSAPlanEvaluated，目标是HIPAA_Vault。主流程下一步是ExecuteStep？",
+      "elements_involved": [
+        "EvaluatePlan",
+        "BuildExecutionDAG",
+        "EmitSAPlanEvaluated",
+        "HealthTech_HIPAA_Vault",
+        "ExecuteStep"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，ExecuteStep是循环执行的核心。需要内嵌选择执行器、运行执行、更新状态三步。关键注释是agent_role要匹配到LabAnalyzer的执行器。",
+      "elements_involved": [
+        "ExecuteStep",
+        "SelectExecutor",
+        "RunExecution",
+        "UpdateStepStatus",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "ExecuteStep已添加，包含SelectExecutor的匹配注释。执行完成后进入EmitTrace，这里需要记录追踪信息？",
+      "elements_involved": [
+        "ExecuteStep",
+        "EmitTrace",
+        "SelectExecutor"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "EmitTrace需要内嵌，从LabAnalyzer写入segment，记录结果，然后发出SATraceEmitted。注意追踪数据必须绑定context_id和plan_id，这是审计要求。",
+      "elements_involved": [
+        "EmitTrace",
+        "HealthTech_LabAnalyzer",
+        "WriteSegment",
+        "RecordOutcome",
+        "EmitSATraceEmitted",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "已添加EmitTrace内嵌结构，包含两条trace绑定约束的note。发出SATraceEmitted后回到DiagnosticEngine。EmitTrace之后有两个出口？",
+      "elements_involved": [
+        "EmitTrace",
+        "EmitSATraceEmitted",
+        "HealthTech_DiagnosticEngine",
+        "ExecuteStep",
+        "Complete"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，EmitTrace到ExecuteStep是循环（More Steps），到Complete是结束（All Steps Done）。Complete内嵌FinalizeTrace和EmitSACompleted，最终回到DiagnosticEngine。",
+      "elements_involved": [
+        "EmitTrace",
+        "ExecuteStep",
+        "Complete",
+        "FinalizeTrace",
+        "EmitSACompleted",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "主成功路径已完成。现在需要处理错误分支。LoadContext和EvaluatePlan都可能失败？",
+      "elements_involved": [
+        "LoadContext",
+        "EvaluatePlan",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，LoadContext可能Context Invalid，EvaluatePlan可能Plan Invalid，都进入Failed状态。ExecuteStep的错误需要特殊处理——进入HandleError进行重试决策。",
+      "elements_involved": [
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "Failed",
+        "HandleError",
+        "Context Invalid",
+        "Plan Invalid",
+        "Step Error"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "HandleError的设计是：从EMR_Sync开始，分类错误后决定动作？可以重试回到ExecuteStep，或者致命错误进入Failed？",
+      "elements_involved": [
+        "HandleError",
+        "HealthTech_EMR_Sync",
+        "ClassifyError",
+        "DecideAction",
+        "ExecuteStep",
+        "Failed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。HandleError内嵌ClassifyError和DecideAction，两个出口：Retry回到ExecuteStep，Fatal Error进入Failed。Failed最终回到EMR_Sync终止。",
+      "elements_involved": [
+        "HandleError",
+        "ClassifyError",
+        "DecideAction",
+        "ExecuteStep",
+        "Failed",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "错误处理分支已添加。我注意到Complete的终止目标是LabAnalyzer，但Failed是回到EMR_Sync，这是有意设计的吗？",
+      "elements_involved": [
+        "Complete",
+        "HealthTech_LabAnalyzer",
+        "Failed",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，成功完成由LabAnalyzer回收实例，失败则由EMR_Sync触发清理流程。这是运维层面的区分。另外，EvaluatePlan完成后到HIPAA_Vault，这个过渡需要确认。",
+      "elements_involved": [
+        "Complete",
+        "Failed",
+        "EvaluatePlan",
+        "EmitSAPlanEvaluated",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "确认一下方向：整个图是TB（自上而下），状态内嵌用state关键字。所有系统边界如HealthTech_PatientRecords、HIPAA_Vault都用方括号标注。还有遗漏吗？",
+      "elements_involved": [
+        "direction TB",
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要添加元信息：标题是MPLP SA Profile Lifecycle State Machine，版本1.0.0，冻结日期2025-12-03，引用schema路径。还有，EmitTrace的note里trace绑定要写清楚。",
+      "elements_involved": [
+        "MPLP SA Profile Lifecycle",
+        "EmitTrace",
+        "sa_trace_context_binding",
+        "sa_trace_plan_binding"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "元信息已添加。我重新检查了所有note：LoadContext有两条（UUID v4和active状态），EvaluatePlan有两条（context绑定和steps约束），EmitTrace有两条（trace绑定），ExecuteStep有一条（agent_role匹配）。",
+      "elements_involved": [
+        "LoadContext",
+        "EvaluatePlan",
+        "ExecuteStep",
+        "EmitTrace",
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "repair",
+      "utterance": "发现一个问题：Initialize内部的CreateSAInstance前面应该是HealthTech_PatientRecords，不是LabAnalyzer。另外，EmitSAPlanEvaluated的目标应该是HealthTech_HIPAA_Vault，不是LabAnalyzer。请修正。",
+      "elements_involved": [
+        "Initialize",
+        "CreateSAInstance",
+        "HealthTech_PatientRecords",
+        "EmitSAPlanEvaluated",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已修正：Initialize内CreateSAInstance的入口改为HealthTech_PatientRecords，EmitSAPlanEvaluated的目标确认为HealthTech_HIPAA_Vault。还有ExecuteStep的UpdateStepStatus出口是LabAnalyzer，这个对吗？",
+      "elements_involved": [
+        "ExecuteStep",
+        "UpdateStepStatus",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，ExecuteStep完成后回到LabAnalyzer是正确的。再确认一下Complete内嵌的FinalizeTrace入口是PatientRecords，EmitSACompleted出口是DiagnosticEngine。",
+      "elements_involved": [
+        "Complete",
+        "FinalizeTrace",
+        "HealthTech_PatientRecords",
+        "EmitSACompleted",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "confirm",
+      "utterance": "确认无误。所有系统边界：PatientRecords、HIPAA_Vault、LabAnalyzer、EMR_Sync、DiagnosticEngine都已正确标注。状态机完整覆盖了SA从创建到终止的全生命周期，包含正常路径和错误处理。",
+      "elements_involved": [
+        "HealthTech_PatientRecords",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_EMR_Sync",
+        "HealthTech_DiagnosticEngine"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 26,
+    "repair_count": 2,
+    "grounding_acts_count": 26,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:38Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:21Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:21Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 73818.7835,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 24
+  }
+}

@@ -1,0 +1,565 @@
+{
+  "id": "aug_ot_stateDiagram_00015_Hea_1",
+  "source": "augmented_real_structure",
+  "source_url": "https://github.com/sethmcknight/quantic-msse-easy-park-plus/blob/039c5204b7b2c68b7ff94688985eb9bc26fba23c/project-submission/proposed-ddd-microservices-architecture/diagrams/state/mermaid/visit-state-diagram.mmd",
+  "source_type": "github_search_special",
+  "github_repo": "sethmcknight/quantic-msse-easy-park-plus",
+  "diagram_type": "stateDiagram",
+  "code": "---\ntitle: Easy Park Plus - Visit State Diagram (HealthTech_DiagnosticEngine)\n---\n\nstateDiagram-v2\n    %% Visit Operational Status\n    state \"VisitOperationalStatus\" as VisitOperational {HealthTech_DiagnosticEngine] --> Planned : Reservation Confirmed\n        Planned --> PendingEntry : Vehicle Nearing Lot (HealthTech_HIPAA_Vault)\n        PendingEntry --> EnteredLot : Vehicle ANPR Confirmed at Entry Gate / Gate Opened\n        PendingEntry --> Cancelled : Reservation NoShow / Expired before entry\n        \n        EnteredLot --> ActiveInLot : Vehicle Passed Entry Gate, Awaiting Slot Assignment or In Free-Roam\n        ActiveInLot --> SlotAssigned : Slot Assigned (HealthTech_DiagnosticEngine)\n        ActiveInLot --> AwaitingSlotAssignment : Vehicle in lot, but no slot yet (HealthTech_HIPAA_Vault)\n        AwaitingSlotAssignment --> SlotAssigned : Slot Assigned for Valet Park\n        \n        SlotAssigned --> ActiveInLot : Vehicle leaves slot, becomes Free-Roam (HealthTech_LabAnalyzer)\n        SlotAssigned --> ExitedLot : Vehicle ANPR Confirmed at Exit Gate / Gate Opened\n        ActiveInLot --> ExitedLot : Vehicle ANPR Confirmed at Exit Gate / Gate Opened (HealthTech_DiagnosticEngine)\n\n        ExitedLot --> CompletedOperational : Post-exit processing complete (HealthTech_EMR_Sync)\n        \n        %% Error / Exception States for Operational\n        Planned --> FailedToEnter : Technical issue at gate, reservation remains\n        PendingEntry --> FailedToEnter\n        EnteredLot --> Interrupted : e.g., System outage, vehicle stuck in lot\n        ActiveInLot --> Interrupted\n        SlotAssigned --> Interrupted\n        AwaitingSlotAssignment --> Interrupted\n        Interrupted --> ExitedLot : Manual Override Exit\n        Interrupted --> Abandoned : Vehicle left in lot after prolonged interruption\n        Interrupted --> EmergencyEvacuated : Emergency Mode activated, forced evacuation\n        \n        %% Emergency evacuation can happen from any active state\n        EnteredLot --> EmergencyEvacuated : Emergency Mode activated\n        ActiveInLot --> EmergencyEvacuated : Emergency Mode activated  \n        SlotAssigned --> EmergencyEvacuated : Emergency Mode activated\n        AwaitingSlotAssignment --> EmergencyEvacuated : Emergency Mode activated\n        \n        Abandoned --> [HealthTech_LabAnalyzer]\n        CompletedOperational --> [HealthTech_LabAnalyzer]\n        Cancelled --> [HealthTech_LabAnalyzer]\n        FailedToEnter --> [HealthTech_LabAnalyzer]\n        EmergencyEvacuated --> [HealthTech_LabAnalyzer]\n    }\n\n    %% Visit Billing Status (HealthTech_DiagnosticEngine)\n    state \"VisitBillingStatus\" as VisitBilling {HealthTech_EMR_Sync] --> PendingPriceQuote : Visit Started (HealthTech_LabAnalyzer)\n        PendingPriceQuote --> PriceQuoteReceived : Pricing Service responds\n        PriceQuoteReceived --> PendingPayment : Price confirmed, awaiting customer payment\n        PendingPayment --> PaymentInProgress : Customer initiates payment\n        PaymentInProgress --> PaymentConfirmed : Payment successful (HealthTech_HIPAA_Vault)\n        PaymentInProgress --> PaymentFailed : Payment attempt failed\n        PaymentFailed --> PendingPayment : Retry Payment\n        PaymentFailed --> RequiresManualBillingIntervention : Multiple failures or issue\n        \n        PaymentConfirmed --> BillingFinalized_Paid : Billing cycle complete for this visit\n        \n        %% Alternative Billing Flows\n        PendingPriceQuote --> GraceExempt_NoCharge : Visit qualifies for no charge (HealthTech_PatientRecords)\n        GraceExempt_NoCharge --> BillingFinalized_Paid : (HealthTech_EMR_Sync)\n\n        PriceQuoteReceived --> RequiresManualBillingIntervention : Price calculation error or dispute\n        RequiresManualBillingIntervention --> BillingFinalized_Paid : Manual resolution leads to payment\n        RequiresManualBillingIntervention --> BillingFinalized_Unpaid : Manual resolution leads to write-off or deferral\n        \n        BillingFinalized_Paid --> [HealthTech_HIPAA_Vault]\n        BillingFinalized_Unpaid --> [HealthTech_EMR_Sync]\n    }\n    \n    note right of VisitOperational\n      VisitOperationalStatus:\n      - Planned\n      - PendingEntry\n      - EnteredLot\n      - ActiveInLot\n      - AwaitingSlotAssignment\n      - SlotAssigned\n      - ExitedLot\n      - Interrupted\n      - Abandoned\n      - EmergencyEvacuated\n      - CompletedOperational (HealthTech_EMR_Sync)\n      - Cancelled (HealthTech_DiagnosticEngine)\n      - FailedToEnter \n    end note\n\n    note right of VisitBilling\n      VisitBillingStatus:\n      - PendingPriceQuote\n      - PriceQuoteReceived\n      - PendingPayment\n      - PaymentInProgress\n      - PaymentConfirmed\n      - PaymentFailed\n      - GraceExempt_NoCharge\n      - BillingFinalized_Paid\n      - BillingFinalized_Unpaid\n      - RequiresManualBillingIntervention\n    end note\n\n    %% Linking Operational and Billing states (HealthTech_DiagnosticEngine)\n    %% This is hard to show perfectly in Mermaid for parallel states that are not time-synchronized\n    %% but conceptually:\n    %% ExitedLot (HealthTech_PatientRecords) often triggers final billing actions if not already paid.\n    %% PaymentConfirmed (HealthTech_PatientRecords) can influence ExitedLot (HealthTech_EMR_Sync) if exit is gated by payment.\n    %% For simplicity, they are shown as parallel, managed by the VisitLifecycleStateMachine.\n    \n    %% VisitOperational : Visit Lifecycle Management\n    %% VisitBilling : Financial Lifecycle Management",
+  "content_size": 5220,
+  "collected_at": "2026-02-06T10:36:47.615769",
+  "compilation_status": "success",
+  "license": "other_source",
+  "license_name": "Other Source (GitHub-based)",
+  "compilation_error": "",
+  "augmentation_domain": "HealthTech",
+  "seed_id": "ot_stateDiagram_00015",
+  "cscw_dialogue": [
+    {
+      "turn_id": 1,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "我们需要为Easy Park Plus系统绘制一个完整的就诊状态图，核心是两个并行状态机：VisitOperationalStatus和VisitBillingStatus。前者管车辆物理流转，后者管财务生命周期。",
+      "elements_involved": [
+        "VisitOperationalStatus",
+        "VisitBillingStatus",
+        "parallel"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 2,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "明白。这两个状态机是完全独立的并行运行，还是存在某些同步点？比如车辆离场时是否必须完成支付？",
+      "elements_involved": [
+        "ExitedLot",
+        "PaymentConfirmed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 3,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "概念上是并行的，由VisitLifecycleStateMachine统一管理。但确实存在关联——PaymentConfirmed可以影响ExitedLot，如果出口设置了支付闸机的话。我们先画VisitOperational这条主线。",
+      "elements_involved": [
+        "VisitLifecycleStateMachine",
+        "PaymentConfirmed",
+        "ExitedLot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 4,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "好的，我先创建VisitOperationalStatus复合状态，内部起点是Planned，表示预约已确认。",
+      "elements_involved": [
+        "VisitOperationalStatus",
+        "Planned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 5,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "Planned之后，车辆接近停车场时进入PendingEntry状态，这里需要标注触发条件：\"Vehicle Nearing Lot\"，并且涉及HealthTech_HIPAA_Vault的数据校验。",
+      "elements_involved": [
+        "Planned",
+        "PendingEntry",
+        "HealthTech_HIPAA_Vault"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 6,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加Planned到PendingEntry的迁移，标注了触发条件和Vault组件。接下来PendingEntry应该有两个出口？",
+      "elements_involved": [
+        "Planned",
+        "PendingEntry"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 7,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "对，正常流程是ANPR识别后进入EnteredLot；异常流程是超时未入场变成Cancelled。",
+      "elements_involved": [
+        "PendingEntry",
+        "EnteredLot",
+        "Cancelled",
+        "ANPR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 8,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已绘制这两条迁移。EnteredLot之后是ActiveInLot，表示车辆已通过入口闸机，等待分配车位或自由漫游。",
+      "elements_involved": [
+        "EnteredLot",
+        "ActiveInLot"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 9,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "ActiveInLot是个关键分支点。如果系统分配了车位，就进入SlotAssigned；如果暂时没有车位，进入AwaitingSlotAssignment等待代客泊车分配。",
+      "elements_involved": [
+        "ActiveInLot",
+        "SlotAssigned",
+        "AwaitingSlotAssignment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 10,
+      "role": "Diagram_Editor",
+      "action_type": "clarify",
+      "utterance": "SlotAssigned和AwaitingSlotAssignment之间能互相转换吗？比如分配了车位后车主又开出来？",
+      "elements_involved": [
+        "SlotAssigned",
+        "AwaitingSlotAssignment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 11,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "可以，SlotAssigned可以回到ActiveInLot，标注为\"Vehicle leaves slot, becomes Free-Roam\"，这里涉及HealthTech_LabAnalyzer的状态更新。",
+      "elements_involved": [
+        "SlotAssigned",
+        "ActiveInLot",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 12,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加这条回退迁移。AwaitingSlotAssignment也能转到SlotAssigned吧？",
+      "elements_involved": [
+        "AwaitingSlotAssignment",
+        "SlotAssigned"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 13,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，标注\"Slot Assigned for Valet Park\"。另外，SlotAssigned和ActiveInLot都能直接到ExitedLot，都是ANPR出口识别。",
+      "elements_involved": [
+        "SlotAssigned",
+        "ActiveInLot",
+        "ExitedLot",
+        "ANPR"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 14,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加这两条到ExitedLot的迁移。ExitedLot之后是CompletedOperational？",
+      "elements_involved": [
+        "ExitedLot",
+        "CompletedOperational"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 15,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，ExitedLot到CompletedOperational，标注\"Post-exit processing complete\"，由HealthTech_EMR_Sync处理后续数据同步。",
+      "elements_involved": [
+        "ExitedLot",
+        "CompletedOperational",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 16,
+      "role": "Diagram_Editor",
+      "action_type": "propose",
+      "utterance": "现在需要处理异常流。我看到Planned和PendingEntry都有FailedToEnter？",
+      "elements_involved": [
+        "Planned",
+        "PendingEntry",
+        "FailedToEnter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 17,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "没错，这是技术故障场景——闸机问题导致无法入场，但预约仍然保留。两个状态都能进入FailedToEnter。",
+      "elements_involved": [
+        "Planned",
+        "PendingEntry",
+        "FailedToEnter"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 18,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。还有Interrupted状态，看起来是系统级故障？",
+      "elements_involved": [
+        "Interrupted"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 19,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，EnteredLot、ActiveInLot、SlotAssigned、AwaitingSlotAssignment这四个活跃状态都可能因系统中断进入Interrupted。Interrupted之后有三个出口：手动放行到ExitedLot、长期滞留变成Abandoned、或者紧急疏散到EmergencyEvacuated。",
+      "elements_involved": [
+        "Interrupted",
+        "ExitedLot",
+        "Abandoned",
+        "EmergencyEvacuated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 20,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已绘制Interrupted的所有迁移。EmergencyEvacuated也能从EnteredLot、ActiveInLot、SlotAssigned、AwaitingSlotAssignment直接进入？",
+      "elements_involved": [
+        "EmergencyEvacuated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 21,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，紧急模式可以从任何活跃状态强制触发。现在处理终态：Abandoned、CompletedOperational、Cancelled、FailedToEnter、EmergencyEvacuated都要指向HealthTech_LabAnalyzer作为结束。",
+      "elements_involved": [
+        "Abandoned",
+        "CompletedOperational",
+        "Cancelled",
+        "FailedToEnter",
+        "EmergencyEvacuated",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 22,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "VisitOperational部分已完成。现在创建VisitBillingStatus复合状态，起点是PendingPriceQuote？",
+      "elements_involved": [
+        "VisitBillingStatus",
+        "PendingPriceQuote"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 23,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，由HealthTech_EMR_Sync触发\"Visit Started\"，然后HealthTech_LabAnalyzer进入PendingPriceQuote。",
+      "elements_involved": [
+        "PendingPriceQuote",
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 24,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。PendingPriceQuote到PriceQuoteReceived是定价服务响应？",
+      "elements_involved": [
+        "PendingPriceQuote",
+        "PriceQuoteReceived"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 25,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "没错，然后PriceQuoteReceived到PendingPayment，客户确认价格后等待支付。",
+      "elements_involved": [
+        "PriceQuoteReceived",
+        "PendingPayment"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 26,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已绘制。支付流程是PendingPayment → PaymentInProgress → PaymentConfirmed？",
+      "elements_involved": [
+        "PendingPayment",
+        "PaymentInProgress",
+        "PaymentConfirmed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 27,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "是的，PaymentConfirmed由HealthTech_HIPAA_Vault确认支付成功，然后到BillingFinalized_Paid。但PaymentInProgress也有失败分支到PaymentFailed。",
+      "elements_involved": [
+        "PaymentConfirmed",
+        "HealthTech_HIPAA_Vault",
+        "BillingFinalized_Paid",
+        "PaymentFailed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 28,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。PaymentFailed可以重试回到PendingPayment，或者多次失败后进入RequiresManualBillingIntervention？",
+      "elements_involved": [
+        "PaymentFailed",
+        "PendingPayment",
+        "RequiresManualBillingIntervention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 29,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "完全正确。RequiresManualBillingIntervention之后有两个终态：BillingFinalized_Paid或BillingFinalized_Unpaid。",
+      "elements_involved": [
+        "RequiresManualBillingIntervention",
+        "BillingFinalized_Paid",
+        "BillingFinalized_Unpaid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 30,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已绘制。我看到还有GraceExempt_NoCharge这个免单分支？",
+      "elements_involved": [
+        "GraceExempt_NoCharge"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 31,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，从PendingPriceQuote可以直接到GraceExempt_NoCharge，比如首单免费或会员权益，由HealthTech_PatientRecords判断。然后直接到BillingFinalized_Paid。",
+      "elements_involved": [
+        "PendingPriceQuote",
+        "GraceExempt_NoCharge",
+        "HealthTech_PatientRecords",
+        "BillingFinalized_Paid"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 32,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加。PriceQuoteReceived也能直接进入RequiresManualBillingIntervention？",
+      "elements_involved": [
+        "PriceQuoteReceived",
+        "RequiresManualBillingIntervention"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 33,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "是的，价格计算错误或争议时的人工介入。最后BillingFinalized_Paid指向HealthTech_HIPAA_Vault，BillingFinalized_Unpaid指向HealthTech_EMR_Sync。",
+      "elements_involved": [
+        "BillingFinalized_Paid",
+        "HealthTech_HIPAA_Vault",
+        "BillingFinalized_Unpaid",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 34,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个复合状态都完成了。需要添加注释说明状态列表吗？",
+      "elements_involved": [
+        "note"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 35,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "需要，在VisitOperational右侧添加注释，列出所有状态：Planned、PendingEntry、EnteredLot、ActiveInLot、AwaitingSlotAssignment、SlotAssigned、ExitedLot、Interrupted、Abandoned、EmergencyEvacuated、CompletedOperational、Cancelled、FailedToEnter。",
+      "elements_involved": [
+        "note",
+        "VisitOperational"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 36,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加VisitOperational的注释。VisitBilling也需要？",
+      "elements_involved": [
+        "note",
+        "VisitBilling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 37,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "对，列出PendingPriceQuote、PriceQuoteReceived、PendingPayment、PaymentInProgress、PaymentConfirmed、PaymentFailed、GraceExempt_NoCharge、BillingFinalized_Paid、BillingFinalized_Unpaid、RequiresManualBillingIntervention。",
+      "elements_involved": [
+        "VisitBilling"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 38,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "两个注释都已完成。需要添加标题吗？",
+      "elements_involved": [
+        "title"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 39,
+      "role": "Domain_Expert",
+      "action_type": "propose",
+      "utterance": "标题用\"Easy Park Plus - Visit State Diagram (HealthTech_DiagnosticEngine)\"。另外，在图底部加一段说明文字，解释两个状态机虽然是并行的，但ExitedLot和PaymentConfirmed之间存在概念上的关联。",
+      "elements_involved": [
+        "title",
+        "ExitedLot",
+        "PaymentConfirmed"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 40,
+      "role": "Diagram_Editor",
+      "action_type": "execute",
+      "utterance": "已添加标题和底部说明。整个状态图完成了，包含两个并行复合状态、所有正常/异常流转、以及HealthTech各组件的标注。",
+      "elements_involved": [
+        "VisitOperationalStatus",
+        "VisitBillingStatus",
+        "HealthTech_DiagnosticEngine",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_EMR_Sync",
+        "HealthTech_LabAnalyzer",
+        "HealthTech_PatientRecords"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 41,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "很好，检查一下：EmergencyEvacuated的入口是否完整？EnteredLot、ActiveInLot、SlotAssigned、AwaitingSlotAssignment都能直接进入？",
+      "elements_involved": [
+        "EmergencyEvacuated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 42,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "确认一下，Interrupted也能到EmergencyEvacuated吗？目前图里Interrupted只到ExitedLot、Abandoned和EmergencyEvacuated，但EmergencyEvacuated的独立入口需要明确。",
+      "elements_involved": [
+        "Interrupted",
+        "EmergencyEvacuated"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 43,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "Interrupted到EmergencyEvacuated是对的，但EmergencyEvacuated的主要入口是那些四个活跃状态。Interrupted的EmergencyEvacuated迁移可以移除，避免重复。",
+      "elements_involved": [
+        "Interrupted",
+        "EmergencyEvacuated"
+      ],
+      "is_repair": false
+    },
+    {
+      "turn_id": 44,
+      "role": "Diagram_Editor",
+      "action_type": "repair",
+      "utterance": "已调整，移除了Interrupted到EmergencyEvacuated的冗余迁移，保留四个活跃状态的直接紧急疏散入口。",
+      "elements_involved": [
+        "Interrupted",
+        "EmergencyEvacuated"
+      ],
+      "is_repair": true
+    },
+    {
+      "turn_id": 45,
+      "role": "Domain_Expert",
+      "action_type": "confirm",
+      "utterance": "最终确认：所有终态都正确指向了对应的HealthTech组件，并行结构清晰，异常流覆盖完整。可以定稿了。",
+      "elements_involved": [
+        "HealthTech_LabAnalyzer",
+        "HealthTech_HIPAA_Vault",
+        "HealthTech_EMR_Sync"
+      ],
+      "is_repair": false
+    }
+  ],
+  "dialogue_metadata": {
+    "total_turns": 45,
+    "repair_count": 2,
+    "grounding_acts_count": 45,
+    "theoretical_framework": "Grounding in Communication (Clark & Brennan, 1991)"
+  },
+  "repair_log": [
+    "compilation_recovered_local_original"
+  ],
+  "repaired_at": "2026-03-11T04:48:36Z",
+  "release_version": "release_v6_kimi_k25_fullregen_20260312",
+  "release_built_at": "2026-03-13T02:13:20Z",
+  "dialogue_regen": {
+    "enabled": true,
+    "regenerated_at_utc": "2026-03-13T02:13:20Z",
+    "provider": "moonshot_chat_completions",
+    "model_name": "kimi-k2.5",
+    "source_generated_jsonl": "E:\\Desktop\\stream2graph\\reports\\dialogue_regen\\runs\\kimi_k25_remaining_v6_pipeline\\generated_build_input.jsonl",
+    "latency_ms": 81322.0201,
+    "parse_valid": true,
+    "fallback_used": false,
+    "reference_dialogue_turns": 40
+  }
+}
