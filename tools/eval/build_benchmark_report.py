@@ -135,7 +135,10 @@ def main() -> None:
     markdown_text = "\n".join(markdown_parts).strip() + "\n"
     write_json(output_dir / "benchmark_report.json", combined)
     (output_dir / "benchmark_report.md").write_text(markdown_text, encoding="utf-8")
-    print(json.dumps(combined, ensure_ascii=False, indent=2))
+    try:
+        print(json.dumps(combined, ensure_ascii=False, indent=2))
+    except UnicodeEncodeError:
+        print(json.dumps(combined, ensure_ascii=True, indent=2))
 
 
 if __name__ == "__main__":

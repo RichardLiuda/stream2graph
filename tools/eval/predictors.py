@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -46,6 +48,8 @@ class PredictionResult:
 
 
 class Predictor(ABC):
+    supports_parallel = False
+
     @abstractmethod
     def predict(self, sample: EvaluationSample) -> PredictionResult:
         raise NotImplementedError
@@ -243,6 +247,7 @@ class LocalHFPredictor(Predictor):
 
 class JSONHttpPredictor(Predictor):
     provider = "http_json"
+    supports_parallel = True
 
     def __init__(self, config: dict[str, Any]) -> None:
         self.endpoint = str(config["endpoint"])
@@ -252,6 +257,14 @@ class JSONHttpPredictor(Predictor):
         self.retry_backoff_sec = float(config.get("retry_backoff_sec", 3.0))
         self.request_interval_sec = float(config.get("request_interval_sec", 0.0))
         self._last_request_started_at = 0.0
+        self._request_gate = threading.Lock()
+
+    def _wait_for_request_slot(self) -> None:
+        with self._request_gate:
+            wait_sec = self.request_interval_sec - (time.time() - self._last_request_started_at)
+            if wait_sec > 0:
+                time.sleep(wait_sec)
+            self._last_request_started_at = time.time()
 
     def _post_json(self, payload: dict, headers: dict[str, str]) -> dict:
         body = json.dumps(payload).encode("utf-8")
@@ -265,10 +278,7 @@ class JSONHttpPredictor(Predictor):
         last_error: Exception | None = None
 
         for attempt in range(1, self.max_retries + 1):
-            wait_sec = self.request_interval_sec - (time.time() - self._last_request_started_at)
-            if wait_sec > 0:
-                time.sleep(wait_sec)
-            self._last_request_started_at = time.time()
+            self._wait_for_request_slot()
 
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout_sec) as response:
@@ -377,6 +387,7 @@ class OpenAICompatibleChatPredictor(JSONHttpPredictor):
         self.temperature = float(config.get("temperature", 0.0))
         self.max_tokens = int(config.get("max_tokens", config.get("max_output_tokens", 2048)))
         self.extra_body = config.get("extra_body", {}) if isinstance(config.get("extra_body"), dict) else {}
+        self.omit_temperature = bool(config.get("omit_temperature", False))
 
     def predict(self, sample: EvaluationSample) -> PredictionResult:
         api_key = _resolve_api_key(self.api_key_env)
@@ -398,8 +409,9 @@ class OpenAICompatibleChatPredictor(JSONHttpPredictor):
                     {"role": "user", "content": sample.prompt},
                 ],
                 "max_tokens": self.max_tokens,
-                "temperature": self.temperature,
             }
+            if not self.omit_temperature:
+                payload["temperature"] = self.temperature
             payload.update(self.extra_body)
             t0 = time.time()
             response = self._post_json(payload, {"Authorization": f"Bearer {api_key}"})
@@ -518,21 +530,26 @@ class GeminiGenerateContentPredictor(JSONHttpPredictor):
         api_key_env = str(config.get("api_key_env", "GOOGLE_API_KEY"))
         model_name = str(config["model"])
         api_key = _resolve_api_key(api_key_env)
-        endpoint = str(
-            config.get(
-                "endpoint",
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}",
-            )
-        )
+        endpoint = str(config.get("endpoint", "")).strip()
+        if not endpoint:
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+            if api_key:
+                endpoint = f"{endpoint}?key={api_key}"
         config = {**config, "endpoint": endpoint}
         super().__init__(config)
         self.api_key_env = api_key_env
         self.temperature = float(config.get("temperature", 0.0))
         self.max_output_tokens = int(config.get("max_output_tokens", 2048))
+        self.thinking_level = str(config.get("thinking_level", "")).strip().lower()
 
     def predict(self, sample: EvaluationSample) -> PredictionResult:
         api_key = _resolve_api_key(self.api_key_env)
-        if not api_key and "key=" not in self.endpoint:
+        endpoint_key = ""
+        try:
+            endpoint_key = urllib.parse.parse_qs(urllib.parse.urlparse(self.endpoint).query).get("key", [""])[0]
+        except Exception:
+            endpoint_key = ""
+        if not api_key and not endpoint_key:
             return PredictionResult(
                 provider=self.provider,
                 model_name=self.model_name,
@@ -551,6 +568,8 @@ class GeminiGenerateContentPredictor(JSONHttpPredictor):
                     "maxOutputTokens": self.max_output_tokens,
                 },
             }
+            if self.thinking_level in {"low", "medium", "high"}:
+                payload["generationConfig"]["thinkingConfig"] = {"thinkingLevel": self.thinking_level}
             t0 = time.time()
             response = self._post_json(payload, {})
             latency_ms = (time.time() - t0) * 1000.0
@@ -597,6 +616,7 @@ def build_predictor(config: dict[str, Any], static_rows: Optional[list[dict]] = 
         "minimax_chat_completions",
         "dashscope_chat_completions",
         "siliconflow_chat_completions",
+        "openrouter_chat_completions",
     }
     if provider == "gold_reference":
         return GoldReferencePredictor()

@@ -231,7 +231,10 @@ def main() -> None:
         ],
     )
 
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    try:
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+    except UnicodeEncodeError:
+        print(json.dumps(summary, ensure_ascii=True, indent=2))
 
 
 if __name__ == "__main__":

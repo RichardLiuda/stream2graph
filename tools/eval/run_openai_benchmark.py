@@ -20,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", type=str, default="gpt-4.1")
     parser.add_argument("--split", type=str, default="test", choices=["train", "validation", "test", "all"])
     parser.add_argument("--max-samples", type=int, default=0)
+    parser.add_argument("--sample-ids-file", type=str, default="")
     parser.add_argument("--api-key-env", type=str, default="OPENAI_API_KEY")
     parser.add_argument("--api-key", type=str, default="")
     parser.add_argument("--temperature", type=float, default=0.0)
@@ -28,6 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-retries", type=int, default=6)
     parser.add_argument("--retry-backoff-sec", type=float, default=5.0)
     parser.add_argument("--request-interval-sec", type=float, default=0.5)
+    parser.add_argument("--max-concurrency", type=int, default=1)
     parser.add_argument("--source-dir", type=str, default="versions/v3_2026-02-27_latest_9k_cscw/dataset/stream2graph_dataset/release_v3_20260228")
     parser.add_argument("--split-dir", type=str, default="versions/v3_2026-02-27_latest_9k_cscw/dataset/stream2graph_dataset/release_v3_20260228/splits")
     parser.add_argument("--compile-command", type=str, default="")
@@ -64,6 +66,7 @@ def main() -> None:
         "split_dir": args.split_dir,
         "split": args.split,
         "max_samples": args.max_samples,
+        "sample_ids_file": args.sample_ids_file,
         "resume": True,
         "output_jsonl": str(inference_dir / "predictions.jsonl"),
         "manifest_output": str(inference_dir / "manifest.json"),
@@ -76,6 +79,7 @@ def main() -> None:
         "max_retries": args.max_retries,
         "retry_backoff_sec": args.retry_backoff_sec,
         "request_interval_sec": args.request_interval_sec,
+        "max_concurrency": args.max_concurrency,
     }
     offline_config = {
         "input_jsonl": str(inference_dir / "predictions.jsonl"),
