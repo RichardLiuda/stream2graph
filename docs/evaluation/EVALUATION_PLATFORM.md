@@ -32,7 +32,7 @@ The platform is designed to support a rigorous paper workflow with:
 - `tools/eval/merge_prediction_shards.py`
   - merges disjoint shard prediction JSONL files back into one ordered prediction file
 - `tools/eval/run_openai_compatible_benchmark.py`
-  - benchmark entrypoint for official OpenAI-compatible providers such as Kimi, DeepSeek, MiniMax, Qwen DashScope, and SiliconFlow
+  - benchmark entrypoint for official or gateway-based OpenAI-compatible providers such as Claude-compatible gateways, Kimi, DeepSeek, MiniMax, Qwen DashScope, and SiliconFlow
 - `tools/eval/run_local_hf_benchmark.py`
   - benchmark entrypoint for local or cloud-hosted open-weight models loaded via Hugging Face + optional LoRA adapters
 - `tools/eval/run_traditional_benchmark.py`
@@ -73,6 +73,8 @@ The platform is designed to support a rigorous paper workflow with:
   - official Qwen DashScope OpenAI-compatible endpoint
 - `siliconflow_chat_completions`
   - SiliconFlow-hosted open-weight models via OpenAI-compatible endpoint
+- `claude_chat_completions`
+  - Claude-compatible chat-completions gateway using Anthropic-style model naming on an OpenAI-compatible endpoint
 - `anthropic_messages`
   - frontier API baseline
 - `google_generate_content`
@@ -174,9 +176,10 @@ python tools/eval/materialize_api_shards.py --config configs/evaluation/gemini3f
 python tools/eval/run_gemini_benchmark.py --config configs/evaluation/generated_shards/gemini3flash_google_v7_single_key/gemini3flash_google_v7_test_shard01of01.config.json
 ```
 
-### 8. Run Kimi / DeepSeek / MiniMax / Qwen / OpenRouter models with OpenAI-compatible endpoints
+### 8. Run Claude-compatible / Kimi / DeepSeek / MiniMax / Qwen / OpenRouter models with OpenAI-compatible endpoints
 
 ```bash
+python tools/eval/run_openai_compatible_benchmark.py --config configs/evaluation/model_benchmarks/claude_sonnet45_benchmark.example.json
 python tools/eval/run_openai_compatible_benchmark.py --config configs/evaluation/model_benchmarks/deepseek_benchmark.example.json
 python tools/eval/run_openai_compatible_benchmark.py --config configs/evaluation/model_benchmarks/moonshot_kimi_benchmark.example.json
 python tools/eval/run_openai_compatible_benchmark.py --config configs/evaluation/model_benchmarks/minimax_benchmark.example.json

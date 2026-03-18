@@ -611,6 +611,7 @@ def build_predictor(config: dict[str, Any], static_rows: Optional[list[dict]] = 
     provider = str(config.get("provider", "gold_reference"))
     openai_compatible_providers = {
         "openai_compatible_chat",
+        "claude_chat_completions",
         "moonshot_chat_completions",
         "deepseek_chat_completions",
         "minimax_chat_completions",

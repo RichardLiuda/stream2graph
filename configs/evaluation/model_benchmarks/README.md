@@ -16,6 +16,8 @@ This folder is the canonical home for hand-authored large-model benchmark templa
   - Qwen 3.5, thinking explicitly on
 - `openrouter_gpt_benchmark.example.json`
   - GPT-5.4 via OpenRouter, retained as an optional template but not part of the current active run plan
+- `claude_sonnet45_benchmark.example.json`
+  - Claude Sonnet 4.5 via a Claude-compatible chat-completions gateway
 
 ## Frontier / direct API
 
@@ -25,6 +27,8 @@ This folder is the canonical home for hand-authored large-model benchmark templa
   - OpenAI models through OpenRouter
 - `gemini_benchmark.example.json`
   - Gemini via the official Google interface for the single-key Flash workflow
+- `claude_sonnet45_benchmark.example.json`
+  - Claude Sonnet 4.5 through an Anthropic-style OpenAI-compatible endpoint
 
 ## Official OpenAI-compatible providers
 
@@ -40,6 +44,8 @@ This folder is the canonical home for hand-authored large-model benchmark templa
   - Qwen DashScope, thinking on
 - `siliconflow_benchmark.example.json`
   - SiliconFlow-hosted open-weight models
+- `claude_sonnet45_benchmark.example.json`
+  - Claude Sonnet 4.5 through a custom OpenAI-compatible Claude gateway
 
 ## Local open-weight models
 

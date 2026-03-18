@@ -11,6 +11,7 @@ This folder mixes stable templates and generated evaluation helpers. Use the gro
     - MiniMax 2.5 provider default
     - Gemini 3 Flash via the official Google interface with `thinkingLevel=high`
     - Qwen 3.5 with both thinking-on and thinking-off templates
+    - Claude Sonnet 4.5 via a Claude-compatible chat-completions gateway
   - also includes optional GPT/OpenRouter and local-HF templates for side experiments
 - `traditional_benchmark_*.example.json`
   - heuristic baseline benchmark templates that stay in the root

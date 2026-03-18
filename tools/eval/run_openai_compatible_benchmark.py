@@ -15,6 +15,8 @@ from tools.eval.export_run_bundle import export_entries
 
 
 DEFAULT_ENDPOINTS = {
+    "openai_compatible_chat": "",
+    "claude_chat_completions": "https://api.anthropic.com/v1/chat/completions",
     "moonshot_chat_completions": "https://api.moonshot.cn/v1/chat/completions",
     "deepseek_chat_completions": "https://api.deepseek.com/chat/completions",
     "minimax_chat_completions": "https://api.minimax.io/v1/chat/completions",
@@ -24,6 +26,8 @@ DEFAULT_ENDPOINTS = {
 }
 
 DEFAULT_API_KEY_ENVS = {
+    "openai_compatible_chat": "OPENAI_API_KEY",
+    "claude_chat_completions": "ANTHROPIC_API_KEY",
     "moonshot_chat_completions": "MOONSHOT_API_KEY",
     "deepseek_chat_completions": "DEEPSEEK_API_KEY",
     "minimax_chat_completions": "MINIMAX_API_KEY",
@@ -33,6 +37,8 @@ DEFAULT_API_KEY_ENVS = {
 }
 
 PROVIDER_LABELS = {
+    "openai_compatible_chat": "OpenAI Compatible",
+    "claude_chat_completions": "Claude Compatible",
     "moonshot_chat_completions": "Moonshot Kimi",
     "deepseek_chat_completions": "DeepSeek",
     "minimax_chat_completions": "MiniMax",
