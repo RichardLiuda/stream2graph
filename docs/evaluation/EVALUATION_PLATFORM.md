@@ -37,6 +37,14 @@ The platform is designed to support a rigorous paper workflow with:
   - benchmark entrypoint for local or cloud-hosted open-weight models loaded via Hugging Face + optional LoRA adapters
 - `tools/eval/run_traditional_benchmark.py`
   - heuristic / traditional baseline benchmark entrypoint that runs both offline and realtime evaluation
+- `tools/eval/incremental_dataset.py`
+  - loads the new staged incremental dataset splits from `data/incremental_dataset/runs/.../selection/`
+- `tools/eval/run_incremental_inference.py`
+  - runs the new incremental core system on staged dialogue/state samples and stores one summary row plus one detailed JSON per sample
+- `tools/eval/run_incremental_metrics.py`
+  - aggregates incremental-system metrics such as stage coverage, final state match, and update-count accuracy
+- `tools/eval/run_incremental_benchmark.py`
+  - wrapper that materializes configs and runs incremental inference + incremental metrics in one command
 - `tools/eval/materialize_experiment_matrix.py`
   - materializes paper-oriented experiment matrices into per-run configs and can optionally execute them
 - `tools/eval/export_run_bundle.py`
@@ -85,6 +93,42 @@ The platform is designed to support a rigorous paper workflow with:
   - heuristic baseline built from the existing intent engine and incremental renderer
 
 ## Actual evaluation flow
+
+## Incremental system flow
+
+The legacy `tools/eval/dataset.py` path is still designed for the old task:
+
+- full dialogue -> final Mermaid
+
+For the new project direction, the recommended path is the incremental-system flow:
+
+- staged dataset sample -> continuous dialogue prefix replay -> gate decision -> planner update -> current graph state
+
+### A. Run a smoke benchmark on the new system
+
+```bash
+python tools/eval/run_incremental_benchmark.py --config configs/evaluation/incremental_oracle_smoke.example.json
+```
+
+### B. Test one advanced API planner while keeping the small model fixed
+
+This is the recommended first comparison setup for frontier API models:
+
+- keep the small gate model fixed
+- only replace the large planner model
+
+Example:
+
+```bash
+python tools/eval/run_incremental_benchmark.py --config configs/evaluation/model_benchmarks/incremental_openai_compatible_planner.example.json
+```
+
+The resulting run will contain:
+
+- `inference/predictions.jsonl`
+- `inference/details/*.json`
+- `metrics/incremental_metrics.summary.json`
+- `metrics/incremental_metrics.summary.md`
 
 ### 1. Run unified inference
 

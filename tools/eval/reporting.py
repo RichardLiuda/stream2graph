@@ -13,6 +13,9 @@ BOOL_FIELDS = {
     "compile_success",
     "realtime_eval_pass",
     "parse_valid",
+    "completed_all_stages",
+    "final_matches_reference",
+    "exact_update_count_match",
 }
 
 
