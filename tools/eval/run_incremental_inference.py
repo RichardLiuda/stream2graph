@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import sys
 from pathlib import Path
@@ -38,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-samples", type=int, default=0)
     parser.add_argument("--sample-ids-file", type=str, default="")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--max-concurrency", type=int, default=1)
     parser.add_argument("--gate-kind", type=str, default="oracle", choices=["oracle", "openai_compatible"])
     parser.add_argument("--planner-kind", type=str, default="oracle", choices=["oracle", "openai_compatible"])
     parser.add_argument("--gate-endpoint", type=str, default="")
@@ -201,6 +203,17 @@ def _row_from_error(sample_entry, exc: Exception) -> dict:
     }
 
 
+def _run_entry(entry, args: argparse.Namespace, runner: IncrementalSystemRunner, details_dir: Path) -> tuple[object, dict]:
+    try:
+        sample = load_runtime_sample(args.run_root, entry.sample_id)
+        payload = runner.run_sample(sample)
+        detail_path = details_dir / f"{entry.sample_id}.json"
+        write_json(detail_path, payload)
+        return entry, _row_from_payload(entry, payload, detail_path)
+    except Exception as exc:
+        return entry, _row_from_error(entry, exc)
+
+
 def main() -> None:
     args = parse_args()
     inject_api_key(args.gate_api_key_env, args.gate_api_key)
@@ -240,25 +253,37 @@ def main() -> None:
         "error_rows": 0,
     }
 
-    for entry in entries:
-        if entry.sample_id in completed_ids:
-            continue
-        try:
-            sample = load_runtime_sample(args.run_root, entry.sample_id)
-            payload = runner.run_sample(sample)
-            detail_path = details_dir / f"{entry.sample_id}.json"
-            write_json(detail_path, payload)
-            row = _row_from_payload(entry, payload, detail_path)
-        except Exception as exc:
-            row = _row_from_error(entry, exc)
-            manifest["error_rows"] += 1
-        append_jsonl(output_jsonl, row)
-        manifest["rows_written"] += 1
-        print(
-            f"[incremental-inference] sample={entry.sample_id} split={entry.split} "
-            f"match={row.get('final_matches_reference')} error={bool(row.get('error'))}",
-            flush=True,
-        )
+    pending_entries = [entry for entry in entries if entry.sample_id not in completed_ids]
+
+    if args.max_concurrency <= 1:
+        for entry in pending_entries:
+            _, row = _run_entry(entry, args, runner, details_dir)
+            if row.get("error"):
+                manifest["error_rows"] += 1
+            append_jsonl(output_jsonl, row)
+            manifest["rows_written"] += 1
+            print(
+                f"[incremental-inference] sample={entry.sample_id} split={entry.split} "
+                f"match={row.get('final_matches_reference')} error={bool(row.get('error'))}",
+                flush=True,
+            )
+    else:
+        with ThreadPoolExecutor(max_workers=args.max_concurrency) as executor:
+            futures = {
+                executor.submit(_run_entry, entry, args, runner, details_dir): entry
+                for entry in pending_entries
+            }
+            for future in as_completed(futures):
+                entry, row = future.result()
+                if row.get("error"):
+                    manifest["error_rows"] += 1
+                append_jsonl(output_jsonl, row)
+                manifest["rows_written"] += 1
+                print(
+                    f"[incremental-inference] sample={entry.sample_id} split={entry.split} "
+                    f"match={row.get('final_matches_reference')} error={bool(row.get('error'))}",
+                    flush=True,
+                )
 
     write_json(manifest_output, manifest)
     print(f"Output JSONL: {output_jsonl}")

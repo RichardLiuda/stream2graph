@@ -20,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--split", type=str, default="test", choices=["train", "validation", "test", "all"])
     parser.add_argument("--max-samples", type=int, default=0)
     parser.add_argument("--sample-ids-file", type=str, default="")
+    parser.add_argument("--max-concurrency", type=int, default=1)
     parser.add_argument("--gate-kind", type=str, default="oracle", choices=["oracle", "openai_compatible"])
     parser.add_argument("--planner-kind", type=str, default="oracle", choices=["oracle", "openai_compatible"])
     parser.add_argument("--gate-endpoint", type=str, default="")
@@ -72,6 +73,7 @@ def main() -> None:
         "output_jsonl": str(inference_dir / "predictions.jsonl"),
         "manifest_output": str(inference_dir / "manifest.json"),
         "details_dir": str(inference_dir / "details"),
+        "max_concurrency": args.max_concurrency,
         "gate_kind": args.gate_kind,
         "planner_kind": args.planner_kind,
         "gate_endpoint": args.gate_endpoint,
