@@ -21,6 +21,7 @@ pnpm dev:up
 pnpm dev:status
 pnpm dev:down
 pnpm dev:web
+pnpm audio-helper:dev
 pnpm api:dev
 pnpm api:worker
 pnpm typecheck:web
@@ -31,6 +32,7 @@ pnpm api:test
 说明：
 
 - `pnpm dev:up` 会自动补 `.env`、尝试拉起 PostgreSQL、执行迁移，并后台启动 API / Web / worker
+- `pnpm audio-helper:dev` 会启动本地系统声音辅助层桥接服务，默认监听 `127.0.0.1:8765`
 - 进程日志默认写到 `var/log/`，PID 写到 `var/run/`
 - `pnpm api:*` 系列命令默认在已经激活 `.venv-platform` 的 shell 中执行
 
