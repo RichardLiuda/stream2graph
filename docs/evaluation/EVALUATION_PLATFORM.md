@@ -87,6 +87,8 @@ The platform is designed to support a rigorous paper workflow with:
   - frontier API baseline
 - `google_generate_content`
   - frontier API baseline
+- `local_hf`
+  - local or cloud-hosted Hugging Face chat model for the incremental gate or planner runtime
 - `static_jsonl`
   - reuse already-generated prediction files
 - `traditional_rule_based`
@@ -129,6 +131,26 @@ The resulting run will contain:
 - `inference/details/*.json`
 - `metrics/incremental_metrics.summary.json`
 - `metrics/incremental_metrics.summary.md`
+
+### C. Run the full incremental-dataset health analysis
+
+This pass combines dataset self-checking and benchmark-facing dataset statistics:
+
+- loader coverage
+- turn / stage / boundary consistency
+- graph monotonicity across stages
+- dialogue-size and graph-size distributions
+
+Example:
+
+```bash
+python tools/eval/analyze_incremental_dataset.py
+```
+
+The default published outputs are:
+
+- `reports/evaluation/published/incremental_dataset_full_v1_analysis/incremental_dataset_analysis.summary.json`
+- `reports/evaluation/published/incremental_dataset_full_v1_analysis/incremental_dataset_analysis.summary.md`
 
 ### 1. Run unified inference
 
