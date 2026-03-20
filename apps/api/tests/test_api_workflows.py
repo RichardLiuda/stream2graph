@@ -3,13 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from app.models import RealtimeChunk, RealtimeSession
 from app.services.runtime_sessions import drop_runtime
 
 
 def test_realtime_session_workflow_requires_auth_and_persists_reports(
     client: TestClient,
     admin_client: TestClient,
+    session_factory,
 ) -> None:
     unauthorized = client.post("/api/v1/realtime/sessions", json={"title": "unauthorized"})
     assert unauthorized.status_code == 401
@@ -22,6 +25,14 @@ def test_realtime_session_workflow_requires_auth_and_persists_reports(
             "min_wait_k": 1,
             "base_wait_k": 2,
             "max_wait_k": 4,
+            "client_context": {
+                "input_source": "transcript",
+                "capture_mode": "manual_text",
+                "platform": "macos",
+                "browser_family": "chrome",
+                "capability_status": "supported",
+                "capability_reason": "always available",
+            },
         },
     )
     assert created.status_code == 200
@@ -35,10 +46,27 @@ def test_realtime_session_workflow_requires_auth_and_persists_reports(
             "speaker": "expert",
             "is_final": True,
             "expected_intent": "sequential",
+            "metadata": {
+                "input_source": "transcript",
+                "capture_mode": "manual_text",
+                "platform": "macos",
+                "browser_family": "chrome",
+                "capability_status": "supported",
+                "capability_reason": "always available",
+            },
         },
     )
     assert chunk.status_code == 200
     assert chunk.json()["pipeline"]["meta"]["input_chunk_count"] == 1
+    assert chunk.json()["pipeline"]["meta"]["input_chunk_count"] == 1
+
+    with session_factory() as db:
+        saved_session = db.scalar(select(RealtimeSession).where(RealtimeSession.id == session_id))
+        assert saved_session is not None
+        assert saved_session.config_snapshot["input_runtime"]["input_source"] == "transcript"
+        saved_chunk = db.scalar(select(RealtimeChunk).where(RealtimeChunk.session_id == session_id))
+        assert saved_chunk is not None
+        assert saved_chunk.meta_json["capture_mode"] == "manual_text"
 
     drop_runtime(session_id)
     restored = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/snapshot")

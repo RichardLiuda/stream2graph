@@ -63,6 +63,7 @@ class RealtimeSessionCreateRequest(BaseModel):
     min_wait_k: int = 1
     base_wait_k: int = 2
     max_wait_k: int = 4
+    client_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class RealtimeChunkCreateRequest(BaseModel):

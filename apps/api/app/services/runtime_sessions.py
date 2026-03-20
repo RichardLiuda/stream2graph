@@ -85,7 +85,13 @@ def replace_events(db: Session, session_id: str, events: list[dict[str, Any]]) -
 
 
 def save_snapshot(db: Session, session_obj: RealtimeSession, *, pipeline: dict[str, Any], evaluation: dict[str, Any] | None) -> None:
-    session_obj.summary_json = pipeline.get("summary", {})
+    runtime_meta = {}
+    if isinstance(session_obj.config_snapshot, dict):
+        runtime_meta = session_obj.config_snapshot.get("input_runtime", {}) if isinstance(session_obj.config_snapshot.get("input_runtime"), dict) else {}
+    session_obj.summary_json = {
+        **(pipeline.get("summary", {}) if isinstance(pipeline.get("summary", {}), dict) else {}),
+        "input_runtime": runtime_meta,
+    }
     session_obj.pipeline_payload = pipeline
     session_obj.evaluation_payload = evaluation or {}
     session_obj.updated_at = utc_now()

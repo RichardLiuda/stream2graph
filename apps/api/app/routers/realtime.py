@@ -57,6 +57,7 @@ def create_session(payload: RealtimeSessionCreateRequest, db: Session = Depends(
             "min_wait_k": payload.min_wait_k,
             "base_wait_k": payload.base_wait_k,
             "max_wait_k": payload.max_wait_k,
+            "input_runtime": payload.client_context if isinstance(payload.client_context, dict) else {},
         },
     )
     db.add(obj)
@@ -124,6 +125,15 @@ def add_chunk(session_id: str, payload: RealtimeChunkCreateRequest, db: Session 
             "metadata": payload.metadata,
         },
     )
+    if isinstance(payload.metadata, dict) and payload.metadata:
+        input_runtime = obj.config_snapshot.get("input_runtime", {}) if isinstance(obj.config_snapshot, dict) else {}
+        obj.config_snapshot = {
+            **(obj.config_snapshot if isinstance(obj.config_snapshot, dict) else {}),
+            "input_runtime": {
+                **(input_runtime if isinstance(input_runtime, dict) else {}),
+                **payload.metadata,
+            },
+        }
     pipeline = runtime.pipeline_payload()
     evaluation = evaluate_payload(pipeline)
     replace_events(db, session_id, pipeline["events"])
