@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
+
+import json5
+from json_repair import repair_json
 
 from tools.eval.common import read_json, strip_code_fences, utc_iso, write_json
 from tools.incremental_dataset.minimax_client import MiniMaxChatClient, MiniMaxResult, QuotaPauseRequested
@@ -185,19 +189,29 @@ class AgentClusterRunner:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(prompt_payload, ensure_ascii=False, indent=2)},
         ]
-        result = self.client.chat(messages)
-        try:
-            parsed = _parse_json_output(result)
-        except Exception as exc:
-            raise RuntimeError(f"{role_name} parse failed: {exc}") from exc
+        last_result: MiniMaxResult | None = None
+        last_error: Exception | None = None
+        for attempt in range(3):
+            result = self.client.chat(messages)
+            last_result = result
+            try:
+                parsed = _parse_json_output(result)
+                break
+            except Exception as exc:
+                last_error = exc
+                if not _is_retriable_empty_output(result, exc) or attempt == 2:
+                    raise RuntimeError(f"{role_name} parse failed: {exc}") from exc
+                time.sleep(1.0 * (attempt + 1))
+        else:
+            raise RuntimeError(f"{role_name} parse failed: {last_error}")
         return {
             "role": role_name,
             "result": parsed,
-            "raw_text": result.text,
-            "latency_ms": result.latency_ms,
-            "usage": result.usage,
-            "finish_reason": result.finish_reason,
-            "reasoning": result.reasoning,
+            "raw_text": last_result.text if last_result else "",
+            "latency_ms": last_result.latency_ms if last_result else 0,
+            "usage": last_result.usage if last_result else {},
+            "finish_reason": last_result.finish_reason if last_result else "",
+            "reasoning": last_result.reasoning if last_result else "",
         }
 
 
@@ -209,11 +223,37 @@ def _parse_json_output(result: MiniMaxResult) -> dict[str, Any]:
         return json.loads(raw)
     except json.JSONDecodeError:
         candidate = _extract_first_json_object(raw)
-        if candidate:
-            return json.loads(candidate)
-        raise
+        errors: list[str] = []
+        for attempt in [candidate, raw]:
+            if not attempt:
+                continue
+            try:
+                return json.loads(attempt)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"json:{exc}")
+            try:
+                repaired = repair_json(attempt)
+                if repaired:
+                    return json.loads(repaired)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"json_repair:{exc}")
+            try:
+                parsed = json5.loads(attempt)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"json5:{exc}")
+        raise ValueError("; ".join(errors) if errors else "unable to parse JSON output")
 
 
 def _extract_first_json_object(text: str) -> str:
     match = re.search(r"(\{.*\})", text, flags=re.DOTALL)
     return match.group(1).strip() if match else ""
+
+
+def _is_retriable_empty_output(result: MiniMaxResult, exc: Exception) -> bool:
+    raw = strip_code_fences(result.text or "").strip()
+    if not raw:
+        return True
+    message = str(exc).lower()
+    return "empty model output" in message

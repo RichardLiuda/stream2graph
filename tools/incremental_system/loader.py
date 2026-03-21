@@ -66,17 +66,92 @@ def _stage_state_from_payload(payload: dict[str, Any]) -> StageState:
 
 
 def _load_dialogue_payload(agent_payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    dialogue_payload = (
+    dialogue_payload = _normalize_dialogue_payload(
         agent_payload.get("final_dialogue")
         or (agent_payload.get("dialogue_writer") or {}).get("result")
-        or {}
     )
-    alignment_payload = (
+    alignment_payload = _normalize_alignment_payload(
         agent_payload.get("final_alignment")
         or (agent_payload.get("turn_aligner") or {}).get("result")
-        or {}
     )
-    return dict(dialogue_payload), dict(alignment_payload)
+    return dialogue_payload, alignment_payload
+
+
+def _normalize_dialogue_payload(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, dict):
+        return dict(payload)
+    if not isinstance(payload, list):
+        return {}
+
+    normalized: dict[str, Any] = {}
+    turns: list[Any] = []
+
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        if any(key in item for key in ("dialogue_language", "conversation_title", "turns", "stage_boundaries")):
+            for key in ("dialogue_language", "conversation_title", "stage_boundaries", "stage_boundary"):
+                if key in item and key not in normalized:
+                    normalized[key] = item[key]
+            if isinstance(item.get("turns"), list):
+                turns.extend(item["turns"])
+            continue
+        if any(
+            key in item
+            for key in (
+                "speaker",
+                "content",
+                "turn_id",
+                "turn_index",
+                "stage_index",
+                "stage_transition",
+                "stage_boundary_context",
+            )
+        ):
+            turns.append(item)
+
+    if turns:
+        normalized["turns"] = turns
+    return normalized
+
+
+def _normalize_alignment_payload(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, dict):
+        return dict(payload)
+    if not isinstance(payload, list):
+        return {}
+
+    normalized: dict[str, Any] = {}
+    aligned_turns: list[Any] = []
+    trigger_turns: list[Any] = []
+    notes: list[Any] = []
+
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        if isinstance(item.get("aligned_turns"), list):
+            aligned_turns.extend(item["aligned_turns"])
+        elif any(
+            key in item
+            for key in ("turn_id", "turn_index", "stage_index", "stage", "aligned_turn_indices", "turn_indices")
+        ):
+            aligned_turns.append(item)
+
+        if isinstance(item.get("trigger_turns"), list):
+            trigger_turns.extend(item["trigger_turns"])
+        elif any(key in item for key in ("trigger_type", "source_stage", "target_stage", "trigger_content")):
+            trigger_turns.append(item)
+
+        if "notes" in item:
+            notes.append(item["notes"])
+
+    if aligned_turns:
+        normalized["aligned_turns"] = aligned_turns
+    if trigger_turns:
+        normalized["trigger_turns"] = trigger_turns
+    if notes:
+        normalized["notes"] = notes
+    return normalized
 
 
 def _coerce_int_ref(value: Any) -> int | None:

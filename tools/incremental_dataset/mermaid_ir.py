@@ -27,6 +27,29 @@ EDGE_LINE_RE = re.compile(
 )
 SUBGRAPH_RE = re.compile(r'^\s*subgraph\s+(.+?)\s*$', flags=re.IGNORECASE)
 STYLE_RE = re.compile(r"^\s*(classDef|class|style|linkStyle)\b", flags=re.IGNORECASE)
+STATE_TOKEN_RE = r'(?:\[\*\]|"[^"]+"|[A-Za-z][A-Za-z0-9_]{0,63})'
+STATE_EDGE_RE = re.compile(
+    rf"^\s*({STATE_TOKEN_RE})\s*"
+    r"(<<?[-.=ox]+>?|-->|==>|-.->|->>|-->>|<<--|<--|<->|--)\s*"
+    rf"(?:\|([^|]+)\|\s*)?({STATE_TOKEN_RE})"
+    r"(?:\s*:\s*(.*))?$"
+)
+STATE_BLOCK_RE = re.compile(
+    r'^\s*state\s+(".*?"|[A-Za-z][A-Za-z0-9_]{0,63})'
+    r'(?:\s+as\s+([A-Za-z][A-Za-z0-9_]{0,63}))?'
+    r'(?:\s+<<[^>]+>>)?\s*\{\s*$',
+    flags=re.IGNORECASE,
+)
+STATE_DECL_RE = re.compile(
+    r'^\s*state\s+(".*?"|[A-Za-z][A-Za-z0-9_]{0,63})'
+    r'(?:\s+as\s+([A-Za-z][A-Za-z0-9_]{0,63}))?'
+    r'(?:\s+<<[^>]+>>)?\s*$',
+    flags=re.IGNORECASE,
+)
+ER_EDGE_RE = re.compile(
+    r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*([|}{o.\-]+)\s*([A-Za-z][A-Za-z0-9_]*)\s*(?::\s*(.*))?$"
+)
+ER_ENTITY_BLOCK_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*\{\s*$")
 
 
 def _strip_node_shape(raw: str) -> str:
@@ -54,6 +77,35 @@ def _clean_group_label(raw: str, fallback: str) -> tuple[str, str]:
     explicit_label = _strip_node_shape(explicit_label) or explicit_label
     explicit_label = normalize_whitespace(explicit_label) or fallback
     return explicit_id or fallback, explicit_label
+
+
+def _safe_identifier(raw: str, fallback: str) -> str:
+    value = re.sub(r"[^A-Za-z0-9_]+", "_", (raw or "").strip())
+    value = re.sub(r"_+", "_", value).strip("_")
+    if not value:
+        return fallback
+    if not re.match(r"^[A-Za-z]", value):
+        value = f"{fallback}_{value}"
+    return value[:64]
+
+
+def _resolve_state_symbol(raw: str, fallback: str) -> tuple[str, str, str]:
+    token = (raw or "").strip()
+    if token == "[*]":
+        return "state_start", "[*]", "pseudo_state"
+    if token.startswith('"') and token.endswith('"') and len(token) >= 2:
+        label = normalize_whitespace(token[1:-1]) or fallback
+        return _safe_identifier(label, fallback), label, "state"
+    label = normalize_whitespace(token) or fallback
+    return token, label, "state"
+
+
+def _resolve_declared_state(name_token: str, alias_token: str | None, fallback: str) -> tuple[str, str]:
+    if alias_token:
+        label = normalize_whitespace((name_token or "").strip().strip('"')) or alias_token
+        return alias_token, label
+    state_id, state_label, _ = _resolve_state_symbol(name_token, fallback)
+    return state_id, state_label
 
 
 def parse_mermaid_to_graph_ir(sample: SourceSample) -> GraphIR:
@@ -94,12 +146,101 @@ def parse_mermaid_to_graph_ir(sample: SourceSample) -> GraphIR:
             continue
         if stripped.lower().startswith(("graph ", "flowchart ", "sequencediagram", "statediagram", "erdiagram", "mindmap")):
             continue
+        if diagram_type == "statediagram" and stripped == "}":
+            if group_stack:
+                group_stack.pop()
+            continue
+        if diagram_type == "er" and stripped in {"{", "}"}:
+            continue
         if stripped.lower() == "end":
             if group_stack:
                 group_stack.pop()
             continue
         if STYLE_RE.match(stripped):
             continue
+
+        if diagram_type == "statediagram":
+            state_block_match = STATE_BLOCK_RE.match(stripped)
+            if state_block_match:
+                fallback_id = f"state_group_{len(groups_by_id) + 1}"
+                state_id, state_label = _resolve_declared_state(
+                    state_block_match.group(1),
+                    state_block_match.group(2),
+                    fallback_id,
+                )
+                parent = group_stack[-1] if group_stack else None
+                groups_by_id[state_id] = GraphGroup(
+                    id=state_id,
+                    label=state_label,
+                    parent=parent,
+                    source_index=line_index,
+                    metadata={"kind": "state_group"},
+                )
+                group_stack.append(state_id)
+                continue
+
+            state_edge_match = STATE_EDGE_RE.match(stripped)
+            if state_edge_match:
+                source_id, source_label, source_kind = _resolve_state_symbol(
+                    state_edge_match.group(1),
+                    f"state_src_{line_index}",
+                )
+                target_id, target_label, target_kind = _resolve_state_symbol(
+                    state_edge_match.group(4),
+                    f"state_dst_{line_index}",
+                )
+                edge_label = normalize_whitespace(state_edge_match.group(3) or state_edge_match.group(5) or "")
+                ensure_node(source_id, source_label, source_kind, line_index)
+                ensure_node(target_id, target_label, target_kind, line_index)
+                edges.append(
+                    GraphEdge(
+                        id=f"e{len(edges) + 1}",
+                        source=source_id,
+                        target=target_id,
+                        label=edge_label,
+                        source_index=line_index,
+                        metadata={"connector": state_edge_match.group(2), "diagram_type": diagram_type},
+                    )
+                )
+                continue
+
+            state_decl_match = STATE_DECL_RE.match(stripped)
+            if state_decl_match:
+                state_id, state_label = _resolve_declared_state(
+                    state_decl_match.group(1),
+                    state_decl_match.group(2),
+                    f"state_{line_index}",
+                )
+                ensure_node(state_id, state_label, "state", line_index)
+                continue
+
+        if diagram_type == "er":
+            if stripped.lower().startswith("direction "):
+                continue
+            entity_block_match = ER_ENTITY_BLOCK_RE.match(stripped)
+            if entity_block_match:
+                entity_id = entity_block_match.group(1)
+                ensure_node(entity_id, entity_id, "entity", line_index)
+                continue
+
+            er_edge_match = ER_EDGE_RE.match(stripped)
+            if er_edge_match:
+                source_id = er_edge_match.group(1)
+                target_id = er_edge_match.group(3)
+                edge_label = normalize_whitespace(er_edge_match.group(4) or "")
+                ensure_node(source_id, source_id, "entity", line_index)
+                ensure_node(target_id, target_id, "entity", line_index)
+                edges.append(
+                    GraphEdge(
+                        id=f"e{len(edges) + 1}",
+                        source=source_id,
+                        target=target_id,
+                        label=edge_label,
+                        source_index=line_index,
+                        metadata={"connector": er_edge_match.group(2), "diagram_type": diagram_type},
+                    )
+                )
+                continue
 
         subgraph_match = SUBGRAPH_RE.match(stripped)
         if subgraph_match:

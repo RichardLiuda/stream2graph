@@ -163,6 +163,41 @@ def _apply_delta_ops(base: GraphIR, delta_ops: list[dict[str, Any]]) -> GraphIR:
     return graph
 
 
+def _merge_structural_metadata_from_snapshot(base: GraphIR, snapshot: GraphIR) -> GraphIR:
+    merged = _clone_graph_ir(base)
+    snapshot_nodes = {node.id: node for node in snapshot.nodes}
+    snapshot_groups = {group.id: group for group in snapshot.groups}
+
+    for node in merged.nodes:
+        snapshot_node = snapshot_nodes.get(node.id)
+        if snapshot_node is None:
+            continue
+        node.parent = snapshot_node.parent
+        if snapshot_node.kind:
+            node.kind = snapshot_node.kind
+        if snapshot_node.label:
+            node.label = snapshot_node.label
+        if snapshot_node.metadata:
+            node.metadata = dict(snapshot_node.metadata)
+
+    for group in merged.groups:
+        snapshot_group = snapshot_groups.get(group.id)
+        if snapshot_group is None:
+            continue
+        group.parent = snapshot_group.parent
+        group.member_ids = list(snapshot_group.member_ids)
+        if snapshot_group.label:
+            group.label = snapshot_group.label
+        if snapshot_group.metadata:
+            group.metadata = dict(snapshot_group.metadata)
+
+    if snapshot.styles:
+        merged.styles = list(snapshot.styles)
+    if snapshot.metadata:
+        merged.metadata = dict(snapshot.metadata)
+    return merged
+
+
 class DeterministicAlgorithmLayer:
     name = "deterministic_algorithm_layer"
 
@@ -199,6 +234,14 @@ class DeterministicAlgorithmLayer:
         target_graph = planner_output.target_graph_ir
         if planner_output.delta_ops:
             target_graph = _apply_delta_ops(base_graph, planner_output.delta_ops)
+            if planner_output.target_graph_ir is not None:
+                # When both delta ops and a full snapshot exist, keep the monotonic
+                # delta-first behavior but recover attachment/group structure from
+                # the snapshot so evaluation sees the same parent/member topology.
+                target_graph = _merge_structural_metadata_from_snapshot(
+                    target_graph,
+                    planner_output.target_graph_ir,
+                )
         elif target_graph is None:
             raise ValueError("PlannerOutput must include delta_ops or target_graph_ir.")
         elif _graph_item_count(target_graph) < _graph_item_count(base_graph):
