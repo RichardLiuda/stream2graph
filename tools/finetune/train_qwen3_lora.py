@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -31,14 +32,14 @@ def resolve_path(raw: str) -> Path:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="QLoRA fine-tuning entrypoint for Qwen3 on Stream2Graph.")
+    parser = argparse.ArgumentParser(description="QLoRA fine-tuning entrypoint for Qwen3.5 on incremental Stream2Graph.")
     parser.add_argument("--config", type=str, default="")
-    parser.add_argument("--model-name-or-path", type=str, default="unsloth/Qwen3-14B-unsloth-bnb-4bit")
-    parser.add_argument("--dataset-dir", type=str, default="data/finetune/qwen3_release_sft_local_smoke")
-    parser.add_argument("--output-dir", type=str, default="artifacts/finetune/qwen3_14b_local_smoke")
-    parser.add_argument("--logging-dir", type=str, default="reports/finetune/tensorboard/qwen3_14b_local_smoke")
-    parser.add_argument("--offload-dir", type=str, default="artifacts/finetune/offload/qwen3_14b_local_smoke")
-    parser.add_argument("--max-seq-length", type=int, default=640)
+    parser.add_argument("--model-name-or-path", type=str, default="Qwen/Qwen3.5-4B")
+    parser.add_argument("--dataset-dir", type=str, default="data/finetune/incremental_gate_sft_local_smoke")
+    parser.add_argument("--output-dir", type=str, default="artifacts/finetune/qwen35_4b_incremental_gate_local_smoke")
+    parser.add_argument("--logging-dir", type=str, default="reports/finetune/tensorboard/qwen35_4b_incremental_gate_local_smoke")
+    parser.add_argument("--offload-dir", type=str, default="artifacts/finetune/offload/qwen35_4b_incremental_gate_local_smoke")
+    parser.add_argument("--max-seq-length", type=int, default=1024)
     parser.add_argument("--per-device-train-batch-size", type=int, default=1)
     parser.add_argument("--per-device-eval-batch-size", type=int, default=1)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=8)
@@ -60,8 +61,8 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
     )
-    parser.add_argument("--gpu-memory-limit-mib", type=int, default=7600)
-    parser.add_argument("--cpu-memory-limit-gib", type=int, default=26)
+    parser.add_argument("--gpu-memory-limit-mib", type=int, default=24000)
+    parser.add_argument("--cpu-memory-limit-gib", type=int, default=64)
     parser.add_argument("--attn-implementation", type=str, default="sdpa")
 
     pre_args, _ = parser.parse_known_args()
@@ -248,6 +249,24 @@ def main() -> None:
         f"Prepared tokenized datasets: train={len(train_dataset)} validation={len(eval_dataset)}",
         flush=True,
     )
+    effective_batch_size = args.per_device_train_batch_size * args.gradient_accumulation_steps
+    approx_steps_per_epoch = max(1, math.ceil(len(train_dataset) / effective_batch_size))
+    if args.max_steps and args.max_steps > 0:
+        approx_total_steps = args.max_steps
+    else:
+        approx_total_steps = int(math.ceil(args.num_train_epochs * approx_steps_per_epoch))
+    print(
+        json.dumps(
+            {
+                "effective_batch_size": effective_batch_size,
+                "approx_steps_per_epoch": approx_steps_per_epoch,
+                "approx_total_steps": approx_total_steps,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        flush=True,
+    )
 
     model = build_model(args)
     print("Base model loaded and LoRA adapters attached", flush=True)
@@ -289,6 +308,8 @@ def main() -> None:
         save_safetensors=True,
         seed=args.seed,
         data_seed=args.seed,
+        disable_tqdm=False,
+        logging_first_step=True,
     )
 
     trainer = Trainer(

@@ -162,4 +162,4 @@ def dataset_manifest(
     if extra:
         payload.update(extra)
     return payload
-DEFAULT_INCREMENTAL_FINETUNE_RUN_ROOT = "data/incremental_dataset/runs/minimax_m27_incremental_full_v1_clean"
+DEFAULT_INCREMENTAL_FINETUNE_RUN_ROOT = "data/incremental_dataset/runs/incremental_open_balanced_v1_3360_public_clean"

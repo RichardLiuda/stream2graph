@@ -15,7 +15,7 @@ RUN_NAME="qwen35_4b_incremental_gate_local_smoke"
 LOG_FILE="${LOG_DIR}/${RUN_NAME}.log"
 PID_FILE="${LOG_DIR}/${RUN_NAME}.pid"
 CONFIG_PATH="${ROOT_DIR}/configs/finetune/qwen35_4b_gate_local_smoke.json"
-FINETUNE_RUN_ROOT="${FINETUNE_RUN_ROOT:-$ROOT_DIR/data/incremental_dataset/runs/minimax_m27_incremental_full_v1_clean}"
+FINETUNE_RUN_ROOT="${FINETUNE_RUN_ROOT:-$ROOT_DIR/data/incremental_dataset/runs/incremental_open_balanced_v1_3360_public_clean}"
 
 mkdir -p "$LOG_DIR" "$DATASET_DIR" "$TB_DIR" "$OUTPUT_DIR" "$OFFLOAD_DIR" "$RUNTIME_DIR"
 

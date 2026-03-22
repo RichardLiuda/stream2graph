@@ -11,15 +11,16 @@ The previous `Qwen3-14B` probe path is no longer the mainline for this project.
 
 ## Finetune data source
 
-The benchmark-facing frozen dataset stays at:
+The current official benchmark and default finetune-preparation source now align on:
 
-- `data/incremental_dataset/runs/minimax_m27_incremental_full_v1`
+- `data/incremental_dataset/runs/incremental_open_balanced_v1_3360_public_clean`
 
-The default finetune-preparation source now points to the clean derivative:
+This gives the finetune path the same balanced, open-license, benchmark-grade
+distribution that the current evaluation framework uses by default.
+
+The older internal clean derivative remains available as a legacy source:
 
 - `data/incremental_dataset/runs/minimax_m27_incremental_full_v1_clean`
-
-This keeps benchmark reproducibility and training cleanliness separate.
 
 ## What is prepared
 
@@ -35,6 +36,9 @@ This keeps benchmark reproducibility and training cleanliness separate.
 - cloud launchers:
   - `tools/finetune/run_cloud_qwen35_4b_gate_autodl.sh`
   - `tools/finetune/run_cloud_qwen35_27b_planner_autodl.sh`
+- RTX PRO 6000 96GB cloud configs:
+  - `configs/finetune/qwen35_4b_gate_cloud_rtxpro6000_96g.json`
+  - `configs/finetune/qwen35_27b_planner_cloud_rtxpro6000_96g.json`
 - local HF incremental benchmark templates:
   - `configs/evaluation/model_benchmarks/incremental_localhf_qwen35_27b_planner_qwen35_4b_gate_validation.example.json`
   - `configs/evaluation/model_benchmarks/incremental_localhf_qwen35_27b_planner_qwen35_4b_gate_test_full.example.json`
@@ -54,6 +58,16 @@ python tools/finetune/prefetch_hf_models.py --cache-dir artifacts/model_cache/qw
 This helper pulls the official Hugging Face snapshots for `Qwen/Qwen3.5-4B` and
 `Qwen/Qwen3.5-27B` into the local cache directory. By default these are the base
 `safetensors` checkpoints, not GGUF / GPTQ / AWQ quantized variants.
+
+If the large `27B` snapshot stalls under concurrent download, prefer the new
+serial shard mode:
+
+```bash
+python tools/finetune/prefetch_hf_models.py \
+  --cache-dir artifacts/model_cache/qwen35_incremental \
+  --model Qwen/Qwen3.5-27B \
+  --download-mode serial
+```
 
 2. Build the local finetune environment:
 
@@ -83,6 +97,7 @@ python tools/finetune/export_incremental_qwen35_bundle.py --include-optional-dir
 
 - Use `tools/finetune/run_cloud_qwen35_4b_gate_autodl.sh` for the gate model.
 - Use `tools/finetune/run_cloud_qwen35_27b_planner_autodl.sh` for the planner model.
+- Both cloud launchers now support `CONFIG_PATH=...` overrides for hardware-specific configs.
 - Keep the repo on fast local cloud storage such as `/root/autodl-tmp`.
 
 ## Testing after finetune
@@ -98,3 +113,16 @@ Then run:
 python tools/eval/run_incremental_benchmark.py --config configs/evaluation/model_benchmarks/incremental_localhf_qwen35_27b_planner_qwen35_4b_gate_validation.example.json
 python tools/eval/run_incremental_benchmark.py --config configs/evaluation/model_benchmarks/incremental_localhf_qwen35_27b_planner_qwen35_4b_gate_test_full.example.json
 ```
+
+For the four-way cloud ablation after finetune, use:
+
+```bash
+bash tools/finetune/run_cloud_incremental_qwen35_ablation_eval.sh
+```
+
+This runs the four combinations sequentially:
+
+- finetuned gate + finetuned planner
+- finetuned gate + base planner
+- base gate + finetuned planner
+- base gate + base planner
