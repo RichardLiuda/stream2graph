@@ -231,7 +231,7 @@ class LocalHFChatClient:
         self._last_request_started_at = 0.0
         self._request_gate = threading.Lock()
 
-        self.max_new_tokens = int(self.extra_body.get("max_new_tokens", self.extra_body.get("max_output_tokens", 1024)))
+        self.max_new_tokens = int(self.extra_body.get("max_new_tokens", self.extra_body.get("max_output_tokens", 2048)))
         self.top_p = float(self.extra_body.get("top_p", 1.0))
         self.do_sample = bool(self.extra_body.get("do_sample", False))
         self.enable_thinking = bool(self.extra_body.get("enable_thinking", False))

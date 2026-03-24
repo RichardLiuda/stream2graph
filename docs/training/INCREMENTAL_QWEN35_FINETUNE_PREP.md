@@ -75,6 +75,15 @@ python tools/finetune/prefetch_hf_models.py \
 bash tools/finetune/bootstrap_local_finetune_env.sh
 ```
 
+By default this bootstrap script now targets `PyTorch 2.8.0 + cu128`. That is the
+recommended default when your cloud image is `Ubuntu 22.04 + PyTorch 2.8 +
+CUDA 12.8`.
+If needed, you can override it with:
+
+```bash
+TORCH_WHL_CHANNEL=cu118 bash tools/finetune/bootstrap_local_finetune_env.sh
+```
+
 3. Prepare and smoke-test the gate path:
 
 ```bash

@@ -56,6 +56,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--planner-gpu-memory-mib", type=int, default=78000)
     parser.add_argument("--gate-cpu-memory-gib", type=int, default=64)
     parser.add_argument("--planner-cpu-memory-gib", type=int, default=96)
+    parser.add_argument("--gate-max-new-tokens", type=int, default=512)
+    parser.add_argument("--planner-max-new-tokens", type=int, default=2048)
     parser.add_argument("--attn-implementation", type=str, default="sdpa")
     parser.add_argument("--enable-thinking", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -145,7 +147,7 @@ def main() -> None:
             "gate_api_key": "",
             "gate_extra_body_json": _local_hf_extra(
                 adapter_path=str(experiment["gate_adapter"]),
-                max_new_tokens=256,
+                max_new_tokens=args.gate_max_new_tokens,
                 gpu_memory_limit_mib=args.gate_gpu_memory_mib,
                 cpu_memory_limit_gib=args.gate_cpu_memory_gib,
                 attn_implementation=args.attn_implementation,
@@ -157,7 +159,7 @@ def main() -> None:
             "planner_api_key": "",
             "planner_extra_body_json": _local_hf_extra(
                 adapter_path=str(experiment["planner_adapter"]),
-                max_new_tokens=1024,
+                max_new_tokens=args.planner_max_new_tokens,
                 gpu_memory_limit_mib=args.planner_gpu_memory_mib,
                 cpu_memory_limit_gib=args.planner_cpu_memory_gib,
                 attn_implementation=args.attn_implementation,

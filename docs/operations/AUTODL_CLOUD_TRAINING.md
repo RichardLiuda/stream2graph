@@ -21,7 +21,8 @@ The older `Qwen3-14B` route is legacy only and should not be used for new runs.
 - billing:
   - use pay-as-you-go for environment bring-up
 - image:
-  - `Miniconda / Python 3.10`
+  - `PyTorch 2.8 / Python 3.10 / CUDA 12.8`
+  - `Ubuntu 22.04` remains the recommended OS base
 - storage:
   - keep the repo under fast local cloud disk such as `/root/autodl-tmp`
   - if you want the full local base-model bundle on cloud, expand data disk to at least `200GB`
@@ -71,6 +72,18 @@ huggingface-cli login --token "$HF_TOKEN"
 ```bash
 cd /root/autodl-tmp/stream2graph
 bash tools/finetune/bootstrap_local_finetune_env.sh /root/autodl-tmp/stream2graph/.venv-finetune
+```
+
+The bootstrap script now defaults to the `cu128` PyTorch wheels and explicit
+`PyTorch 2.8.0` package versions, which is the recommended match when your
+cloud image is `Ubuntu 22.04 + PyTorch 2.8 + CUDA 12.8`.
+
+If you later switch to a different image family, you can override the wheel
+channel explicitly:
+
+```bash
+TORCH_WHL_CHANNEL=cu118 \
+  bash tools/finetune/bootstrap_local_finetune_env.sh /root/autodl-tmp/stream2graph/.venv-finetune
 ```
 
 ## 6. Make sure the base models are available
