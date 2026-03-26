@@ -38,6 +38,54 @@ class DatasetSplitSummary(BaseModel):
     example_ids: list[str]
 
 
+class RuntimeOptionProfile(BaseModel):
+    id: str
+    label: str
+    provider_kind: str
+    models: list[str]
+    default_model: str
+
+
+class RuntimeOptionsResponse(BaseModel):
+    llm_profiles: list[RuntimeOptionProfile]
+    stt_profiles: list[RuntimeOptionProfile]
+
+
+class RuntimeOptionProfileConfig(BaseModel):
+    id: str
+    label: str
+    provider_kind: str = "openai_compatible"
+    endpoint: str
+    models: list[str]
+    default_model: str = ""
+    api_key_env: str | None = None
+    api_key: str | None = None
+
+
+class RuntimeOptionsAdminResponse(BaseModel):
+    llm_profiles: list[RuntimeOptionProfileConfig]
+    stt_profiles: list[RuntimeOptionProfileConfig]
+
+
+class RuntimeOptionsAdminUpdateRequest(BaseModel):
+    llm_profiles: list[RuntimeOptionProfileConfig] = Field(default_factory=list)
+    stt_profiles: list[RuntimeOptionProfileConfig] = Field(default_factory=list)
+
+
+class RuntimeModelProbeRequest(BaseModel):
+    endpoint: str
+    provider_kind: str = "openai_compatible"
+    api_key: str | None = None
+    api_key_env: str | None = None
+
+
+class RuntimeModelProbeResponse(BaseModel):
+    ok: bool
+    provider_kind: str
+    models_endpoint: str
+    models: list[str]
+
+
 class SampleListItem(BaseModel):
     sample_id: str
     diagram_type: str
@@ -63,6 +111,11 @@ class RealtimeSessionCreateRequest(BaseModel):
     min_wait_k: int = 1
     base_wait_k: int = 2
     max_wait_k: int = 4
+    llm_profile_id: str | None = None
+    llm_model: str | None = None
+    stt_profile_id: str | None = None
+    stt_model: str | None = None
+    diagram_mode: str = "mermaid_primary"
     client_context: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -96,6 +149,28 @@ class RealtimeSession(BaseModel):
 
 class RealtimeSnapshot(BaseModel):
     session_id: str
+    pipeline: dict[str, Any]
+    evaluation: dict[str, Any] | None = None
+
+
+class RealtimeAudioTranscriptionRequest(BaseModel):
+    chunk_id: int = 0
+    sample_rate: int
+    channel_count: int = 1
+    pcm_s16le_base64: str
+    timestamp_ms: int | None = None
+    is_final: bool = True
+    speaker: str = "speaker"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RealtimeAudioTranscriptionResponse(BaseModel):
+    ok: bool
+    text: str
+    is_final: bool
+    provider: str
+    model: str
+    latency_ms: float
     pipeline: dict[str, Any]
     evaluation: dict[str, Any] | None = None
 

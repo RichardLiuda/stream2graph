@@ -85,6 +85,9 @@ cp .env.example .env
 - `S2G_DEFAULT_DATASET_VERSION`：默认数据集版本
 - `NEXT_PUBLIC_API_BASE_URL`：前端请求 API 的地址
 - `NEXT_PUBLIC_AUDIO_HELPER_BASE_URL`：前端连接本地音频辅助层的地址
+- `S2G_AUDIO_HELPER_CORS_ORIGINS`：允许访问本地 helper 的前端域名列表
+- `S2G_HELPER_TRANSCRIBER`：本地转写后端，默认 `faster_whisper`
+- `S2G_HELPER_MODEL_SIZE`：Whisper 模型大小，默认 `small`
 
 ### 4.2 启动 PostgreSQL
 
@@ -153,7 +156,13 @@ pnpm dev:web
 
 ### 4.9 启动系统声音辅助层（可选）
 
-如果需要验证“系统声音（增强模式）”桥接协议，可在另一个终端执行：
+如果需要使用“系统声音（增强模式）”，先安装 helper 依赖，再在另一个终端执行：
+
+```bash
+./.venv-platform/bin/pip install -e "apps/audio-helper"
+```
+
+然后启动：
 
 ```bash
 pnpm audio-helper:dev
@@ -164,8 +173,13 @@ pnpm audio-helper:dev
 - helper health：`http://127.0.0.1:8765/health`
 - helper capabilities：`http://127.0.0.1:8765/capabilities`
 
-当前仓库内置的是桥接协议和 UI 接入层。
-默认构建会把 helper 暴露为 `limited`，表示协议可用，但原生系统声音采集驱动仍需后续接入。
+当前实现会由浏览器提供共享音频流，再由 helper 在本机分段转写并通过 SSE 回推文本。
+
+推荐检查点：
+
+- `GET /capabilities` 返回 `supported`
+- `transcriber_backend` 为 `faster_whisper` 或你显式设置的后端
+- 如果返回 `limited`，通常是 helper 依赖还没安装，或跨域白名单没有包含当前前端域名
 
 ## 5. 已实现的 API 边界
 

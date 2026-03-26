@@ -7,8 +7,10 @@ import {
   datasetVersionSummarySchema,
   reportDetailSchema,
   reportSummarySchema,
+  realtimeAudioTranscriptionSchema,
   realtimeSessionSchema,
   realtimeSnapshotSchema,
+  runtimeOptionsSchema,
   runArtifactSchema,
   runJobSchema,
   sampleDetailSchema,
@@ -17,11 +19,70 @@ import {
   studyTaskSchema,
 } from "@stream2graph/contracts";
 
-const API_BASE_URL =
+const CONFIGURED_API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000";
 
+function resolveLocalApiBaseUrl(hostname: string) {
+  return `http://${hostname}:8000`;
+}
+
+const runtimeOptionProfileConfigSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  provider_kind: z.string(),
+  endpoint: z.string(),
+  models: z.array(z.string()),
+  default_model: z.string(),
+  api_key_env: z.string().nullable().optional(),
+  api_key: z.string().nullable().optional(),
+});
+
+const runtimeOptionsAdminSchema = z.object({
+  llm_profiles: z.array(runtimeOptionProfileConfigSchema),
+  stt_profiles: z.array(runtimeOptionProfileConfigSchema),
+});
+
+const runtimeModelProbeSchema = z.object({
+  ok: z.boolean(),
+  provider_kind: z.string(),
+  models_endpoint: z.string(),
+  models: z.array(z.string()),
+});
+
+export class ApiError extends Error {
+  status: number;
+  payload: unknown;
+
+  constructor(status: number, message: string, payload: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
+function resolveApiBaseUrl() {
+  if (typeof window === "undefined") {
+    return CONFIGURED_API_BASE_URL;
+  }
+
+  const { hostname, protocol } = window.location;
+  const isLocalhost =
+    hostname === "127.0.0.1" || hostname === "localhost" || hostname.endsWith(".local");
+
+  if (isLocalhost) {
+    return resolveLocalApiBaseUrl(hostname);
+  }
+
+  if (protocol === "http:" && CONFIGURED_API_BASE_URL.startsWith("https://")) {
+    return resolveLocalApiBaseUrl(hostname);
+  }
+
+  return CONFIGURED_API_BASE_URL;
+}
+
 export function apiUrl(path: string) {
-  return `${API_BASE_URL}${path}`;
+  return `${resolveApiBaseUrl()}${path}`;
 }
 
 async function request<TSchema extends z.ZodTypeAny>(
@@ -40,7 +101,7 @@ async function request<TSchema extends z.ZodTypeAny>(
   const text = await response.text();
   const raw = text ? JSON.parse(text) : {};
   if (!response.ok) {
-    throw new Error(raw.detail || raw.error || `HTTP ${response.status}`);
+    throw new ApiError(response.status, raw.detail || raw.error || `HTTP ${response.status}`, raw);
   }
   return schema.parse(raw);
 }
@@ -55,6 +116,18 @@ export const api = {
   logout: async () => request("/api/v1/auth/logout", z.object({ ok: z.boolean() }), { method: "POST" }),
   me: async () => request("/api/v1/auth/me", z.object({ username: z.string(), display_name: z.string() })),
   listDatasets: async () => request("/api/v1/catalog/datasets", z.array(datasetVersionSummarySchema)),
+  listRuntimeOptions: async () => request("/api/v1/catalog/runtime-options", runtimeOptionsSchema),
+  getAdminRuntimeOptions: async () => request("/api/v1/catalog/runtime-options/admin", runtimeOptionsAdminSchema),
+  saveAdminRuntimeOptions: async (payload: Record<string, unknown>) =>
+    request("/api/v1/catalog/runtime-options/admin", runtimeOptionsAdminSchema, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  probeRuntimeModels: async (payload: Record<string, unknown>) =>
+    request("/api/v1/catalog/runtime-options/admin/probe-models", runtimeModelProbeSchema, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   listSplits: async (slug: string) =>
     request(`/api/v1/catalog/datasets/${slug}/splits`, z.array(datasetSplitSummarySchema)),
   listSamples: async (slug: string, split: string, search = "", offset = 0, limit = 25) =>
@@ -85,6 +158,15 @@ export const api = {
         pipeline: z.record(z.any()),
         evaluation: z.record(z.any()),
       }),
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
+  transcribeRealtimeAudio: async (sessionId: string, payload: Record<string, unknown>) =>
+    request(
+      `/api/v1/realtime/sessions/${sessionId}/audio/transcriptions`,
+      realtimeAudioTranscriptionSchema,
       {
         method: "POST",
         body: JSON.stringify(payload),

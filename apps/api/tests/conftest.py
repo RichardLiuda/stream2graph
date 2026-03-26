@@ -27,7 +27,7 @@ def _build_test_client(session_factory: sessionmaker[Session]) -> TestClient:
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    return TestClient(app)
+    return TestClient(app, base_url="https://testserver")
 
 
 @pytest.fixture()

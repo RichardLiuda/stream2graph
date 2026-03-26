@@ -139,7 +139,8 @@ expert|Gateway module connects auth service and data service.|structural
   - 当前不会直接把共享音频转成文本
 - `系统声音（增强模式）`
   - 依赖本地 `audio helper`
-  - 当前仓库先提供桥接协议和前端接入层，原生采集驱动需要后续补齐
+  - 浏览器会共享标签页或屏幕音频，helper 在本机完成分段转写后回写会话
+  - 使用前请先安装 helper 依赖并启动 `pnpm audio-helper:dev`
 
 后续正式能力要求：
 

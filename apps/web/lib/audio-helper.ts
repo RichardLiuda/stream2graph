@@ -2,8 +2,32 @@
 
 import { z } from "zod";
 
-const HELPER_BASE_URL =
+const CONFIGURED_HELPER_BASE_URL =
   process.env.NEXT_PUBLIC_AUDIO_HELPER_BASE_URL?.replace(/\/$/, "") || "http://127.0.0.1:8765";
+
+function resolveLocalHelperBaseUrl(hostname: string) {
+  return `http://${hostname}:8765`;
+}
+
+function resolveHelperBaseUrl() {
+  if (typeof window === "undefined") {
+    return CONFIGURED_HELPER_BASE_URL;
+  }
+
+  const { hostname, protocol } = window.location;
+  const isLocalhost =
+    hostname === "127.0.0.1" || hostname === "localhost" || hostname.endsWith(".local");
+
+  if (isLocalhost) {
+    return resolveLocalHelperBaseUrl(hostname);
+  }
+
+  if (protocol === "http:" && CONFIGURED_HELPER_BASE_URL.startsWith("https://")) {
+    return resolveLocalHelperBaseUrl(hostname);
+  }
+
+  return CONFIGURED_HELPER_BASE_URL;
+}
 
 export const helperHealthSchema = z.object({
   ok: z.boolean(),
@@ -17,6 +41,8 @@ export const helperCapabilitiesSchema = z.object({
   capability_status: z.enum(["supported", "limited", "unsupported"]),
   capability_reason: z.string(),
   native_engine: z.string(),
+  transcriber_backend: z.string(),
+  model_size: z.string(),
   supported_sources: z.array(z.string()),
 });
 
@@ -24,6 +50,15 @@ export const helperCaptureResponseSchema = z.object({
   ok: z.boolean(),
   status: z.enum(["idle", "starting", "running", "stopped", "failed"]),
   source_type: z.string(),
+  message: z.string(),
+});
+
+export const helperAudioChunkResponseSchema = z.object({
+  ok: z.boolean(),
+  accepted: z.boolean(),
+  status: z.enum(["idle", "starting", "running", "stopped", "failed"]),
+  chunk_id: z.number(),
+  queued_chunks: z.number(),
   message: z.string(),
 });
 
@@ -43,7 +78,8 @@ async function helperRequest<TSchema extends z.ZodTypeAny>(
   schema: TSchema,
   init?: RequestInit,
 ): Promise<z.infer<TSchema>> {
-  const response = await fetch(`${HELPER_BASE_URL}${path}`, {
+  const helperBaseUrl = resolveHelperBaseUrl();
+  const response = await fetch(`${helperBaseUrl}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -59,11 +95,27 @@ async function helperRequest<TSchema extends z.ZodTypeAny>(
 }
 
 export const audioHelper = {
-  baseUrl: HELPER_BASE_URL,
+  get baseUrl() {
+    return resolveHelperBaseUrl();
+  },
   health: async () => helperRequest("/health", helperHealthSchema),
   capabilities: async () => helperRequest("/capabilities", helperCapabilitiesSchema),
-  startCapture: async (payload: { source_type: string; session_id?: string | null }) =>
+  startCapture: async (payload: { source_type: string; session_id?: string | null; language?: string | null }) =>
     helperRequest("/capture/start", helperCaptureResponseSchema, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  uploadAudioChunk: async (payload: {
+    source_type: string;
+    session_id?: string | null;
+    chunk_id: number;
+    sample_rate: number;
+    channel_count: number;
+    pcm_s16le_base64: string;
+    timestamp_ms?: number | null;
+    is_final?: boolean;
+  }) =>
+    helperRequest("/capture/audio-chunk", helperAudioChunkResponseSchema, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -77,7 +129,7 @@ export function subscribeAudioHelperEvents(
   onMessage: (payload: z.infer<typeof helperEventSchema>) => void,
   onError?: () => void,
 ) {
-  const source = new EventSource(`${HELPER_BASE_URL}/stream/events`);
+  const source = new EventSource(`${resolveHelperBaseUrl()}/stream/events`);
   source.onmessage = (event) => {
     const parsed = helperEventSchema.parse(JSON.parse(event.data));
     onMessage(parsed);

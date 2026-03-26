@@ -12,7 +12,7 @@ from app.config import get_settings
 from app.db import Base, engine, session_scope
 from app.models import AdminUser
 from app.routers import auth, catalog, realtime, reports, runs, studies
-from app.security import hash_password
+from app.security import hash_password, verify_password
 from app.services.catalog import sync_dataset_versions
 from app.services.runs import process_next_queued_job
 
@@ -28,6 +28,16 @@ def _bootstrap_admin() -> None:
                     display_name=settings.admin_display_name,
                 )
             )
+        else:
+            updated = False
+            if not verify_password(settings.admin_password, user.password_hash):
+                user.password_hash = hash_password(settings.admin_password)
+                updated = True
+            if user.display_name != settings.admin_display_name:
+                user.display_name = settings.admin_display_name
+                updated = True
+            if updated:
+                db.add(user)
         sync_dataset_versions(db)
 
 
