@@ -23,6 +23,16 @@ class AdminUser(Base):
     updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
+class PlatformSetting(Base):
+    __tablename__ = "platform_settings"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_id)
+    setting_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    value_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
 class DatasetVersion(Base):
     __tablename__ = "dataset_versions"
 

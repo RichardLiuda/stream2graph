@@ -117,10 +117,10 @@ export function getInputSourceOptions(context: ClientAudioContext | null): Input
     options.push({
       source: "system_audio_helper",
       label: "系统声音（增强模式）",
-      description: "通过本地辅助层桥接系统声音，是正式交付目标路线。",
+      description: "通过本地 helper 接收共享音频并在本机转文本，是当前正式体验路线。",
       capture_mode: "helper_native_capture",
       capability_status: "limited",
-      capability_reason: "需要本机启动 audio helper，并接入原生采集驱动。",
+      capability_reason: "需要本机启动 audio helper，并准备好本地转写依赖。",
     });
   }
 
