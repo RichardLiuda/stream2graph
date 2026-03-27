@@ -59,6 +59,13 @@ type TranscriptRow = {
   expected_intent?: string | null;
 };
 
+type TranscriptPreset = {
+  id: string;
+  label: string;
+  description: string;
+  value: string;
+};
+
 type BackendOption = {
   value: RecognitionBackend;
   label: string;
@@ -66,6 +73,70 @@ type BackendOption = {
 };
 
 type NoticeTone = "info" | "success" | "warning";
+
+const TRANSCRIPT_PRESETS: TranscriptPreset[] = [
+  {
+    id: "platform_architecture",
+    label: "平台架构梳理",
+    description: "适合生成服务依赖、数据流和后台管理关系图。",
+    value: [
+      "host|We need a platform map that starts from the web console and reaches the backend services.|structural",
+      "expert|Put the admin console on the left because every workflow begins there.|structural",
+      "expert|From the admin console, connect to the API gateway that handles auth, runtime control, and report export.|sequential",
+      "expert|The API gateway talks to the session manager for realtime runs and to the study manager for participant workflows.|structural",
+      "expert|The session manager writes state into PostgreSQL and artifacts into object storage.|structural",
+      "expert|A worker service reads queued jobs from PostgreSQL and produces reports and evaluation artifacts.|sequential",
+      "expert|The audio helper is optional and only feeds transcript chunks back into the API gateway.|structural",
+      "host|Please show that the runtime options service configures both the LLM path and the STT path.|structural",
+      "expert|Add a runtime settings module above the API gateway and connect it to LLM provider, STT provider, and model probe capability.|structural",
+    ].join("\n"),
+  },
+  {
+    id: "incident_response",
+    label: "故障响应流程",
+    description: "适合展示顺序步骤、分支决策和回滚路径。",
+    value: [
+      "operator|We need an incident response flow for a production outage.|sequential",
+      "lead|Start with alert ingestion from monitoring and paging into the on-call engineer.|sequential",
+      "lead|After triage, add a decision node: is customer traffic impacted?|structural",
+      "lead|If yes, branch to mitigation, status page update, and executive notification in parallel.|parallel",
+      "lead|If no, branch to deeper diagnosis without public communication.|conditional",
+      "operator|Mitigation should route to rollback, traffic shift, or feature flag disable depending on root cause.|conditional",
+      "lead|Once mitigation is stable, move into root-cause analysis, action items, and follow-up review.|sequential",
+      "operator|Close the loop by feeding action items back into backlog and runbooks.|feedback_loop",
+    ].join("\n"),
+  },
+  {
+    id: "research_workflow",
+    label: "用户研究闭环",
+    description: "适合演示 participant session、提交、评测和报告产出。",
+    value: [
+      "researcher|Describe the study workflow from task creation to report export.|sequential",
+      "expert|First create a study task with materials, condition setup, and participant codes.|sequential",
+      "expert|Participants enter through the participant page, review materials, and start a timed session.|sequential",
+      "expert|During the session, autosave keeps draft Mermaid output and transcript notes in progress storage.|structural",
+      "expert|Submission sends final Mermaid, compile result, and survey answers into the study session record.|sequential",
+      "researcher|Add automatic evaluation after submit so the system compares final output with reference and computes metrics.|sequential",
+      "expert|The study manager writes all session data into PostgreSQL and triggers report generation for aggregate analysis.|structural",
+      "researcher|End with a report dashboard that exports JSON, CSV, and markdown summaries for the whole study.|sequential",
+    ].join("\n"),
+  },
+  {
+    id: "data_pipeline",
+    label: "数据处理管线",
+    description: "适合演示 ingest、校验、富化、分发和监控。",
+    value: [
+      "architect|Map the event processing pipeline for partner data ingestion.|sequential",
+      "architect|Source systems push files and webhooks into an ingestion gateway.|sequential",
+      "architect|The ingestion gateway forwards payloads to schema validation and deduplication.|sequential",
+      "architect|Validated records go into an enrichment stage that joins account metadata and policy rules.|sequential",
+      "architect|After enrichment, split the flow into analytics warehouse, operational database, and search index.|parallel",
+      "architect|Any failed validation or policy conflict should go into a quarantine queue with manual review.|conditional",
+      "architect|Monitoring watches latency, failure rate, and backlog depth, then alerts ops when thresholds are exceeded.|structural",
+      "architect|Manual review can either release records back into enrichment or permanently reject them.|feedback_loop",
+    ].join("\n"),
+  },
+];
 
 function parseTranscriptInput(raw: string): TranscriptRow[] {
   return raw
@@ -227,13 +298,8 @@ export function RealtimeStudio() {
   const [studioState, studioSend] = useMachine(realtimeStudioMachine);
   const [title, setTitle] = useState("研究演示会话");
   const [datasetVersion, setDatasetVersion] = useState("");
-  const [transcriptText, setTranscriptText] = useState(
-    [
-      "expert|First define ingestion flow and source node.|sequential",
-      "expert|Then route events to parser and validation service.|sequential",
-      "expert|The gateway module connects auth service and data service.|structural",
-    ].join("\n"),
-  );
+  const [selectedTranscriptPresetId, setSelectedTranscriptPresetId] = useState(TRANSCRIPT_PRESETS[0]?.id ?? "");
+  const [transcriptText, setTranscriptText] = useState(TRANSCRIPT_PRESETS[0]?.value ?? "");
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Record<string, any> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1562,6 +1628,37 @@ export function RealtimeStudio() {
               <div>
                 <label className="text-sm font-medium text-slate-700">Transcript 输入</label>
                 <p className="mt-2 text-xs leading-6 text-slate-500">支持 `speaker | text | expected_intent`，一行一条，适合演示和快速回放。</p>
+              </div>
+              <div className="rounded-[20px] border border-white/70 bg-white/[0.52] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">样例库</div>
+                    <div className="mt-1 text-xs leading-6 text-slate-500">
+                      选择一组 richer transcript，直接替换到输入框里。
+                    </div>
+                  </div>
+                  <select
+                    className="h-11 min-w-[220px] rounded-[18px] border border-white/70 bg-white/[0.8] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                    value={selectedTranscriptPresetId}
+                    onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                      const nextId = event.target.value;
+                      const nextPreset = TRANSCRIPT_PRESETS.find((item) => item.id === nextId);
+                      setSelectedTranscriptPresetId(nextId);
+                      if (nextPreset) {
+                        setTranscriptText(nextPreset.value);
+                      }
+                    }}
+                  >
+                    {TRANSCRIPT_PRESETS.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="mt-3 text-xs leading-6 text-slate-600">
+                  {TRANSCRIPT_PRESETS.find((preset) => preset.id === selectedTranscriptPresetId)?.description}
+                </div>
               </div>
               <Textarea
                 rows={15}
