@@ -64,11 +64,27 @@ pnpm dev:status
 pnpm dev:down
 ```
 
+Windows PowerShell 对应命令：
+
+```powershell
+pnpm dev:up:win
+pnpm dev:status:win
+pnpm dev:down:win
+pnpm dev:restart:win
+```
+
 默认日志目录：
 
 - `var/log/api.log`
 - `var/log/worker.log`
 - `var/log/web.log`
+
+Windows 说明：
+
+- Windows 脚本位于 [scripts/dev-up.ps1](../../scripts/dev-up.ps1)、[scripts/dev-down.ps1](../../scripts/dev-down.ps1)、[scripts/dev-status.ps1](../../scripts/dev-status.ps1)、[scripts/dev-restart.ps1](../../scripts/dev-restart.ps1)
+- 默认使用 `.venv-platform\Scripts\python.exe`、`.venv-platform\Scripts\uvicorn.exe` 和 `.venv-platform\Scripts\alembic.exe`
+- 如果本机已自行启动 PostgreSQL，可先设置 `$env:S2G_START_DB='0'`
+- 如果不需要额外后台进程，可设置 `$env:S2G_START_WORKER='0'` 或 `$env:S2G_START_AUDIO_HELPER='0'`
 
 ### 4.1 准备环境变量
 
