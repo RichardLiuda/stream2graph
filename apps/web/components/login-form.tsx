@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import { Button, Card, Input } from "@stream2graph/ui";
 
+import { markAuthPending } from "@/lib/auth-session";
 import { api } from "@/lib/api";
 
 const schema = z.object({
@@ -20,17 +21,20 @@ type FormValues = z.infer<typeof schema>;
 
 export function LoginForm() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      username: "admin",
-      password: "admin123456",
+      username: "",
+      password: "",
     },
   });
 
   const mutation = useMutation({
     mutationFn: api.login,
-    onSuccess: () => {
+    onSuccess: async () => {
+      markAuthPending();
+      queryClient.removeQueries({ queryKey: ["auth", "me"], exact: true });
       router.replace("/app/realtime");
     },
   });
@@ -51,11 +55,13 @@ export function LoginForm() {
 
       <form
         className="space-y-4"
+        method="post"
+        autoComplete="on"
         onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
       >
         <div className="space-y-2">
           <label className="text-sm font-medium text-slate-700">管理员账号</label>
-          <Input {...form.register("username")} />
+          <Input autoComplete="username" {...form.register("username")} />
           {form.formState.errors.username ? (
             <p className="text-xs text-red-600">{form.formState.errors.username.message}</p>
           ) : null}
@@ -63,7 +69,7 @@ export function LoginForm() {
 
         <div className="space-y-2">
           <label className="text-sm font-medium text-slate-700">密码</label>
-          <Input type="password" {...form.register("password")} />
+          <Input type="password" autoComplete="current-password" {...form.register("password")} />
           {form.formState.errors.password ? (
             <p className="text-xs text-red-600">{form.formState.errors.password.message}</p>
           ) : null}

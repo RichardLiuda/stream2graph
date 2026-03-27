@@ -84,6 +84,10 @@ cp .env.example .env
 - `S2G_ADMIN_USERNAME` / `S2G_ADMIN_PASSWORD`：管理员账号
 - `S2G_DEFAULT_DATASET_VERSION`：默认数据集版本
 - `NEXT_PUBLIC_API_BASE_URL`：前端请求 API 的地址
+- `NEXT_PUBLIC_AUDIO_HELPER_BASE_URL`：前端连接本地音频辅助层的地址
+- `S2G_AUDIO_HELPER_CORS_ORIGINS`：允许访问本地 helper 的前端域名列表
+- `S2G_HELPER_TRANSCRIBER`：本地转写后端，默认 `faster_whisper`
+- `S2G_HELPER_MODEL_SIZE`：Whisper 模型大小，默认 `small`
 
 ### 4.2 启动 PostgreSQL
 
@@ -149,6 +153,33 @@ pnpm dev:web
 默认访问地址：
 
 - Web：`http://127.0.0.1:3000`
+
+### 4.9 启动系统声音辅助层（可选）
+
+如果需要使用“系统声音（增强模式）”，先安装 helper 依赖，再在另一个终端执行：
+
+```bash
+./.venv-platform/bin/pip install -e "apps/audio-helper"
+```
+
+然后启动：
+
+```bash
+pnpm audio-helper:dev
+```
+
+默认访问地址：
+
+- helper health：`http://127.0.0.1:8765/health`
+- helper capabilities：`http://127.0.0.1:8765/capabilities`
+
+当前实现会由浏览器提供共享音频流，再由 helper 在本机分段转写并通过 SSE 回推文本。
+
+推荐检查点：
+
+- `GET /capabilities` 返回 `supported`
+- `transcriber_backend` 为 `faster_whisper` 或你显式设置的后端
+- 如果返回 `limited`，通常是 helper 依赖还没安装，或跨域白名单没有包含当前前端域名
 
 ## 5. 已实现的 API 边界
 
@@ -227,9 +258,20 @@ pnpm dev:web
 - 创建实时 session
 - 粘贴 transcript 并逐条发送 chunk
 - 使用麦克风输入浏览器语音识别结果
+- 验证浏览器共享音频能力
+- 连接本地系统声音辅助层
 - 查看增量图区、事件流、稳定性指标和评测快照
 - 保存 session report
 - 关闭或恢复最近一次会话
+
+音频输入相关补充约束：
+
+- 当前工作台已支持文本 Transcript 和浏览器麦克风识别
+- 后续正式平台必须补充“系统声音输入”能力
+- 该能力需要同时考虑 macOS 与 Windows
+- Windows 可优先考虑系统回环或浏览器系统音频采集
+- macOS 需要重点评估共享标签页音频、屏幕采集音频和系统授权限制
+- 即使系统声音能力未就绪，Transcript 输入也必须始终可用，作为稳定降级路径
 
 ### 6.2 样本浏览与对比
 

@@ -18,6 +18,19 @@ export const datasetSplitSummarySchema = z.object({
   example_ids: z.array(z.string()),
 });
 
+export const runtimeOptionProfileSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  provider_kind: z.string(),
+  models: z.array(z.string()),
+  default_model: z.string(),
+});
+
+export const runtimeOptionsSchema = z.object({
+  llm_profiles: z.array(runtimeOptionProfileSchema),
+  stt_profiles: z.array(runtimeOptionProfileSchema),
+});
+
 export const sampleListItemSchema = z.object({
   sample_id: z.string(),
   diagram_type: z.string(),
@@ -49,6 +62,17 @@ export const realtimeSessionSchema = z.object({
 
 export const realtimeSnapshotSchema = z.object({
   session_id: z.string(),
+  pipeline: z.record(z.any()),
+  evaluation: z.record(z.any()).nullable().optional(),
+});
+
+export const realtimeAudioTranscriptionSchema = z.object({
+  ok: z.boolean(),
+  text: z.string(),
+  is_final: z.boolean(),
+  provider: z.string(),
+  model: z.string(),
+  latency_ms: z.number(),
   pipeline: z.record(z.any()),
   evaluation: z.record(z.any()).nullable().optional(),
 });
@@ -134,10 +158,13 @@ export const reportDetailSchema = reportSummarySchema.extend({
 
 export type DatasetVersionSummary = z.infer<typeof datasetVersionSummarySchema>;
 export type DatasetSplitSummary = z.infer<typeof datasetSplitSummarySchema>;
+export type RuntimeOptionProfile = z.infer<typeof runtimeOptionProfileSchema>;
+export type RuntimeOptions = z.infer<typeof runtimeOptionsSchema>;
 export type SampleListItem = z.infer<typeof sampleListItemSchema>;
 export type SampleDetail = z.infer<typeof sampleDetailSchema>;
 export type RealtimeSession = z.infer<typeof realtimeSessionSchema>;
 export type RealtimeSnapshot = z.infer<typeof realtimeSnapshotSchema>;
+export type RealtimeAudioTranscription = z.infer<typeof realtimeAudioTranscriptionSchema>;
 export type RunJob = z.infer<typeof runJobSchema>;
 export type RunArtifact = z.infer<typeof runArtifactSchema>;
 export type StudyTask = z.infer<typeof studyTaskSchema>;

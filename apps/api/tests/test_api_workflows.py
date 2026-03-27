@@ -3,14 +3,33 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from app.models import RealtimeChunk, RealtimeSession
 from app.services.runtime_sessions import drop_runtime
 
 
 def test_realtime_session_workflow_requires_auth_and_persists_reports(
     client: TestClient,
     admin_client: TestClient,
+    session_factory,
+    monkeypatch,
 ) -> None:
+    monkeypatch.setattr(
+        "app.routers.realtime.generate_mermaid_state",
+        lambda db, obj: {
+            "code": "flowchart TD\nA[Gateway] --> B[Parser]",
+            "normalized_code": "flowchart TD\nA[Gateway] --> B[Parser]",
+            "compile_ok": True,
+            "render_ok": True,
+            "provider": "test-llm",
+            "model": "test-model",
+            "latency_ms": 12.3,
+            "error_message": None,
+            "updated_at": 1,
+        },
+    )
+
     unauthorized = client.post("/api/v1/realtime/sessions", json={"title": "unauthorized"})
     assert unauthorized.status_code == 401
 
@@ -22,6 +41,18 @@ def test_realtime_session_workflow_requires_auth_and_persists_reports(
             "min_wait_k": 1,
             "base_wait_k": 2,
             "max_wait_k": 4,
+            "llm_profile_id": "test-llm",
+            "llm_model": "test-model",
+            "stt_profile_id": "test-stt",
+            "stt_model": "test-stt-model",
+            "client_context": {
+                "input_source": "transcript",
+                "capture_mode": "manual_text",
+                "platform": "macos",
+                "browser_family": "chrome",
+                "capability_status": "supported",
+                "capability_reason": "always available",
+            },
         },
     )
     assert created.status_code == 200
@@ -35,10 +66,28 @@ def test_realtime_session_workflow_requires_auth_and_persists_reports(
             "speaker": "expert",
             "is_final": True,
             "expected_intent": "sequential",
+            "metadata": {
+                "input_source": "transcript",
+                "capture_mode": "manual_text",
+                "platform": "macos",
+                "browser_family": "chrome",
+                "capability_status": "supported",
+                "capability_reason": "always available",
+            },
         },
     )
     assert chunk.status_code == 200
     assert chunk.json()["pipeline"]["meta"]["input_chunk_count"] == 1
+    assert chunk.json()["pipeline"]["mermaid_state"]["provider"] == "test-llm"
+
+    with session_factory() as db:
+        saved_session = db.scalar(select(RealtimeSession).where(RealtimeSession.id == session_id))
+        assert saved_session is not None
+        assert saved_session.config_snapshot["input_runtime"]["input_source"] == "transcript"
+        assert saved_session.config_snapshot["runtime_options"]["llm_profile_id"] == "test-llm"
+        saved_chunk = db.scalar(select(RealtimeChunk).where(RealtimeChunk.session_id == session_id))
+        assert saved_chunk is not None
+        assert saved_chunk.meta_json["capture_mode"] == "manual_text"
 
     drop_runtime(session_id)
     restored = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/snapshot")
@@ -70,6 +119,164 @@ def test_realtime_session_workflow_requires_auth_and_persists_reports(
     closed = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/close")
     assert closed.status_code == 200
     assert closed.json()["closed"] is True
+
+
+def test_runtime_options_and_audio_transcription_endpoint(
+    admin_client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.routers.catalog.list_runtime_options",
+        lambda db, include_secrets=False: {
+            "llm_profiles": [
+                {
+                    "id": "llm-default",
+                    "label": "LLM Default",
+                    "provider_kind": "openai_compatible",
+                    "models": ["model-a"],
+                    "default_model": "model-a",
+                }
+            ],
+            "stt_profiles": [
+                {
+                    "id": "stt-default",
+                    "label": "STT Default",
+                    "provider_kind": "openai_compatible",
+                    "models": ["stt-a"],
+                    "default_model": "stt-a",
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        "app.routers.realtime.generate_mermaid_state",
+        lambda db, obj: {
+            "code": "flowchart TD\nA[Audio] --> B[Mermaid]",
+            "normalized_code": "flowchart TD\nA[Audio] --> B[Mermaid]",
+            "compile_ok": True,
+            "render_ok": True,
+            "provider": "llm-default",
+            "model": "model-a",
+            "latency_ms": 10.0,
+            "error_message": None,
+            "updated_at": 2,
+        },
+    )
+    monkeypatch.setattr(
+        "app.routers.realtime.transcribe_audio_chunk",
+        lambda db, session_obj, payload: {
+            "text": "识别出的系统音频文本",
+            "provider": "stt-default",
+            "model": "stt-a",
+            "latency_ms": 88.6,
+        },
+    )
+
+    runtime_options = admin_client.get("/api/v1/catalog/runtime-options")
+    assert runtime_options.status_code == 200
+    assert runtime_options.json()["llm_profiles"][0]["id"] == "llm-default"
+
+    created = admin_client.post(
+        "/api/v1/realtime/sessions",
+        json={
+            "title": "audio session",
+            "llm_profile_id": "llm-default",
+            "llm_model": "model-a",
+            "stt_profile_id": "stt-default",
+            "stt_model": "stt-a",
+            "client_context": {"input_source": "system_audio"},
+        },
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    response = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/audio/transcriptions",
+        json={
+            "chunk_id": 0,
+            "sample_rate": 16000,
+            "channel_count": 1,
+            "pcm_s16le_base64": "AAA=",
+            "speaker": "system_audio",
+            "is_final": True,
+            "metadata": {"input_source": "system_audio", "capture_mode": "api_stt"},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["text"] == "识别出的系统音频文本"
+    assert payload["provider"] == "stt-default"
+    assert payload["pipeline"]["mermaid_state"]["model"] == "model-a"
+
+
+def test_runtime_options_can_be_saved_from_admin_ui(admin_client: TestClient) -> None:
+    response = admin_client.put(
+        "/api/v1/catalog/runtime-options/admin",
+        json={
+            "llm_profiles": [
+                {
+                    "id": "openai-main",
+                    "label": "OpenAI Main",
+                    "provider_kind": "openai_compatible",
+                    "endpoint": "https://api.openai.com/v1/chat/completions",
+                    "models": ["gpt-4.1-mini", "gpt-4.1"],
+                    "default_model": "gpt-4.1-mini",
+                    "api_key": "test-openai-key",
+                    "api_key_env": "",
+                }
+            ],
+            "stt_profiles": [
+                {
+                    "id": "openai-stt",
+                    "label": "OpenAI STT",
+                    "provider_kind": "openai_compatible",
+                    "endpoint": "https://api.openai.com/v1/audio/transcriptions",
+                    "models": ["gpt-4o-mini-transcribe"],
+                    "default_model": "gpt-4o-mini-transcribe",
+                    "api_key": "test-openai-key",
+                    "api_key_env": "",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["llm_profiles"][0]["endpoint"] == "https://api.openai.com/v1/chat/completions"
+    assert payload["llm_profiles"][0]["api_key"] == "test-openai-key"
+
+    admin_view = admin_client.get("/api/v1/catalog/runtime-options/admin")
+    assert admin_view.status_code == 200
+    assert admin_view.json()["llm_profiles"][0]["id"] == "openai-main"
+
+    public_view = admin_client.get("/api/v1/catalog/runtime-options")
+    assert public_view.status_code == 200
+    assert public_view.json()["llm_profiles"][0]["id"] == "openai-main"
+    assert "api_key" not in public_view.text
+
+
+def test_runtime_model_probe_endpoint(admin_client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.routers.catalog.probe_runtime_models",
+        lambda **kwargs: {
+            "provider_kind": kwargs["provider_kind"],
+            "models_endpoint": "https://api.openai.com/v1/models",
+            "models": ["gpt-4.1", "gpt-4.1-mini"],
+        },
+    )
+
+    response = admin_client.post(
+        "/api/v1/catalog/runtime-options/admin/probe-models",
+        json={
+            "endpoint": "https://api.openai.com/v1/chat/completions",
+            "provider_kind": "openai_compatible",
+            "api_key": "test-key",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["models_endpoint"] == "https://api.openai.com/v1/models"
+    assert payload["models"] == ["gpt-4.1", "gpt-4.1-mini"]
 
 
 def test_study_participant_workflow_records_submission_survey_and_exports(

@@ -6,11 +6,84 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import DatasetVersion
-from app.schemas import DatasetSplitSummary, DatasetVersionSummary, SampleDetail, SampleListItem
+from app.routers.auth import get_current_admin
+from app.schemas import (
+    AdminIdentity,
+    DatasetSplitSummary,
+    DatasetVersionSummary,
+    RuntimeOptionProfile,
+    RuntimeOptionProfileConfig,
+    RuntimeModelProbeRequest,
+    RuntimeModelProbeResponse,
+    RuntimeOptionsAdminResponse,
+    RuntimeOptionsAdminUpdateRequest,
+    RuntimeOptionsResponse,
+    SampleDetail,
+    SampleListItem,
+)
 from app.services import catalog as catalog_service
+from app.services.runtime_options import (
+    list_persisted_runtime_options,
+    list_runtime_options,
+    probe_runtime_models,
+    save_runtime_options,
+)
 
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
+
+
+@router.get("/runtime-options", response_model=RuntimeOptionsResponse)
+def get_runtime_options(db: Session = Depends(get_db)) -> RuntimeOptionsResponse:
+    payload = list_runtime_options(db)
+    return RuntimeOptionsResponse(
+        llm_profiles=[RuntimeOptionProfile(**row) for row in payload["llm_profiles"]],
+        stt_profiles=[RuntimeOptionProfile(**row) for row in payload["stt_profiles"]],
+    )
+
+
+@router.get("/runtime-options/admin", response_model=RuntimeOptionsAdminResponse)
+def get_runtime_options_admin(
+    db: Session = Depends(get_db),
+    _admin: AdminIdentity = Depends(get_current_admin),
+) -> RuntimeOptionsAdminResponse:
+    payload = list_persisted_runtime_options(db, include_secrets=True)
+    return RuntimeOptionsAdminResponse(
+        llm_profiles=[RuntimeOptionProfileConfig(**row) for row in payload["llm_profiles"]],
+        stt_profiles=[RuntimeOptionProfileConfig(**row) for row in payload["stt_profiles"]],
+    )
+
+
+@router.put("/runtime-options/admin", response_model=RuntimeOptionsAdminResponse)
+def save_runtime_options_admin(
+    payload: RuntimeOptionsAdminUpdateRequest,
+    db: Session = Depends(get_db),
+    _admin: AdminIdentity = Depends(get_current_admin),
+) -> RuntimeOptionsAdminResponse:
+    saved = save_runtime_options(db, payload.model_dump())
+    db.commit()
+    return RuntimeOptionsAdminResponse(
+        llm_profiles=[RuntimeOptionProfileConfig(**row) for row in saved["llm_profiles"]],
+        stt_profiles=[RuntimeOptionProfileConfig(**row) for row in saved["stt_profiles"]],
+    )
+
+
+@router.post("/runtime-options/admin/probe-models", response_model=RuntimeModelProbeResponse)
+def probe_runtime_models_admin(
+    payload: RuntimeModelProbeRequest,
+    _admin: AdminIdentity = Depends(get_current_admin),
+) -> RuntimeModelProbeResponse:
+    try:
+        result = probe_runtime_models(
+            endpoint=payload.endpoint,
+            provider_kind=payload.provider_kind,
+            api_key=payload.api_key,
+            api_key_env=payload.api_key_env,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return RuntimeModelProbeResponse(ok=True, **result)
 
 
 @router.get("/datasets", response_model=list[DatasetVersionSummary])
