@@ -186,6 +186,12 @@ class StreamingUpdate:
     keywords: List[str]
     operations: List[Dict]
     transcript_text: str
+    source_chunks: List[Dict]
+    primary_speaker: str
+    speakers: List[str]
+    semantic_action: str
+    focus_entities: List[str]
+    annotations: Dict
     processing_latency_ms: int
 
 
@@ -277,6 +283,11 @@ class StreamingIntentEngine:
         }
         self.intent_counter: Counter = Counter()
         self.boundary_counter: Counter = Counter()
+        self.entity_registry: Dict[str, str] = {}
+        self.entity_labels: Dict[str, str] = {}
+        self.entity_history: Dict[str, List[Dict]] = {}
+        self.entity_mentions: Dict[str, int] = {}
+        self.entity_seq = 0
 
     def ingest(self, chunk: TranscriptChunk) -> List[StreamingUpdate]:
         text = (chunk.text or "").strip()
@@ -358,9 +369,27 @@ class StreamingIntentEngine:
         tokens = tokenize(joined)
         intent_type, intent_conf, _ = self.classifier.classify(joined)
         keywords = self._extract_keywords(joined, tokens)
+        source_chunks = [
+            {
+                "timestamp_ms": c.timestamp_ms,
+                "speaker": c.speaker,
+                "text": (c.text or "").strip(),
+            }
+            for c in chunks
+            if (c.text or "").strip()
+        ]
+        speakers = list(dict.fromkeys(item["speaker"] for item in source_chunks if item["speaker"]))
+        primary_speaker = self._pick_primary_speaker(source_chunks)
+        semantic_action = self._derive_semantic_action(joined, intent_type)
         novelty = self._semantic_novelty(keywords)
         self._update_wait_k(intent_conf, novelty)
-        operations = self._build_incremental_ops(keywords, intent_type)
+        operations, focus_entities, annotations = self._build_incremental_ops(
+            keywords=keywords,
+            intent_type=intent_type,
+            semantic_action=semantic_action,
+            speakers=speakers,
+            transcript_text=joined,
+        )
         now_ms = int(time.time() * 1000)
         process_latency_ms = max(0, now_ms - min(arrive_times)) if arrive_times else 0
 
@@ -384,6 +413,12 @@ class StreamingIntentEngine:
             keywords=keywords,
             operations=operations,
             transcript_text=joined,
+            source_chunks=source_chunks,
+            primary_speaker=primary_speaker,
+            speakers=speakers,
+            semantic_action=semantic_action,
+            focus_entities=focus_entities,
+            annotations=annotations,
             processing_latency_ms=process_latency_ms,
         )
 
@@ -448,29 +483,284 @@ class StreamingIntentEngine:
         wait_k = max(self.config.min_wait_k, min(wait_k, self.config.max_wait_k))
         self.current_wait_k = wait_k
 
-    def _build_incremental_ops(self, keywords: List[str], intent_type: str) -> List[Dict]:
+    def _build_incremental_ops(
+        self,
+        keywords: List[str],
+        intent_type: str,
+        semantic_action: str,
+        speakers: List[str],
+        transcript_text: str,
+    ) -> Tuple[List[Dict], List[str], Dict]:
         ops: List[Dict] = []
         node_ids: List[str] = []
-        for i, kw in enumerate(keywords[:6], start=1):
-            nid = f"u{self.update_id}_n{i}"
+        node_meta: Dict[str, Dict] = {}
+        relation_type = self._infer_relation_type(intent_type=intent_type, semantic_action=semantic_action)
+
+        for kw in keywords[:6]:
+            nid, is_new = self._ensure_entity_node(kw)
+            if nid in node_meta:
+                continue
+            preview_status = self._predict_entity_status(
+                node_id=nid,
+                semantic_action=semantic_action,
+                speakers=speakers,
+            )
+            node_meta[nid] = {
+                "id": nid,
+                "label": self.entity_labels.get(nid, kw),
+                "status": preview_status,
+                "is_new": is_new,
+            }
             node_ids.append(nid)
+
+        for nid in node_ids:
+            meta = node_meta[nid]
             ops.append(
                 {
                     "op": "add_node",
                     "id": nid,
-                    "label": kw,
+                    "label": meta["label"],
                     "intent": intent_type,
+                    "status": meta["status"],
+                    "is_new": meta["is_new"],
                 }
             )
 
         if intent_type in {"sequential", "contrastive"} and len(node_ids) >= 2:
             for src, dst in zip(node_ids[:-1], node_ids[1:]):
-                ops.append({"op": "add_edge", "from": src, "to": dst})
-        elif intent_type in {"relational", "structural"} and len(node_ids) >= 2:
+                ops.append(
+                    {
+                        "op": "add_edge",
+                        "from": src,
+                        "to": dst,
+                        "relation_type": relation_type,
+                    }
+                )
+        elif intent_type in {"relational", "structural", "classification"} and len(node_ids) >= 2:
             hub = node_ids[0]
             for n in node_ids[1:]:
-                ops.append({"op": "add_edge", "from": hub, "to": n})
-        return ops
+                ops.append(
+                    {
+                        "op": "add_edge",
+                        "from": hub,
+                        "to": n,
+                        "relation_type": relation_type,
+                    }
+                )
+
+        annotations = self._build_annotations(
+            node_ids=node_ids,
+            semantic_action=semantic_action,
+            speakers=speakers,
+            transcript_text=transcript_text,
+        )
+        for entity in annotations["contested_entities"]:
+            nid = entity["id"]
+            for op in ops:
+                if op.get("op") == "add_node" and op.get("id") == nid:
+                    op["status"] = "contested"
+        for entity in annotations["consensus_entities"]:
+            nid = entity["id"]
+            for op in ops:
+                if op.get("op") == "add_node" and op.get("id") == nid:
+                    op["status"] = "consensus"
+
+        if semantic_action == "question":
+            for op in ops:
+                if op.get("op") == "add_node" and op.get("status") == "neutral":
+                    op["status"] = "pending"
+
+        self._record_entity_history(
+            node_ids=node_ids,
+            semantic_action=semantic_action,
+            speakers=speakers,
+            transcript_text=transcript_text,
+        )
+        return ops, node_ids, annotations
+
+    def _pick_primary_speaker(self, source_chunks: List[Dict]) -> str:
+        if not source_chunks:
+            return "user"
+        counts: Counter = Counter(item.get("speaker") or "user" for item in source_chunks)
+        primary, _ = counts.most_common(1)[0]
+        return str(primary or "user")
+
+    def _derive_semantic_action(self, text: str, intent_type: str) -> str:
+        raw = (text or "").lower().strip()
+        if not raw:
+            return "propose"
+
+        if "?" in raw or "？" in raw or any(token in raw for token in ("如何", "为什么", "怎么", "是否", "who", "what", "how")):
+            return "question"
+        if any(
+            token in raw
+            for token in (
+                "总结",
+                "总之",
+                "最终",
+                "所以",
+                "overall",
+                "in summary",
+                "to sum up",
+            )
+        ):
+            return "summarize"
+        if any(token in raw for token in ("同意", "赞成", "没错", "确实", "agree", "yes", "exactly", "sounds good")):
+            return "agree"
+        if any(
+            token in raw
+            for token in (
+                "澄清",
+                "具体",
+                "补充",
+                "也就是",
+                "换句话说",
+                "clarify",
+                "specifically",
+                "more precisely",
+            )
+        ):
+            return "clarify"
+        if intent_type == "contrastive" or any(
+            token in raw
+            for token in (
+                "但是",
+                "不过",
+                "相反",
+                "不是",
+                "而不是",
+                "however",
+                "but",
+                "instead",
+                "rather than",
+            )
+        ):
+            return "challenge"
+        return "propose"
+
+    def _canonical_entity_key(self, label: str) -> str:
+        cleaned = re.sub(r"\s+", " ", (label or "").strip().lower())
+        return cleaned
+
+    def _ensure_entity_node(self, label: str) -> Tuple[str, bool]:
+        key = self._canonical_entity_key(label)
+        if key in self.entity_registry:
+            nid = self.entity_registry[key]
+            if len(label) > len(self.entity_labels.get(nid, "")):
+                self.entity_labels[nid] = label
+            return nid, False
+
+        self.entity_seq += 1
+        nid = f"ent_{self.entity_seq}"
+        self.entity_registry[key] = nid
+        self.entity_labels[nid] = label
+        self.entity_mentions[nid] = 0
+        return nid, True
+
+    def _predict_entity_status(self, node_id: str, semantic_action: str, speakers: List[str]) -> str:
+        history = self.entity_history.get(node_id, [])
+        previous_speakers = {item.get("speaker", "user") for item in history}
+        current_speakers = {speaker for speaker in speakers if speaker}
+
+        if semantic_action == "question":
+            return "pending"
+        if semantic_action == "challenge" and history:
+            return "contested"
+        if semantic_action in {"agree", "summarize"} and history:
+            return "consensus"
+        if previous_speakers and current_speakers and previous_speakers != current_speakers:
+            return "active"
+        return "new" if self.entity_mentions.get(node_id, 0) == 0 else "neutral"
+
+    def _infer_relation_type(self, intent_type: str, semantic_action: str) -> str:
+        if semantic_action == "question":
+            return "question"
+        if semantic_action == "challenge" or intent_type == "contrastive":
+            return "contrast"
+        if intent_type == "sequential":
+            return "sequence"
+        if intent_type in {"structural", "relational"}:
+            return "dependency"
+        if intent_type == "classification":
+            return "support"
+        return "support"
+
+    def _build_annotations(
+        self,
+        node_ids: List[str],
+        semantic_action: str,
+        speakers: List[str],
+        transcript_text: str,
+    ) -> Dict:
+        contested_entities: List[Dict] = []
+        consensus_entities: List[Dict] = []
+        open_questions: List[str] = []
+        next_prompts: List[str] = []
+        current_speakers = {speaker for speaker in speakers if speaker}
+
+        for nid in node_ids:
+            history = self.entity_history.get(nid, [])
+            label = self.entity_labels.get(nid, nid)
+            previous_speakers = {item.get("speaker", "user") for item in history}
+
+            if semantic_action == "challenge" and history:
+                contested_entities.append({"id": nid, "label": label})
+            elif semantic_action in {"agree", "summarize"} and history:
+                consensus_entities.append({"id": nid, "label": label})
+            elif previous_speakers and current_speakers and previous_speakers != current_speakers:
+                if semantic_action == "propose":
+                    next_prompts.append(f"{label} 还需要进一步确认不同说话人的具体分工吗？")
+
+            if semantic_action == "question":
+                open_questions.append(f"围绕 {label} 还存在待澄清问题。")
+
+        if semantic_action == "question" and not open_questions:
+            snippet = transcript_text[:28].strip()
+            if snippet:
+                open_questions.append(f"待回应问题：{snippet}")
+
+        if semantic_action == "challenge":
+            labels = [item["label"] for item in contested_entities[:2]]
+            if labels:
+                next_prompts.append(f"是否需要为 {' / '.join(labels)} 明确取舍依据？")
+        elif semantic_action == "agree":
+            labels = [item["label"] for item in consensus_entities[:2]]
+            if labels:
+                next_prompts.append(f"既然已对齐 {' / '.join(labels)}，下一步要细化哪一层？")
+        elif semantic_action == "question":
+            labels = [self.entity_labels.get(nid, nid) for nid in node_ids[:2]]
+            if labels:
+                next_prompts.append(f"谁来补充 {' / '.join(labels)} 的缺失信息？")
+        elif semantic_action == "propose" and len(node_ids) >= 2:
+            labels = [self.entity_labels.get(nid, nid) for nid in node_ids[:2]]
+            next_prompts.append(f"{labels[0]} 和 {labels[1]} 的关系还需要更明确吗？")
+
+        return {
+            "contested_entities": contested_entities[:4],
+            "consensus_entities": consensus_entities[:4],
+            "open_questions": open_questions[:3],
+            "next_prompts": list(dict.fromkeys(next_prompts))[:3],
+        }
+
+    def _record_entity_history(
+        self,
+        node_ids: List[str],
+        semantic_action: str,
+        speakers: List[str],
+        transcript_text: str,
+    ) -> None:
+        speaker = speakers[0] if speakers else "user"
+        snippet = transcript_text[:180]
+        for nid in node_ids:
+            self.entity_history.setdefault(nid, []).append(
+                {
+                    "update_id": self.update_id,
+                    "speaker": speaker,
+                    "semantic_action": semantic_action,
+                    "text": snippet,
+                }
+            )
+            self.entity_mentions[nid] = self.entity_mentions.get(nid, 0) + 1
 
     def _stats(self, values: List[float]) -> Dict[str, float]:
         if not values:
