@@ -3,7 +3,9 @@ from __future__ import annotations
 import base64
 import io
 import json
+import logging
 import os
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -19,15 +21,32 @@ from app.models import RealtimeChunk, RealtimeSession
 from app.services.runtime_options import resolve_profile
 from tools.eval.common import extract_mermaid_candidate
 from tools.eval.metrics import MermaidCompileChecker, normalize_mermaid
-
-
-LLM_SYSTEM_PROMPT = (
-    "You update the current best Mermaid diagram for an in-progress collaborative conversation. "
-    "Return Mermaid code only. Do not add explanations, markdown fences, or commentary."
+from tools.mermaid_prompting import (
+    MERMAID_GENERATION_SYSTEM_PROMPT,
+    MERMAID_RUNTIME_VERSION,
+    MERMAID_SYNTAX_PROFILE,
+    build_final_diagram_user_prompt,
+    build_repair_diagram_user_prompt,
 )
 
 
+LLM_SYSTEM_PROMPT = MERMAID_GENERATION_SYSTEM_PROMPT
+logger = logging.getLogger(__name__)
+
+
+def _snippet(text: str, max_chars: int = 1200) -> str:
+    value = (text or "").strip()
+    if len(value) <= max_chars:
+        return value
+    return f"{value[:max_chars]}\n... [truncated {len(value) - max_chars} chars]"
+
+
+def _log_payload(prefix: str, payload: dict[str, Any]) -> None:
+    logger.info("%s %s", prefix, json.dumps(payload, ensure_ascii=False))
+
+
 def _json_post(endpoint: str, payload: dict[str, Any], headers: dict[str, str], timeout_sec: int = 90) -> dict[str, Any]:
+    settings = get_settings()
     body = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         endpoint,
@@ -35,7 +54,7 @@ def _json_post(endpoint: str, payload: dict[str, Any], headers: dict[str, str], 
         headers={"Content-Type": "application/json", **headers},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=timeout_sec) as response:
+    with urllib.request.urlopen(request, timeout=timeout_sec, context=_build_ssl_context(settings)) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -49,6 +68,7 @@ def _multipart_post(
     headers: dict[str, str],
     timeout_sec: int = 120,
 ) -> dict[str, Any]:
+    settings = get_settings()
     boundary = f"stream2graph-{uuid.uuid4().hex}"
     body = io.BytesIO()
     for key, value in fields.items():
@@ -73,8 +93,18 @@ def _multipart_post(
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}", **headers},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=timeout_sec) as response:
+    with urllib.request.urlopen(request, timeout=timeout_sec, context=_build_ssl_context(settings)) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _build_ssl_context(settings) -> ssl.SSLContext:
+    if not settings.tls_verify:
+        return ssl._create_unverified_context()
+    if settings.ca_bundle.strip():
+        return ssl.create_default_context(cafile=settings.ca_bundle.strip())
+    import certifi
+
+    return ssl.create_default_context(cafile=certifi.where())
 
 
 def _profile_headers(profile: dict[str, Any]) -> dict[str, str]:
@@ -133,6 +163,31 @@ def _compile_state(normalized_code: str) -> tuple[bool | None, dict[str, Any] | 
     return bool(result.get("compile_success")), result
 
 
+def _request_mermaid_candidate(
+    profile: dict[str, Any],
+    model: str,
+    *,
+    system_prompt: str,
+    user_prompt: str,
+) -> tuple[str, str, str]:
+    response = _json_post(
+        str(profile["endpoint"]),
+        {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0,
+        },
+        _profile_headers(profile),
+    )
+    raw_text = _extract_text_from_chat_response(response)
+    candidate = extract_mermaid_candidate(raw_text)
+    normalized = normalize_mermaid(candidate)
+    return raw_text, candidate, normalized
+
+
 def generate_mermaid_state(db: Session, session_obj: RealtimeSession) -> dict[str, Any]:
     runtime_options = _current_runtime_options(session_obj)
     profile = resolve_profile(db, "llm", runtime_options.get("llm_profile_id"))
@@ -159,40 +214,111 @@ def generate_mermaid_state(db: Session, session_obj: RealtimeSession) -> dict[st
             "updated_at": int(time.time() * 1000),
         }
 
-    prompt = "\n".join(
-        [
-            f"Session title: {session_obj.title}",
-            "",
-            "Generate the current best complete Mermaid diagram from the transcript below.",
-            "Return Mermaid code only.",
-            "",
-            transcript,
-        ]
+    prompt = build_final_diagram_user_prompt(
+        transcript,
+        session_title=session_obj.title,
+        current_best=True,
     )
     t0 = time.time()
+    _log_payload(
+        "Mermaid generation started",
+        {
+            "session_id": session_obj.id,
+            "session_title": session_obj.title,
+            "provider": str((profile or {}).get("id", "")),
+            "model": model,
+            "transcript_chars": len(transcript),
+            "transcript_preview": _snippet(transcript, 800),
+        },
+    )
     try:
-        response = _json_post(
-            str(profile["endpoint"]),
-            {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": LLM_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0,
-            },
-            _profile_headers(profile),
+        raw_text, candidate, normalized = _request_mermaid_candidate(
+            profile,
+            model,
+            system_prompt=LLM_SYSTEM_PROMPT,
+            user_prompt=prompt,
         )
-        raw_text = _extract_text_from_chat_response(response)
-        candidate = extract_mermaid_candidate(raw_text)
-        normalized = normalize_mermaid(candidate)
+        _log_payload(
+            "Mermaid generation received candidate",
+            {
+                "session_id": session_obj.id,
+                "raw_chars": len(raw_text),
+                "candidate_chars": len(candidate),
+                "normalized_chars": len(normalized),
+                "candidate_preview": _snippet(candidate),
+                "normalized_preview": _snippet(normalized),
+            },
+        )
         if not normalized:
             raise RuntimeError("LLM 未返回可用 Mermaid 代码。")
         compile_ok, compile_payload = _compile_state(normalized)
         error_message = None
+        repair_attempted = False
+        repair_succeeded = False
         if compile_ok is False:
-            error_message = "Mermaid 编译失败，已保留上一次成功结果。"
+            repair_attempted = True
+            repair_prompt = build_repair_diagram_user_prompt(
+                transcript,
+                candidate,
+                str((compile_payload or {}).get("stderr", "")),
+                session_title=session_obj.title,
+            )
+            _log_payload(
+                "Mermaid repair attempt started",
+                {
+                    "session_id": session_obj.id,
+                    "compile_stderr": _snippet(str((compile_payload or {}).get("stderr", ""))),
+                    "broken_candidate_preview": _snippet(candidate),
+                },
+            )
+            repair_raw_text, repaired_candidate, repaired_normalized = _request_mermaid_candidate(
+                profile,
+                model,
+                system_prompt=LLM_SYSTEM_PROMPT,
+                user_prompt=repair_prompt,
+            )
+            _log_payload(
+                "Mermaid repair attempt received candidate",
+                {
+                    "session_id": session_obj.id,
+                    "raw_chars": len(repair_raw_text),
+                    "candidate_chars": len(repaired_candidate),
+                    "normalized_chars": len(repaired_normalized),
+                    "candidate_preview": _snippet(repaired_candidate),
+                    "normalized_preview": _snippet(repaired_normalized),
+                },
+            )
+            if repaired_normalized:
+                repaired_compile_ok, repaired_compile_payload = _compile_state(repaired_normalized)
+                if repaired_compile_ok is not False:
+                    candidate = repaired_candidate
+                    normalized = repaired_normalized
+                    compile_ok = repaired_compile_ok
+                    compile_payload = repaired_compile_payload
+                    repair_succeeded = True
+                else:
+                    compile_payload = repaired_compile_payload
+            error_message = (
+                None
+                if repair_succeeded
+                else "Mermaid 编译失败，已保留上一次成功结果。"
+            )
         latency_ms = round((time.time() - t0) * 1000.0, 4)
+        _log_payload(
+            "Mermaid generation compile result",
+            {
+                "session_id": session_obj.id,
+                "compile_ok": compile_ok,
+                "latency_ms": latency_ms,
+                "compile_returncode": None if compile_payload is None else compile_payload.get("returncode"),
+                "compile_stderr": ""
+                if compile_payload is None
+                else _snippet(str(compile_payload.get("stderr", "")), 1200),
+                "reused_previous_state": bool(compile_ok is False and previous.get("code")),
+                "repair_attempted": repair_attempted,
+                "repair_succeeded": repair_succeeded,
+            },
+        )
         state = {
             "code": previous.get("code") if compile_ok is False and previous.get("code") else candidate,
             "normalized_code": previous.get("normalized_code") if compile_ok is False and previous.get("normalized_code") else normalized,
@@ -203,11 +329,27 @@ def generate_mermaid_state(db: Session, session_obj: RealtimeSession) -> dict[st
             "latency_ms": latency_ms,
             "error_message": error_message,
             "updated_at": int(time.time() * 1000),
+            "mermaid_version": MERMAID_RUNTIME_VERSION,
+            "syntax_profile": MERMAID_SYNTAX_PROFILE,
+            "repair_attempted": repair_attempted,
+            "repair_succeeded": repair_succeeded,
         }
         if compile_payload is not None:
             state["compile_payload"] = compile_payload
         return state
     except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+        logger.exception(
+            "Mermaid generation failed %s",
+            json.dumps(
+                {
+                    "session_id": session_obj.id,
+                    "provider": str((profile or {}).get("id", "")),
+                    "model": model,
+                    "error": str(exc),
+                },
+                ensure_ascii=False,
+            ),
+        )
         return {
             **previous,
             "provider": str(profile.get("id", "")),

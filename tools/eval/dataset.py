@@ -6,12 +6,10 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from tools.eval.common import normalize_whitespace, read_json, resolve_path
+from tools.mermaid_prompting import MERMAID_GENERATION_SYSTEM_PROMPT, build_final_diagram_user_prompt
 
 
-SYSTEM_PROMPT = (
-    "You convert collaborative diagram-building dialogue into a final Mermaid diagram. "
-    "Return Mermaid code only. Do not add explanations, markdown fences, or think traces."
-)
+SYSTEM_PROMPT = MERMAID_GENERATION_SYSTEM_PROMPT
 
 DEFAULT_SOURCE_DIR = (
     "versions/v3_2026-02-27_latest_9k_cscw/dataset/stream2graph_dataset/release_v3_20260228"
@@ -63,17 +61,12 @@ def render_dialogue(dialogue: Iterable[dict]) -> str:
 
 def build_user_prompt(sample: dict) -> str:
     dialogue = render_dialogue(sample["cscw_dialogue"])
-    lines = [
-        "Generate the final Mermaid diagram code from the collaborative dialogue below.",
-        "Use the final repaired state implied by the conversation.",
-        "Return Mermaid code only.",
-        f"Sample ID: {sample['id']}",
-        f"Diagram type: {sample.get('diagram_type', 'unknown')}",
-        "",
-        "Dialogue:",
+    return build_final_diagram_user_prompt(
         dialogue,
-    ]
-    return "\n".join(lines).strip()
+        sample_id=str(sample["id"]),
+        diagram_type=str(sample.get("diagram_type", "unknown")),
+        current_best=False,
+    )
 
 
 def build_messages(sample: EvaluationSample) -> list[dict[str, str]]:

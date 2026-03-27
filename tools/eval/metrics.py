@@ -53,6 +53,125 @@ LABEL_PATTERN = re.compile(
     r"(?:as\s+([A-Za-z][A-Za-z0-9 _-]{1,80}))",
     flags=re.IGNORECASE,
 )
+GRAPH_HEADER_PATTERN = re.compile(r"^(graph|flowchart)(?:\s+([A-Za-z]{2}))?(?:\s*;\s*(.+))?$", flags=re.IGNORECASE)
+GRAPH_NODE_PATTERN = r"[A-Za-z][A-Za-z0-9_]{0,63}(?:\s*(?:\[[^\]\n]*\]|\([^\)\n]*\)|\{[^}\n]*\}|>[^<\n]*\]))?"
+GRAPH_BARE_EDGE_PATTERN = re.compile(
+    rf"(?P<lhs>{GRAPH_NODE_PATTERN})\s+--\s+(?P<rhs>{GRAPH_NODE_PATTERN})(?=$|\s+[A-Za-z])"
+)
+GRAPH_STATEMENT_BOUNDARY_PATTERNS = (
+    re.compile(
+        r"(?<=[\]\)\}])\s+(?=[A-Za-z][A-Za-z0-9_]{0,63}\s*(?:\[|\(|\{|>|-->|==>|-.->|->>|-->>|<<--|<--|<->|---|--\s))"
+    ),
+    re.compile(r"(?<=[A-Za-z0-9_])\s+(?=[A-Za-z][A-Za-z0-9_]{0,63}\s*(?:-->|==>|-.->|->>|-->>|<<--|<--|<->|---|--\s))"),
+)
+GRAPH_CONTROL_PREFIXES = ("subgraph ", "end", "class ", "classDef ", "style ", "linkStyle ", "click ")
+
+
+def _leading_diagram_type(lines: list[str]) -> str:
+    for line in lines:
+        lower = line.strip().lower()
+        if not lower:
+            continue
+        if lower == "---" or lower.startswith("title:") or lower.startswith("%%{") or lower.startswith("%%"):
+            continue
+        return canonical_diagram_type(lower.split()[0])
+    return "unknown"
+
+
+def _split_top_level_statements(line: str) -> list[str]:
+    parts: list[str] = []
+    buffer: list[str] = []
+    square_depth = 0
+    round_depth = 0
+    curly_depth = 0
+    quote_char: str | None = None
+
+    for char in line:
+        if quote_char:
+            buffer.append(char)
+            if char == quote_char:
+                quote_char = None
+            continue
+        if char in {"'", '"'}:
+            quote_char = char
+            buffer.append(char)
+            continue
+        if char == "[":
+            square_depth += 1
+        elif char == "]":
+            square_depth = max(0, square_depth - 1)
+        elif char == "(":
+            round_depth += 1
+        elif char == ")":
+            round_depth = max(0, round_depth - 1)
+        elif char == "{":
+            curly_depth += 1
+        elif char == "}":
+            curly_depth = max(0, curly_depth - 1)
+        elif char == ";" and square_depth == 0 and round_depth == 0 and curly_depth == 0:
+            chunk = "".join(buffer).strip()
+            if chunk:
+                parts.append(chunk)
+            buffer = []
+            continue
+        buffer.append(char)
+
+    chunk = "".join(buffer).strip()
+    if chunk:
+        parts.append(chunk)
+    return parts
+
+
+def _normalize_graph_statement(statement: str) -> list[str]:
+    repaired = statement.strip()
+    if not repaired:
+        return []
+    repaired = GRAPH_BARE_EDGE_PATTERN.sub(lambda match: f"{match.group('lhs')} --> {match.group('rhs')}", repaired)
+    previous = None
+    while repaired != previous:
+        previous = repaired
+        for pattern in GRAPH_STATEMENT_BOUNDARY_PATTERNS:
+            repaired = pattern.sub("\n", repaired)
+    return [part.strip() for part in repaired.splitlines() if part.strip()]
+
+
+def _normalize_graph_lines(lines: list[str]) -> list[str]:
+    normalized: list[str] = []
+    header_processed = False
+
+    for line in lines:
+        stripped = line.strip()
+        lower = stripped.lower()
+
+        if not header_processed and (lower == "---" or lower.startswith("title:") or lower.startswith("%%{") or lower.startswith("%%")):
+            normalized.append(stripped)
+            continue
+
+        if not header_processed:
+            header_match = GRAPH_HEADER_PATTERN.match(stripped)
+            if header_match:
+                direction = (header_match.group(2) or "TD").upper()
+                normalized.append(f"flowchart {direction}")
+                remainder = (header_match.group(3) or "").strip()
+                header_processed = True
+                if remainder:
+                    for chunk in _split_top_level_statements(remainder):
+                        for part in _normalize_graph_statement(chunk):
+                            normalized.append(part)
+                continue
+            normalized.append(stripped)
+            header_processed = True
+            continue
+
+        if lower.startswith(GRAPH_CONTROL_PREFIXES):
+            normalized.append(stripped)
+            continue
+
+        for chunk in _split_top_level_statements(stripped):
+            for part in _normalize_graph_statement(chunk):
+                normalized.append(part)
+
+    return normalized
 
 
 def normalize_mermaid(code: str) -> str:
@@ -62,6 +181,8 @@ def normalize_mermaid(code: str) -> str:
         if not stripped:
             continue
         lines.append(stripped)
+    if _leading_diagram_type(lines) == "flowchart":
+        lines = _normalize_graph_lines(lines)
     return "\n".join(lines).strip()
 
 
