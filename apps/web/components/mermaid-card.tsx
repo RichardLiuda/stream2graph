@@ -10,6 +10,154 @@ import { Badge, Card } from "@stream2graph/ui";
 
 let mermaidReady: Promise<typeof import("mermaid")> | null = null;
 let mermaidInitialized = false;
+const GRAPH_HEADER_PATTERN = /^(graph|flowchart)(?:\s+([A-Za-z]{2}))?(?:\s*;\s*(.+))?$/i;
+const GRAPH_CONTROL_PREFIXES = ["subgraph ", "end", "class ", "classdef ", "style ", "linkstyle ", "click "];
+const GRAPH_BOUNDARY_PATTERNS = [
+  /(?<=[\]\)\}])\s+(?=[A-Za-z][A-Za-z0-9_]{0,63}\s*(?:\[|\(|\{|>|-->|==>|-.->|->>|-->>|<<--|<--|<->|---|--\s))/g,
+  /(?<=[A-Za-z0-9_])\s+(?=[A-Za-z][A-Za-z0-9_]{0,63}\s*(?:-->|==>|-.->|->>|-->>|<<--|<--|<->|---|--\s))/g,
+];
+
+function extractMermaidCandidate(text: string) {
+  const raw = (text || "").trim();
+  const fenceMatch = raw.match(/```(?:mermaid)?\s*([\s\S]*?)```/i);
+  if (fenceMatch) {
+    return fenceMatch[1]?.trim() || "";
+  }
+  return raw.replace(/^```[a-zA-Z0-9_-]*\s*/, "").replace(/\s*```$/, "").trim();
+}
+
+function leadingDiagramType(lines: string[]) {
+  for (const line of lines) {
+    const lower = line.trim().toLowerCase();
+    if (!lower) continue;
+    if (lower === "---" || lower.startsWith("title:") || lower.startsWith("%%{") || lower.startsWith("%%")) {
+      continue;
+    }
+    const token = lower.split(/\s+/, 1)[0];
+    if (token === "graph" || token === "flowchart") return "flowchart";
+    return token;
+  }
+  return "unknown";
+}
+
+function splitTopLevelStatements(line: string) {
+  const parts: string[] = [];
+  let buffer = "";
+  let squareDepth = 0;
+  let roundDepth = 0;
+  let curlyDepth = 0;
+  let quote: string | null = null;
+
+  for (const char of line) {
+    if (quote) {
+      buffer += char;
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      buffer += char;
+      continue;
+    }
+    if (char === "[") squareDepth += 1;
+    else if (char === "]") squareDepth = Math.max(0, squareDepth - 1);
+    else if (char === "(") roundDepth += 1;
+    else if (char === ")") roundDepth = Math.max(0, roundDepth - 1);
+    else if (char === "{") curlyDepth += 1;
+    else if (char === "}") curlyDepth = Math.max(0, curlyDepth - 1);
+    else if (char === ";" && squareDepth === 0 && roundDepth === 0 && curlyDepth === 0) {
+      const chunk = buffer.trim();
+      if (chunk) parts.push(chunk);
+      buffer = "";
+      continue;
+    }
+    buffer += char;
+  }
+
+  const chunk = buffer.trim();
+  if (chunk) parts.push(chunk);
+  return parts;
+}
+
+function normalizeGraphStatement(statement: string) {
+  let repaired = statement.trim();
+  if (!repaired) return [];
+  repaired = repaired.replace(
+    /([A-Za-z][A-Za-z0-9_]{0,63}(?:\s*(?:\[[^\]\n]*\]|\([^\)\n]*\)|\{[^}\n]*\}|>[^<\n]*\]))?)\s+--\s+([A-Za-z][A-Za-z0-9_]{0,63}(?:\s*(?:\[[^\]\n]*\]|\([^\)\n]*\)|\{[^}\n]*\}|>[^<\n]*\]))?)(?=$|\s+[A-Za-z])/g,
+    "$1 --> $2",
+  );
+  let previous: string | null = null;
+  while (repaired !== previous) {
+    previous = repaired;
+    for (const pattern of GRAPH_BOUNDARY_PATTERNS) {
+      repaired = repaired.replace(pattern, "\n");
+    }
+  }
+  return repaired
+    .split("\n")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function normalizeMermaidForRender(code: string) {
+  const lines = extractMermaidCandidate(code)
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+$/g, ""))
+    .filter((line) => line.trim());
+  if (leadingDiagramType(lines) !== "flowchart") {
+    return lines.join("\n").trim();
+  }
+
+  const normalized: string[] = [];
+  let headerProcessed = false;
+
+  for (const line of lines) {
+    const stripped = line.trim();
+    const lower = stripped.toLowerCase();
+
+    if (!headerProcessed && (lower === "---" || lower.startsWith("title:") || lower.startsWith("%%{") || lower.startsWith("%%"))) {
+      normalized.push(stripped);
+      continue;
+    }
+
+    if (!headerProcessed) {
+      const match = stripped.match(GRAPH_HEADER_PATTERN);
+      if (match) {
+        normalized.push(`flowchart ${(match[2] || "TD").toUpperCase()}`);
+        headerProcessed = true;
+        const remainder = (match[3] || "").trim();
+        if (remainder) {
+          for (const chunk of splitTopLevelStatements(remainder)) {
+            normalized.push(...normalizeGraphStatement(chunk));
+          }
+        }
+        continue;
+      }
+      normalized.push(stripped);
+      headerProcessed = true;
+      continue;
+    }
+
+    if (GRAPH_CONTROL_PREFIXES.some((prefix) => lower.startsWith(prefix))) {
+      normalized.push(stripped);
+      continue;
+    }
+
+    for (const chunk of splitTopLevelStatements(stripped)) {
+      normalized.push(...normalizeGraphStatement(chunk));
+    }
+  }
+
+  return normalized.join("\n").trim();
+}
+
+function summarizeMermaid(code: string, maxLength = 800) {
+  const value = (code || "").trim();
+  if (!value) return "";
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength)}\n... [truncated ${value.length - maxLength} chars]`;
+}
 
 async function getMermaid() {
   if (!mermaidReady) {
@@ -79,25 +227,70 @@ function MermaidCardBody({
   useEffect(() => {
     let active = true;
     async function render() {
-      if (!code.trim()) {
+      const normalizedCode = normalizeMermaidForRender(code);
+      console.groupCollapsed("[MermaidCard] render start");
+      console.info("[MermaidCard] card meta", { title, height, compileOk, updatedAt, provider, model, latencyMs });
+      console.debug("[MermaidCard] raw code", summarizeMermaid(code));
+      console.debug("[MermaidCard] normalized code", summarizeMermaid(normalizedCode));
+      if (!normalizedCode.trim()) {
         setSvg("");
         setError("暂无 Mermaid 内容");
+        console.warn("[MermaidCard] skipped: empty Mermaid content");
+        console.groupEnd();
         return;
       }
       try {
         const mermaid = await getMermaid();
-        const { svg: rendered } = await mermaid.render(`mermaid-${id}`, code);
+        const candidates = Array.from(new Set([normalizedCode, code.trim()].filter(Boolean)));
+        let renderedSvg = "";
+        let renderError: string | null = null;
+
+        for (const candidate of candidates) {
+          try {
+            console.info("[MermaidCard] trying candidate", {
+              length: candidate.length,
+              preview: summarizeMermaid(candidate, 240),
+            });
+            const { svg: rendered } = await mermaid.render(`mermaid-${id}`, candidate);
+            renderedSvg = DOMPurify.sanitize(rendered, {
+              USE_PROFILES: { svg: true, svgFilters: true },
+            });
+            renderError = null;
+            console.info("[MermaidCard] render success", {
+              candidateLength: candidate.length,
+              svgLength: renderedSvg.length,
+            });
+            break;
+          } catch (err) {
+            renderError = err instanceof Error ? err.message : "渲染失败";
+            console.warn("[MermaidCard] candidate render failed", {
+              message: renderError,
+              preview: summarizeMermaid(candidate, 240),
+            });
+          }
+        }
+
         if (!active) return;
-        const sanitized = DOMPurify.sanitize(rendered, {
-          USE_PROFILES: { svg: true, svgFilters: true },
-        });
-        setSvg(sanitized);
-        setLastSuccessfulSvg(sanitized);
+        if (!renderedSvg) {
+          setSvg(lastSuccessfulSvg);
+          setError(renderError || "渲染失败");
+          console.error("[MermaidCard] all candidates failed", {
+            error: renderError || "渲染失败",
+            reusedLastSuccessfulSvg: Boolean(lastSuccessfulSvg),
+          });
+          console.groupEnd();
+          return;
+        }
+        setSvg(renderedSvg);
+        setLastSuccessfulSvg(renderedSvg);
         setError(null);
+        console.groupEnd();
       } catch (err) {
         if (!active) return;
         setSvg(lastSuccessfulSvg);
         setError(err instanceof Error ? err.message : "渲染失败");
+        console.error("[MermaidCard] unexpected render error", err);
+        console.groupEnd();
       }
     }
     void render();
