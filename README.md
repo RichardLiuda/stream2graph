@@ -20,6 +20,9 @@
 pnpm dev:up
 pnpm dev:status
 pnpm dev:down
+pnpm dev:up:win
+pnpm dev:status:win
+pnpm dev:down:win
 pnpm dev:web
 pnpm audio-helper:dev
 pnpm api:dev
@@ -32,10 +35,17 @@ pnpm api:test
 说明：
 
 - `pnpm dev:up` 会自动补 `.env`、尝试拉起 PostgreSQL、执行迁移，并后台启动 API / Web / worker
+- `pnpm dev:up:win` / `dev:status:win` / `dev:down:win` / `dev:restart:win` 为 Windows PowerShell 对应脚本，默认也会管理 API / Web / worker / audio-helper
 - `pnpm audio-helper:dev` 会启动本地系统声音辅助层，默认监听 `127.0.0.1:8765`
 - 启动 helper 前，先在虚拟环境里安装：`./.venv-platform/bin/pip install -e "apps/audio-helper"`
 - 进程日志默认写到 `var/log/`，PID 写到 `var/run/`
 - `pnpm api:*` 系列命令默认在已经激活 `.venv-platform` 的 shell 中执行
+
+Windows 额外说明：
+
+- PowerShell 脚本使用 `.venv-platform\Scripts\python.exe`、`.venv-platform\Scripts\uvicorn.exe`、`.venv-platform\Scripts\alembic.exe`
+- 如果本机 PostgreSQL 已经在运行，可以先设置 `$env:S2G_START_DB='0'` 再执行 `pnpm dev:up:win`
+- 如果暂时不需要 worker 或 audio helper，可以分别设置 `$env:S2G_START_WORKER='0'`、`$env:S2G_START_AUDIO_HELPER='0'`
 
 这个仓库是对 `/home/lin-server/pictures` 的版本化整理结果，目的是把不同阶段的数据集与脚本分开保存，便于追溯与复现实验。
 
