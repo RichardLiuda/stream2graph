@@ -1,9 +1,7 @@
 "use client";
-
-import DOMPurify from "dompurify";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { AlertTriangle, CheckCircle2, Clock3 } from "lucide-react";
-import { type ReactNode, useEffect, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
 import { Badge, Card } from "@stream2graph/ui";
@@ -12,6 +10,13 @@ let mermaidReady: Promise<typeof import("mermaid")> | null = null;
 let mermaidInitialized = false;
 const GRAPH_HEADER_PATTERN = /^(graph|flowchart)(?:\s+([A-Za-z]{2}))?(?:\s*;\s*(.+))?$/i;
 const GRAPH_CONTROL_PREFIXES = ["subgraph ", "end", "class ", "classdef ", "style ", "linkstyle ", "click "];
+const GRAPH_NODE_PATTERN = String.raw`[A-Za-z][A-Za-z0-9_]{0,63}(?:\s*(?:\[[^\]\n]*\]|\([^\)\n]*\)|\{[^}\n]*\}|>[^<\n]*\]))?`;
+const GRAPH_LABELED_EDGE_PATTERN = new RegExp(
+  String.raw`^(?<lhs>${GRAPH_NODE_PATTERN})\s+--\s+(?<label>.+?)\s+--\s+(?<rhs>${GRAPH_NODE_PATTERN})$`,
+);
+const GRAPH_DOTTED_LABELED_EDGE_PATTERN = new RegExp(
+  String.raw`^(?<lhs>${GRAPH_NODE_PATTERN})\s+-\.\s+(?<label>.+?)\s+\.-\s+(?<rhs>${GRAPH_NODE_PATTERN})$`,
+);
 const GRAPH_BOUNDARY_PATTERNS = [
   /(?<=[\]\)\}])\s+(?=[A-Za-z][A-Za-z0-9_]{0,63}\s*(?:\[|\(|\{|>|-->|==>|-.->|->>|-->>|<<--|<--|<->|---|--\s))/g,
   /(?<=[A-Za-z0-9_])\s+(?=[A-Za-z][A-Za-z0-9_]{0,63}\s*(?:-->|==>|-.->|->>|-->>|<<--|<--|<->|---|--\s))/g,
@@ -82,6 +87,18 @@ function splitTopLevelStatements(line: string) {
 function normalizeGraphStatement(statement: string) {
   let repaired = statement.trim();
   if (!repaired) return [];
+  if (!/(-->|==>|-.->|->>|-->>|<<--|<--|<->)/.test(repaired)) {
+    const labeledEdge = repaired.match(GRAPH_LABELED_EDGE_PATTERN);
+    if (labeledEdge?.groups) {
+      const label = labeledEdge.groups.label.trim().replace(/\s+/g, " ");
+      return [`${labeledEdge.groups.lhs} -- ${label} --> ${labeledEdge.groups.rhs}`];
+    }
+    const dottedLabeledEdge = repaired.match(GRAPH_DOTTED_LABELED_EDGE_PATTERN);
+    if (dottedLabeledEdge?.groups) {
+      const label = dottedLabeledEdge.groups.label.trim().replace(/\s+/g, " ");
+      return [`${dottedLabeledEdge.groups.lhs} -. ${label} .-> ${dottedLabeledEdge.groups.rhs}`];
+    }
+  }
   repaired = repaired.replace(
     /([A-Za-z][A-Za-z0-9_]{0,63}(?:\s*(?:\[[^\]\n]*\]|\([^\)\n]*\)|\{[^}\n]*\}|>[^<\n]*\]))?)\s+--\s+([A-Za-z][A-Za-z0-9_]{0,63}(?:\s*(?:\[[^\]\n]*\]|\([^\)\n]*\)|\{[^}\n]*\}|>[^<\n]*\]))?)(?=$|\s+[A-Za-z])/g,
     "$1 --> $2",
@@ -169,6 +186,9 @@ async function getMermaid() {
       startOnLoad: false,
       securityLevel: "loose",
       theme: "neutral",
+      flowchart: {
+        htmlLabels: false,
+      },
     });
     mermaidInitialized = true;
   }
@@ -210,6 +230,8 @@ export function MermaidCompileStatusBadge({
 function MermaidCardBody({
   title,
   code,
+  rawOutputText,
+  repairRawOutputText,
   height = 360,
   provider,
   model,
@@ -221,6 +243,8 @@ function MermaidCardBody({
 }: {
   title: string;
   code: string;
+  rawOutputText?: string | null;
+  repairRawOutputText?: string | null;
   height?: number;
   provider?: string | null;
   model?: string | null;
@@ -236,16 +260,34 @@ function MermaidCardBody({
   const [svg, setSvg] = useState("");
   const [lastSuccessfulSvg, setLastSuccessfulSvg] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const lastLoggedRawOutputRef = useRef("");
+  const lastLoggedRepairRawOutputRef = useRef("");
+  const lastSuccessfulSvgRef = useRef("");
+  const renderSequenceRef = useRef(0);
+
+  useEffect(() => {
+    const raw = (rawOutputText || "").trim();
+    if (raw && raw !== lastLoggedRawOutputRef.current) {
+      console.log(`[MermaidRawOutput]\n${raw}`);
+      lastLoggedRawOutputRef.current = raw;
+    }
+
+    const repairRaw = (repairRawOutputText || "").trim();
+    if (repairRaw && repairRaw !== lastLoggedRepairRawOutputRef.current) {
+      console.log(`[MermaidRepairRawOutput]\n${repairRaw}`);
+      lastLoggedRepairRawOutputRef.current = repairRaw;
+    }
+  }, [rawOutputText, repairRawOutputText]);
 
   useEffect(() => {
     let active = true;
     async function render() {
-      const normalizedCode = normalizeMermaidForRender(code);
+      const candidate = normalizeMermaidForRender(code);
       console.groupCollapsed("[MermaidCard] render start");
       console.info("[MermaidCard] card meta", { title, height, compileOk, updatedAt, provider, model, latencyMs });
       console.debug("[MermaidCard] raw code", summarizeMermaid(code));
-      console.debug("[MermaidCard] normalized code", summarizeMermaid(normalizedCode));
-      if (!normalizedCode.trim()) {
+      console.debug("[MermaidCard] render candidate", summarizeMermaid(candidate));
+      if (!candidate) {
         setSvg("");
         setError("暂无 Mermaid 内容");
         console.warn("[MermaidCard] skipped: empty Mermaid content");
@@ -254,55 +296,30 @@ function MermaidCardBody({
       }
       try {
         const mermaid = await getMermaid();
-        const candidates = Array.from(new Set([normalizedCode, code.trim()].filter(Boolean)));
-        let renderedSvg = "";
-        let renderError: string | null = null;
-
-        for (const candidate of candidates) {
-          try {
-            console.info("[MermaidCard] trying candidate", {
-              length: candidate.length,
-              preview: summarizeMermaid(candidate, 240),
-            });
-            const { svg: rendered } = await mermaid.render(`mermaid-${id}`, candidate);
-            renderedSvg = DOMPurify.sanitize(rendered, {
-              USE_PROFILES: { svg: true, svgFilters: true },
-            });
-            renderError = null;
-            console.info("[MermaidCard] render success", {
-              candidateLength: candidate.length,
-              svgLength: renderedSvg.length,
-            });
-            break;
-          } catch (err) {
-            renderError = err instanceof Error ? err.message : "渲染失败";
-            console.warn("[MermaidCard] candidate render failed", {
-              message: renderError,
-              preview: summarizeMermaid(candidate, 240),
-            });
-          }
-        }
+        renderSequenceRef.current += 1;
+        const renderId = `mermaid-${id}-${renderSequenceRef.current}`;
+        console.info("[MermaidCard] trying candidate", {
+          length: candidate.length,
+          preview: summarizeMermaid(candidate, 240),
+        });
+        const { svg: rendered } = await mermaid.render(renderId, candidate);
+        const renderedSvg = rendered;
 
         if (!active) return;
-        if (!renderedSvg) {
-          setSvg(lastSuccessfulSvg);
-          setError(renderError || "渲染失败");
-          console.error("[MermaidCard] all candidates failed", {
-            error: renderError || "渲染失败",
-            reusedLastSuccessfulSvg: Boolean(lastSuccessfulSvg),
-          });
-          console.groupEnd();
-          return;
-        }
         setSvg(renderedSvg);
+        lastSuccessfulSvgRef.current = renderedSvg;
         setLastSuccessfulSvg(renderedSvg);
         setError(null);
+        console.info("[MermaidCard] render success", {
+          candidateLength: candidate.length,
+          svgLength: renderedSvg.length,
+        });
         console.groupEnd();
       } catch (err) {
         if (!active) return;
-        setSvg(lastSuccessfulSvg);
+        setSvg(lastSuccessfulSvgRef.current);
         setError(err instanceof Error ? err.message : "渲染失败");
-        console.error("[MermaidCard] unexpected render error", err);
+        console.warn("[MermaidCard] render failed", err);
         console.groupEnd();
       }
     }
@@ -310,7 +327,7 @@ function MermaidCardBody({
     return () => {
       active = false;
     };
-  }, [code, id, lastSuccessfulSvg]);
+  }, [code, id, compileOk, height, latencyMs, model, provider, title, updatedAt]);
 
   const body = (
     <div className="bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(246,249,255,0.84))] p-5">
@@ -396,6 +413,8 @@ function MermaidCardBody({
 export function MermaidCard(props: {
   title: string;
   code: string;
+  rawOutputText?: string | null;
+  repairRawOutputText?: string | null;
   height?: number;
   provider?: string | null;
   model?: string | null;

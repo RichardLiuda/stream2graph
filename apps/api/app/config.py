@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     cookie_secure: bool = Field(False, alias="S2G_COOKIE_SECURE")
     cookie_samesite: str = Field("lax", alias="S2G_COOKIE_SAMESITE")
     cookie_domain: str | None = Field(None, alias="S2G_COOKIE_DOMAIN")
+    tls_verify: bool = Field(True, alias="S2G_TLS_VERIFY")
+    ca_bundle: str = Field("", alias="S2G_CA_BUNDLE")
     default_dataset_version: str = Field(
         "release_v7_kimi_k25_fullregen_strict_20260313",
         alias="S2G_DEFAULT_DATASET_VERSION",

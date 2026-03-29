@@ -220,6 +220,8 @@ def generate_mermaid_state(db: Session, session_obj: RealtimeSession) -> dict[st
         current_best=True,
     )
     t0 = time.time()
+    raw_text = ""
+    repair_raw_text = ""
     _log_payload(
         "Mermaid generation started",
         {
@@ -333,11 +335,14 @@ def generate_mermaid_state(db: Session, session_obj: RealtimeSession) -> dict[st
             "syntax_profile": MERMAID_SYNTAX_PROFILE,
             "repair_attempted": repair_attempted,
             "repair_succeeded": repair_succeeded,
+            "raw_output_text": raw_text,
         }
+        if repair_raw_text:
+            state["repair_raw_output_text"] = repair_raw_text
         if compile_payload is not None:
             state["compile_payload"] = compile_payload
         return state
-    except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+    except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError, AttributeError) as exc:
         logger.exception(
             "Mermaid generation failed %s",
             json.dumps(
@@ -358,6 +363,32 @@ def generate_mermaid_state(db: Session, session_obj: RealtimeSession) -> dict[st
             "latency_ms": round((time.time() - t0) * 1000.0, 4),
             "error_message": str(exc),
             "updated_at": int(time.time() * 1000),
+            "raw_output_text": raw_text or str(previous.get("raw_output_text", "")),
+            "repair_raw_output_text": repair_raw_text or str(previous.get("repair_raw_output_text", "")),
+        }
+    except Exception as exc:
+        logger.exception(
+            "Mermaid generation failed %s",
+            json.dumps(
+                {
+                    "session_id": session_obj.id,
+                    "provider": str((profile or {}).get("id", "")),
+                    "model": model,
+                    "error": str(exc),
+                },
+                ensure_ascii=False,
+            ),
+        )
+        return {
+            **previous,
+            "provider": str(profile.get("id", "")),
+            "model": model,
+            "render_ok": False,
+            "latency_ms": round((time.time() - t0) * 1000.0, 4),
+            "error_message": str(exc),
+            "updated_at": int(time.time() * 1000),
+            "raw_output_text": raw_text or str(previous.get("raw_output_text", "")),
+            "repair_raw_output_text": repair_raw_text or str(previous.get("repair_raw_output_text", "")),
         }
 
 

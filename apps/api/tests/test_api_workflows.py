@@ -209,6 +209,56 @@ def test_runtime_options_and_audio_transcription_endpoint(
     assert payload["pipeline"]["mermaid_state"]["model"] == "model-a"
 
 
+def test_realtime_session_gracefully_degrades_when_mermaid_generation_errors(
+    admin_client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.realtime_ai.resolve_profile",
+        lambda db, kind, profile_id: {
+            "id": "llm-default",
+            "endpoint": "https://example.invalid/v1/chat/completions",
+            "default_model": "model-a",
+        }
+        if kind == "llm"
+        else None,
+    )
+
+    def _raise_attribute_error(*args, **kwargs):
+        raise AttributeError("tls settings missing")
+
+    monkeypatch.setattr("app.services.realtime_ai._request_mermaid_candidate", _raise_attribute_error)
+
+    created = admin_client.post(
+        "/api/v1/realtime/sessions",
+        json={
+            "title": "degraded mermaid session",
+            "llm_profile_id": "llm-default",
+            "llm_model": "model-a",
+            "client_context": {"input_source": "transcript"},
+        },
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    chunk = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/chunks",
+        json={
+            "timestamp_ms": 0,
+            "text": "Create a simple flow from audio to diagram.",
+            "speaker": "expert",
+            "is_final": True,
+        },
+    )
+    assert chunk.status_code == 200
+
+    drop_runtime(session_id)
+    snapshot = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/snapshot")
+    assert snapshot.status_code == 200
+    assert snapshot.json()["pipeline"]["mermaid_state"]["render_ok"] is False
+    assert "tls settings missing" in snapshot.json()["pipeline"]["mermaid_state"]["error_message"]
+
+
 def test_runtime_options_can_be_saved_from_admin_ui(admin_client: TestClient) -> None:
     response = admin_client.put(
         "/api/v1/catalog/runtime-options/admin",

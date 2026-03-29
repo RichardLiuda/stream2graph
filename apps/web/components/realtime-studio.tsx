@@ -1725,7 +1725,11 @@ export function RealtimeStudio() {
                 title=""
                 embedded
                 height={440}
-                code={mermaidState?.normalized_code || mermaidState?.code || ""}
+                code={mermaidState?.code || mermaidState?.normalized_code || ""}
+                rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
+                repairRawOutputText={
+                  typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
+                }
                 provider={mermaidState?.provider || selectedLlmProfile?.label || null}
                 model={mermaidState?.model || llmModel || null}
                 latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
