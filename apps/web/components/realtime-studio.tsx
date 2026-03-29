@@ -1464,7 +1464,7 @@ export function RealtimeStudio() {
             </div>
             <div className="relative">
               <select
-                className="h-10 w-full appearance-none rounded-full border border-violet-200/30 bg-violet-100/49 px-3.5 pr-9 text-sm font-medium text-slate-900 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                className="h-10 w-full appearance-none rounded-full border border-violet-200/50 bg-violet-50/92 px-3.5 pr-9 text-sm font-medium text-slate-900 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
                 value={selectedInputSource}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => {
                   const nextSource = event.target.value as InputSource;
@@ -1484,17 +1484,17 @@ export function RealtimeStudio() {
             </div>
             <p className="text-[11px] leading-relaxed text-slate-500">{selectedOption.description}</p>
             {!audioContext?.is_desktop ? (
-              <div className="rounded-[14px] border border-violet-200/30 bg-violet-200/20 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+              <div className="rounded-[14px] border border-violet-200/50 bg-violet-100/38 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
                 移动端不提供系统声音相关采集入口。
               </div>
             ) : !systemAudioExperimentalVisible ? (
-              <div className="rounded-[14px] border border-violet-200/30 bg-violet-200/20 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+              <div className="rounded-[14px] border border-violet-200/50 bg-violet-100/38 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
                 实验性「共享屏幕音频」仅 Chrome/Edge；可用「增强模式」+ 本机 audio helper。
               </div>
             ) : null}
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col rounded-[12px] border border-violet-200/30 bg-violet-200/23 px-2.5 py-2">
+          <div className="flex min-h-0 flex-1 flex-col rounded-[12px] border border-violet-200/50 bg-violet-100/46 px-2.5 py-2">
             <div className="flex shrink-0 items-center justify-between gap-2">
               <div className="text-[11px] font-semibold text-slate-800">实时转写</div>
               <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
@@ -1502,7 +1502,7 @@ export function RealtimeStudio() {
             {selectedInputSource === "transcript" ? (
               <div className="mt-1.5 flex min-h-[4rem] flex-1 flex-col gap-1.5">
                 <Textarea
-                  className="min-h-[7rem] flex-1 resize-y rounded-[10px] border border-violet-200/33 bg-violet-100/35 px-2 py-2 text-[12px] leading-relaxed text-slate-800"
+                  className="min-h-[7rem] flex-1 resize-y rounded-[10px] border border-violet-200/55 bg-violet-50/80 px-2 py-2 text-[12px] leading-relaxed text-slate-800"
                   rows={8}
                   value={transcriptText}
                   onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -1523,7 +1523,7 @@ export function RealtimeStudio() {
                 </Button>
               </div>
             ) : (
-              <div className="mt-1.5 min-h-[4rem] flex-1 overflow-auto whitespace-pre-wrap rounded-[10px] bg-violet-100/35 px-2 py-2 text-[12px] leading-relaxed text-slate-800">
+              <div className="mt-1.5 min-h-[4rem] flex-1 overflow-auto whitespace-pre-wrap rounded-[10px] bg-violet-50/80 px-2 py-2 text-[12px] leading-relaxed text-slate-800">
                 {formatLiveTranscript(liveTranscript)}
               </div>
             )}
@@ -1534,12 +1534,12 @@ export function RealtimeStudio() {
             </p>
           </div>
 
-          <div className="shrink-0 rounded-[12px] border border-violet-200/30 bg-violet-200/22 px-2.5 py-2">
+          <div className="shrink-0 rounded-[12px] border border-violet-200/50 bg-violet-100/44 px-2.5 py-2">
             <div className="flex items-center justify-between gap-2">
               <div className="text-[11px] font-semibold text-slate-800">输入音量</div>
               <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
             </div>
-            <Progress.Root className="mt-2 h-2 overflow-hidden rounded-full bg-violet-200/30" value={Math.max(0, Math.round(inputLevel * 100))}>
+            <Progress.Root className="mt-2 h-2 overflow-hidden rounded-full bg-violet-200/50" value={Math.max(0, Math.round(inputLevel * 100))}>
               <Progress.Indicator
                 className="h-full bg-[linear-gradient(90deg,#66b1ff,#6d89ff,#34c38f)] transition-transform duration-150"
                 style={{ transform: `translateX(-${100 - Math.max(0, Math.round(inputLevel * 100))}%)` }}
@@ -1569,17 +1569,17 @@ export function RealtimeStudio() {
                   }
                 />
                 <Badge
-                  className="border-violet-200/30 bg-violet-200/25 text-[10px] font-normal text-slate-700"
+                  className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700"
                   title={currentSessionId || undefined}
                 >
                   <span className="block max-w-[140px] min-w-0 truncate">
                     {currentSessionId ? `Session ${currentSessionId}` : "未创建会话"}
                   </span>
                 </Badge>
-                <Badge className="border-violet-200/30 bg-violet-200/25 text-[10px] font-normal text-slate-700">
+                <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
                   {getSourceBadgeLabel(activeCaptureSource)}
                 </Badge>
-                <Badge className="border-violet-200/30 bg-violet-200/25 text-[10px] font-normal text-slate-700">
+                <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
                   {backendLabel(selectedRecognitionBackend)}
                 </Badge>
                 {snapshot?.evaluation?.realtime_eval_pass === true ? (
@@ -1608,10 +1608,10 @@ export function RealtimeStudio() {
         >
           <div className="soft-enter soft-enter-delay-1 flex min-h-0 min-w-0 flex-1 flex-col">
             <Tabs.Root value={stageTab} onValueChange={setStageTab} className="flex min-h-0 flex-1 flex-col">
-            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-violet-200/30 bg-[linear-gradient(180deg,rgba(218,208,248,0.58),rgba(188,176,232,0.54))] p-0 shadow-[0_18px_46px_rgba(36,80,198,0.08)] backdrop-blur-md">
-              <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-violet-200/30 px-4 pb-2 pt-3">
+            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-violet-200/50 bg-[linear-gradient(180deg,rgba(242,240,255,0.94),rgba(226,222,250,0.82))] p-0 shadow-[0_18px_46px_rgba(36,80,198,0.08)] backdrop-blur-md">
+              <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-violet-200/50 px-4 pb-2 pt-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                <Tabs.List className="glass-panel inline-flex w-fit min-w-0 max-w-full shrink-0 flex-wrap gap-1.5 self-start rounded-full border border-violet-200/30 p-1.5 sm:gap-2">
+                <Tabs.List className="glass-panel inline-flex w-fit min-w-0 max-w-full shrink-0 flex-wrap gap-1.5 self-start rounded-full border border-violet-200/50 p-1.5 sm:gap-2">
               {[
                 ["mermaid", "主图"],
                 ["structure", "结构视图"],
@@ -1622,7 +1622,7 @@ export function RealtimeStudio() {
                 <Tabs.Trigger
                   key={value}
                   value={value}
-                  className="rounded-full border border-transparent bg-transparent px-3 py-2 text-sm font-medium text-slate-600 transition data-[state=active]:border-violet-200/33 data-[state=active]:bg-violet-50/55 data-[state=active]:text-slate-950 sm:px-3.5"
+                  className="rounded-full border border-transparent bg-transparent px-3 py-2 text-sm font-medium text-slate-600 transition data-[state=active]:border-violet-200/55 data-[state=active]:bg-violet-50/92 data-[state=active]:text-slate-950 sm:px-3.5"
                 >
                   {label}
                 </Tabs.Trigger>
@@ -1635,7 +1635,7 @@ export function RealtimeStudio() {
                       <Tooltip.Trigger asChild>
                         <button
                           type="button"
-                          className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/33 bg-violet-50/57 px-2 py-1 text-[11px] font-medium text-slate-600 shadow-[0_1px_3px_rgba(91,64,180,0.08)] transition hover:shadow-[0_2px_6px_rgba(91,64,180,0.1)]"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/55 bg-violet-50/95 px-2 py-1 text-[11px] font-medium text-slate-600 shadow-[0_1px_3px_rgba(91,64,180,0.08)] transition hover:shadow-[0_2px_6px_rgba(91,64,180,0.1)]"
                         >
                           <span
                             className={`h-2 w-2 shrink-0 rounded-full ${step.ok ? "bg-emerald-500" : "bg-red-500"}`}
@@ -1647,7 +1647,7 @@ export function RealtimeStudio() {
                       <Tooltip.Portal>
                         <Tooltip.Content
                           sideOffset={6}
-                          className="max-w-[280px] rounded-xl border border-violet-200/36 bg-violet-100/54 px-3 py-2 text-xs leading-relaxed text-slate-700 shadow-lg"
+                          className="max-w-[280px] rounded-xl border border-violet-200/60 bg-violet-50 px-3 py-2 text-xs leading-relaxed text-slate-700 shadow-lg"
                         >
                           <div className="font-semibold text-slate-900">
                             {step.label}
@@ -1752,7 +1752,7 @@ export function RealtimeStudio() {
                     events.slice(-12).map((event: Record<string, any>, index: number) => (
                       <div
                         key={`${event.update?.update_id}-${index}`}
-                        className="glass-panel rounded-[24px] border border-violet-200/30 p-4"
+                        className="glass-panel rounded-[24px] border border-violet-200/50 p-4"
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="text-sm font-semibold text-slate-900">
@@ -1797,12 +1797,12 @@ export function RealtimeStudio() {
               </Card>
             </Tabs.Content>
             </div>
-            <div className="flex shrink-0 justify-end border-t border-violet-200/30 px-4 py-2.5">
-              <div className="flex w-[min(100%,22rem)] flex-wrap justify-end gap-2">
+            <div className="flex shrink-0 justify-end border-t border-violet-200/50 px-4 py-2.5">
+              <div className="grid w-[min(100%,22rem)] grid-cols-3 gap-2">
                 <Button
                   type="button"
                   variant="secondary"
-                  className="h-8 min-w-0 gap-1 rounded-xl px-2 text-xs font-semibold"
+                  className="h-8 min-w-0 gap-1 px-2 text-xs font-semibold"
                   onClick={() => createSession.mutate()}
                   disabled={createSession.isPending}
                 >
@@ -1813,7 +1813,7 @@ export function RealtimeStudio() {
                   type="button"
                   variant="secondary"
                   title="保存报告"
-                  className="h-8 min-w-0 gap-1 rounded-xl px-2 text-xs font-semibold"
+                  className="h-8 min-w-0 gap-1 px-2 text-xs font-semibold"
                   onClick={() => (currentSessionId ? saveReportMutation.mutate(currentSessionId) : null)}
                   disabled={!currentSessionId}
                 >
@@ -1824,7 +1824,7 @@ export function RealtimeStudio() {
                   type="button"
                   variant="danger"
                   title="关闭会话"
-                  className="h-8 min-w-0 gap-1 rounded-xl px-2 text-xs font-semibold"
+                  className="h-8 min-w-0 gap-1 px-2 text-xs font-semibold"
                   onClick={() => (currentSessionId ? closeMutation.mutate(currentSessionId) : null)}
                   disabled={!currentSessionId}
                 >
@@ -1850,7 +1850,7 @@ export function RealtimeStudio() {
                 className={`lift-hover w-full rounded-[22px] border px-4 py-3.5 text-left text-sm ${
                   currentSessionId === item.session_id
                     ? "border-[var(--accent)] bg-[rgba(77,124,255,0.08)]"
-                    : "border-violet-200/30 bg-violet-200/24"
+                    : "border-violet-200/50 bg-violet-100/52"
                 }`}
                 onClick={() => {
                   setCurrentSessionId(item.session_id);
@@ -1902,7 +1902,7 @@ export function RealtimeStudio() {
                 value: diagramMode === "dual_view" ? "流程图+结构图" : "仅流程图",
               },
             ].map((item) => (
-              <div key={item.label} className="rounded-[22px] border border-violet-200/30 bg-violet-200/23 px-4 py-4">
+              <div key={item.label} className="rounded-[22px] border border-violet-200/50 bg-violet-100/46 px-4 py-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</div>
                 <div className="mt-3 text-sm font-semibold leading-6 text-slate-900">{item.value}</div>
               </div>
@@ -1928,8 +1928,8 @@ export function RealtimeStudio() {
                   detailDrawerOpen ? "translate-x-0 shadow-[0_0_40px_rgba(15,23,42,0.12)]" : "pointer-events-none translate-x-full"
                 }`}
               >
-        <Card className="m-0 flex h-full w-full flex-col overflow-hidden rounded-none border-y-0 border-r-0 border-l border-violet-200/27 sm:my-4 sm:mr-4 sm:h-[calc(100vh-2rem)] sm:rounded-[26px] sm:border sm:border-violet-200/30">
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-violet-200/30 px-4 py-3">
+        <Card className="m-0 flex h-full w-full flex-col overflow-hidden rounded-none border-y-0 border-r-0 border-l border-violet-200/45 sm:my-4 sm:mr-4 sm:h-[calc(100vh-2rem)] sm:rounded-[26px] sm:border sm:border-violet-200/50">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-violet-200/50 px-4 py-3">
             <div className="text-sm font-semibold text-slate-900">会话与录音设置</div>
             <Button type="button" variant="ghost" className="h-9 w-9 shrink-0 p-0" onClick={() => setDetailDrawerOpen(false)} aria-label="关闭">
               <X className="h-4 w-4" />
@@ -1945,7 +1945,7 @@ export function RealtimeStudio() {
               <label className="text-sm font-medium text-slate-700">数据版本</label>
               <div className="relative">
                 <select
-                  className="h-11 w-full appearance-none rounded-full border border-violet-200/30 bg-violet-100/49 px-4 pr-10 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-violet-100/54 focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                  className="h-11 w-full appearance-none rounded-full border border-violet-200/50 bg-violet-50/88 px-4 pr-10 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-violet-50 focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
                   value={datasetVersion}
                   onChange={(event: ChangeEvent<HTMLSelectElement>) => setDatasetVersion(event.target.value)}
                 >
@@ -1963,7 +1963,7 @@ export function RealtimeStudio() {
               <label className="text-sm font-medium text-slate-700">转写方式</label>
               <div className="relative">
                 <select
-                  className="h-10 w-full appearance-none rounded-full border border-violet-200/30 bg-violet-100/49 px-3.5 pr-9 text-sm font-medium text-slate-900 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)] disabled:opacity-50"
+                  className="h-10 w-full appearance-none rounded-full border border-violet-200/50 bg-violet-50/92 px-3.5 pr-9 text-sm font-medium text-slate-900 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)] disabled:opacity-50"
                   value={selectedRecognitionBackend}
                   disabled={backendOptions.every((o) => o.disabled)}
                   onChange={(event) => {
@@ -1994,21 +1994,21 @@ export function RealtimeStudio() {
             </div>
 
             {selectedInputSource === "transcript" ? (
-              <details className="space-y-3 rounded-[22px] border border-violet-200/30 bg-violet-200/20 p-3">
+              <details className="space-y-3 rounded-[22px] border border-violet-200/50 bg-violet-100/38 p-3">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-slate-800 marker:content-none [&::-webkit-details-marker]:hidden">
                   <span>文字输入与样例</span>
                   <span className="text-xs font-normal text-slate-500">点击展开</span>
                 </summary>
                 <div className="mt-4 space-y-3">
                   <p className="text-xs leading-6 text-slate-500">支持 `speaker | text | expected_intent`，一行一条，适合演示和快速回放。</p>
-                  <div className="rounded-[20px] border border-violet-200/30 bg-violet-200/19 p-3">
+                  <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/42 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-semibold text-slate-900">样例库</div>
                         <div className="mt-1 text-xs leading-6 text-slate-500">选择一组 richer transcript，直接替换到输入框里。</div>
                       </div>
                       <select
-                        className="h-11 min-w-[220px] rounded-[18px] border border-violet-200/30 bg-violet-100/48 px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                        className="h-11 min-w-[220px] rounded-[18px] border border-violet-200/50 bg-violet-50/85 px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
                         value={selectedTranscriptPresetId}
                         onChange={(event: ChangeEvent<HTMLSelectElement>) => {
                           const nextId = event.target.value;
@@ -2049,7 +2049,7 @@ export function RealtimeStudio() {
 
             {selectedInputSource === "microphone_browser" ? (
               <div className="space-y-3">
-                <div className="rounded-[20px] border border-violet-200/30 bg-violet-200/19 px-4 py-3 text-xs leading-6 text-slate-500">
+                <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/42 px-4 py-3 text-xs leading-6 text-slate-500">
                   {selectedRecognitionBackend === "browser_speech"
                     ? "浏览器麦克风依赖 Web Speech 服务。如果提示网络或服务不可用，通常不是项目后端报错，先用 Transcript 输入会更稳定。"
                     : "API STT 路径会直接把麦克风音频分段上传到服务端转写，再回写当前会话。"}
@@ -2114,11 +2114,11 @@ export function RealtimeStudio() {
               <div className="space-y-3">
                 {selectedRecognitionBackend === "local_helper" ? (
                   <>
-                    <div className="rounded-[20px] border border-violet-200/30 bg-violet-200/19 px-4 py-3 text-xs leading-6 text-slate-500">
+                    <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/42 px-4 py-3 text-xs leading-6 text-slate-500">
                       增强模式会连接本机 `audio helper`，由浏览器提供共享音频流，再由辅助层在本机完成分段转写。当前辅助层地址：
                       <span className="ml-1 font-medium text-slate-700">{audioHelper.baseUrl}</span>
                     </div>
-                    <div className="rounded-[20px] border border-violet-200/30 bg-violet-200/23 px-4 py-4 text-sm">
+                    <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/46 px-4 py-4 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="font-semibold text-slate-900">辅助层状态</div>
                         <Badge className={capabilityBadgeTone(helperCapabilities?.capability_status || "offline")}>
@@ -2153,7 +2153,7 @@ export function RealtimeStudio() {
                   </>
                 ) : (
                   <>
-                    <div className="rounded-[20px] border border-violet-200/30 bg-violet-200/19 px-4 py-3 text-xs leading-6 text-slate-500">
+                    <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/42 px-4 py-3 text-xs leading-6 text-slate-500">
                       API STT 路径会复用浏览器共享音频流，把系统声音分段上传到服务端转写。Windows 请勾选共享音频；macOS 请优先选择标签页音频。
                     </div>
                     <div className="grid grid-cols-2 gap-2">

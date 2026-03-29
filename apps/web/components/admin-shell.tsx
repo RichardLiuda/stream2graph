@@ -102,7 +102,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 </div>
               ) : null}
             </div>
-            <div className="mt-4 rounded-[22px] bg-violet-200/38 p-2 backdrop-blur-md ring-1 ring-violet-300/40">
+            <div className="mt-4 rounded-[22px] bg-violet-100/40 p-2 backdrop-blur-md ring-1 ring-violet-200/45">
               <div className="drawer-nav-animate flex flex-col gap-1">
                 {navItems.map((item) => {
                   const Icon = item.icon;

@@ -185,7 +185,7 @@ export function MermaidCompileStatusBadge({
 }) {
   if (compileOk === false) {
     return (
-      <Badge className="border-amber-200/60 bg-amber-50/55 text-amber-700">
+      <Badge className="border-amber-200 bg-amber-50 text-amber-700">
         <AlertTriangle className="mr-1 h-3.5 w-3.5" />
         compile failed
       </Badge>
@@ -313,15 +313,15 @@ function MermaidCardBody({
   }, [code, id, lastSuccessfulSvg]);
 
   const body = (
-    <div className="bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(246,249,255,0.5))] p-5">
+    <div className="bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(246,249,255,0.84))] p-5">
         {error ? (
-          <div className="mb-4 rounded-[24px] border border-amber-200/60 bg-amber-50/55 p-4 text-sm text-amber-700">
+          <div className="mb-4 rounded-[24px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
             Mermaid 渲染错误：{error}
             {lastSuccessfulSvg ? " 已保留最近一次成功结果。" : ""}
           </div>
         ) : null}
         <div
-          className="overflow-auto rounded-[26px] border border-white/45 bg-white/50 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.42)]"
+          className="overflow-auto rounded-[26px] border border-white/75 bg-white/[0.84] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
           style={{ minHeight: height }}
         >
           {svg ? (
@@ -376,7 +376,7 @@ function MermaidCardBody({
 
   return (
     <Card className="overflow-hidden p-0">
-      <div className="border-b border-white/42 px-6 py-5">
+      <div className="border-b border-white/70 px-6 py-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm font-semibold text-slate-900">{title}</div>
           <div className="flex max-w-[min(100%,720px)] flex-wrap items-center justify-end gap-1.5">
