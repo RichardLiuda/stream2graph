@@ -8,20 +8,25 @@ import { useMachine } from "@xstate/react";
 import Link from "next/link";
 import {
   AudioLines,
+  ChevronDown,
   Headphones,
   Mic,
   MicOff,
+  Pause,
+  PanelRight,
   Play,
   RefreshCcw,
   Save,
   Send,
   StopCircle,
   WandSparkles,
+  X,
 } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
-import { Badge, Button, Card, Input, SectionHeading, StatCard, Textarea } from "@stream2graph/ui";
+import { Badge, Button, Card, Input, StatCard, Textarea } from "@stream2graph/ui";
 
 import { api } from "@/lib/api";
 import {
@@ -35,8 +40,8 @@ import {
   getDisplayAudioErrorMessage,
   getInputSourceOptions,
   getSpeechRecognitionErrorMessage,
-  getSystemAudioUnavailableReason,
-  supportsSystemAudioUi,
+  supportsHelperSystemAudioUi,
+  supportsSystemAudioExperimentalUi,
   type CaptureMode,
   type ClientAudioContext,
   type InputSource,
@@ -49,7 +54,7 @@ import {
   saveRuntimePreferences,
 } from "@/lib/runtime-preferences";
 import { GraphStage } from "@/components/graph-stage";
-import { MermaidCard } from "@/components/mermaid-card";
+import { MermaidCard, MermaidCompileStatusBadge } from "@/components/mermaid-card";
 
 const LOCAL_SESSION_KEY = "s2g:last-realtime-session";
 
@@ -211,15 +216,15 @@ function formatLiveTranscript(text: string) {
 function backendLabel(backend: RecognitionBackend) {
   switch (backend) {
     case "browser_speech":
-      return "浏览器识别";
+      return "浏览器听写";
     case "browser_display_validation":
-      return "浏览器共享验证";
+      return "试共享声音";
     case "local_helper":
-      return "本地 helper";
+      return "本机助手";
     case "api_stt":
-      return "API STT";
+      return "云端听写";
     default:
-      return "Manual";
+      return "手动输入";
   }
 }
 
@@ -228,13 +233,6 @@ function backendStatusLabel(status: "idle" | "working" | "success" | "error") {
   if (status === "success") return "成功";
   if (status === "error") return "失败";
   return "空闲";
-}
-
-function backendStatusTone(status: "idle" | "working" | "success" | "error") {
-  if (status === "working") return "border-sky-200 bg-sky-50 text-sky-700";
-  if (status === "success") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "error") return "border-red-200 bg-red-50 text-red-700";
-  return "border-white/70 bg-white/[0.58] text-slate-600";
 }
 
 function toLocalDateTimeLabel(value: string | null) {
@@ -248,20 +246,20 @@ function toLocalDateTimeLabel(value: string | null) {
 
 function buildBackendOptions(source: InputSource, helperCapabilities: HelperCapabilities | null): BackendOption[] {
   if (source === "transcript") {
-    return [{ value: "manual" as const, label: "Transcript" }];
+    return [{ value: "manual" as const, label: "打字输入" }];
   }
   if (source === "microphone_browser") {
     return [
-      { value: "browser_speech" as const, label: "浏览器识别" },
-      { value: "api_stt" as const, label: "API STT" },
+      { value: "browser_speech" as const, label: "浏览器听写" },
+      { value: "api_stt" as const, label: "云端听写" },
     ];
   }
   if (source === "system_audio_browser_experimental") {
-    return [{ value: "browser_display_validation" as const, label: "浏览器共享验证" }];
+    return [{ value: "browser_display_validation" as const, label: "试共享声音" }];
   }
   const options = [
-    { value: "local_helper" as const, label: "本地 helper", disabled: helperCapabilities?.capability_status !== "supported" },
-    { value: "api_stt" as const, label: "API STT" },
+    { value: "local_helper" as const, label: "本机助手", disabled: helperCapabilities?.capability_status !== "supported" },
+    { value: "api_stt" as const, label: "云端听写" },
   ];
   return options;
 }
@@ -272,20 +270,6 @@ function captureStatusLabel(status: "idle" | "capturing" | "uploading") {
   return "空闲";
 }
 
-function statusProgressValue(status: "idle" | "working" | "success" | "error") {
-  if (status === "working") return 64;
-  if (status === "success") return 100;
-  if (status === "error") return 100;
-  return 10;
-}
-
-function statusProgressTone(status: "idle" | "working" | "success" | "error") {
-  if (status === "working") return "bg-[linear-gradient(90deg,#6aa4ff,#7a89ff)]";
-  if (status === "success") return "bg-[linear-gradient(90deg,#1fb67d,#3bc892)]";
-  if (status === "error") return "bg-[linear-gradient(90deg,#e56a6a,#d14d4d)]";
-  return "bg-slate-300";
-}
-
 function capabilityBadgeTone(status: string) {
   if (status === "supported") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "limited") return "border-amber-200 bg-amber-50 text-amber-700";
@@ -293,17 +277,32 @@ function capabilityBadgeTone(status: string) {
   return "";
 }
 
+/** @description 快捷操作「拉取快照」按钮：随输入来源略变 */
+function snapshotLabelForSource(_source: InputSource): string {
+  return "更新";
+}
+
+/** @description 快捷操作「冲刷」按钮：随输入来源略变 */
+function flushLabelForSource(source: InputSource): string {
+  return source === "system_audio_helper" ? "清空" : "刷新";
+}
+
 export function RealtimeStudio() {
   const queryClient = useQueryClient();
   const [studioState, studioSend] = useMachine(realtimeStudioMachine);
   const [title, setTitle] = useState("研究演示会话");
   const [datasetVersion, setDatasetVersion] = useState("");
-  const [selectedTranscriptPresetId, setSelectedTranscriptPresetId] = useState(TRANSCRIPT_PRESETS[0]?.id ?? "");
-  const [transcriptText, setTranscriptText] = useState(TRANSCRIPT_PRESETS[0]?.value ?? "");
+  const [selectedTranscriptPresetId, setSelectedTranscriptPresetId] = useState("");
+  const [transcriptText, setTranscriptText] = useState("");
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Record<string, any> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
+  /** @description 客户端挂载后再 portal，避免 SSR 访问 `document` */
+  const [detailDrawerPortalReady, setDetailDrawerPortalReady] = useState(false);
+  /** @description 主舞台 Tab，用于顶栏与「主图」徽章联动 */
+  const [stageTab, setStageTab] = useState("mermaid");
   const [listening, setListening] = useState(false);
   const [audioContext, setAudioContext] = useState<ClientAudioContext | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -381,12 +380,25 @@ export function RealtimeStudio() {
     retry: false,
     staleTime: 10_000,
     refetchInterval: 15_000,
-    enabled: supportsSystemAudioUi(audioContext),
+    enabled: supportsHelperSystemAudioUi(audioContext),
   });
 
   useEffect(() => {
     setAudioContext(detectClientAudioContext());
   }, []);
+
+  useEffect(() => {
+    setDetailDrawerPortalReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!detailDrawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDetailDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detailDrawerOpen]);
 
   useEffect(() => {
     if (!datasetVersion && datasets.data?.length) {
@@ -1321,14 +1333,59 @@ export function RealtimeStudio() {
   const summaryCards = useMemo(() => {
     const metrics = snapshot?.evaluation?.metrics ?? {};
     return [
-      { label: "E2E P95", value: metrics.e2e_latency_p95_ms ?? "-" },
-      { label: "Intent Acc", value: metrics.intent_accuracy ?? "-" },
-      { label: "Flicker", value: metrics.flicker_mean ?? "-" },
-      { label: "Mental Map", value: metrics.mental_map_mean ?? "-" },
+      { label: "端到端延迟", value: metrics.e2e_latency_p95_ms ?? "-" },
+      { label: "意图准确率", value: metrics.intent_accuracy ?? "-" },
+      { label: "画面抖动", value: metrics.flicker_mean ?? "-" },
+      { label: "结构好懂度", value: metrics.mental_map_mean ?? "-" },
     ];
   }, [snapshot?.evaluation?.metrics]);
 
-  const systemAudioUiVisible = supportsSystemAudioUi(audioContext);
+  /** @description 主舞台顶栏：CAP/STT/LLM/MER 步骤徽章（绿=可用/正常，红=异常） */
+  const pipelineStages = useMemo(() => {
+    const sttOk = sttStatus !== "error";
+    const llmOk = llmStatus !== "error";
+    const merOk = llmStatus !== "error";
+    return [
+      {
+        abbr: "CAP",
+        label: "采集",
+        value: captureStatusLabel(captureStatus),
+        ok: true,
+        help: "是否在录音或上传声音。",
+      },
+      {
+        abbr: "STT",
+        label: "转写",
+        value: backendStatusLabel(sttStatus),
+        ok: sttOk,
+        help: `转写方式：${backendLabel(selectedRecognitionBackend)}`,
+      },
+      {
+        abbr: "LLM",
+        label: "对话",
+        value: backendStatusLabel(llmStatus),
+        ok: llmOk,
+        help: selectedLlmProfile ? `${selectedLlmProfile.label} / ${llmModel || "未选择模型"}` : "尚未配置对话模型。",
+      },
+      {
+        abbr: "MER",
+        label: "出图",
+        value: lastMermaidUpdatedAt ? "已更新" : "等待中",
+        ok: merOk,
+        help: lastMermaidUpdatedAt || "还没有生成流程图。",
+      },
+    ];
+  }, [
+    captureStatus,
+    sttStatus,
+    llmStatus,
+    lastMermaidUpdatedAt,
+    selectedRecognitionBackend,
+    selectedLlmProfile,
+    llmModel,
+  ]);
+
+  const systemAudioExperimentalVisible = supportsSystemAudioExperimentalUi(audioContext);
   const canStartCapture =
     selectedRecognitionBackend === "browser_speech"
       ? !listening
@@ -1350,24 +1407,44 @@ export function RealtimeStudio() {
             ? captureStatus !== "idle"
             : false;
 
-  return (
-    <div className="space-y-6">
-      <SectionHeading
-        eyebrow="Realtime Studio"
-        title="实时成图工作台"
-        description="用正式平台方式管理会话、事件流、增量图和实时评测结果。刷新页面后会优先恢复最近一次活动会话。"
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge>{currentSessionId ? `Session ${currentSessionId}` : "未创建会话"}</Badge>
-            <Badge>{getSourceBadgeLabel(activeCaptureSource)}</Badge>
-            <Badge>{backendLabel(selectedRecognitionBackend)}</Badge>
-            {snapshot?.evaluation?.realtime_eval_pass === true ? (
-              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">评测通过</Badge>
-            ) : null}
-          </div>
-        }
-      />
+  /** @description 主舞台顶栏：与抽屉内相同的开始/暂停（停止）采集逻辑 */
+  async function stageStartCapture() {
+    if (selectedInputSource === "transcript") return;
+    if (selectedInputSource === "microphone_browser") {
+      if (selectedRecognitionBackend === "browser_speech") return startRecognition();
+      if (selectedRecognitionBackend === "api_stt") return startApiCapture();
+      return;
+    }
+    if (selectedInputSource === "system_audio_browser_experimental") {
+      return startBrowserDisplayAudioValidation();
+    }
+    if (selectedInputSource === "system_audio_helper") {
+      if (selectedRecognitionBackend === "local_helper") return startHelperCapture();
+      if (selectedRecognitionBackend === "api_stt") return startApiCapture();
+    }
+  }
 
+  function stageStopCapture() {
+    if (selectedInputSource === "transcript") return;
+    if (selectedInputSource === "microphone_browser") {
+      if (selectedRecognitionBackend === "browser_speech") return void stopRecognition();
+      if (selectedRecognitionBackend === "api_stt") return void stopApiCapture();
+      return;
+    }
+    if (selectedInputSource === "system_audio_browser_experimental") {
+      return void stopBrowserDisplayAudioValidation();
+    }
+    if (selectedInputSource === "system_audio_helper") {
+      if (selectedRecognitionBackend === "local_helper") return void stopHelperCapture();
+      if (selectedRecognitionBackend === "api_stt") return void stopApiCapture();
+    }
+  }
+
+  const canStartStageCapture = selectedInputSource !== "transcript" && canStartCapture;
+  const canStopStageCapture = selectedInputSource !== "transcript" && canStopCapture;
+
+  return (
+    <div className="space-y-4">
       {effectiveError ? (
         <div className="rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {effectiveError}
@@ -1377,534 +1454,277 @@ export function RealtimeStudio() {
         <div className={`rounded-[24px] border px-4 py-3 text-sm ${getNoticeClassName(notice.tone)}`}>{notice.text}</div>
       ) : null}
 
-      <Card className="soft-enter space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="text-base font-semibold text-slate-950">实时采集状态</div>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              这里会显示输入电平、识别文本和 LLM 生成状态。无论走浏览器、本地 helper 还是 API STT，这里都是统一观测面板。
-            </p>
-          </div>
-          <Badge>{getSourceBadgeLabel(activeCaptureSource)}</Badge>
-        </div>
-        <Tooltip.Provider delayDuration={120}>
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-            <div className="space-y-4 rounded-[22px] border border-white/70 bg-white/[0.58] px-4 py-4">
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {[
-                  {
-                    label: "Capture",
-                    value: captureStatusLabel(captureStatus),
-                    status: captureStatus === "idle" ? "idle" : "working",
-                    help: "显示当前是否正在采集或上传音频。",
-                  },
-                  {
-                    label: "STT",
-                    value: backendStatusLabel(sttStatus),
-                    status: sttStatus,
-                    help: `当前识别后端：${backendLabel(selectedRecognitionBackend)}`,
-                  },
-                  {
-                    label: "LLM",
-                    value: backendStatusLabel(llmStatus),
-                    status: llmStatus,
-                    help: selectedLlmProfile ? `${selectedLlmProfile.label} / ${llmModel || "未选择模型"}` : "尚未配置 LLM profile。",
-                  },
-                  {
-                    label: "Mermaid",
-                    value: lastMermaidUpdatedAt ? "已更新" : "等待中",
-                    status: lastMermaidUpdatedAt ? "success" : llmStatus,
-                    help: lastMermaidUpdatedAt || "当前还没有可展示的 Mermaid 结果。",
-                  },
-                ].map((item) => (
-                  <Tooltip.Root key={item.label}>
-                    <Tooltip.Trigger asChild>
-                      <div className="rounded-[20px] border border-white/70 bg-white/[0.78] px-4 py-4 text-left">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</div>
-                          <Badge className={backendStatusTone(item.status as "idle" | "working" | "success" | "error")}>
-                            {item.value}
-                          </Badge>
-                        </div>
-                        <Progress.Root className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100" value={statusProgressValue(item.status as "idle" | "working" | "success" | "error")}>
-                          <Progress.Indicator
-                            className={`h-full transition-transform duration-300 ${statusProgressTone(item.status as "idle" | "working" | "success" | "error")}`}
-                            style={{
-                              transform: `translateX(-${100 - statusProgressValue(item.status as "idle" | "working" | "success" | "error")}%)`,
-                            }}
-                          />
-                        </Progress.Root>
-                        <div className="mt-3 text-xs leading-6 text-slate-500">{item.help}</div>
-                      </div>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                      <Tooltip.Content sideOffset={8} className="max-w-[280px] rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-700 shadow-xl">
-                        {item.help}
-                        <Tooltip.Arrow className="fill-white" />
-                      </Tooltip.Content>
-                    </Tooltip.Portal>
-                  </Tooltip.Root>
+      <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(240px,320px)_minmax(0,1fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
+        <Card className="soft-enter order-1 flex h-full min-h-0 min-w-0 flex-col space-y-3 overflow-hidden text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none">
+          <div className="shrink-0 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-xs font-medium text-slate-700">声音从哪来</label>
+              <Badge className="shrink-0 text-[10px]">{audioContext ? `${audioContext.platform} / ${getBrowserFamilyLabel(audioContext)}` : "检测中"}</Badge>
+            </div>
+            <div className="relative">
+              <select
+                className="h-10 w-full appearance-none rounded-full border border-violet-200/30 bg-violet-100/49 px-3.5 pr-9 text-sm font-medium text-slate-900 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                value={selectedInputSource}
+                onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                  const nextSource = event.target.value as InputSource;
+                  clearFeedback();
+                  const opts = buildBackendOptions(nextSource, helperCapabilities);
+                  const nextBackend = opts.find((item) => !item.disabled)?.value ?? opts[0].value;
+                  studioSend({ type: "source.select", source: nextSource, backend: nextBackend });
+                }}
+              >
+                {inputOptions.map((option) => (
+                  <option key={option.source} value={option.source}>
+                    {option.label} · {option.capability_status}
+                  </option>
                 ))}
-              </div>
-
-              <div className="rounded-[20px] border border-white/70 bg-white/[0.72] px-4 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Input Gain</div>
-                  <Badge>{Math.round(inputLevel * 100)}%</Badge>
-                </div>
-                <Progress.Root className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100" value={Math.max(0, Math.round(inputLevel * 100))}>
-                  <Progress.Indicator
-                    className="h-full bg-[linear-gradient(90deg,#66b1ff,#6d89ff,#34c38f)] transition-transform duration-150"
-                    style={{ transform: `translateX(-${100 - Math.max(0, Math.round(inputLevel * 100))}%)` }}
-                  />
-                </Progress.Root>
-                <div className="mt-3 text-xs leading-6 text-slate-500">
-                  {activeCaptureSource ? "采集中会持续刷新。" : "开始麦克风或系统声音采集后，这里会显示实时音量。"}
-                </div>
-              </div>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             </div>
-
-            <div className="rounded-[22px] border border-white/70 bg-white/[0.58] px-4 py-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Live Transcript</div>
-                <Badge>{backendLabel(selectedRecognitionBackend)}</Badge>
+            <p className="text-[11px] leading-relaxed text-slate-500">{selectedOption.description}</p>
+            {!audioContext?.is_desktop ? (
+              <div className="rounded-[14px] border border-violet-200/30 bg-violet-200/20 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+                移动端不提供系统声音相关采集入口。
               </div>
-              <div className="mt-3 min-h-[208px] whitespace-pre-wrap rounded-[18px] bg-white/[0.76] px-4 py-4 text-sm leading-7 text-slate-700">
-                {formatLiveTranscript(liveTranscript)}
-              </div>
-              <div className="mt-3 text-xs leading-6 text-slate-500">
-                浏览器识别会显示临时字串；本地 helper 和 API STT 会显示最近一次回写到会话的文本。
-              </div>
-            </div>
-          </div>
-        </Tooltip.Provider>
-      </Card>
-
-      <Card className="soft-enter space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="text-base font-semibold text-slate-950">默认运行配置</div>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              模型与视图模式已经移到独立配置页。这里仅显示当前会话会继承的默认值，避免工作台首屏被配置项挤占。
-            </p>
-          </div>
-          <Link href="/app/settings">
-            <Button variant="secondary">
-              打开配置页
-              <WandSparkles className="h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
-        {!hasLlmProfiles || !hasSttProfiles ? (
-          <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-            当前服务端还没有提供完整的 LLM / STT profile，可先进入配置页查看缺失项，再补齐 `.env` 后重启 API。
-          </div>
-        ) : null}
-        <div className="grid gap-4 md:grid-cols-3">
-          {[
-            {
-              label: "LLM 默认值",
-              value: hasLlmProfiles ? `${selectedLlmProfile?.label || "未选择"} / ${llmModel || "未选择模型"}` : "未配置",
-            },
-            {
-              label: "STT 默认值",
-              value: hasSttProfiles ? `${selectedSttProfile?.label || "未选择"} / ${sttModel || "未选择模型"}` : "未配置",
-            },
-            {
-              label: "视图模式",
-              value: diagramMode === "dual_view" ? "Mermaid + 结构视图" : "Mermaid 主视图",
-            },
-          ].map((item) => (
-            <div key={item.label} className="rounded-[22px] border border-white/70 bg-white/[0.58] px-4 py-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</div>
-              <div className="mt-3 text-sm font-semibold leading-6 text-slate-900">{item.value}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-        <Card className="soft-enter space-y-6">
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-slate-700">会话标题</label>
-            <Input value={title} onChange={(event: ChangeEvent<HTMLInputElement>) => setTitle(event.target.value)} />
-          </div>
-
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-slate-700">数据集版本</label>
-            <select
-              className="h-12 w-full rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
-              value={datasetVersion}
-              onChange={(event: ChangeEvent<HTMLSelectElement>) => setDatasetVersion(event.target.value)}
-            >
-              {datasets.data?.map((item) => (
-                <option key={item.slug} value={item.slug}>
-                  {item.slug}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-medium text-slate-700">输入来源</label>
-              <Badge>{audioContext ? `${audioContext.platform} / ${getBrowserFamilyLabel(audioContext)}` : "检测中"}</Badge>
-            </div>
-            <div className="grid gap-3">
-              {inputOptions.map((option) => (
-                <button
-                  key={option.source}
-                  className={`w-full rounded-[22px] border px-4 py-4 text-left transition ${
-                    selectedInputSource === option.source
-                      ? "border-[var(--accent)] bg-[rgba(77,124,255,0.08)]"
-                      : "border-white/70 bg-white/[0.58]"
-                  }`}
-                  onClick={() => {
-                    clearFeedback();
-                    const nextBackend =
-                      buildBackendOptions(option.source, helperCapabilities).find((item) => !item.disabled)?.value ||
-                      buildBackendOptions(option.source, helperCapabilities)[0].value;
-                    studioSend({ type: "source.select", source: option.source, backend: nextBackend });
-                  }}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-slate-900">{option.label}</div>
-                    <Badge className={capabilityBadgeTone(option.capability_status)}>{option.capability_status}</Badge>
-                  </div>
-                  <div className="mt-2 text-sm leading-6 text-slate-600">{option.description}</div>
-                  <div className="mt-2 text-xs leading-6 text-slate-500">{option.capability_reason}</div>
-                </button>
-              ))}
-            </div>
-            {!systemAudioUiVisible ? (
-              <div className="rounded-[20px] border border-white/70 bg-white/[0.52] px-4 py-3 text-xs leading-6 text-slate-500">
-                系统声音采集未在当前浏览器中开放：{getSystemAudioUnavailableReason(audioContext)}
+            ) : !systemAudioExperimentalVisible ? (
+              <div className="rounded-[14px] border border-violet-200/30 bg-violet-200/20 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+                实验性「共享屏幕音频」仅 Chrome/Edge；可用「增强模式」+ 本机 audio helper。
               </div>
             ) : null}
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-medium text-slate-700">识别后端</label>
-              <Badge>{backendLabel(selectedRecognitionBackend)}</Badge>
+          <div className="flex min-h-0 flex-1 flex-col rounded-[12px] border border-violet-200/30 bg-violet-200/23 px-2.5 py-2">
+            <div className="flex shrink-0 items-center justify-between gap-2">
+              <div className="text-[11px] font-semibold text-slate-800">实时转写</div>
+              <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
             </div>
-            <div className="grid gap-3">
-              {backendOptions.map((option) => (
-                <button
-                  key={option.value}
-                  className={`w-full rounded-[22px] border px-4 py-4 text-left transition ${
-                    selectedRecognitionBackend === option.value
-                      ? "border-[var(--accent)] bg-[rgba(77,124,255,0.08)]"
-                      : "border-white/70 bg-white/[0.58]"
-                  } ${option.disabled ? "opacity-50" : ""}`}
-                  disabled={option.disabled}
-                  onClick={() => {
-                    clearFeedback();
-                    studioSend({ type: "backend.select", backend: option.value });
+            {selectedInputSource === "transcript" ? (
+              <div className="mt-1.5 flex min-h-[4rem] flex-1 flex-col gap-1.5">
+                <Textarea
+                  className="min-h-[7rem] flex-1 resize-y rounded-[10px] border border-violet-200/33 bg-violet-100/35 px-2 py-2 text-[12px] leading-relaxed text-slate-800"
+                  rows={8}
+                  value={transcriptText}
+                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
+                    const next = event.target.value;
+                    setTranscriptText(next);
+                    studioSend({ type: "transcript.preview", text: next });
                   }}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-slate-900">{option.label}</div>
-                    {option.value === "api_stt" ? <Badge>service</Badge> : null}
-                  </div>
-                  <div className="mt-2 text-xs leading-6 text-slate-500">
-                    {option.value === "browser_speech"
-                      ? "直接使用浏览器语音识别，启动快，但稳定性受浏览器服务影响。"
-                      : option.value === "browser_display_validation"
-                        ? "只验证浏览器是否能提供共享音频轨道，不作为正式识别链路。"
-                        : option.value === "local_helper"
-                          ? "通过本机 helper 完成系统声音采集和本地转写。"
-                          : option.value === "api_stt"
-                            ? "前端负责采音，服务端调用 OpenAI-compatible STT API 做转写。"
-                            : "手动输入 transcript。"}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {selectedInputSource === "transcript" ? (
-            <div className="space-y-3">
-              <div>
-                <label className="text-sm font-medium text-slate-700">Transcript 输入</label>
-                <p className="mt-2 text-xs leading-6 text-slate-500">支持 `speaker | text | expected_intent`，一行一条，适合演示和快速回放。</p>
-              </div>
-              <div className="rounded-[20px] border border-white/70 bg-white/[0.52] p-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-900">样例库</div>
-                    <div className="mt-1 text-xs leading-6 text-slate-500">
-                      选择一组 richer transcript，直接替换到输入框里。
-                    </div>
-                  </div>
-                  <select
-                    className="h-11 min-w-[220px] rounded-[18px] border border-white/70 bg-white/[0.8] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
-                    value={selectedTranscriptPresetId}
-                    onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                      const nextId = event.target.value;
-                      const nextPreset = TRANSCRIPT_PRESETS.find((item) => item.id === nextId);
-                      setSelectedTranscriptPresetId(nextId);
-                      if (nextPreset) {
-                        setTranscriptText(nextPreset.value);
-                      }
-                    }}
-                  >
-                    {TRANSCRIPT_PRESETS.map((preset) => (
-                      <option key={preset.id} value={preset.id}>
-                        {preset.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="mt-3 text-xs leading-6 text-slate-600">
-                  {TRANSCRIPT_PRESETS.find((preset) => preset.id === selectedTranscriptPresetId)?.description}
-                </div>
-              </div>
-              <Textarea
-                rows={15}
-                value={transcriptText}
-                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setTranscriptText(event.target.value)}
-              />
-              <Button className="py-3" variant="secondary" onClick={() => sendTranscript.mutate()} disabled={sendTranscript.isPending}>
-                <Send className="h-4 w-4" />
-                发送当前 Transcript
-              </Button>
-            </div>
-          ) : null}
-
-          {selectedInputSource === "microphone_browser" ? (
-            <div className="space-y-3">
-              <div className="rounded-[20px] border border-white/70 bg-white/[0.52] px-4 py-3 text-xs leading-6 text-slate-500">
-                {selectedRecognitionBackend === "browser_speech"
-                  ? "浏览器麦克风依赖 Web Speech 服务。如果提示网络或服务不可用，通常不是项目后端报错，先用 Transcript 输入会更稳定。"
-                  : "API STT 路径会直接把麦克风音频分段上传到服务端转写，再回写当前会话。"}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {selectedRecognitionBackend === "browser_speech" ? (
-                  <>
-                    <Button className="py-3" variant="ghost" onClick={() => void startRecognition()} disabled={!canStartCapture}>
-                      <Mic className="h-4 w-4" />
-                      麦克风开始
-                    </Button>
-                    <Button className="py-3" variant="ghost" onClick={stopRecognition} disabled={!canStopCapture}>
-                      <MicOff className="h-4 w-4" />
-                      麦克风停止
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button className="py-3" variant="secondary" onClick={() => void startApiCapture()} disabled={!canStartCapture}>
-                      <Mic className="h-4 w-4" />
-                      启动 API STT
-                    </Button>
-                    <Button className="py-3" variant="ghost" onClick={() => void stopApiCapture()} disabled={!canStopCapture}>
-                      <StopCircle className="h-4 w-4" />
-                      停止 API STT
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          ) : null}
-
-          {selectedInputSource === "system_audio_browser_experimental" ? (
-            <div className="space-y-3">
-              <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-amber-700">
-                该模式只验证浏览器能否拿到共享音频轨道，不承诺直接转成文本 chunk，也不视为正式支持能力。
-              </div>
-              <div className="grid grid-cols-2 gap-2">
+                />
                 <Button
-                  className="py-3"
+                  type="button"
                   variant="secondary"
-                  onClick={() => void startBrowserDisplayAudioValidation()}
-                  disabled={activeCaptureSource === "system_audio_browser_experimental"}
+                  className="shrink-0 py-2 text-xs"
+                  onClick={() => sendTranscript.mutate()}
+                  disabled={sendTranscript.isPending || !transcriptText.trim()}
                 >
-                  <Headphones className="h-4 w-4" />
-                  开始共享音频验证
-                </Button>
-                <Button
-                  className="py-3"
-                  variant="ghost"
-                  onClick={stopBrowserDisplayAudioValidation}
-                  disabled={activeCaptureSource !== "system_audio_browser_experimental"}
-                >
-                  <StopCircle className="h-4 w-4" />
-                  停止验证
+                  <Send className="h-3.5 w-3.5" />
+                  发送文本
                 </Button>
               </div>
-            </div>
-          ) : null}
-
-          {selectedInputSource === "system_audio_helper" ? (
-            <div className="space-y-3">
-              {selectedRecognitionBackend === "local_helper" ? (
-                <>
-                  <div className="rounded-[20px] border border-white/70 bg-white/[0.52] px-4 py-3 text-xs leading-6 text-slate-500">
-                    增强模式会连接本机 `audio helper`，由浏览器提供共享音频流，再由辅助层在本机完成分段转写。当前辅助层地址：
-                    <span className="ml-1 font-medium text-slate-700">{audioHelper.baseUrl}</span>
-                  </div>
-                  <div className="rounded-[20px] border border-white/70 bg-white/[0.58] px-4 py-4 text-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="font-semibold text-slate-900">辅助层状态</div>
-                      <Badge className={capabilityBadgeTone(helperCapabilities?.capability_status || "offline")}>
-                        {helperCapabilities?.capability_status || "offline"}
-                      </Badge>
-                    </div>
-                    <div className="mt-2 text-sm leading-6 text-slate-600">
-                      {helperCapabilities?.capability_reason || "未检测到本地 audio helper。请先运行 `pnpm audio-helper:dev`。"}
-                    </div>
-                    <div className="mt-2 text-xs leading-6 text-slate-500">
-                      engine: {helperCapabilities?.native_engine || "unavailable"} / {helperCapabilities?.transcriber_backend || "unavailable"}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <Button className="py-3" variant="secondary" onClick={() => void helperCapabilitiesQuery.refetch()}>
-                      <RefreshCcw className="h-4 w-4" />
-                      重新检测
-                    </Button>
-                    <Button
-                      className="py-3"
-                      onClick={() => void startHelperCapture()}
-                      disabled={!helperCapabilities || helperCapabilities.capability_status !== "supported" || !canStartCapture}
-                    >
-                      <AudioLines className="h-4 w-4" />
-                      启动增强模式
-                    </Button>
-                    <Button
-                      className="py-3"
-                      variant="ghost"
-                      onClick={() => void stopHelperCapture()}
-                      disabled={!canStopCapture}
-                    >
-                      <StopCircle className="h-4 w-4" />
-                      停止增强模式
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="rounded-[20px] border border-white/70 bg-white/[0.52] px-4 py-3 text-xs leading-6 text-slate-500">
-                    API STT 路径会复用浏览器共享音频流，把系统声音分段上传到服务端转写。Windows 请勾选共享音频；macOS 请优先选择标签页音频。
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button className="py-3" variant="secondary" onClick={() => void startApiCapture()} disabled={!canStartCapture}>
-                      <Headphones className="h-4 w-4" />
-                      启动 API STT
-                    </Button>
-                    <Button className="py-3" variant="ghost" onClick={() => void stopApiCapture()} disabled={!canStopCapture}>
-                      <StopCircle className="h-4 w-4" />
-                      停止 API STT
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          ) : null}
-
-          <div className="grid gap-3">
-            <Button className="py-3" onClick={() => createSession.mutate()} disabled={createSession.isPending}>
-              <WandSparkles className="h-4 w-4" />
-              {currentSessionId ? "重新创建会话" : "创建会话"}
-            </Button>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="secondary"
-                className="py-3"
-                onClick={() => (currentSessionId ? snapshotMutation.mutate(currentSessionId) : null)}
-                disabled={!currentSessionId}
-              >
-                <RefreshCcw className="h-4 w-4" />
-                快照
-              </Button>
-              <Button
-                variant="secondary"
-                className="py-3"
-                onClick={() => (currentSessionId ? flushMutation.mutate(currentSessionId) : null)}
-                disabled={!currentSessionId}
-              >
-                <Play className="h-4 w-4" />
-                Flush
-              </Button>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="secondary"
-                className="py-3"
-                onClick={() => (currentSessionId ? saveReportMutation.mutate(currentSessionId) : null)}
-                disabled={!currentSessionId}
-              >
-                <Save className="h-4 w-4" />
-                保存报告
-              </Button>
-              <Button
-                variant="danger"
-                className="py-3"
-                onClick={() => (currentSessionId ? closeMutation.mutate(currentSessionId) : null)}
-                disabled={!currentSessionId}
-              >
-                <StopCircle className="h-4 w-4" />
-                关闭会话
-              </Button>
-            </div>
+            ) : (
+              <div className="mt-1.5 min-h-[4rem] flex-1 overflow-auto whitespace-pre-wrap rounded-[10px] bg-violet-100/35 px-2 py-2 text-[12px] leading-relaxed text-slate-800">
+                {formatLiveTranscript(liveTranscript)}
+              </div>
+            )}
+            <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-slate-500">
+              {selectedInputSource === "transcript"
+                ? "与侧栏同一输入；发送后写入会话。"
+                : "浏览器听写多为临时内容；本机助手 / 云端听写会写回这里。"}
+            </p>
           </div>
 
-          <div className="space-y-3 border-t border-white/[0.65] pt-2">
-            <div className="text-sm font-medium text-slate-700">最近会话</div>
-            <div className="max-h-[320px] space-y-2 overflow-auto pr-1">
-              {sessions.data?.map((item) => (
-                <button
-                  key={item.session_id}
-                  className={`lift-hover w-full rounded-[22px] border px-4 py-3.5 text-left text-sm ${
-                    currentSessionId === item.session_id
-                      ? "border-[var(--accent)] bg-[rgba(77,124,255,0.08)]"
-                      : "border-white/70 bg-white/[0.64]"
-                  }`}
-                  onClick={() => {
-                    setCurrentSessionId(item.session_id);
-                    window.localStorage.setItem(LOCAL_SESSION_KEY, item.session_id);
-                  }}
-                >
-                  <div className="font-semibold text-slate-900">{item.title}</div>
-                  <div className="mt-1 text-xs text-slate-500">{item.session_id}</div>
-                  {item.summary?.input_runtime?.input_source ? (
-                    <div className="mt-2 text-xs text-slate-500">输入源：{String(item.summary.input_runtime.input_source)}</div>
-                  ) : null}
-                </button>
-              ))}
+          <div className="shrink-0 rounded-[12px] border border-violet-200/30 bg-violet-200/22 px-2.5 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] font-semibold text-slate-800">输入音量</div>
+              <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
             </div>
+            <Progress.Root className="mt-2 h-2 overflow-hidden rounded-full bg-violet-200/30" value={Math.max(0, Math.round(inputLevel * 100))}>
+              <Progress.Indicator
+                className="h-full bg-[linear-gradient(90deg,#66b1ff,#6d89ff,#34c38f)] transition-transform duration-150"
+                style={{ transform: `translateX(-${100 - Math.max(0, Math.round(inputLevel * 100))}%)` }}
+              />
+            </Progress.Root>
+            <p className="mt-1.5 text-[9px] leading-snug text-slate-500">
+              {activeCaptureSource ? "采集中刷新。" : "开始采集后显示音量。"}
+            </p>
           </div>
         </Card>
 
+        <div className="order-2 flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 xl:col-span-2 xl:row-start-1 xl:order-none">
+          {stageTab === "mermaid" ? (
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+                {mermaidState?.provider || selectedLlmProfile?.label ? (
+                  <Badge>{mermaidState?.provider || selectedLlmProfile?.label}</Badge>
+                ) : null}
+                {mermaidState?.model || llmModel ? <Badge>{mermaidState?.model || llmModel}</Badge> : null}
+                {typeof mermaidState?.latency_ms === "number" ? (
+                  <Badge>{mermaidState.latency_ms.toFixed(1)} ms</Badge>
+                ) : null}
+                <MermaidCompileStatusBadge
+                  compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
+                  updatedAt={
+                    lastMermaidUpdatedAt ||
+                    toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null)
+                  }
+                />
+                <Badge
+                  className="border-violet-200/30 bg-violet-200/25 text-[10px] font-normal text-slate-700"
+                  title={currentSessionId || undefined}
+                >
+                  <span className="block max-w-[140px] min-w-0 truncate">
+                    {currentSessionId ? `Session ${currentSessionId}` : "未创建会话"}
+                  </span>
+                </Badge>
+                <Badge className="border-violet-200/30 bg-violet-200/25 text-[10px] font-normal text-slate-700">
+                  {getSourceBadgeLabel(activeCaptureSource)}
+                </Badge>
+                <Badge className="border-violet-200/30 bg-violet-200/25 text-[10px] font-normal text-slate-700">
+                  {backendLabel(selectedRecognitionBackend)}
+                </Badge>
+                {snapshot?.evaluation?.realtime_eval_pass === true ? (
+                  <Badge className="border-emerald-200 bg-emerald-50 text-[10px] font-normal text-emerald-700">评测通过</Badge>
+                ) : null}
+            </div>
+          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            className="shrink-0 gap-2 text-sm"
+            onClick={() => setDetailDrawerOpen(true)}
+          >
+            <PanelRight className="h-4 w-4" />
+            会话与录音设置
+          </Button>
+        </div>
+
+        <div className="order-3 flex min-h-0 min-w-0 flex-1 flex-col xl:col-start-2 xl:row-start-2 xl:min-h-0">
         <ErrorBoundary
           fallbackRender={({ error: boundaryError }: FallbackProps) => (
             <Card className="rounded-[26px] border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-              实时工作台主舞台异常：{boundaryError.message}
+              本页异常：{boundaryError.message}
             </Card>
           )}
         >
-          <div className="soft-enter soft-enter-delay-1 space-y-6">
-            <Tabs.Root defaultValue="mermaid" className="space-y-5">
-            <Tabs.List className="glass-panel inline-flex flex-wrap gap-2 rounded-full border border-white/70 p-1.5">
+          <div className="soft-enter soft-enter-delay-1 flex min-h-0 min-w-0 flex-1 flex-col">
+            <Tabs.Root value={stageTab} onValueChange={setStageTab} className="flex min-h-0 flex-1 flex-col">
+            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-violet-200/30 bg-[linear-gradient(180deg,rgba(218,208,248,0.58),rgba(188,176,232,0.54))] p-0 shadow-[0_18px_46px_rgba(36,80,198,0.08)] backdrop-blur-md">
+              <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-violet-200/30 px-4 pb-2 pt-3">
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <Tabs.List className="glass-panel inline-flex w-fit min-w-0 max-w-full shrink-0 flex-wrap gap-1.5 self-start rounded-full border border-violet-200/30 p-1.5 sm:gap-2">
               {[
-                ["mermaid", "Mermaid"],
+                ["mermaid", "主图"],
                 ["structure", "结构视图"],
-                ["events", "事件流"],
+                ["events", "更新记录"],
                 ["metrics", "评测指标"],
                 ["pipeline", "运行摘要"],
               ].map(([value, label]) => (
                 <Tabs.Trigger
                   key={value}
                   value={value}
-                  className="rounded-full border border-transparent bg-transparent px-4 py-2.5 text-sm font-medium text-slate-600 transition data-[state=active]:border-white/80 data-[state=active]:bg-white/[0.88] data-[state=active]:text-slate-950"
+                  className="rounded-full border border-transparent bg-transparent px-3 py-2 text-sm font-medium text-slate-600 transition data-[state=active]:border-violet-200/33 data-[state=active]:bg-violet-50/55 data-[state=active]:text-slate-950 sm:px-3.5"
                 >
                   {label}
                 </Tabs.Trigger>
               ))}
             </Tabs.List>
+                <Tooltip.Provider delayDuration={200}>
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  {pipelineStages.map((step) => (
+                    <Tooltip.Root key={step.abbr}>
+                      <Tooltip.Trigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/33 bg-violet-50/57 px-2 py-1 text-[11px] font-medium text-slate-600 shadow-[0_1px_3px_rgba(91,64,180,0.08)] transition hover:shadow-[0_2px_6px_rgba(91,64,180,0.1)]"
+                        >
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${step.ok ? "bg-emerald-500" : "bg-red-500"}`}
+                            aria-hidden
+                          />
+                          {step.label}
+                        </button>
+                      </Tooltip.Trigger>
+                      <Tooltip.Portal>
+                        <Tooltip.Content
+                          sideOffset={6}
+                          className="max-w-[280px] rounded-xl border border-violet-200/36 bg-violet-100/54 px-3 py-2 text-xs leading-relaxed text-slate-700 shadow-lg"
+                        >
+                          <div className="font-semibold text-slate-900">
+                            {step.label}
+                            <span className="ml-1.5 font-normal text-slate-500">({step.abbr})</span>
+                          </div>
+                          <div className="mt-1 text-slate-600">状态：{step.value}</div>
+                          <p className="mt-1.5 text-slate-500">{step.help}</p>
+                          <Tooltip.Arrow className="fill-white" />
+                        </Tooltip.Content>
+                      </Tooltip.Portal>
+                    </Tooltip.Root>
+                  ))}
+                  </div>
+                </Tooltip.Provider>
+                </div>
+                <div className="grid w-full max-w-[min(100%,260px)] shrink-0 grid-cols-2 gap-1 sm:ml-auto">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    title={
+                      selectedInputSource === "transcript"
+                        ? "请先在左侧栏选择麦克风或系统音输入"
+                        : "开始录音"
+                    }
+                    className="h-7 min-w-0 justify-center gap-0.5 px-1 py-0 text-[10px] font-medium"
+                    onClick={() => void stageStartCapture()}
+                    disabled={!canStartStageCapture}
+                  >
+                    <Mic className="h-3 w-3 shrink-0" />
+                    <span className="truncate">开始录音</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    title={
+                      selectedInputSource === "transcript"
+                        ? "请先在左侧栏选择麦克风或系统音输入"
+                        : "暂停录音（停止当前采集）"
+                    }
+                    className="h-7 min-w-0 justify-center gap-0.5 px-1 py-0 text-[10px] font-medium"
+                    onClick={() => void stageStopCapture()}
+                    disabled={!canStopStageCapture}
+                  >
+                    <Pause className="h-3 w-3 shrink-0" />
+                    <span className="truncate">暂停录音</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    title={`${snapshotLabelForSource(selectedInputSource)}（拉取快照）`}
+                    className="h-7 min-w-0 justify-center gap-0.5 px-1 py-0 text-[10px] font-medium"
+                    onClick={() => (currentSessionId ? snapshotMutation.mutate(currentSessionId) : null)}
+                    disabled={!currentSessionId}
+                  >
+                    <RefreshCcw className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{snapshotLabelForSource(selectedInputSource)}</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    title={`${flushLabelForSource(selectedInputSource)}（冲刷/刷新）`}
+                    className="h-7 min-w-0 justify-center gap-0.5 px-1 py-0 text-[10px] font-medium"
+                    onClick={() => (currentSessionId ? flushMutation.mutate(currentSessionId) : null)}
+                    disabled={!currentSessionId}
+                  >
+                    <Play className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{flushLabelForSource(selectedInputSource)}</span>
+                  </Button>
+                </div>
+              </div>
 
-            <Tabs.Content value="mermaid">
+            <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+            <Tabs.Content value="mermaid" className="outline-none">
               <MermaidCard
-                title="Mermaid 主舞台"
+                title=""
+                embedded
+                height={440}
                 code={mermaidState?.normalized_code || mermaidState?.code || ""}
                 provider={mermaidState?.provider || selectedLlmProfile?.label || null}
                 model={mermaidState?.model || llmModel || null}
@@ -1915,15 +1735,15 @@ export function RealtimeStudio() {
             </Tabs.Content>
 
             <Tabs.Content value="structure">
-              <GraphStage title="旧结构视图" nodes={rendererState.nodes || []} edges={rendererState.edges || []} />
+              <GraphStage embedded title="结构图" nodes={rendererState.nodes || []} edges={rendererState.edges || []} />
             </Tabs.Content>
 
             <Tabs.Content value="events">
               <Card>
                 <div className="mb-5 flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-sm font-semibold text-slate-900">事件流</div>
-                    <p className="mt-1 text-xs leading-6 text-slate-500">这里只保留最近更新，帮助你快速判断图是否按预期演进。</p>
+                    <div className="text-sm font-semibold text-slate-900">更新记录</div>
+                    <p className="mt-1 text-xs leading-6 text-slate-500">只看最近几条，方便判断图有没有按预期变化。</p>
                   </div>
                   <Badge>{events.length} updates</Badge>
                 </div>
@@ -1932,7 +1752,7 @@ export function RealtimeStudio() {
                     events.slice(-12).map((event: Record<string, any>, index: number) => (
                       <div
                         key={`${event.update?.update_id}-${index}`}
-                        className="glass-panel rounded-[24px] border border-white/70 p-4"
+                        className="glass-panel rounded-[24px] border border-violet-200/30 p-4"
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="text-sm font-semibold text-slate-900">
@@ -1960,7 +1780,7 @@ export function RealtimeStudio() {
                   ))}
                 </div>
                 <Card>
-                  <div className="mb-4 text-sm font-semibold text-slate-900">实时评测</div>
+                  <div className="mb-4 text-sm font-semibold text-slate-900">效果数据</div>
                   <pre className="rounded-[24px] bg-slate-950 p-5 text-xs leading-6 text-slate-100">
                     {JSON.stringify(snapshot?.evaluation || {}, null, 2)}
                   </pre>
@@ -1970,16 +1790,394 @@ export function RealtimeStudio() {
 
             <Tabs.Content value="pipeline">
               <Card>
-                <div className="mb-4 text-sm font-semibold text-slate-900">Pipeline 摘要</div>
+                <div className="mb-4 text-sm font-semibold text-slate-900">处理步骤摘要</div>
                 <pre className="rounded-[24px] bg-slate-950 p-5 text-xs leading-6 text-slate-100">
                   {JSON.stringify(snapshot?.pipeline?.summary || {}, null, 2)}
                 </pre>
               </Card>
             </Tabs.Content>
+            </div>
+            <div className="flex shrink-0 justify-end border-t border-violet-200/30 px-4 py-2.5">
+              <div className="flex w-[min(100%,22rem)] flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-8 min-w-0 gap-1 rounded-xl px-2 text-xs font-semibold"
+                  onClick={() => createSession.mutate()}
+                  disabled={createSession.isPending}
+                >
+                  <WandSparkles className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{currentSessionId ? "重建会话" : "创建会话"}</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  title="保存报告"
+                  className="h-8 min-w-0 gap-1 rounded-xl px-2 text-xs font-semibold"
+                  onClick={() => (currentSessionId ? saveReportMutation.mutate(currentSessionId) : null)}
+                  disabled={!currentSessionId}
+                >
+                  <Save className="h-3 w-3 shrink-0" />
+                  <span className="truncate">保存</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  title="关闭会话"
+                  className="h-8 min-w-0 gap-1 rounded-xl px-2 text-xs font-semibold"
+                  onClick={() => (currentSessionId ? closeMutation.mutate(currentSessionId) : null)}
+                  disabled={!currentSessionId}
+                >
+                  <StopCircle className="h-3 w-3 shrink-0" />
+                  <span className="truncate">关闭</span>
+                </Button>
+              </div>
+            </div>
+            </Card>
             </Tabs.Root>
           </div>
         </ErrorBoundary>
+        </div>
       </div>
+
+        <Card className="soft-enter space-y-3">
+          <div className="text-sm font-semibold text-slate-900">最近会话</div>
+          <div className="max-h-[320px] space-y-2 overflow-auto pr-1">
+            {sessions.data?.map((item) => (
+              <button
+                key={item.session_id}
+                type="button"
+                className={`lift-hover w-full rounded-[22px] border px-4 py-3.5 text-left text-sm ${
+                  currentSessionId === item.session_id
+                    ? "border-[var(--accent)] bg-[rgba(77,124,255,0.08)]"
+                    : "border-violet-200/30 bg-violet-200/24"
+                }`}
+                onClick={() => {
+                  setCurrentSessionId(item.session_id);
+                  window.localStorage.setItem(LOCAL_SESSION_KEY, item.session_id);
+                }}
+              >
+                <div className="font-semibold text-slate-900">{item.title}</div>
+                <div className="mt-1 text-xs text-slate-500">{item.session_id}</div>
+                {item.summary?.input_runtime?.input_source ? (
+                  <div className="mt-2 text-xs text-slate-500">输入源：{String(item.summary.input_runtime.input_source)}</div>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="soft-enter space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="text-base font-semibold text-slate-950">默认设置（只读）</div>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                详细模型与显示方式请在「设置」里改。这里只显示当前会话会沿用的默认值。
+              </p>
+            </div>
+            <Link href="/app/settings">
+              <Button variant="secondary">
+                打开配置页
+                <WandSparkles className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+          {!hasLlmProfiles || !hasSttProfiles ? (
+            <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+              服务端还缺少语言模型或听写服务配置。请打开「设置」按提示补全环境变量后重启 API。
+            </div>
+          ) : null}
+          <div className="grid gap-4 md:grid-cols-3">
+            {[
+              {
+                label: "默认对话模型",
+                value: hasLlmProfiles ? `${selectedLlmProfile?.label || "未选择"} / ${llmModel || "未选择模型"}` : "未配置",
+              },
+              {
+                label: "默认听写服务",
+                value: hasSttProfiles ? `${selectedSttProfile?.label || "未选择"} / ${sttModel || "未选择模型"}` : "未配置",
+              },
+              {
+                label: "显示方式",
+                value: diagramMode === "dual_view" ? "流程图+结构图" : "仅流程图",
+              },
+            ].map((item) => (
+              <div key={item.label} className="rounded-[22px] border border-violet-200/30 bg-violet-200/23 px-4 py-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</div>
+                <div className="mt-3 text-sm font-semibold leading-6 text-slate-900">{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {detailDrawerPortalReady
+        ? createPortal(
+            <>
+              {detailDrawerOpen ? (
+                <button
+                  type="button"
+                  aria-label="关闭侧栏"
+                  className="fixed inset-0 z-[100] bg-slate-900/35 backdrop-blur-[2px] transition-opacity"
+                  onClick={() => setDetailDrawerOpen(false)}
+                />
+              ) : null}
+              <aside
+                aria-hidden={!detailDrawerOpen}
+                className={`fixed inset-y-0 right-0 z-[110] flex w-[min(420px,92vw)] max-w-full transition-transform duration-300 ease-out ${
+                  detailDrawerOpen ? "translate-x-0 shadow-[0_0_40px_rgba(15,23,42,0.12)]" : "pointer-events-none translate-x-full"
+                }`}
+              >
+        <Card className="m-0 flex h-full w-full flex-col overflow-hidden rounded-none border-y-0 border-r-0 border-l border-violet-200/27 sm:my-4 sm:mr-4 sm:h-[calc(100vh-2rem)] sm:rounded-[26px] sm:border sm:border-violet-200/30">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-violet-200/30 px-4 py-3">
+            <div className="text-sm font-semibold text-slate-900">会话与录音设置</div>
+            <Button type="button" variant="ghost" className="h-9 w-9 shrink-0 p-0" onClick={() => setDetailDrawerOpen(false)} aria-label="关闭">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-slate-700">会话标题</label>
+              <Input value={title} onChange={(event: ChangeEvent<HTMLInputElement>) => setTitle(event.target.value)} />
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-slate-700">数据版本</label>
+              <div className="relative">
+                <select
+                  className="h-11 w-full appearance-none rounded-full border border-violet-200/30 bg-violet-100/49 px-4 pr-10 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-violet-100/54 focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                  value={datasetVersion}
+                  onChange={(event: ChangeEvent<HTMLSelectElement>) => setDatasetVersion(event.target.value)}
+                >
+                  {datasets.data?.map((item) => (
+                    <option key={item.slug} value={item.slug}>
+                      {item.slug}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">转写方式</label>
+              <div className="relative">
+                <select
+                  className="h-10 w-full appearance-none rounded-full border border-violet-200/30 bg-violet-100/49 px-3.5 pr-9 text-sm font-medium text-slate-900 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)] disabled:opacity-50"
+                  value={selectedRecognitionBackend}
+                  disabled={backendOptions.every((o) => o.disabled)}
+                  onChange={(event) => {
+                    clearFeedback();
+                    studioSend({ type: "backend.select", backend: event.target.value as RecognitionBackend });
+                  }}
+                >
+                  {backendOptions.map((option) => (
+                    <option key={option.value} value={option.value} disabled={option.disabled}>
+                      {option.label}
+                      {option.value === "api_stt" ? " (service)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              </div>
+              <p className="text-[11px] leading-relaxed text-slate-500">
+                {selectedRecognitionBackend === "browser_speech"
+                  ? "浏览器语音识别，启动快，稳定性受浏览器影响。"
+                  : selectedRecognitionBackend === "browser_display_validation"
+                    ? "仅验证共享音频轨道可达性。"
+                    : selectedRecognitionBackend === "local_helper"
+                      ? "本机 helper 采集与转写。"
+                      : selectedRecognitionBackend === "api_stt"
+                        ? "服务端 OpenAI-compatible STT。"
+                        : "手动 transcript。"}
+              </p>
+            </div>
+
+            {selectedInputSource === "transcript" ? (
+              <details className="space-y-3 rounded-[22px] border border-violet-200/30 bg-violet-200/20 p-3">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-slate-800 marker:content-none [&::-webkit-details-marker]:hidden">
+                  <span>文字输入与样例</span>
+                  <span className="text-xs font-normal text-slate-500">点击展开</span>
+                </summary>
+                <div className="mt-4 space-y-3">
+                  <p className="text-xs leading-6 text-slate-500">支持 `speaker | text | expected_intent`，一行一条，适合演示和快速回放。</p>
+                  <div className="rounded-[20px] border border-violet-200/30 bg-violet-200/19 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">样例库</div>
+                        <div className="mt-1 text-xs leading-6 text-slate-500">选择一组 richer transcript，直接替换到输入框里。</div>
+                      </div>
+                      <select
+                        className="h-11 min-w-[220px] rounded-[18px] border border-violet-200/30 bg-violet-100/48 px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                        value={selectedTranscriptPresetId}
+                        onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                          const nextId = event.target.value;
+                          const nextPreset = TRANSCRIPT_PRESETS.find((item) => item.id === nextId);
+                          setSelectedTranscriptPresetId(nextId);
+                          if (nextPreset) {
+                            setTranscriptText(nextPreset.value);
+                          } else {
+                            setTranscriptText("");
+                          }
+                        }}
+                      >
+                        <option value="">不使用样例</option>
+                        {TRANSCRIPT_PRESETS.map((preset) => (
+                          <option key={preset.id} value={preset.id}>
+                            {preset.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="mt-3 text-xs leading-6 text-slate-600">
+                      {TRANSCRIPT_PRESETS.find((preset) => preset.id === selectedTranscriptPresetId)?.description ??
+                        "需要演示内容时再从上面选一个样例。"}
+                    </div>
+                  </div>
+                  <Textarea
+                    rows={12}
+                    value={transcriptText}
+                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setTranscriptText(event.target.value)}
+                  />
+                  <Button className="py-3" variant="secondary" onClick={() => sendTranscript.mutate()} disabled={sendTranscript.isPending}>
+                    <Send className="h-4 w-4" />
+                    发送文本
+                  </Button>
+                </div>
+              </details>
+            ) : null}
+
+            {selectedInputSource === "microphone_browser" ? (
+              <div className="space-y-3">
+                <div className="rounded-[20px] border border-violet-200/30 bg-violet-200/19 px-4 py-3 text-xs leading-6 text-slate-500">
+                  {selectedRecognitionBackend === "browser_speech"
+                    ? "浏览器麦克风依赖 Web Speech 服务。如果提示网络或服务不可用，通常不是项目后端报错，先用 Transcript 输入会更稳定。"
+                    : "API STT 路径会直接把麦克风音频分段上传到服务端转写，再回写当前会话。"}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {selectedRecognitionBackend === "browser_speech" ? (
+                    <>
+                      <Button className="py-3" variant="ghost" onClick={() => void startRecognition()} disabled={!canStartCapture}>
+                        <Mic className="h-4 w-4" />
+                        开始说话
+                      </Button>
+                      <Button className="py-3" variant="ghost" onClick={stopRecognition} disabled={!canStopCapture}>
+                        <MicOff className="h-4 w-4" />
+                        停止
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button className="py-3" variant="secondary" onClick={() => void startApiCapture()} disabled={!canStartCapture}>
+                        <Mic className="h-4 w-4" />
+                        开始识别
+                      </Button>
+                      <Button className="py-3" variant="ghost" onClick={() => void stopApiCapture()} disabled={!canStopCapture}>
+                        <StopCircle className="h-4 w-4" />
+                        停止
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {selectedInputSource === "system_audio_browser_experimental" ? (
+              <div className="space-y-3">
+                <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-amber-700">
+                  该模式只验证浏览器能否拿到共享音频轨道，不承诺直接转成文本 chunk，也不视为正式支持能力。
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    className="py-3"
+                    variant="secondary"
+                    onClick={() => void startBrowserDisplayAudioValidation()}
+                    disabled={activeCaptureSource === "system_audio_browser_experimental"}
+                  >
+                    <Headphones className="h-4 w-4" />
+                    检测声音
+                  </Button>
+                  <Button
+                    className="py-3"
+                    variant="ghost"
+                    onClick={stopBrowserDisplayAudioValidation}
+                    disabled={activeCaptureSource !== "system_audio_browser_experimental"}
+                  >
+                    <StopCircle className="h-4 w-4" />
+                    结束
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {selectedInputSource === "system_audio_helper" ? (
+              <div className="space-y-3">
+                {selectedRecognitionBackend === "local_helper" ? (
+                  <>
+                    <div className="rounded-[20px] border border-violet-200/30 bg-violet-200/19 px-4 py-3 text-xs leading-6 text-slate-500">
+                      增强模式会连接本机 `audio helper`，由浏览器提供共享音频流，再由辅助层在本机完成分段转写。当前辅助层地址：
+                      <span className="ml-1 font-medium text-slate-700">{audioHelper.baseUrl}</span>
+                    </div>
+                    <div className="rounded-[20px] border border-violet-200/30 bg-violet-200/23 px-4 py-4 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="font-semibold text-slate-900">辅助层状态</div>
+                        <Badge className={capabilityBadgeTone(helperCapabilities?.capability_status || "offline")}>
+                          {helperCapabilities?.capability_status || "offline"}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 text-sm leading-6 text-slate-600">
+                        {helperCapabilities?.capability_reason || "未检测到本地 audio helper。请先运行 `pnpm audio-helper:dev`。"}
+                      </div>
+                      <div className="mt-2 text-xs leading-6 text-slate-500">
+                        engine: {helperCapabilities?.native_engine || "unavailable"} / {helperCapabilities?.transcriber_backend || "unavailable"}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Button className="py-3" variant="secondary" onClick={() => void helperCapabilitiesQuery.refetch()}>
+                        <RefreshCcw className="h-4 w-4" />
+                        重新检测
+                      </Button>
+                      <Button
+                        className="py-3"
+                        onClick={() => void startHelperCapture()}
+                        disabled={!helperCapabilities || helperCapabilities.capability_status !== "supported" || !canStartCapture}
+                      >
+                        <AudioLines className="h-4 w-4" />
+                        开始采集
+                      </Button>
+                      <Button className="py-3" variant="ghost" onClick={() => void stopHelperCapture()} disabled={!canStopCapture}>
+                        <StopCircle className="h-4 w-4" />
+                        停止
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="rounded-[20px] border border-violet-200/30 bg-violet-200/19 px-4 py-3 text-xs leading-6 text-slate-500">
+                      API STT 路径会复用浏览器共享音频流，把系统声音分段上传到服务端转写。Windows 请勾选共享音频；macOS 请优先选择标签页音频。
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button className="py-3" variant="secondary" onClick={() => void startApiCapture()} disabled={!canStartCapture}>
+                        <Headphones className="h-4 w-4" />
+                        开始识别
+                      </Button>
+                      <Button className="py-3" variant="ghost" onClick={() => void stopApiCapture()} disabled={!canStopCapture}>
+                        <StopCircle className="h-4 w-4" />
+                        停止
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : null}
+
+          </div>
+        </Card>
+              </aside>
+            </>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

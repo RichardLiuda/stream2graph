@@ -114,8 +114,8 @@ export function SampleCompareWorkbench() {
       <Card className="soft-enter space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-base font-semibold text-slate-950">推荐流程</div>
-            <p className="mt-2 text-sm leading-6 text-slate-600">先选数据集和样本，再配置左右两个预测器，最后在结果区查看参考图、预测图和指标。</p>
+            <div className="text-base font-semibold text-slate-50">推荐流程</div>
+            <p className="mt-2 text-sm leading-6 text-slate-400">先选数据集和样本，再配置左右两个预测器，最后在结果区查看参考图、预测图和指标。</p>
           </div>
           {run ? <Badge>{run.status}</Badge> : <Badge>等待创建对比运行</Badge>}
         </div>
@@ -127,8 +127,8 @@ export function SampleCompareWorkbench() {
           ].map(([step, titleText, desc]) => (
             <div key={step} className="rounded-[22px] border border-white/70 bg-white/[0.56] px-4 py-4">
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Step {step}</div>
-              <div className="mt-2 text-sm font-semibold text-slate-900">{titleText}</div>
-              <div className="mt-2 text-sm leading-6 text-slate-600">{desc}</div>
+              <div className="mt-2 text-sm font-semibold text-slate-100">{titleText}</div>
+              <div className="mt-2 text-sm leading-6 text-slate-400">{desc}</div>
             </div>
           ))}
         </div>
@@ -138,7 +138,7 @@ export function SampleCompareWorkbench() {
         <Card className="soft-enter space-y-6">
           <div className="grid gap-5">
             <div className="space-y-3">
-              <label className="text-sm font-medium text-slate-700">数据集版本</label>
+              <label className="text-sm font-medium text-slate-300">数据集版本</label>
               <select
                 className="h-12 w-full rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
                 value={datasetVersion}
@@ -152,7 +152,7 @@ export function SampleCompareWorkbench() {
               </select>
             </div>
             <div className="space-y-3">
-              <label className="text-sm font-medium text-slate-700">Split</label>
+              <label className="text-sm font-medium text-slate-300">Split</label>
               <select
                 className="h-12 w-full rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
                 value={split}
@@ -166,7 +166,7 @@ export function SampleCompareWorkbench() {
               </select>
             </div>
             <div className="space-y-3">
-              <label className="text-sm font-medium text-slate-700">样本检索</label>
+              <label className="text-sm font-medium text-slate-300">样本检索</label>
               <Input
                 value={search}
                 onChange={(event: ChangeEvent<HTMLInputElement>) => setSearch(event.target.value)}
@@ -182,7 +182,7 @@ export function SampleCompareWorkbench() {
                   }`}
                   onClick={() => setSampleId(item.sample_id)}
                 >
-                  <div className="font-semibold text-slate-900">{item.sample_id}</div>
+                  <div className="font-semibold text-slate-100">{item.sample_id}</div>
                   <div className="mt-1 text-xs text-slate-500">
                     {item.diagram_type} · {item.dialogue_turns} turns
                   </div>
@@ -196,13 +196,13 @@ export function SampleCompareWorkbench() {
           <Card className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-xl font-semibold tracking-[-0.04em] text-slate-950">{sampleId || "选择一个样本"}</div>
+                <div className="text-xl font-semibold tracking-[-0.04em] text-slate-50">{sampleId || "选择一个样本"}</div>
                 <div className="mt-2 text-sm text-slate-500">当前版本：{datasetVersion || "-"}</div>
               </div>
               {run ? <Badge>{run.status}</Badge> : null}
             </div>
 
-            <div className="rounded-[24px] border border-white/70 bg-white/[0.58] px-5 py-4 text-sm leading-6 text-slate-600">
+            <div className="rounded-[24px] border border-white/70 bg-white/[0.58] px-5 py-4 text-sm leading-6 text-slate-400">
               左侧面板负责“选什么样本”，这里负责“怎么比较”和“查看结果”。如果只想快速体验，保持默认两个预测器，直接运行即可。
             </div>
 
@@ -212,7 +212,7 @@ export function SampleCompareWorkbench() {
                 { label: "右侧预测器", value: rightPredictor, setValue: setRightPredictor },
               ].map((item) => (
                 <div key={item.label} className="glass-panel rounded-[26px] border border-white/70 p-5">
-                  <div className="text-sm font-semibold text-slate-900">{item.label}</div>
+                  <div className="text-sm font-semibold text-slate-100">{item.label}</div>
                   <div className="mt-4 space-y-3">
                     <Input
                       value={item.value.provider}
@@ -258,7 +258,7 @@ export function SampleCompareWorkbench() {
                 <Tabs.Trigger
                   key={value}
                   value={value}
-                  className="rounded-full border border-transparent bg-transparent px-4 py-2.5 text-sm font-medium text-slate-600 transition data-[state=active]:border-white/80 data-[state=active]:bg-white/[0.88] data-[state=active]:text-slate-950"
+                  className="rounded-full border border-transparent bg-transparent px-4 py-2.5 text-sm font-medium text-slate-400 transition data-[state=active]:border-white/80 data-[state=active]:bg-white/[0.88] data-[state=active]:text-slate-50"
                 >
                   {label}
                 </Tabs.Trigger>
@@ -271,7 +271,7 @@ export function SampleCompareWorkbench() {
 
             <Tabs.Content value="results">
               <Card>
-                <div className="mb-5 text-sm font-semibold text-slate-900">预测结果</div>
+                <div className="mb-5 text-sm font-semibold text-slate-100">预测结果</div>
                 {predictions.length ? (
                   <div className="space-y-5">
                     {predictions.map((row: Record<string, any>, index: number) => (
@@ -301,14 +301,14 @@ export function SampleCompareWorkbench() {
 
             <Tabs.Content value="dialogue">
               <Card>
-                <div className="mb-4 text-sm font-semibold text-slate-900">参考对话</div>
+                <div className="mb-4 text-sm font-semibold text-slate-100">参考对话</div>
                 <div className="space-y-4">
                   {sample.data?.dialogue?.map((turn: Record<string, any>) => (
                     <div key={turn.turn_id} className="glass-panel rounded-[22px] border border-white/70 p-4">
                       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                         Turn {turn.turn_id} · {turn.role} · {turn.action_type}
                       </div>
-                      <div className="mt-2 text-sm leading-6 text-slate-700">{turn.utterance}</div>
+                      <div className="mt-2 text-sm leading-6 text-slate-300">{turn.utterance}</div>
                     </div>
                   ))}
                 </div>
@@ -317,7 +317,7 @@ export function SampleCompareWorkbench() {
 
             <Tabs.Content value="metadata">
               <Card>
-                <div className="mb-4 text-sm font-semibold text-slate-900">样本元数据</div>
+                <div className="mb-4 text-sm font-semibold text-slate-100">样本元数据</div>
                 <pre className="rounded-[24px] bg-slate-950 p-5 text-xs leading-6 text-slate-100">
                   {JSON.stringify(sampleMeta, null, 2)}
                 </pre>

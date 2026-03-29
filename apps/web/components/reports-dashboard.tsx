@@ -127,7 +127,7 @@ export function ReportsDashboard() {
             <Tabs.Trigger
               key={value}
               value={value}
-              className="rounded-full border border-transparent bg-transparent px-4 py-2.5 text-sm font-medium text-slate-600 transition data-[state=active]:border-white/80 data-[state=active]:bg-white/[0.88] data-[state=active]:text-slate-950"
+              className="rounded-full border border-transparent bg-transparent px-4 py-2.5 text-sm font-medium text-slate-400 transition data-[state=active]:border-white/80 data-[state=active]:bg-white/[0.88] data-[state=active]:text-slate-50"
             >
               {label}
             </Tabs.Trigger>
@@ -138,14 +138,14 @@ export function ReportsDashboard() {
           <div className="grid gap-6 xl:grid-cols-3">
             <Card>
               <div className="mb-5 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-900">最近运行</div>
+                <div className="text-sm font-semibold text-slate-100">最近运行</div>
                 <Badge>{runs.data?.length ?? 0}</Badge>
               </div>
               <div className="space-y-4">
                 {runs.data?.slice(0, 6).map((item) => (
                   <div key={item.run_id} className="glass-panel rounded-[24px] border border-white/70 p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold text-slate-900">{item.title}</div>
+                      <div className="font-semibold text-slate-100">{item.title}</div>
                       <Badge>{item.status}</Badge>
                     </div>
                     <div className="mt-1 text-xs text-slate-500">
@@ -157,13 +157,13 @@ export function ReportsDashboard() {
             </Card>
             <Card>
               <div className="mb-5 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-900">研究会话</div>
+                <div className="text-sm font-semibold text-slate-100">研究会话</div>
                 <Badge>{studySessions.data?.length ?? 0}</Badge>
               </div>
               <div className="space-y-4">
                 {studySessions.data?.slice(0, 6).map((item) => (
                   <div key={item.session_id} className="glass-panel rounded-[24px] border border-white/70 p-4">
-                    <div className="font-semibold text-slate-900">{item.participant_code}</div>
+                    <div className="font-semibold text-slate-100">{item.participant_code}</div>
                     <div className="mt-1 text-xs text-slate-500">
                       {item.study_condition} · {item.task_title}
                     </div>
@@ -173,13 +173,13 @@ export function ReportsDashboard() {
             </Card>
             <Card>
               <div className="mb-5 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-900">报告归档</div>
+                <div className="text-sm font-semibold text-slate-100">报告归档</div>
                 <Badge>{reports.data?.length ?? 0}</Badge>
               </div>
               <div className="space-y-4">
                 {reports.data?.slice(0, 6).map((item) => (
                   <div key={item.report_id} className="glass-panel rounded-[24px] border border-white/70 p-4">
-                    <div className="font-semibold text-slate-900">{item.title}</div>
+                    <div className="font-semibold text-slate-100">{item.title}</div>
                     <div className="mt-1 text-xs text-slate-500">
                       {item.report_type} · {item.status}
                     </div>
@@ -193,7 +193,7 @@ export function ReportsDashboard() {
         <Tabs.Content value="study">
           <div className="grid gap-6 xl:grid-cols-2">
             <Card className="space-y-5">
-              <div className="flex items-center gap-2 text-lg font-semibold text-slate-950">
+              <div className="flex items-center gap-2 text-lg font-semibold text-slate-50">
                 <Plus className="h-5 w-5" />
                 创建研究任务
               </div>
@@ -253,7 +253,7 @@ export function ReportsDashboard() {
             </Card>
 
             <Card className="space-y-5">
-              <div className="flex items-center gap-2 text-lg font-semibold text-slate-950">
+              <div className="flex items-center gap-2 text-lg font-semibold text-slate-50">
                 <Users className="h-5 w-5" />
                 发放 Participant Code
               </div>
@@ -296,7 +296,7 @@ export function ReportsDashboard() {
                 {studySessions.data?.slice(0, 8).map((item) => (
                   <div key={item.session_id} className="glass-panel rounded-[24px] border border-white/70 p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold text-slate-900">{item.participant_code}</div>
+                      <div className="font-semibold text-slate-100">{item.participant_code}</div>
                       <a
                         className="text-sm font-medium text-[var(--accent-strong)]"
                         href={`/study/${item.participant_code}`}
@@ -323,8 +323,8 @@ export function ReportsDashboard() {
               ["realtime", "实时会话"],
             ].map(([target, label]) => (
               <Card key={target} className="lift-hover space-y-5">
-                <div className="text-lg font-semibold text-slate-950">{label}</div>
-                <p className="text-sm leading-6 text-slate-600">
+                <div className="text-lg font-semibold text-slate-50">{label}</div>
+                <p className="text-sm leading-6 text-slate-400">
                   导出为 JSON、CSV 或 Markdown，支持实验复现、论文整理和归档审计。
                 </p>
                 <div className="flex flex-wrap gap-2">

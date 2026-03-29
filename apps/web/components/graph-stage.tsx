@@ -18,18 +18,17 @@ export function GraphStage({
   title,
   nodes,
   edges,
+  embedded = false,
 }: {
   title: string;
   nodes: RendererNode[];
   edges: RendererEdge[];
+  /** @description 为 true 时不渲染标题栏与外层 Card，由主舞台统一容器承载 */
+  embedded?: boolean;
 }) {
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
 
-  return (
-    <Card className="overflow-hidden p-0">
-      <div className="border-b border-white/70 px-6 py-5">
-        <div className="text-sm font-semibold text-slate-900">{title}</div>
-      </div>
+  const inner = (
       <div className="bg-[linear-gradient(180deg,rgba(248,251,255,0.9),rgba(239,244,255,0.86))] p-5">
         <svg
           viewBox="-120 -120 1240 760"
@@ -73,6 +72,18 @@ export function GraphStage({
           ))}
         </svg>
       </div>
+  );
+
+  if (embedded) {
+    return <div className="min-h-0 overflow-hidden">{inner}</div>;
+  }
+
+  return (
+    <Card className="overflow-hidden p-0">
+      <div className="border-b border-white/70 px-6 py-5">
+        <div className="text-sm font-semibold text-slate-900">{title}</div>
+      </div>
+      {inner}
     </Card>
   );
 }

@@ -108,8 +108,8 @@ export function StudyWorkbench({ participantCode }: { participantCode: string })
       <Card className="soft-enter mt-6 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-base font-semibold text-slate-950">完成方式</div>
-            <p className="mt-2 text-sm leading-6 text-slate-600">先阅读左侧任务材料，再在中间编辑最终 Mermaid，最后填写右侧问卷并提交。草稿会自动保存。</p>
+            <div className="text-base font-semibold text-slate-50">完成方式</div>
+            <p className="mt-2 text-sm leading-6 text-slate-400">先阅读左侧任务材料，再在中间编辑最终 Mermaid，最后填写右侧问卷并提交。草稿会自动保存。</p>
           </div>
           <Badge>{session.data?.study_condition ? `条件：${session.data.study_condition}` : "正在加载任务条件"}</Badge>
         </div>
@@ -121,8 +121,8 @@ export function StudyWorkbench({ participantCode }: { participantCode: string })
           ].map(([step, titleText, desc]) => (
             <div key={step} className="rounded-[22px] border border-white/70 bg-white/[0.56] px-4 py-4">
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Step {step}</div>
-              <div className="mt-2 text-sm font-semibold text-slate-900">{titleText}</div>
-              <div className="mt-2 text-sm leading-6 text-slate-600">{desc}</div>
+              <div className="mt-2 text-sm font-semibold text-slate-100">{titleText}</div>
+              <div className="mt-2 text-sm leading-6 text-slate-400">{desc}</div>
             </div>
           ))}
         </div>
@@ -131,15 +131,15 @@ export function StudyWorkbench({ participantCode }: { participantCode: string })
       <div className="mt-6 grid gap-6 2xl:grid-cols-[360px_minmax(0,1fr)_360px]">
         <Card className="soft-enter space-y-5">
           <div>
-            <div className="text-sm font-semibold text-slate-900">任务材料</div>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+            <div className="text-sm font-semibold text-slate-100">任务材料</div>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
               条件：{session.data?.study_condition || "-"}。请阅读对话并在右侧编辑器中产出最终 Mermaid。
             </p>
           </div>
           <Textarea value={transcript} readOnly rows={18} />
           {systemOutput ? (
             <>
-              <div className="text-sm font-semibold text-slate-900">系统初稿</div>
+              <div className="text-sm font-semibold text-slate-100">系统初稿</div>
               <Textarea value={systemOutput} readOnly rows={12} />
             </>
           ) : null}
@@ -147,7 +147,7 @@ export function StudyWorkbench({ participantCode }: { participantCode: string })
 
         <div className="soft-enter soft-enter-delay-1 space-y-6">
           <Card>
-            <div className="mb-4 text-sm font-semibold text-slate-900">编辑最终 Mermaid</div>
+            <div className="mb-4 text-sm font-semibold text-slate-100">编辑最终 Mermaid</div>
             <Textarea
               value={draft}
               rows={18}
@@ -160,7 +160,7 @@ export function StudyWorkbench({ participantCode }: { participantCode: string })
 
         <div className="soft-enter soft-enter-delay-2 space-y-6">
           <Card className="space-y-5">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
               <ShieldCheck className="h-4 w-4" />
               提交与问卷
             </div>
@@ -171,7 +171,7 @@ export function StudyWorkbench({ participantCode }: { participantCode: string })
                 ["负担", surveyWorkload, setSurveyWorkload],
               ].map(([label, value, setter]) => (
                 <div key={label as string} className="space-y-2">
-                  <label className="text-xs font-medium text-slate-600">{label as string}</label>
+                  <label className="text-xs font-medium text-slate-400">{label as string}</label>
                   <select
                     className="h-11 w-full rounded-[20px] border border-white/70 bg-white/[0.72] px-3 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
                     value={value as string}
@@ -200,7 +200,7 @@ export function StudyWorkbench({ participantCode }: { participantCode: string })
           </Card>
 
           <Card>
-            <div className="mb-4 text-sm font-semibold text-slate-900">自动评测状态</div>
+            <div className="mb-4 text-sm font-semibold text-slate-100">自动评测状态</div>
             <pre className="rounded-[24px] bg-slate-950 p-5 text-xs leading-6 text-slate-100">
               {JSON.stringify(
                 {

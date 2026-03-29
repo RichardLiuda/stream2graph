@@ -370,12 +370,12 @@ export function PlatformSettings() {
     <div className="space-y-6">
       <SectionHeading
         eyebrow="Settings"
-        title="平台配置"
-        description="在这里直接维护服务端 LLM / STT 配置，并设置当前浏览器里的默认运行偏好。"
+        title="设置"
+        description="在这里配置服务端的对话模型、听写服务，以及本浏览器的默认偏好。"
         actions={
           <Link href="/app/realtime">
             <Button variant="secondary">
-              返回实时工作台
+              返回实时工作
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
@@ -387,7 +387,7 @@ export function PlatformSettings() {
           <div>
             <div className="text-base font-semibold text-slate-950">服务端模型配置</div>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              这里配置的是平台自己的 LLM / STT profile。保存后会直接写入服务端持久化设置，实时工作台和样本页都会读这套配置。
+              保存后直接写入服务端。实时工作与样本页都会用这里的对话模型和听写服务。
             </p>
           </div>
           <div className="flex items-center gap-2">
