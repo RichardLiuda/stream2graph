@@ -11,14 +11,15 @@ export function GlobalPixelBackground() {
       <PixelBlast
         antialias
         autoPauseOffscreen
+        animate={false}
         className="absolute inset-0 h-full w-full"
-        color="#9d86ff"
+        color="#c7b8ff"
         edgeFade={0.5}
-        enableRipples
+        enableRipples={false}
         patternDensity={1.05}
         patternScale={2.1}
         pixelSize={3}
-        speed={0.42}
+        speed={0}
         variant="square"
       />
     </div>

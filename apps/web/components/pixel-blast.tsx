@@ -36,6 +36,8 @@ type PixelBlastProps = {
   color?: string;
   className?: string;
   style?: React.CSSProperties;
+  /** @description 是否启用动画循环（关闭可显著降低 GPU 开销） */
+  animate?: boolean;
   antialias?: boolean;
   patternScale?: number;
   patternDensity?: number;
@@ -355,9 +357,10 @@ const MAX_CLICKS = 10;
 const PixelBlast: React.FC<PixelBlastProps> = ({
   variant = 'square',
   pixelSize = 3,
-  color = '#B19EEF',
+  color = '#c7b8ff',
   className,
   style,
+  animate = false,
   antialias = true,
   patternScale = 2,
   patternDensity = 1,
@@ -577,56 +580,82 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
         const { fx, fy, w, h } = mapToPixels(e);
         touch.addTouch({ x: fx / w, y: fy / h });
       };
-      renderer.domElement.addEventListener('pointerdown', onPointerDown, {
-        passive: true
-      });
-      renderer.domElement.addEventListener('pointermove', onPointerMove, {
-        passive: true
-      });
-      let raf = 0;
-      const animate = () => {
-        if (autoPauseOffscreen && !visibilityRef.current.visible) {
-          raf = requestAnimationFrame(animate);
-          return;
-        }
-        uniforms.uTime.value = timeOffset + clock.getElapsedTime() * speedRef.current;
-        if (liquidEffect) {
-          const liqEffect = liquidEffect as Effect & { uniforms: Map<string, THREE.Uniform> };
-          const timeUniform = liqEffect.uniforms.get('uTime');
-          if (timeUniform) timeUniform.value = uniforms.uTime.value;
-        }
+      // 静态背景：渲染一次即可，避免持续占用 GPU
+      if (animate) {
+        renderer.domElement.addEventListener('pointerdown', onPointerDown, {
+          passive: true
+        });
+        renderer.domElement.addEventListener('pointermove', onPointerMove, {
+          passive: true
+        });
+        let raf = 0;
+        const tick = () => {
+          if (autoPauseOffscreen && !visibilityRef.current.visible) {
+            raf = requestAnimationFrame(tick);
+            return;
+          }
+          uniforms.uTime.value = timeOffset + clock.getElapsedTime() * speedRef.current;
+          if (liquidEffect) {
+            const liqEffect = liquidEffect as Effect & { uniforms: Map<string, THREE.Uniform> };
+            const timeUniform = liqEffect.uniforms.get('uTime');
+            if (timeUniform) timeUniform.value = uniforms.uTime.value;
+          }
+          if (composer) {
+            if (touch) touch.update();
+            composer.passes.forEach(p => {
+              const pass = p as { effects?: Array<Effect & { uniforms: Map<string, THREE.Uniform> }> };
+              if (pass.effects) {
+                pass.effects.forEach(eff => {
+                  const timeUniform = eff.uniforms?.get('uTime');
+                  if (timeUniform) timeUniform.value = uniforms.uTime.value;
+                });
+              }
+            });
+            composer.render();
+          } else renderer.render(scene, camera);
+          raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        threeRef.current = {
+          renderer,
+          scene,
+          camera,
+          material,
+          clock,
+          clickIx: 0,
+          uniforms,
+          resizeObserver: ro,
+          raf,
+          quad,
+          timeOffset,
+          composer,
+          touch,
+          liquidEffect
+        };
+      } else {
+        uniforms.uTime.value = timeOffset;
         if (composer) {
-          if (touch) touch.update();
-          composer.passes.forEach(p => {
-            const pass = p as { effects?: Array<Effect & { uniforms: Map<string, THREE.Uniform> }> };
-            if (pass.effects) {
-              pass.effects.forEach(eff => {
-                const timeUniform = eff.uniforms?.get('uTime');
-                if (timeUniform) timeUniform.value = uniforms.uTime.value;
-              });
-            }
-          });
           composer.render();
-        } else renderer.render(scene, camera);
-        raf = requestAnimationFrame(animate);
-      };
-      raf = requestAnimationFrame(animate);
-      threeRef.current = {
-        renderer,
-        scene,
-        camera,
-        material,
-        clock,
-        clickIx: 0,
-        uniforms,
-        resizeObserver: ro,
-        raf,
-        quad,
-        timeOffset,
-        composer,
-        touch,
-        liquidEffect
-      };
+        } else {
+          renderer.render(scene, camera);
+        }
+        threeRef.current = {
+          renderer,
+          scene,
+          camera,
+          material,
+          clock,
+          clickIx: 0,
+          uniforms,
+          resizeObserver: ro,
+          raf: undefined,
+          quad,
+          timeOffset,
+          composer,
+          touch,
+          liquidEffect
+        };
+      }
     } else {
       const t = threeRef.current!;
       t.uniforms.uShapeType.value = SHAPE_MAP[variant] ?? 0;
@@ -657,7 +686,7 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
       if (!threeRef.current) return;
       const t = threeRef.current;
       t.resizeObserver?.disconnect();
-      cancelAnimationFrame(t.raf!);
+      if (typeof t.raf === "number") cancelAnimationFrame(t.raf);
       t.quad?.geometry.dispose();
       t.material.dispose();
       t.composer?.dispose();
@@ -667,6 +696,7 @@ const PixelBlast: React.FC<PixelBlastProps> = ({
       threeRef.current = null;
     };
   }, [
+    animate,
     antialias,
     liquid,
     noiseAmount,
