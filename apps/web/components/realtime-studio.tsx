@@ -299,6 +299,11 @@ export function RealtimeStudio() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
+  useEffect(() => {
+    if (!notice) return;
+    const t = window.setTimeout(() => setNotice(null), 3500);
+    return () => window.clearTimeout(t);
+  }, [notice]);
   /** @description 客户端挂载后再 portal，避免 SSR 访问 `document` */
   const [detailDrawerPortalReady, setDetailDrawerPortalReady] = useState(false);
   /** @description 主舞台 Tab，用于顶栏与「主图」徽章联动 */
@@ -430,6 +435,15 @@ export function RealtimeStudio() {
   const selectedLlmProfile = runtimeOptions.data?.llm_profiles.find((item) => item.id === llmProfileId) ?? null;
   const selectedSttProfile = runtimeOptions.data?.stt_profiles.find((item) => item.id === sttProfileId) ?? null;
   const effectiveError = error ?? machineError;
+
+  useEffect(() => {
+    if (!effectiveError) return;
+    const t = window.setTimeout(() => {
+      setError(null);
+      studioSend({ type: "error.clear" });
+    }, 3500);
+    return () => window.clearTimeout(t);
+  }, [effectiveError, studioSend]);
 
   useEffect(() => {
     if (!inputOptions.some((item) => item.source === selectedInputSource)) {
@@ -1340,38 +1354,67 @@ export function RealtimeStudio() {
     ];
   }, [snapshot?.evaluation?.metrics]);
 
-  /** @description 主舞台顶栏：CAP/STT/LLM/MER 步骤徽章（绿=可用/正常，红=异常） */
+  /** @description 主舞台顶栏：CAP/STT/LLM/MER 步骤徽章（4 色：空闲/进行中/成功/失败） */
   const pipelineStages = useMemo(() => {
-    const sttOk = sttStatus !== "error";
-    const llmOk = llmStatus !== "error";
-    const merOk = llmStatus !== "error";
+    const mapBackendTone = (status: BackendStatus) => {
+      if (status === "working") return "working";
+      if (status === "success") return "success";
+      if (status === "error") return "error";
+      return "idle";
+    };
+
+    // CAP 本身没有 success/error，由后续转写状态推断结果；capturing/uploading 期间视为进行中。
+    const capTone =
+      captureStatus === "idle"
+        ? sttStatus === "success"
+          ? "success"
+          : sttStatus === "error"
+            ? "error"
+            : "idle"
+        : "working";
+
+    const sttTone = mapBackendTone(sttStatus);
+    const llmTone = mapBackendTone(llmStatus);
+
+    // MER：优先用 mermaid_state 的 compile/error 信号定色；没有信号时用 llmStatus/更新时间兜底。
+    let merTone: "idle" | "working" | "success" | "error" = "idle";
+    if (mermaidState?.error_message) {
+      merTone = "error";
+    } else if (typeof mermaidState?.compile_ok === "boolean") {
+      merTone = mermaidState.compile_ok ? "success" : "error";
+    } else if (llmStatus === "working") {
+      merTone = "working";
+    } else if (lastMermaidUpdatedAt) {
+      merTone = "success";
+    }
+
     return [
       {
         abbr: "CAP",
         label: "采集",
         value: captureStatusLabel(captureStatus),
-        ok: true,
+        tone: capTone,
         help: "是否在录音或上传声音。",
       },
       {
         abbr: "STT",
         label: "转写",
         value: backendStatusLabel(sttStatus),
-        ok: sttOk,
+        tone: sttTone,
         help: `转写方式：${backendLabel(selectedRecognitionBackend)}`,
       },
       {
         abbr: "LLM",
         label: "对话",
         value: backendStatusLabel(llmStatus),
-        ok: llmOk,
+        tone: llmTone,
         help: selectedLlmProfile ? `${selectedLlmProfile.label} / ${llmModel || "未选择模型"}` : "尚未配置对话模型。",
       },
       {
         abbr: "MER",
         label: "出图",
         value: lastMermaidUpdatedAt ? "已更新" : "等待中",
-        ok: merOk,
+        tone: merTone,
         help: lastMermaidUpdatedAt || "还没有生成流程图。",
       },
     ];
@@ -1380,6 +1423,8 @@ export function RealtimeStudio() {
     sttStatus,
     llmStatus,
     lastMermaidUpdatedAt,
+    mermaidState?.error_message,
+    mermaidState?.compile_ok,
     selectedRecognitionBackend,
     selectedLlmProfile,
     llmModel,
@@ -1444,14 +1489,18 @@ export function RealtimeStudio() {
   const canStopStageCapture = selectedInputSource !== "transcript" && canStopCapture;
 
   return (
-    <div className="space-y-4">
+    <div>
       {effectiveError ? (
-        <div className="rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="soft-enter fixed left-1/2 top-16 z-[19000] w-[min(720px,92vw)] -translate-x-1/2 rounded-[24px] border border-red-200 bg-red-50/95 px-4 py-3 text-sm text-red-700">
           {effectiveError}
         </div>
       ) : null}
       {notice ? (
-        <div className={`rounded-[24px] border px-4 py-3 text-sm ${getNoticeClassName(notice.tone)}`}>{notice.text}</div>
+        <div
+          className={`soft-enter fixed left-1/2 top-4 z-[20000] w-[min(720px,92vw)] -translate-x-1/2 rounded-[24px] border px-4 py-3 text-sm ${getNoticeClassName(notice.tone)}`}
+        >
+          {notice.text}
+        </div>
       ) : null}
 
       <div className="space-y-4">
@@ -1464,7 +1513,7 @@ export function RealtimeStudio() {
             </div>
             <div className="relative">
               <select
-                className="h-10 w-full appearance-none rounded-full border border-violet-200/50 bg-violet-50/92 px-3.5 pr-9 text-sm font-medium text-slate-900 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                className="h-10 w-full appearance-none rounded-full border border-white/10 bg-white/[0.03] px-3.5 pr-9 text-sm font-medium text-slate-200 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
                 value={selectedInputSource}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => {
                   const nextSource = event.target.value as InputSource;
@@ -1484,17 +1533,17 @@ export function RealtimeStudio() {
             </div>
             <p className="text-[11px] leading-relaxed text-slate-500">{selectedOption.description}</p>
             {!audioContext?.is_desktop ? (
-              <div className="rounded-[14px] border border-violet-200/50 bg-violet-100/38 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+              <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] leading-relaxed text-slate-300">
                 移动端不提供系统声音相关采集入口。
               </div>
             ) : !systemAudioExperimentalVisible ? (
-              <div className="rounded-[14px] border border-violet-200/50 bg-violet-100/38 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+              <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] leading-relaxed text-slate-300">
                 实验性「共享屏幕音频」仅 Chrome/Edge；可用「增强模式」+ 本机 audio helper。
               </div>
             ) : null}
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col rounded-[12px] border border-violet-200/50 bg-violet-100/46 px-2.5 py-2">
+          <div className="flex min-h-0 flex-1 flex-col rounded-[12px] border border-white/10 bg-white/[0.02] px-2.5 py-2">
             <div className="flex shrink-0 items-center justify-between gap-2">
               <div className="text-[11px] font-semibold text-slate-800">实时转写</div>
               <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
@@ -1502,7 +1551,7 @@ export function RealtimeStudio() {
             {selectedInputSource === "transcript" ? (
               <div className="mt-1.5 flex min-h-[4rem] flex-1 flex-col gap-1.5">
                 <Textarea
-                  className="min-h-[7rem] flex-1 resize-y rounded-[10px] border border-violet-200/55 bg-violet-50/80 px-2 py-2 text-[12px] leading-relaxed text-slate-800"
+                  className="min-h-[7rem] flex-1 resize-y rounded-[10px] border border-white/10 bg-white/[0.03] px-2 py-2 text-[12px] leading-relaxed text-slate-200"
                   rows={8}
                   value={transcriptText}
                   onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -1523,29 +1572,29 @@ export function RealtimeStudio() {
                 </Button>
               </div>
             ) : (
-              <div className="mt-1.5 min-h-[4rem] flex-1 overflow-auto whitespace-pre-wrap rounded-[10px] bg-violet-50/80 px-2 py-2 text-[12px] leading-relaxed text-slate-800">
+              <div className="mt-1.5 min-h-[4rem] flex-1 overflow-auto whitespace-pre-wrap rounded-[10px] bg-white/[0.02] px-2 py-2 text-[12px] leading-relaxed text-slate-200">
                 {formatLiveTranscript(liveTranscript)}
               </div>
             )}
-            <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-slate-500">
+            <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-slate-400">
               {selectedInputSource === "transcript"
                 ? "与侧栏同一输入；发送后写入会话。"
                 : "浏览器听写多为临时内容；本机助手 / 云端听写会写回这里。"}
             </p>
           </div>
 
-          <div className="shrink-0 rounded-[12px] border border-violet-200/50 bg-violet-100/44 px-2.5 py-2">
+          <div className="shrink-0 rounded-[12px] border border-white/10 bg-white/[0.03] px-2.5 py-2">
             <div className="flex items-center justify-between gap-2">
               <div className="text-[11px] font-semibold text-slate-800">输入音量</div>
               <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
             </div>
-            <Progress.Root className="mt-2 h-2 overflow-hidden rounded-full bg-violet-200/50" value={Math.max(0, Math.round(inputLevel * 100))}>
+            <Progress.Root className="mt-2 h-2 overflow-hidden rounded-full bg-white/[0.08]" value={Math.max(0, Math.round(inputLevel * 100))}>
               <Progress.Indicator
                 className="h-full bg-[linear-gradient(90deg,#66b1ff,#6d89ff,#34c38f)] transition-transform duration-150"
                 style={{ transform: `translateX(-${100 - Math.max(0, Math.round(inputLevel * 100))}%)` }}
               />
             </Progress.Root>
-            <p className="mt-1.5 text-[9px] leading-snug text-slate-500">
+            <p className="mt-1.5 text-[9px] leading-snug text-slate-400">
               {activeCaptureSource ? "采集中刷新。" : "开始采集后显示音量。"}
             </p>
           </div>
@@ -1569,17 +1618,17 @@ export function RealtimeStudio() {
                   }
                 />
                 <Badge
-                  className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700"
+                  className="border-white/10 bg-white/[0.03] text-[10px] font-normal text-slate-200"
                   title={currentSessionId || undefined}
                 >
                   <span className="block max-w-[140px] min-w-0 truncate">
                     {currentSessionId ? `Session ${currentSessionId}` : "未创建会话"}
                   </span>
                 </Badge>
-                <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                <Badge className="border-white/10 bg-white/[0.03] text-[10px] font-normal text-slate-200">
                   {getSourceBadgeLabel(activeCaptureSource)}
                 </Badge>
-                <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                <Badge className="border-white/10 bg-white/[0.03] text-[10px] font-normal text-slate-200">
                   {backendLabel(selectedRecognitionBackend)}
                 </Badge>
                 {snapshot?.evaluation?.realtime_eval_pass === true ? (
@@ -1608,10 +1657,10 @@ export function RealtimeStudio() {
         >
           <div className="soft-enter soft-enter-delay-1 flex min-h-0 min-w-0 flex-1 flex-col">
             <Tabs.Root value={stageTab} onValueChange={setStageTab} className="flex min-h-0 flex-1 flex-col">
-            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-violet-200/50 bg-[linear-gradient(180deg,rgba(242,240,255,0.94),rgba(226,222,250,0.82))] p-0 shadow-[0_18px_46px_rgba(36,80,198,0.08)] backdrop-blur-md">
-              <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-violet-200/50 px-4 pb-2 pt-3">
+            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-white/10 !bg-none bg-slate-950/25 p-0 shadow-[0_18px_46px_rgba(91,64,180,0.10)] backdrop-blur-md">
+              <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-white/10 px-4 pb-2 pt-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                <Tabs.List className="glass-panel inline-flex w-fit min-w-0 max-w-full shrink-0 flex-wrap gap-1.5 self-start rounded-full border border-violet-200/50 p-1.5 sm:gap-2">
+                <Tabs.List className="glass-panel inline-flex w-fit min-w-0 max-w-full shrink-0 flex-wrap gap-1.5 self-start rounded-full border border-white/10 !bg-slate-950/35 p-1.5 sm:gap-2">
               {[
                 ["mermaid", "主图"],
                 ["structure", "结构视图"],
@@ -1622,7 +1671,7 @@ export function RealtimeStudio() {
                 <Tabs.Trigger
                   key={value}
                   value={value}
-                  className="rounded-full border border-transparent bg-transparent px-3 py-2 text-sm font-medium text-slate-600 transition data-[state=active]:border-violet-200/55 data-[state=active]:bg-violet-50/92 data-[state=active]:text-slate-950 sm:px-3.5"
+                  className="rounded-full border border-transparent bg-transparent px-3 py-2 text-sm font-medium text-slate-200 transition data-[state=active]:border-white/15 data-[state=active]:bg-white/[0.08] data-[state=active]:text-slate-50 sm:px-3.5"
                 >
                   {label}
                 </Tabs.Trigger>
@@ -1635,10 +1684,18 @@ export function RealtimeStudio() {
                       <Tooltip.Trigger asChild>
                         <button
                           type="button"
-                          className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/55 bg-violet-50/95 px-2 py-1 text-[11px] font-medium text-slate-600 shadow-[0_1px_3px_rgba(91,64,180,0.08)] transition hover:shadow-[0_2px_6px_rgba(91,64,180,0.1)]"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-slate-200 shadow-[0_1px_3px_rgba(91,64,180,0.08)] transition hover:shadow-[0_2px_6px_rgba(91,64,180,0.1)]"
                         >
                           <span
-                            className={`h-2 w-2 shrink-0 rounded-full ${step.ok ? "bg-emerald-500" : "bg-red-500"}`}
+                            className={`h-2 w-2 shrink-0 rounded-full ${
+                              step.tone === "working"
+                                ? "bg-sky-500"
+                                : step.tone === "success"
+                                  ? "bg-emerald-500"
+                                  : step.tone === "error"
+                                    ? "bg-red-500"
+                                    : "bg-slate-300"
+                            }`}
                             aria-hidden
                           />
                           {step.label}
@@ -1647,14 +1704,14 @@ export function RealtimeStudio() {
                       <Tooltip.Portal>
                         <Tooltip.Content
                           sideOffset={6}
-                          className="max-w-[280px] rounded-xl border border-violet-200/60 bg-violet-50 px-3 py-2 text-xs leading-relaxed text-slate-700 shadow-lg"
+                          className="max-w-[280px] rounded-xl border border-white/10 bg-slate-950/55 px-3 py-2 text-xs leading-relaxed text-slate-200 shadow-lg z-[9999]"
                         >
-                          <div className="font-semibold text-slate-900">
+                          <div className="font-semibold text-slate-100">
                             {step.label}
-                            <span className="ml-1.5 font-normal text-slate-500">({step.abbr})</span>
+                            <span className="ml-1.5 font-normal text-slate-400">({step.abbr})</span>
                           </div>
-                          <div className="mt-1 text-slate-600">状态：{step.value}</div>
-                          <p className="mt-1.5 text-slate-500">{step.help}</p>
+                          <div className="mt-1 text-slate-300">状态：{step.value}</div>
+                          <p className="mt-1.5 text-slate-400">{step.help}</p>
                           <Tooltip.Arrow className="fill-white" />
                         </Tooltip.Content>
                       </Tooltip.Portal>
@@ -1756,15 +1813,15 @@ export function RealtimeStudio() {
                     events.slice(-12).map((event: Record<string, any>, index: number) => (
                       <div
                         key={`${event.update?.update_id}-${index}`}
-                        className="glass-panel rounded-[24px] border border-violet-200/50 p-4"
+                        className="glass-panel rounded-[24px] border border-white/10 !bg-slate-950/35 p-4"
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-slate-900">
+                          <div className="text-sm font-semibold text-slate-100">
                             Update #{event.update?.update_id} · {event.update?.intent_type}
                           </div>
                           <Badge>{event.e2e_latency_ms} ms</Badge>
                         </div>
-                        <div className="mt-2 text-xs leading-6 text-slate-600">{event.update?.transcript_text}</div>
+                        <div className="mt-2 text-xs leading-6 text-slate-300">{event.update?.transcript_text}</div>
                       </div>
                     ))
                   ) : (
@@ -1801,7 +1858,7 @@ export function RealtimeStudio() {
               </Card>
             </Tabs.Content>
             </div>
-            <div className="flex shrink-0 justify-end border-t border-violet-200/50 px-4 py-2.5">
+            <div className="flex shrink-0 justify-end border-t border-white/10 px-4 py-2.5">
               <div className="grid w-[min(100%,22rem)] grid-cols-3 gap-2">
                 <Button
                   type="button"
@@ -1854,17 +1911,17 @@ export function RealtimeStudio() {
                 className={`lift-hover w-full rounded-[22px] border px-4 py-3.5 text-left text-sm ${
                   currentSessionId === item.session_id
                     ? "border-[var(--accent)] bg-[rgba(77,124,255,0.08)]"
-                    : "border-violet-200/50 bg-violet-100/52"
+                    : "border-white/10 bg-white/[0.03]"
                 }`}
                 onClick={() => {
                   setCurrentSessionId(item.session_id);
                   window.localStorage.setItem(LOCAL_SESSION_KEY, item.session_id);
                 }}
               >
-                <div className="font-semibold text-slate-900">{item.title}</div>
-                <div className="mt-1 text-xs text-slate-500">{item.session_id}</div>
+                <div className="font-semibold text-slate-100">{item.title}</div>
+                <div className="mt-1 text-xs text-slate-400">{item.session_id}</div>
                 {item.summary?.input_runtime?.input_source ? (
-                  <div className="mt-2 text-xs text-slate-500">输入源：{String(item.summary.input_runtime.input_source)}</div>
+                  <div className="mt-2 text-xs text-slate-400">输入源：{String(item.summary.input_runtime.input_source)}</div>
                 ) : null}
               </button>
             ))}
@@ -1906,9 +1963,9 @@ export function RealtimeStudio() {
                 value: diagramMode === "dual_view" ? "流程图+结构图" : "仅流程图",
               },
             ].map((item) => (
-              <div key={item.label} className="rounded-[22px] border border-violet-200/50 bg-violet-100/46 px-4 py-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</div>
-                <div className="mt-3 text-sm font-semibold leading-6 text-slate-900">{item.value}</div>
+              <div key={item.label} className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{item.label}</div>
+                <div className="mt-3 text-sm font-semibold leading-6 text-slate-100">{item.value}</div>
               </div>
             ))}
           </div>
@@ -1932,9 +1989,9 @@ export function RealtimeStudio() {
                   detailDrawerOpen ? "translate-x-0 shadow-[0_0_40px_rgba(15,23,42,0.12)]" : "pointer-events-none translate-x-full"
                 }`}
               >
-        <Card className="m-0 flex h-full w-full flex-col overflow-hidden rounded-none border-y-0 border-r-0 border-l border-violet-200/45 sm:my-4 sm:mr-4 sm:h-[calc(100vh-2rem)] sm:rounded-[26px] sm:border sm:border-violet-200/50">
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-violet-200/50 px-4 py-3">
-            <div className="text-sm font-semibold text-slate-900">会话与录音设置</div>
+        <Card className="m-0 flex h-full w-full flex-col overflow-hidden rounded-none border-y-0 border-r-0 border-l border-white/10 sm:my-4 sm:mr-4 sm:h-[calc(100vh-2rem)] sm:rounded-[26px] sm:border sm:border-white/10">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
+            <div className="text-sm font-semibold text-slate-100">会话与录音设置</div>
             <Button type="button" variant="ghost" className="h-9 w-9 shrink-0 p-0" onClick={() => setDetailDrawerOpen(false)} aria-label="关闭">
               <X className="h-4 w-4" />
             </Button>
@@ -1949,7 +2006,7 @@ export function RealtimeStudio() {
               <label className="text-sm font-medium text-slate-700">数据版本</label>
               <div className="relative">
                 <select
-                  className="h-11 w-full appearance-none rounded-full border border-violet-200/50 bg-violet-50/88 px-4 pr-10 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-violet-50 focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                  className="h-11 w-full appearance-none rounded-full border border-white/10 bg-white/[0.03] px-4 pr-10 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white/[0.03] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
                   value={datasetVersion}
                   onChange={(event: ChangeEvent<HTMLSelectElement>) => setDatasetVersion(event.target.value)}
                 >
@@ -1959,7 +2016,7 @@ export function RealtimeStudio() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               </div>
             </div>
 
@@ -1967,7 +2024,7 @@ export function RealtimeStudio() {
               <label className="text-sm font-medium text-slate-700">转写方式</label>
               <div className="relative">
                 <select
-                  className="h-10 w-full appearance-none rounded-full border border-violet-200/50 bg-violet-50/92 px-3.5 pr-9 text-sm font-medium text-slate-900 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)] disabled:opacity-50"
+                  className="h-10 w-full appearance-none rounded-full border border-white/10 bg-white/[0.03] px-3.5 pr-9 text-sm font-medium text-slate-200 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)] disabled:opacity-50"
                   value={selectedRecognitionBackend}
                   disabled={backendOptions.every((o) => o.disabled)}
                   onChange={(event) => {
@@ -1982,9 +2039,9 @@ export function RealtimeStudio() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               </div>
-              <p className="text-[11px] leading-relaxed text-slate-500">
+              <p className="text-[11px] leading-relaxed text-slate-400">
                 {selectedRecognitionBackend === "browser_speech"
                   ? "浏览器语音识别，启动快，稳定性受浏览器影响。"
                   : selectedRecognitionBackend === "browser_display_validation"
@@ -1998,21 +2055,21 @@ export function RealtimeStudio() {
             </div>
 
             {selectedInputSource === "transcript" ? (
-              <details className="space-y-3 rounded-[22px] border border-violet-200/50 bg-violet-100/38 p-3">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-slate-800 marker:content-none [&::-webkit-details-marker]:hidden">
+              <details className="space-y-3 rounded-[22px] border border-white/10 bg-white/[0.03] p-3">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-slate-200 marker:content-none [&::-webkit-details-marker]:hidden">
                   <span>文字输入与样例</span>
-                  <span className="text-xs font-normal text-slate-500">点击展开</span>
+                  <span className="text-xs font-normal text-slate-400">点击展开</span>
                 </summary>
                 <div className="mt-4 space-y-3">
-                  <p className="text-xs leading-6 text-slate-500">支持 `speaker | text | expected_intent`，一行一条，适合演示和快速回放。</p>
-                  <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/42 p-3">
+                  <p className="text-xs leading-6 text-slate-400">支持 `speaker | text | expected_intent`，一行一条，适合演示和快速回放。</p>
+                  <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm font-semibold text-slate-900">样例库</div>
-                        <div className="mt-1 text-xs leading-6 text-slate-500">选择一组 richer transcript，直接替换到输入框里。</div>
+                        <div className="text-sm font-semibold text-slate-100">样例库</div>
+                        <div className="mt-1 text-xs leading-6 text-slate-400">选择一组 richer transcript，直接替换到输入框里。</div>
                       </div>
                       <select
-                        className="h-11 min-w-[220px] rounded-[18px] border border-violet-200/50 bg-violet-50/85 px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                        className="h-11 min-w-[220px] rounded-[18px] border border-white/10 bg-white/[0.03] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
                         value={selectedTranscriptPresetId}
                         onChange={(event: ChangeEvent<HTMLSelectElement>) => {
                           const nextId = event.target.value;
@@ -2033,7 +2090,7 @@ export function RealtimeStudio() {
                         ))}
                       </select>
                     </div>
-                    <div className="mt-3 text-xs leading-6 text-slate-600">
+                    <div className="mt-3 text-xs leading-6 text-slate-300">
                       {TRANSCRIPT_PRESETS.find((preset) => preset.id === selectedTranscriptPresetId)?.description ??
                         "需要演示内容时再从上面选一个样例。"}
                     </div>
@@ -2053,7 +2110,7 @@ export function RealtimeStudio() {
 
             {selectedInputSource === "microphone_browser" ? (
               <div className="space-y-3">
-                <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/42 px-4 py-3 text-xs leading-6 text-slate-500">
+                <div className="rounded-[20px] border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-6 text-slate-400">
                   {selectedRecognitionBackend === "browser_speech"
                     ? "浏览器麦克风依赖 Web Speech 服务。如果提示网络或服务不可用，通常不是项目后端报错，先用 Transcript 输入会更稳定。"
                     : "API STT 路径会直接把麦克风音频分段上传到服务端转写，再回写当前会话。"}
@@ -2118,21 +2175,21 @@ export function RealtimeStudio() {
               <div className="space-y-3">
                 {selectedRecognitionBackend === "local_helper" ? (
                   <>
-                    <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/42 px-4 py-3 text-xs leading-6 text-slate-500">
+                    <div className="rounded-[20px] border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-6 text-slate-400">
                       增强模式会连接本机 `audio helper`，由浏览器提供共享音频流，再由辅助层在本机完成分段转写。当前辅助层地址：
-                      <span className="ml-1 font-medium text-slate-700">{audioHelper.baseUrl}</span>
+                      <span className="ml-1 font-medium text-slate-200">{audioHelper.baseUrl}</span>
                     </div>
-                    <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/46 px-4 py-4 text-sm">
+                    <div className="rounded-[20px] border border-white/10 bg-white/[0.03] px-4 py-4 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="font-semibold text-slate-900">辅助层状态</div>
+                        <div className="font-semibold text-slate-100">辅助层状态</div>
                         <Badge className={capabilityBadgeTone(helperCapabilities?.capability_status || "offline")}>
                           {helperCapabilities?.capability_status || "offline"}
                         </Badge>
                       </div>
-                      <div className="mt-2 text-sm leading-6 text-slate-600">
+                      <div className="mt-2 text-sm leading-6 text-slate-300">
                         {helperCapabilities?.capability_reason || "未检测到本地 audio helper。请先运行 `pnpm audio-helper:dev`。"}
                       </div>
-                      <div className="mt-2 text-xs leading-6 text-slate-500">
+                      <div className="mt-2 text-xs leading-6 text-slate-400">
                         engine: {helperCapabilities?.native_engine || "unavailable"} / {helperCapabilities?.transcriber_backend || "unavailable"}
                       </div>
                     </div>
@@ -2157,7 +2214,7 @@ export function RealtimeStudio() {
                   </>
                 ) : (
                   <>
-                    <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/42 px-4 py-3 text-xs leading-6 text-slate-500">
+                    <div className="rounded-[20px] border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-6 text-slate-400">
                       API STT 路径会复用浏览器共享音频流，把系统声音分段上传到服务端转写。Windows 请勾选共享音频；macOS 请优先选择标签页音频。
                     </div>
                     <div className="grid grid-cols-2 gap-2">
