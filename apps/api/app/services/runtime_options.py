@@ -14,12 +14,32 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import PlatformSetting
+from app.services.xfyun_asr import (
+    DEFAULT_XFYUN_ASR_ENDPOINT,
+    DEFAULT_XFYUN_ASR_MODELS,
+    XFYUN_ASR_PROVIDER_KIND,
+)
 
 
 RUNTIME_OPTIONS_KEY = "runtime_options"
+DEFAULT_XFYUN_VOICEPRINT_BASE = "https://api.xf-yun.com"
 
 
-def _normalize_profile(row: dict[str, Any], *, include_secrets: bool = False) -> dict[str, Any] | None:
+def _legacy_collection_name(kind: str) -> str | None:
+    if kind in {"gate", "planner", "llm"}:
+        return "llm_profiles"
+    if kind == "stt":
+        return "stt_profiles"
+    return None
+
+
+def _collection_name(kind: str) -> str:
+    if kind == "llm":
+        return "planner_profiles"
+    return f"{kind}_profiles"
+
+
+def _normalize_profile(row: dict[str, Any], *, kind: str, include_secrets: bool = False) -> dict[str, Any] | None:
     models = row.get("models", [])
     if isinstance(models, str):
         models = [part.strip() for part in models.split(",") if part.strip()]
@@ -27,12 +47,25 @@ def _normalize_profile(row: dict[str, Any], *, include_secrets: bool = False) ->
         models = []
     normalized_models = [str(model).strip() for model in models if str(model).strip()]
     profile_id = str(row.get("id", "")).strip()
-    endpoint = str(row.get("endpoint", "")).strip()
+    provider_kind_default = XFYUN_ASR_PROVIDER_KIND if kind == "stt" else "openai_compatible"
+    provider_kind = str(row.get("provider_kind", provider_kind_default)).strip() or provider_kind_default
+    endpoint_default = DEFAULT_XFYUN_ASR_ENDPOINT if provider_kind == XFYUN_ASR_PROVIDER_KIND else ""
+    endpoint = str(row.get("endpoint", endpoint_default)).strip() or endpoint_default
     label = str(row.get("label", profile_id)).strip() or profile_id
     default_model = str(row.get("default_model", "")).strip()
-    provider_kind = str(row.get("provider_kind", "openai_compatible")).strip() or "openai_compatible"
+    app_id = str(row.get("app_id", "")).strip()
     api_key_env = str(row.get("api_key_env", "")).strip()
     api_key = str(row.get("api_key", "")).strip()
+    api_secret_env = str(row.get("api_secret_env", "")).strip()
+    api_secret = str(row.get("api_secret", "")).strip()
+    voiceprint = _normalize_voiceprint(
+        row.get("voiceprint"),
+        profile_id=profile_id,
+        include_secrets=include_secrets,
+    )
+
+    if provider_kind == XFYUN_ASR_PROVIDER_KIND and kind == "stt" and not normalized_models:
+        normalized_models = list(DEFAULT_XFYUN_ASR_MODELS)
 
     if not profile_id or not endpoint or not normalized_models:
         return None
@@ -46,21 +79,72 @@ def _normalize_profile(row: dict[str, Any], *, include_secrets: bool = False) ->
         "endpoint": endpoint,
         "models": normalized_models,
         "default_model": default_model,
+        "app_id": app_id,
         "api_key_env": api_key_env,
+        "api_secret_env": api_secret_env,
     }
+    if voiceprint is not None:
+        payload["voiceprint"] = voiceprint
     if include_secrets:
         payload["api_key"] = api_key
+        payload["api_secret"] = api_secret
     return payload
 
 
-def _profile_summary(row: dict[str, Any]) -> dict[str, Any]:
-    return {
+def _profile_summary(row: dict[str, Any], *, kind: str) -> dict[str, Any]:
+    payload = {
         "id": str(row.get("id", "")),
         "label": str(row.get("label", row.get("id", ""))),
-        "provider_kind": str(row.get("provider_kind", "openai_compatible")),
+        "provider_kind": str(row.get("provider_kind", XFYUN_ASR_PROVIDER_KIND if kind == "stt" else "openai_compatible")),
         "models": list(row.get("models", [])),
         "default_model": str(row.get("default_model", "")),
     }
+    voiceprint = _normalize_voiceprint(
+        row.get("voiceprint"),
+        profile_id=str(row.get("id", "")),
+        include_secrets=False,
+    )
+    if voiceprint is not None:
+        payload["voiceprint"] = voiceprint
+    return payload
+
+
+def _normalize_voiceprint(raw: Any, *, profile_id: str, include_secrets: bool) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+
+    enabled = bool(raw.get("enabled", False))
+    provider_kind = str(raw.get("provider_kind", "xfyun_isv")).strip() or "xfyun_isv"
+    api_base = str(raw.get("api_base", DEFAULT_XFYUN_VOICEPRINT_BASE)).strip().rstrip("/") or DEFAULT_XFYUN_VOICEPRINT_BASE
+    app_id = str(raw.get("app_id", "")).strip()
+    api_key = str(raw.get("api_key", "")).strip()
+    api_secret = str(raw.get("api_secret", "")).strip()
+    group_id = str(raw.get("group_id", "")).strip() or (f"{profile_id}_group" if profile_id else "")
+    try:
+        score_threshold = float(raw.get("score_threshold", 0.75) or 0.75)
+    except (TypeError, ValueError):
+        score_threshold = 0.75
+    try:
+        top_k = int(raw.get("top_k", 3) or 3)
+    except (TypeError, ValueError):
+        top_k = 3
+    top_k = max(1, min(top_k, 10))
+
+    payload: dict[str, Any] = {
+        "enabled": enabled,
+        "provider_kind": provider_kind,
+        "api_base": api_base,
+        "app_id": app_id,
+        "group_id": group_id,
+        "score_threshold": score_threshold,
+        "top_k": top_k,
+    }
+    if include_secrets:
+        if api_key:
+            payload["api_key"] = api_key
+        if api_secret:
+            payload["api_secret"] = api_secret
+    return payload
 
 
 def _load_persisted_payload(db: Session) -> dict[str, Any]:
@@ -72,14 +156,16 @@ def _load_persisted_payload(db: Session) -> dict[str, Any]:
 
 def _persisted_profiles(db: Session, kind: str, *, include_secrets: bool = False) -> list[dict[str, Any]]:
     payload = _load_persisted_payload(db)
-    raw_profiles = payload.get(f"{kind}_profiles", [])
+    raw_profiles = payload.get(_collection_name(kind), [])
+    if not raw_profiles and _legacy_collection_name(kind):
+        raw_profiles = payload.get(_legacy_collection_name(kind) or "", [])
     if not isinstance(raw_profiles, list):
         return []
     rows: list[dict[str, Any]] = []
     for item in raw_profiles:
         if not isinstance(item, dict):
             continue
-        normalized = _normalize_profile(item, include_secrets=include_secrets)
+        normalized = _normalize_profile(item, kind=kind, include_secrets=include_secrets)
         if normalized:
             rows.append(normalized)
     return rows
@@ -87,10 +173,15 @@ def _persisted_profiles(db: Session, kind: str, *, include_secrets: bool = False
 
 def _env_profiles(kind: str, *, include_secrets: bool = False) -> list[dict[str, Any]]:
     settings = get_settings()
-    raw_profiles = settings.llm_profiles if kind == "llm" else settings.stt_profiles
+    if kind == "gate":
+        raw_profiles = settings.gate_profiles
+    elif kind in {"planner", "llm"}:
+        raw_profiles = settings.planner_profiles
+    else:
+        raw_profiles = settings.stt_profiles
     rows: list[dict[str, Any]] = []
     for item in raw_profiles:
-        normalized = _normalize_profile(item, include_secrets=include_secrets)
+        normalized = _normalize_profile(item, kind=kind, include_secrets=include_secrets)
         if normalized:
             rows.append(normalized)
     return rows
@@ -109,9 +200,13 @@ def _merge_profiles(primary: list[dict[str, Any]], fallback: list[dict[str, Any]
 
 
 def list_runtime_options(db: Session, *, include_secrets: bool = False) -> dict[str, list[dict[str, Any]]]:
-    llm_profiles = _merge_profiles(
-        _persisted_profiles(db, "llm", include_secrets=include_secrets),
-        _env_profiles("llm", include_secrets=include_secrets),
+    gate_profiles = _merge_profiles(
+        _persisted_profiles(db, "gate", include_secrets=include_secrets),
+        _env_profiles("gate", include_secrets=include_secrets),
+    )
+    planner_profiles = _merge_profiles(
+        _persisted_profiles(db, "planner", include_secrets=include_secrets),
+        _env_profiles("planner", include_secrets=include_secrets),
     )
     stt_profiles = _merge_profiles(
         _persisted_profiles(db, "stt", include_secrets=include_secrets),
@@ -119,28 +214,33 @@ def list_runtime_options(db: Session, *, include_secrets: bool = False) -> dict[
     )
     if include_secrets:
         return {
-            "llm_profiles": llm_profiles,
+            "gate_profiles": gate_profiles,
+            "planner_profiles": planner_profiles,
             "stt_profiles": stt_profiles,
         }
     return {
-        "llm_profiles": [_profile_summary(item) for item in llm_profiles],
-        "stt_profiles": [_profile_summary(item) for item in stt_profiles],
+        "gate_profiles": [_profile_summary(item, kind="gate") for item in gate_profiles],
+        "planner_profiles": [_profile_summary(item, kind="planner") for item in planner_profiles],
+        "stt_profiles": [_profile_summary(item, kind="stt") for item in stt_profiles],
     }
 
 
 def list_persisted_runtime_options(db: Session, *, include_secrets: bool = False) -> dict[str, list[dict[str, Any]]]:
-    llm_profiles = _persisted_profiles(db, "llm", include_secrets=include_secrets)
+    gate_profiles = _persisted_profiles(db, "gate", include_secrets=include_secrets)
+    planner_profiles = _persisted_profiles(db, "planner", include_secrets=include_secrets)
     stt_profiles = _persisted_profiles(db, "stt", include_secrets=include_secrets)
     return {
-        "llm_profiles": llm_profiles,
+        "gate_profiles": gate_profiles,
+        "planner_profiles": planner_profiles,
         "stt_profiles": stt_profiles,
     }
 
 
 def save_runtime_options(db: Session, payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     normalized_payload = {
-        "llm_profiles": _persisted_profiles_from_payload(payload.get("llm_profiles", [])),
-        "stt_profiles": _persisted_profiles_from_payload(payload.get("stt_profiles", [])),
+        "gate_profiles": _persisted_profiles_from_payload(payload.get("gate_profiles", []), kind="gate"),
+        "planner_profiles": _persisted_profiles_from_payload(payload.get("planner_profiles", []), kind="planner"),
+        "stt_profiles": _persisted_profiles_from_payload(payload.get("stt_profiles", []), kind="stt"),
     }
     row = db.scalar(select(PlatformSetting).where(PlatformSetting.setting_key == RUNTIME_OPTIONS_KEY))
     if row is None:
@@ -153,14 +253,18 @@ def save_runtime_options(db: Session, payload: dict[str, Any]) -> dict[str, list
     return list_persisted_runtime_options(db, include_secrets=True)
 
 
-def _persisted_profiles_from_payload(raw_profiles: list[Any]) -> list[dict[str, Any]]:
+def _persisted_profiles_from_payload(raw_profiles: list[Any], *, kind: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     if not isinstance(raw_profiles, list):
         return rows
     for item in raw_profiles:
         if not isinstance(item, dict):
             continue
-        normalized = _normalize_profile(item, include_secrets=True)
+        normalized = _normalize_profile(
+            item,
+            kind=kind,
+            include_secrets=True,
+        )
         if normalized:
             rows.append(normalized)
     return rows
@@ -168,7 +272,14 @@ def _persisted_profiles_from_payload(raw_profiles: list[Any]) -> list[dict[str, 
 
 def resolve_profile(db: Session, kind: str, profile_id: str | None) -> dict[str, Any] | None:
     profiles = list_runtime_options(db, include_secrets=True)
-    items = profiles["llm_profiles"] if kind == "llm" else profiles["stt_profiles"]
+    if kind == "gate":
+        items = profiles["gate_profiles"]
+    elif kind == "planner":
+        items = profiles["planner_profiles"]
+    elif kind == "llm":
+        items = profiles["planner_profiles"] or profiles["gate_profiles"]
+    else:
+        items = profiles["stt_profiles"]
     if not items:
         return None
     if profile_id:
@@ -213,6 +324,12 @@ def probe_runtime_models(
     api_key_env: str | None = None,
     timeout_sec: int = 30,
 ) -> dict[str, Any]:
+    if provider_kind == XFYUN_ASR_PROVIDER_KIND:
+        return {
+            "provider_kind": provider_kind,
+            "models_endpoint": (endpoint or DEFAULT_XFYUN_ASR_ENDPOINT).strip() or DEFAULT_XFYUN_ASR_ENDPOINT,
+            "models": list(DEFAULT_XFYUN_ASR_MODELS),
+        }
     if provider_kind != "openai_compatible":
         raise RuntimeError(f"unsupported provider_kind: {provider_kind}")
 

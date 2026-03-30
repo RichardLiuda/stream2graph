@@ -4,6 +4,7 @@ import json
 import os
 import re
 import socket
+import ssl
 import threading
 import time
 import urllib.error
@@ -86,6 +87,8 @@ class OpenAICompatibleChatClient:
         extra_body: dict[str, Any] | None = None,
         omit_temperature: bool = False,
         temperature: float = 0.0,
+        ssl_context: ssl.SSLContext | None = None,
+        disable_proxy: bool = False,
     ) -> None:
         self.endpoint = endpoint
         self.model = model
@@ -97,9 +100,22 @@ class OpenAICompatibleChatClient:
         self.extra_body = dict(extra_body or {})
         self.omit_temperature = omit_temperature
         self.temperature = temperature
+        self.ssl_context = ssl_context
+        self.disable_proxy = disable_proxy
         self._last_request_started_at = 0.0
         self._rate_limited_until = 0.0
         self._request_gate = threading.Lock()
+
+    def _open_request(self, request: urllib.request.Request):
+        if self.disable_proxy:
+            handlers: list[urllib.request.BaseHandler] = [urllib.request.ProxyHandler({})]
+            if self.ssl_context is not None:
+                handlers.append(urllib.request.HTTPSHandler(context=self.ssl_context))
+            opener = urllib.request.build_opener(*handlers)
+            return opener.open(request, timeout=self.timeout_sec)
+        if self.ssl_context is not None:
+            return urllib.request.urlopen(request, timeout=self.timeout_sec, context=self.ssl_context)
+        return urllib.request.urlopen(request, timeout=self.timeout_sec)
 
     def _wait_for_request_slot(self) -> None:
         with self._request_gate:
@@ -162,7 +178,7 @@ class OpenAICompatibleChatClient:
             self._wait_for_request_slot()
             started_at = time.time()
             try:
-                with urllib.request.urlopen(request, timeout=self.timeout_sec) as response:
+                with self._open_request(request) as response:
                     payload = json.loads(response.read().decode("utf-8"))
                 latency_ms = (time.time() - started_at) * 1000.0
                 choice = (payload.get("choices") or [{}])[0]

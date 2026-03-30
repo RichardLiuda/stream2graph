@@ -14,19 +14,50 @@ type RendererEdge = {
   to: string;
 };
 
+type RendererGroup = {
+  id: string;
+  label: string;
+  member_ids?: string[];
+};
+
 export function GraphStage({
   title,
   nodes,
   edges,
+  groups = [],
   embedded = false,
 }: {
   title: string;
   nodes: RendererNode[];
   edges: RendererEdge[];
+  groups?: RendererGroup[];
   /** @description 为 true 时不渲染标题栏与外层 Card，由主舞台统一容器承载 */
   embedded?: boolean;
 }) {
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const groupBoxes = groups
+    .map((group) => {
+      const members = (group.member_ids || [])
+        .map((memberId) => nodeMap.get(memberId))
+        .filter((node): node is RendererNode => Boolean(node));
+      if (!members.length) return null;
+      const paddingX = 46;
+      const paddingTop = 54;
+      const paddingBottom = 34;
+      const minX = Math.min(...members.map((node) => node.x)) - paddingX;
+      const maxX = Math.max(...members.map((node) => node.x)) + paddingX;
+      const minY = Math.min(...members.map((node) => node.y)) - paddingTop;
+      const maxY = Math.max(...members.map((node) => node.y)) + paddingBottom;
+      return {
+        id: group.id,
+        label: group.label,
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+      };
+    })
+    .filter((group): group is NonNullable<typeof group> => Boolean(group));
 
   const inner = (
       <div className="bg-[linear-gradient(180deg,rgba(248,251,255,0.9),rgba(239,244,255,0.86))] p-5">
@@ -39,6 +70,24 @@ export function GraphStage({
               <path d="M0,0 L10,5 L0,10 Z" fill="#6d88d7" />
             </marker>
           </defs>
+          {groupBoxes.map((group) => (
+            <g key={group.id}>
+              <rect
+                x={group.x}
+                y={group.y}
+                width={group.width}
+                height={group.height}
+                rx="24"
+                fill="rgba(139, 92, 246, 0.08)"
+                stroke="rgba(124, 58, 237, 0.35)"
+                strokeWidth="2"
+                strokeDasharray="10 8"
+              />
+              <text x={group.x + 18} y={group.y + 28} fill="#5b21b6" fontSize="13" fontWeight="700">
+                {group.label || group.id}
+              </text>
+            </g>
+          ))}
           {edges.map((edge, index) => {
             const from = nodeMap.get(edge.from);
             const to = nodeMap.get(edge.to);

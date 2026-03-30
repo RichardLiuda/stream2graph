@@ -17,6 +17,8 @@ import {
   sampleListItemSchema,
   studySessionSchema,
   studyTaskSchema,
+  voiceprintFeatureSchema,
+  voiceprintGroupSyncSchema,
 } from "@stream2graph/contracts";
 
 const CONFIGURED_API_BASE_URL =
@@ -33,12 +35,17 @@ const runtimeOptionProfileConfigSchema = z.object({
   endpoint: z.string(),
   models: z.array(z.string()),
   default_model: z.string(),
+  app_id: z.string().nullable().optional(),
   api_key_env: z.string().nullable().optional(),
   api_key: z.string().nullable().optional(),
+  api_secret_env: z.string().nullable().optional(),
+  api_secret: z.string().nullable().optional(),
+  voiceprint: z.record(z.any()).nullable().optional(),
 });
 
 const runtimeOptionsAdminSchema = z.object({
-  llm_profiles: z.array(runtimeOptionProfileConfigSchema),
+  gate_profiles: z.array(runtimeOptionProfileConfigSchema),
+  planner_profiles: z.array(runtimeOptionProfileConfigSchema),
   stt_profiles: z.array(runtimeOptionProfileConfigSchema),
 });
 
@@ -85,6 +92,12 @@ export function apiUrl(path: string) {
   return `${resolveApiBaseUrl()}${path}`;
 }
 
+function logBrowserApiEvent(label: string, payload: Record<string, unknown>, level: "info" | "error" = "info") {
+  if (typeof window === "undefined") return;
+  const method = level === "error" ? console.error : console.info;
+  method(`[S2G][API] ${label}`, payload);
+}
+
 async function request<TSchema extends z.ZodTypeAny>(
   path: string,
   schema: TSchema,
@@ -101,6 +114,16 @@ async function request<TSchema extends z.ZodTypeAny>(
   const text = await response.text();
   const raw = text ? JSON.parse(text) : {};
   if (!response.ok) {
+    logBrowserApiEvent(
+      "request failed",
+      {
+        path,
+        method: init?.method || "GET",
+        status: response.status,
+        payload: raw,
+      },
+      "error",
+    );
     throw new ApiError(response.status, raw.detail || raw.error || `HTTP ${response.status}`, raw);
   }
   return schema.parse(raw);
@@ -128,6 +151,37 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  listVoiceprintFeatures: async (sttProfileId: string) =>
+    request(
+      `/api/v1/voiceprints/stt-profiles/${sttProfileId}/features`,
+      z.array(voiceprintFeatureSchema),
+    ),
+  createVoiceprintFeature: async (sttProfileId: string, payload: Record<string, unknown>) =>
+    request(
+      `/api/v1/voiceprints/stt-profiles/${sttProfileId}/features`,
+      voiceprintFeatureSchema,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
+  deleteVoiceprintFeature: async (sttProfileId: string, featureId: string) =>
+    request(
+      `/api/v1/voiceprints/stt-profiles/${sttProfileId}/features/${featureId}`,
+      z.object({ ok: z.boolean() }),
+      {
+        method: "DELETE",
+      },
+    ),
+  syncVoiceprintGroup: async (sttProfileId: string, payload: Record<string, unknown>) =>
+    request(
+      `/api/v1/voiceprints/stt-profiles/${sttProfileId}/group/sync`,
+      voiceprintGroupSyncSchema,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
   listSplits: async (slug: string) =>
     request(`/api/v1/catalog/datasets/${slug}/splits`, z.array(datasetSplitSummarySchema)),
   listSamples: async (slug: string, split: string, search = "", offset = 0, limit = 25) =>
@@ -151,6 +205,21 @@ export const api = {
   addRealtimeChunk: async (sessionId: string, payload: Record<string, unknown>) =>
     request(
       `/api/v1/realtime/sessions/${sessionId}/chunks`,
+      z.object({
+        ok: z.boolean(),
+        session_id: z.string(),
+        emitted_events: z.array(z.record(z.any())),
+        pipeline: z.record(z.any()),
+        evaluation: z.record(z.any()),
+      }),
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
+  addRealtimeChunksBatch: async (sessionId: string, payload: Record<string, unknown>) =>
+    request(
+      `/api/v1/realtime/sessions/${sessionId}/chunks/batch`,
       z.object({
         ok: z.boolean(),
         session_id: z.string(),

@@ -9,6 +9,11 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+DEFAULT_XFYUN_VOICEPRINT_BASE = "https://api.xf-yun.com"
+DEFAULT_XFYUN_ASR_ENDPOINT = "wss://iat-api.xfyun.cn/v2/iat"
+DEFAULT_XFYUN_ASR_MODELS = ["iat", "xfime-mianqie"]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -36,6 +41,8 @@ class Settings(BaseSettings):
     inline_worker: bool = Field(False, alias="S2G_INLINE_WORKER")
     inline_worker_poll_interval: float = Field(2.0, alias="S2G_INLINE_WORKER_POLL_INTERVAL")
     mermaid_compile_command: str = Field("", alias="S2G_MERMAID_COMPILE_COMMAND")
+    gate_profiles_raw: str = Field("", alias="S2G_GATE_PROFILES_JSON")
+    planner_profiles_raw: str = Field("", alias="S2G_PLANNER_PROFILES_JSON")
     llm_profiles_raw: str = Field("[]", alias="S2G_LLM_PROFILES_JSON")
     stt_profiles_raw: str = Field("[]", alias="S2G_STT_PROFILES_JSON")
 
@@ -55,7 +62,7 @@ class Settings(BaseSettings):
     def cors_origins(self) -> list[str]:
         return [item.strip() for item in self.cors_origins_raw.split(",") if item.strip()]
 
-    def _parse_profiles(self, raw: str) -> list[dict[str, Any]]:
+    def _parse_profiles(self, raw: str, *, kind: str) -> list[dict[str, Any]]:
         try:
             payload = json.loads(raw or "[]")
         except json.JSONDecodeError:
@@ -72,28 +79,74 @@ class Settings(BaseSettings):
                 models = [part.strip() for part in models.split(",") if part.strip()]
             if not isinstance(models, list):
                 models = []
+            voiceprint = item.get("voiceprint")
+            if not isinstance(voiceprint, dict):
+                voiceprint = None
             row = {
                 "id": str(item.get("id", "")).strip(),
                 "label": str(item.get("label", item.get("id", ""))).strip(),
-                "endpoint": str(item.get("endpoint", "")).strip(),
+                "endpoint": str(
+                    item.get(
+                        "endpoint",
+                        DEFAULT_XFYUN_ASR_ENDPOINT if kind == "stt" else "",
+                    )
+                ).strip(),
+                "app_id": str(item.get("app_id", "")).strip(),
+                "api_key": str(item.get("api_key", "")).strip(),
                 "api_key_env": str(item.get("api_key_env", "")).strip(),
+                "api_secret_env": str(item.get("api_secret_env", "")).strip(),
                 "models": [str(model).strip() for model in models if str(model).strip()],
                 "default_model": str(item.get("default_model", "")).strip(),
-                "provider_kind": str(item.get("provider_kind", "openai_compatible")).strip() or "openai_compatible",
+                "provider_kind": str(
+                    item.get("provider_kind", "xfyun_asr" if kind == "stt" else "openai_compatible")
+                ).strip()
+                or ("xfyun_asr" if kind == "stt" else "openai_compatible"),
             }
+            api_secret = str(item.get("api_secret", "")).strip()
+            if api_secret:
+                row["api_secret"] = api_secret
+            if voiceprint is not None:
+                row["voiceprint"] = {
+                    "enabled": bool(voiceprint.get("enabled", False)),
+                    "provider_kind": str(voiceprint.get("provider_kind", "xfyun_isv")).strip() or "xfyun_isv",
+                    "api_base": str(voiceprint.get("api_base", DEFAULT_XFYUN_VOICEPRINT_BASE)).strip()
+                    or DEFAULT_XFYUN_VOICEPRINT_BASE,
+                    "app_id": str(voiceprint.get("app_id", "")).strip(),
+                    "api_key": str(voiceprint.get("api_key", "")).strip(),
+                    "api_secret": str(voiceprint.get("api_secret", "")).strip(),
+                    "group_id": str(voiceprint.get("group_id", "")).strip(),
+                    "score_threshold": float(voiceprint.get("score_threshold", 0.75) or 0.75),
+                    "top_k": int(voiceprint.get("top_k", 3) or 3),
+                }
+            if kind == "stt" and row["provider_kind"] == "xfyun_asr":
+                if not row["endpoint"]:
+                    row["endpoint"] = DEFAULT_XFYUN_ASR_ENDPOINT
+                if not row["models"]:
+                    row["models"] = list(DEFAULT_XFYUN_ASR_MODELS)
             if row["id"] and row["endpoint"] and row["models"]:
                 if not row["default_model"]:
                     row["default_model"] = row["models"][0]
                 rows.append(row)
         return rows
 
+    def _profiles_or_legacy(self, raw: str, *, kind: str) -> list[dict[str, Any]]:
+        return self._parse_profiles(raw, kind=kind) if raw.strip() else self._parse_profiles(self.llm_profiles_raw, kind=kind)
+
+    @property
+    def gate_profiles(self) -> list[dict[str, Any]]:
+        return self._profiles_or_legacy(self.gate_profiles_raw, kind="gate")
+
+    @property
+    def planner_profiles(self) -> list[dict[str, Any]]:
+        return self._profiles_or_legacy(self.planner_profiles_raw, kind="planner")
+
     @property
     def llm_profiles(self) -> list[dict[str, Any]]:
-        return self._parse_profiles(self.llm_profiles_raw)
+        return self._parse_profiles(self.llm_profiles_raw, kind="planner")
 
     @property
     def stt_profiles(self) -> list[dict[str, Any]]:
-        return self._parse_profiles(self.stt_profiles_raw)
+        return self._parse_profiles(self.stt_profiles_raw, kind="stt")
 
 
 @lru_cache(maxsize=1)

@@ -29,6 +29,7 @@ import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 import { Badge, Button, Card, Input, StatCard, Textarea } from "@stream2graph/ui";
 
 import { api } from "@/lib/api";
+import { encodeFloat32ToBase64Pcm16 } from "@/lib/audio";
 import {
   audioHelper,
   type helperCapabilitiesSchema,
@@ -184,21 +185,6 @@ type RuntimeOptions = Awaited<ReturnType<typeof api.listRuntimeOptions>>;
 const HELPER_TARGET_SAMPLE_RATE = 16_000;
 const HELPER_UPLOAD_CHUNK_SECONDS = 4;
 
-function encodeFloat32ToBase64Pcm16(samples: Float32Array) {
-  const pcm = new Int16Array(samples.length);
-  for (let index = 0; index < samples.length; index += 1) {
-    const value = Math.max(-1, Math.min(1, samples[index]));
-    pcm[index] = value < 0 ? value * 0x8000 : value * 0x7fff;
-  }
-
-  let binary = "";
-  const bytes = new Uint8Array(pcm.buffer);
-  for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index]);
-  }
-  return window.btoa(binary);
-}
-
 function calculateAudioLevel(samples: Float32Array) {
   if (!samples.length) return 0;
   let squareSum = 0;
@@ -220,9 +206,9 @@ function backendLabel(backend: RecognitionBackend) {
     case "browser_display_validation":
       return "试共享声音";
     case "local_helper":
-      return "本机助手";
+      return "本机处理";
     case "api_stt":
-      return "云端听写";
+      return "讯飞云端";
     default:
       return "手动输入";
   }
@@ -235,6 +221,13 @@ function backendStatusLabel(status: "idle" | "working" | "success" | "error") {
   return "空闲";
 }
 
+function backendStatusTone(status: "idle" | "working" | "success" | "error") {
+  if (status === "working") return "working";
+  if (status === "idle") return "idle";
+  if (status === "error") return "error";
+  return "success";
+}
+
 function toLocalDateTimeLabel(value: string | null) {
   if (!value) return "尚未生成";
   const asNumber = Number(value);
@@ -244,22 +237,32 @@ function toLocalDateTimeLabel(value: string | null) {
   return value;
 }
 
+function logBrowserRuntime(label: string, payload: Record<string, unknown>, level: "info" | "warn" | "error" = "info") {
+  if (typeof window === "undefined") return;
+  const method = level === "error" ? console.error : level === "warn" ? console.warn : console.info;
+  method(`[S2G][Realtime] ${label}`, payload);
+}
+
 function buildBackendOptions(source: InputSource, helperCapabilities: HelperCapabilities | null): BackendOption[] {
   if (source === "transcript") {
     return [{ value: "manual" as const, label: "打字输入" }];
   }
   if (source === "microphone_browser") {
     return [
-      { value: "browser_speech" as const, label: "浏览器听写" },
-      { value: "api_stt" as const, label: "云端听写" },
+      { value: "api_stt" as const, label: "讯飞云端听写" },
+      { value: "browser_speech" as const, label: "浏览器听写（不支持多人声纹）" },
     ];
   }
   if (source === "system_audio_browser_experimental") {
     return [{ value: "browser_display_validation" as const, label: "试共享声音" }];
   }
   const options = [
-    { value: "local_helper" as const, label: "本机助手", disabled: helperCapabilities?.capability_status !== "supported" },
-    { value: "api_stt" as const, label: "云端听写" },
+    { value: "api_stt" as const, label: "讯飞云端听写" },
+    {
+      value: "local_helper" as const,
+      label: "本机处理（不支持多人声纹）",
+      disabled: helperCapabilities?.capability_status !== "supported",
+    },
   ];
   return options;
 }
@@ -352,7 +355,9 @@ export function RealtimeStudio() {
   const liveTranscript = studioState.context.liveTranscript;
   const captureStatus = studioState.context.captureStatus;
   const sttStatus = studioState.context.sttStatus;
-  const llmStatus = studioState.context.llmStatus;
+  const gateStatus = studioState.context.gateStatus;
+  const plannerStatus = studioState.context.plannerStatus;
+  const mermaidStatus = studioState.context.mermaidStatus;
   const machineError = studioState.context.error;
   const lastMermaidUpdatedAt = studioState.context.lastMermaidUpdatedAt;
 
@@ -426,13 +431,17 @@ export function RealtimeStudio() {
     () => buildBackendOptions(selectedInputSource, helperCapabilities),
     [helperCapabilities, selectedInputSource],
   );
-  const [llmProfileId, setLlmProfileId] = useState("");
-  const [llmModel, setLlmModel] = useState("");
+  const [gateProfileId, setGateProfileId] = useState("");
+  const [gateModel, setGateModel] = useState("");
+  const [plannerProfileId, setPlannerProfileId] = useState("");
+  const [plannerModel, setPlannerModel] = useState("");
   const [sttProfileId, setSttProfileId] = useState("");
   const [sttModel, setSttModel] = useState("");
   const [diagramMode, setDiagramMode] = useState("mermaid_primary");
   const preferencesInitializedRef = useRef(false);
-  const selectedLlmProfile = runtimeOptions.data?.llm_profiles.find((item) => item.id === llmProfileId) ?? null;
+  const selectedGateProfile = runtimeOptions.data?.gate_profiles.find((item) => item.id === gateProfileId) ?? null;
+  const selectedPlannerProfile =
+    runtimeOptions.data?.planner_profiles.find((item) => item.id === plannerProfileId) ?? null;
   const selectedSttProfile = runtimeOptions.data?.stt_profiles.find((item) => item.id === sttProfileId) ?? null;
   const effectiveError = error ?? machineError;
 
@@ -462,8 +471,10 @@ export function RealtimeStudio() {
     const payload = runtimeOptions.data;
     if (!payload || preferencesInitializedRef.current) return;
     const resolved = resolveRuntimePreferences(payload, loadRuntimePreferences());
-    setLlmProfileId(resolved.llmProfileId);
-    setLlmModel(resolved.llmModel);
+    setGateProfileId(resolved.gateProfileId);
+    setGateModel(resolved.gateModel);
+    setPlannerProfileId(resolved.plannerProfileId);
+    setPlannerModel(resolved.plannerModel);
     setSttProfileId(resolved.sttProfileId);
     setSttModel(resolved.sttModel);
     setDiagramMode(resolved.diagramMode);
@@ -471,20 +482,36 @@ export function RealtimeStudio() {
   }, [runtimeOptions.data]);
 
   useEffect(() => {
-    if (!selectedLlmProfile) return;
-    if (!selectedLlmProfile.models.includes(llmModel)) {
-      setLlmModel(selectedLlmProfile.default_model || selectedLlmProfile.models[0] || "");
+    if (!selectedGateProfile) return;
+    if (!selectedGateProfile.models.includes(gateModel)) {
+      setGateModel(selectedGateProfile.default_model || selectedGateProfile.models[0] || "");
     }
-  }, [llmModel, selectedLlmProfile]);
+  }, [gateModel, selectedGateProfile]);
 
   useEffect(() => {
-    if (!runtimeOptions.data?.llm_profiles.length) return;
-    if (!selectedLlmProfile) {
-      const fallback = runtimeOptions.data.llm_profiles[0];
-      setLlmProfileId(fallback.id);
-      setLlmModel(fallback.default_model || fallback.models[0] || "");
+    if (!runtimeOptions.data?.gate_profiles.length) return;
+    if (!selectedGateProfile) {
+      const fallback = runtimeOptions.data.gate_profiles[0];
+      setGateProfileId(fallback.id);
+      setGateModel(fallback.default_model || fallback.models[0] || "");
     }
-  }, [runtimeOptions.data, selectedLlmProfile]);
+  }, [runtimeOptions.data, selectedGateProfile]);
+
+  useEffect(() => {
+    if (!selectedPlannerProfile) return;
+    if (!selectedPlannerProfile.models.includes(plannerModel)) {
+      setPlannerModel(selectedPlannerProfile.default_model || selectedPlannerProfile.models[0] || "");
+    }
+  }, [plannerModel, selectedPlannerProfile]);
+
+  useEffect(() => {
+    if (!runtimeOptions.data?.planner_profiles.length) return;
+    if (!selectedPlannerProfile) {
+      const fallback = runtimeOptions.data.planner_profiles[0];
+      setPlannerProfileId(fallback.id);
+      setPlannerModel(fallback.default_model || fallback.models[0] || "");
+    }
+  }, [runtimeOptions.data, selectedPlannerProfile]);
 
   useEffect(() => {
     if (!selectedSttProfile) return;
@@ -505,13 +532,15 @@ export function RealtimeStudio() {
   useEffect(() => {
     if (!preferencesInitializedRef.current) return;
     saveRuntimePreferences({
-      llmProfileId,
-      llmModel,
+      gateProfileId,
+      gateModel,
+      plannerProfileId,
+      plannerModel,
       sttProfileId,
       sttModel,
       diagramMode: diagramMode === "dual_view" ? "dual_view" : "mermaid_primary",
     });
-  }, [diagramMode, llmModel, llmProfileId, sttModel, sttProfileId]);
+  }, [diagramMode, gateModel, gateProfileId, plannerModel, plannerProfileId, sttModel, sttProfileId]);
 
   useEffect(() => {
     return () => {
@@ -593,8 +622,10 @@ export function RealtimeStudio() {
       capture_mode: captureMode,
       helper_url: audioHelper.baseUrl,
       transcription_backend: selectedRecognitionBackend,
-      llm_profile_id: llmProfileId,
-      llm_model: llmModel,
+      gate_profile_id: gateProfileId,
+      gate_model: gateModel,
+      planner_profile_id: plannerProfileId,
+      planner_model: plannerModel,
       stt_profile_id: sttProfileId,
       stt_model: sttModel,
     };
@@ -671,18 +702,50 @@ export function RealtimeStudio() {
     await helperUploadQueueRef.current;
   }
 
-  function syncMermaidStatus(pipeline: Record<string, any> | null | undefined) {
+  function syncPipelineStatus(pipeline: Record<string, any> | null | undefined) {
+    logBrowserRuntime("pipeline snapshot", {
+      coordination_summary: pipeline?.coordination_summary ?? null,
+      gate_state: pipeline?.gate_state ?? null,
+      planner_state: pipeline?.planner_state ?? null,
+      mermaid_state: pipeline?.mermaid_state
+        ? {
+            provider: pipeline.mermaid_state.provider,
+            model: pipeline.mermaid_state.model,
+            updated_at: pipeline.mermaid_state.updated_at,
+            error_message: pipeline.mermaid_state.error_message,
+          }
+        : null,
+      event_count: Array.isArray(pipeline?.events) ? pipeline.events.length : 0,
+    });
+    const gateState = pipeline?.gate_state ?? null;
+    if (!gateState) {
+      studioSend({ type: "gate.error", message: "当前还没有 Gate 状态。" });
+    } else if (gateState.error_message) {
+      studioSend({ type: "gate.error", message: String(gateState.error_message) });
+    } else {
+      studioSend({ type: "gate.success" });
+    }
+
+    const plannerState = pipeline?.planner_state ?? null;
+    if (!plannerState) {
+      studioSend({ type: "planner.error", message: "当前还没有 Planner 状态。" });
+    } else if (plannerState.error_message) {
+      studioSend({ type: "planner.error", message: String(plannerState.error_message) });
+    } else {
+      studioSend({ type: "planner.success" });
+    }
+
     const mermaidState = pipeline?.mermaid_state ?? null;
     const updatedAt = mermaidState?.updated_at ? toLocalDateTimeLabel(String(mermaidState.updated_at)) : null;
     if (!mermaidState) {
-      studioSend({ type: "llm.error", message: "当前还没有 Mermaid 结果。", updatedAt });
+      studioSend({ type: "mermaid.error", message: "当前还没有 Mermaid 结果。", updatedAt });
       return;
     }
     if (mermaidState.error_message) {
-      studioSend({ type: "llm.error", message: String(mermaidState.error_message), updatedAt });
+      studioSend({ type: "mermaid.error", message: String(mermaidState.error_message), updatedAt });
       return;
     }
-    studioSend({ type: "llm.success", updatedAt });
+    studioSend({ type: "mermaid.success", updatedAt });
   }
 
   async function flushHelperAudioBuffer(isFinal = true) {
@@ -792,9 +855,20 @@ export function RealtimeStudio() {
     studioSend({ type: "capture.uploading" });
     studioSend({ type: "stt.working" });
 
+    const chunkId = apiCaptureChunkIdRef.current;
+    apiCaptureChunkIdRef.current += 1;
+
     try {
+      logBrowserRuntime("api_stt upload started", {
+        session_id: context.sessionId,
+        source: context.source,
+        capture_mode: context.captureMode,
+        chunk_id: chunkId,
+        sample_count: samples.length,
+        is_final: isFinal,
+      });
       const response = await api.transcribeRealtimeAudio(context.sessionId, {
-        chunk_id: apiCaptureChunkIdRef.current,
+        chunk_id: chunkId,
         sample_rate: HELPER_TARGET_SAMPLE_RATE,
         channel_count: 1,
         pcm_s16le_base64: encodeFloat32ToBase64Pcm16(samples),
@@ -803,22 +877,52 @@ export function RealtimeStudio() {
         speaker: context.speaker,
         metadata: buildChunkMetadata(context.source, context.captureMode),
       });
-      apiCaptureChunkIdRef.current += 1;
       setSnapshot({
         session_id: context.sessionId,
         pipeline: response.pipeline,
         evaluation: response.evaluation,
       });
       if (response.text.trim()) {
-        studioSend({ type: "transcript.preview", text: response.text.trim() });
-        studioSend({ type: "stt.success", text: response.text.trim() });
+        const labeledText = response.speaker ? `${response.speaker}: ${response.text.trim()}` : response.text.trim();
+        studioSend({ type: "transcript.preview", text: labeledText });
+        studioSend({ type: "stt.success", text: labeledText });
       }
-      syncMermaidStatus(response.pipeline);
+      logBrowserRuntime("api_stt upload completed", {
+        session_id: context.sessionId,
+        provider: response.provider,
+        model: response.model,
+        latency_ms: response.latency_ms,
+        speaker: response.speaker,
+        text: response.text,
+        voiceprint: response.voiceprint ?? null,
+      });
+      if (response.voiceprint?.matched) {
+        setNotice({
+          tone: "success",
+          text: `声纹盲认命中：本段音频归属于 ${response.speaker}。`,
+        });
+      } else if (response.voiceprint?.error_message) {
+        setNotice({
+          tone: "warning",
+          text: `声纹盲认未生效：${response.voiceprint.error_message}`,
+        });
+      }
+      syncPipelineStatus(response.pipeline);
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
       studioSend({ type: "capture.start" });
       setError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "API STT 上传失败。";
+      logBrowserRuntime(
+        "api_stt upload failed",
+        {
+          session_id: context.sessionId,
+          source: context.source,
+          capture_mode: context.captureMode,
+          error: message,
+        },
+        "error",
+      );
       studioSend({ type: "stt.error", message });
       setError(message);
       studioSend({ type: "capture.stop" });
@@ -836,7 +940,8 @@ export function RealtimeStudio() {
       offset += frame.length;
     }
     resetApiCaptureBuffers();
-    await uploadApiAudioFrame(merged, isFinal);
+    apiCaptureUploadQueueRef.current = apiCaptureUploadQueueRef.current.then(() => uploadApiAudioFrame(merged, isFinal));
+    await apiCaptureUploadQueueRef.current;
   }
 
   async function teardownApiCaptureGraph({ flush = false }: { flush?: boolean } = {}) {
@@ -878,6 +983,7 @@ export function RealtimeStudio() {
   ) {
     apiCaptureContextRef.current = payload;
     resetApiCaptureBuffers();
+    apiCaptureUploadQueueRef.current = Promise.resolve();
 
     const audioContext = new window.AudioContext({ sampleRate: HELPER_TARGET_SAMPLE_RATE });
     const sourceNode = audioContext.createMediaStreamSource(stream);
@@ -1001,8 +1107,10 @@ export function RealtimeStudio() {
         min_wait_k: 1,
         base_wait_k: 2,
         max_wait_k: 4,
-        llm_profile_id: llmProfileId || null,
-        llm_model: llmModel || null,
+        gate_profile_id: gateProfileId || null,
+        gate_model: gateModel || null,
+        planner_profile_id: plannerProfileId || null,
+        planner_model: plannerModel || null,
         stt_profile_id: sttProfileId || null,
         stt_model: sttModel || null,
         diagram_mode: diagramMode,
@@ -1018,13 +1126,14 @@ export function RealtimeStudio() {
 
   const snapshotMutation = useMutation({
     mutationFn: (sessionId: string) => {
-      studioSend({ type: "llm.working" });
+      studioSend({ type: "gate.working" });
+      studioSend({ type: "planner.working" });
       return api.snapshotRealtime(sessionId);
     },
     onSuccess: (data) => {
       setSnapshot(data);
       setError(null);
-      syncMermaidStatus(data.pipeline);
+      syncPipelineStatus(data.pipeline);
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
     },
     onError: (err) => setError((err as Error).message),
@@ -1046,7 +1155,15 @@ export function RealtimeStudio() {
 
   async function pushRealtimeTextChunk(source: InputSource, captureMode: CaptureMode, text: string, isFinal = true) {
     const sessionId = await ensureSession();
-    studioSend({ type: "llm.working" });
+    logBrowserRuntime("text chunk ingest started", {
+      session_id: sessionId,
+      source,
+      capture_mode: captureMode,
+      is_final: isFinal,
+      text,
+    });
+    studioSend({ type: "gate.working" });
+    studioSend({ type: "planner.working" });
     const data = await api.addRealtimeChunk(sessionId, {
       text,
       speaker: source === "system_audio_helper" ? "system_audio" : "speaker",
@@ -1054,44 +1171,68 @@ export function RealtimeStudio() {
       metadata: buildChunkMetadata(source, captureMode),
     });
     setSnapshot({ session_id: data.session_id, pipeline: data.pipeline, evaluation: data.evaluation });
-    syncMermaidStatus(data.pipeline);
+    logBrowserRuntime("text chunk ingest completed", {
+      session_id: data.session_id,
+      emitted_event_count: data.emitted_events.length,
+      gate_state: data.pipeline?.gate_state ?? null,
+      planner_state: data.pipeline?.planner_state ?? null,
+      coordination_summary: data.pipeline?.coordination_summary ?? null,
+    });
+    syncPipelineStatus(data.pipeline);
     queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
   }
 
   const sendTranscript = useMutation({
+    onMutate: () => {
+      studioSend({ type: "gate.working" });
+      studioSend({ type: "planner.working" });
+    },
     mutationFn: async () => {
       const sessionId = await ensureSession();
       const rows = parseTranscriptInput(transcriptText);
-      let last = null;
-      for (let i = 0; i < rows.length; i += 1) {
-        last = await api.addRealtimeChunk(sessionId, {
-          timestamp_ms: i * 450,
-          text: rows[i].text,
-          speaker: rows[i].speaker,
-          expected_intent: rows[i].expected_intent || null,
+      logBrowserRuntime("transcript send started", {
+        session_id: sessionId,
+        row_count: rows.length,
+        rows,
+      });
+      return api.addRealtimeChunksBatch(sessionId, {
+        chunks: rows.map((row, index) => ({
+          timestamp_ms: index * 450,
+          text: row.text,
+          speaker: row.speaker,
+          expected_intent: row.expected_intent || null,
           metadata: buildChunkMetadata("transcript", "manual_text"),
-        });
-      }
-      return last;
+        })),
+      });
     },
     onSuccess: (data) => {
       if (data) setSnapshot({ session_id: data.session_id, pipeline: data.pipeline, evaluation: data.evaluation });
       setError(null);
-      syncMermaidStatus(data?.pipeline);
+      logBrowserRuntime("transcript send completed", {
+        session_id: data?.session_id ?? null,
+        gate_state: data?.pipeline?.gate_state ?? null,
+        planner_state: data?.pipeline?.planner_state ?? null,
+        coordination_summary: data?.pipeline?.coordination_summary ?? null,
+      });
+      syncPipelineStatus(data?.pipeline);
       setNotice({ tone: "success", text: "Transcript 已写入当前会话。" });
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
     },
-    onError: (err) => setError((err as Error).message),
+    onError: (err) => {
+      logBrowserRuntime("transcript send failed", { error: (err as Error).message }, "error");
+      setError((err as Error).message);
+    },
   });
 
   const flushMutation = useMutation({
     mutationFn: (sessionId: string) => {
-      studioSend({ type: "llm.working" });
+      studioSend({ type: "gate.working" });
+      studioSend({ type: "planner.working" });
       return api.flushRealtime(sessionId);
     },
     onSuccess: (data) => {
       setSnapshot(data);
-      syncMermaidStatus(data.pipeline);
+      syncPipelineStatus(data.pipeline);
     },
     onError: (err) => setError((err as Error).message),
   });
@@ -1137,6 +1278,8 @@ export function RealtimeStudio() {
         if (!text) continue;
         if (result.isFinal) {
           finalTranscript = finalTranscript ? `${finalTranscript} ${text}` : text;
+          studioSend({ type: "gate.working" });
+          studioSend({ type: "planner.working" });
           const data = await api.addRealtimeChunk(sessionId, {
             text,
             speaker: "speaker",
@@ -1145,7 +1288,7 @@ export function RealtimeStudio() {
           });
           setSnapshot({ session_id: data.session_id, pipeline: data.pipeline, evaluation: data.evaluation });
           studioSend({ type: "stt.success", text });
-          syncMermaidStatus(data.pipeline);
+          syncPipelineStatus(data.pipeline);
           setNotice({ tone: "success", text: "已写入一段浏览器麦克风识别文本。" });
         } else {
           interimTranscript = text;
@@ -1341,7 +1484,10 @@ export function RealtimeStudio() {
   const rendererState = snapshot?.pipeline?.renderer_state || {};
   const events = snapshot?.pipeline?.events || [];
   const mermaidState = snapshot?.pipeline?.mermaid_state ?? null;
-  const hasLlmProfiles = Boolean(runtimeOptions.data?.llm_profiles.length);
+  const rendererGroups =
+    rendererState.groups || snapshot?.pipeline?.graph_state?.current_graph_ir?.groups || [];
+  const hasGateProfiles = Boolean(runtimeOptions.data?.gate_profiles.length);
+  const hasPlannerProfiles = Boolean(runtimeOptions.data?.planner_profiles.length);
   const hasSttProfiles = Boolean(runtimeOptions.data?.stt_profiles.length);
 
   const summaryCards = useMemo(() => {
@@ -1354,17 +1500,10 @@ export function RealtimeStudio() {
     ];
   }, [snapshot?.evaluation?.metrics]);
 
-  /** @description 主舞台顶栏：CAP/STT/LLM/MER 步骤徽章（4 色：空闲/进行中/成功/失败） */
+  /** @description 主舞台顶栏：CAP/STT/GATE/PLAN/MER/model 步骤徽章（空闲=灰色，失败=红色） */
   const pipelineStages = useMemo(() => {
-    const mapBackendTone = (status: BackendStatus) => {
-      if (status === "working") return "working";
-      if (status === "success") return "success";
-      if (status === "error") return "error";
-      return "idle";
-    };
-
     // CAP 本身没有 success/error，由后续转写状态推断结果；capturing/uploading 期间视为进行中。
-    const capTone =
+    const capTone: "idle" | "working" | "success" | "error" =
       captureStatus === "idle"
         ? sttStatus === "success"
           ? "success"
@@ -1373,20 +1512,36 @@ export function RealtimeStudio() {
             : "idle"
         : "working";
 
-    const sttTone = mapBackendTone(sttStatus);
-    const llmTone = mapBackendTone(llmStatus);
+    const sttTone = backendStatusTone(sttStatus);
+    const gateTone = backendStatusTone(gateStatus);
+    const plannerTone = backendStatusTone(plannerStatus);
 
-    // MER：优先用 mermaid_state 的 compile/error 信号定色；没有信号时用 llmStatus/更新时间兜底。
+    // MER：优先用 mermaid_state 的 compile/error 信号定色；没有信号时用 mermaidStatus/更新时间兜底。
     let merTone: "idle" | "working" | "success" | "error" = "idle";
     if (mermaidState?.error_message) {
       merTone = "error";
     } else if (typeof mermaidState?.compile_ok === "boolean") {
       merTone = mermaidState.compile_ok ? "success" : "error";
-    } else if (llmStatus === "working") {
+    } else if (mermaidStatus === "working") {
       merTone = "working";
     } else if (lastMermaidUpdatedAt) {
       merTone = "success";
     }
+
+    const modelBusy =
+      sendTranscript.isPending ||
+      snapshotMutation.isPending ||
+      flushMutation.isPending ||
+      gateStatus === "working" ||
+      plannerStatus === "working";
+    const modelStatus: "idle" | "working" | "success" | "error" =
+      gateStatus === "error" || plannerStatus === "error"
+        ? "error"
+        : modelBusy
+          ? "working"
+          : gateStatus === "success" || plannerStatus === "success"
+            ? "success"
+            : "idle";
 
     return [
       {
@@ -1404,11 +1559,20 @@ export function RealtimeStudio() {
         help: `转写方式：${backendLabel(selectedRecognitionBackend)}`,
       },
       {
-        abbr: "LLM",
-        label: "对话",
-        value: backendStatusLabel(llmStatus),
-        tone: llmTone,
-        help: selectedLlmProfile ? `${selectedLlmProfile.label} / ${llmModel || "未选择模型"}` : "尚未配置对话模型。",
+        abbr: "GATE",
+        label: "Gate",
+        value: backendStatusLabel(gateStatus),
+        tone: gateTone,
+        help: selectedGateProfile ? `${selectedGateProfile.label} / ${gateModel || "未选择模型"}` : "尚未配置 Gate 模型。",
+      },
+      {
+        abbr: "PLAN",
+        label: "Planner",
+        value: backendStatusLabel(plannerStatus),
+        tone: plannerTone,
+        help: selectedPlannerProfile
+          ? `${selectedPlannerProfile.label} / ${plannerModel || "未选择模型"}`
+          : "尚未配置 Planner 模型。",
       },
       {
         abbr: "MER",
@@ -1417,17 +1581,38 @@ export function RealtimeStudio() {
         tone: merTone,
         help: lastMermaidUpdatedAt || "还没有生成流程图。",
       },
+      {
+        abbr: "MODEL",
+        label: "模型",
+        value:
+          modelStatus === "working"
+            ? "加载中"
+            : modelStatus === "error"
+              ? "失败"
+              : modelStatus === "success"
+                ? "已返回"
+                : "空闲",
+        tone: backendStatusTone(modelStatus),
+        help: modelStatus === "working" ? "当前正在等待远端模型返回结果。" : "显示当前 Gate / Planner 的整体推理状态。",
+      },
     ];
   }, [
     captureStatus,
     sttStatus,
-    llmStatus,
+    gateStatus,
+    plannerStatus,
+    mermaidStatus,
     lastMermaidUpdatedAt,
     mermaidState?.error_message,
     mermaidState?.compile_ok,
     selectedRecognitionBackend,
-    selectedLlmProfile,
-    llmModel,
+    selectedGateProfile,
+    gateModel,
+    selectedPlannerProfile,
+    plannerModel,
+    sendTranscript.isPending,
+    snapshotMutation.isPending,
+    flushMutation.isPending,
   ]);
 
   const systemAudioExperimentalVisible = supportsSystemAudioExperimentalUi(audioContext);
@@ -1603,10 +1788,10 @@ export function RealtimeStudio() {
         <div className="order-2 flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 xl:col-span-2 xl:row-start-1 xl:order-none">
           {stageTab === "mermaid" ? (
             <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
-                {mermaidState?.provider || selectedLlmProfile?.label ? (
-                  <Badge>{mermaidState?.provider || selectedLlmProfile?.label}</Badge>
+                {mermaidState?.provider || selectedPlannerProfile?.label ? (
+                  <Badge>{mermaidState?.provider || selectedPlannerProfile?.label}</Badge>
                 ) : null}
-                {mermaidState?.model || llmModel ? <Badge>{mermaidState?.model || llmModel}</Badge> : null}
+                {mermaidState?.model || plannerModel ? <Badge>{mermaidState?.model || plannerModel}</Badge> : null}
                 {typeof mermaidState?.latency_ms === "number" ? (
                   <Badge>{mermaidState.latency_ms.toFixed(1)} ms</Badge>
                 ) : null}
@@ -1787,8 +1972,8 @@ export function RealtimeStudio() {
                 repairRawOutputText={
                   typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
                 }
-                provider={mermaidState?.provider || selectedLlmProfile?.label || null}
-                model={mermaidState?.model || llmModel || null}
+                provider={mermaidState?.provider || selectedPlannerProfile?.label || null}
+                model={mermaidState?.model || plannerModel || null}
                 latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
                 compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
                 updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null)}
@@ -1796,7 +1981,13 @@ export function RealtimeStudio() {
             </Tabs.Content>
 
             <Tabs.Content value="structure">
-              <GraphStage embedded title="结构图" nodes={rendererState.nodes || []} edges={rendererState.edges || []} />
+              <GraphStage
+                embedded
+                title="结构图"
+                nodes={rendererState.nodes || []}
+                edges={rendererState.edges || []}
+                groups={rendererGroups}
+              />
             </Tabs.Content>
 
             <Tabs.Content value="events">
@@ -1815,13 +2006,29 @@ export function RealtimeStudio() {
                         key={`${event.update?.update_id}-${index}`}
                         className="glass-panel rounded-[24px] border border-violet-200/50 p-4"
                       >
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="text-sm font-semibold text-slate-900">
-                            Update #{event.update?.update_id} · {event.update?.intent_type}
+                            Update #{event.update?.update_id} · {event.gate?.action || event.update?.intent_type}
                           </div>
-                          <Badge>{event.e2e_latency_ms} ms</Badge>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge>{event.e2e_latency_ms} ms</Badge>
+                            <Badge>{(event.planner?.delta_ops || []).length} delta ops</Badge>
+                          </div>
                         </div>
-                        <div className="mt-2 text-xs leading-6 text-slate-600">{event.update?.transcript_text}</div>
+                        <div className="mt-2 text-xs leading-6 text-slate-600">
+                          {Array.isArray(event.pending_turns) && event.pending_turns.length
+                            ? event.pending_turns
+                                .map((turn: Record<string, any>) => `${turn.speaker || "speaker"}: ${turn.content || ""}`)
+                                .join("\n")
+                            : event.update?.transcript_text}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                          <span>Gate: {event.gate?.reason || "-"}</span>
+                          <span>Planner: {event.planner?.notes || "-"}</span>
+                          <span>
+                            Graph: {event.graph_after?.node_count ?? 0} nodes / {event.graph_after?.edge_count ?? 0} edges
+                          </span>
+                        </div>
                       </div>
                     ))
                   ) : (
@@ -1943,16 +2150,22 @@ export function RealtimeStudio() {
               </Button>
             </Link>
           </div>
-          {!hasLlmProfiles || !hasSttProfiles ? (
+          {!hasGateProfiles || !hasPlannerProfiles || !hasSttProfiles ? (
             <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-              服务端还缺少语言模型或听写服务配置。请打开「设置」按提示补全环境变量后重启 API。
+              服务端还缺少 Gate / Planner / STT 运行配置。请打开「设置」按提示补全环境变量后重启 API。
             </div>
           ) : null}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
             {[
               {
-                label: "默认对话模型",
-                value: hasLlmProfiles ? `${selectedLlmProfile?.label || "未选择"} / ${llmModel || "未选择模型"}` : "未配置",
+                label: "默认 Gate 模型",
+                value: hasGateProfiles ? `${selectedGateProfile?.label || "未选择"} / ${gateModel || "未选择模型"}` : "未配置",
+              },
+              {
+                label: "默认 Planner 模型",
+                value: hasPlannerProfiles
+                  ? `${selectedPlannerProfile?.label || "未选择"} / ${plannerModel || "未选择模型"}`
+                  : "未配置",
               },
               {
                 label: "默认听写服务",
@@ -2043,13 +2256,13 @@ export function RealtimeStudio() {
               </div>
               <p className="text-[11px] leading-relaxed text-slate-500">
                 {selectedRecognitionBackend === "browser_speech"
-                  ? "浏览器语音识别，启动快，稳定性受浏览器影响。"
+                  ? "浏览器语音识别，启动快，稳定性受浏览器影响，但不支持多人声纹识别。"
                   : selectedRecognitionBackend === "browser_display_validation"
                     ? "仅验证共享音频轨道可达性。"
                     : selectedRecognitionBackend === "local_helper"
-                      ? "本机 helper 采集与转写。"
+                      ? "本机 helper 采集与转写，会继续进入当前 Gate / Planner，但不支持多人声纹识别。"
                       : selectedRecognitionBackend === "api_stt"
-                        ? "服务端 OpenAI-compatible STT。"
+                        ? "默认推荐：服务端讯飞 STT + 声纹盲认，再进入当前 Gate / Planner 协同流水线。"
                         : "手动 transcript。"}
               </p>
             </div>
@@ -2112,8 +2325,8 @@ export function RealtimeStudio() {
               <div className="space-y-3">
                 <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/42 px-4 py-3 text-xs leading-6 text-slate-500">
                   {selectedRecognitionBackend === "browser_speech"
-                    ? "浏览器麦克风依赖 Web Speech 服务。如果提示网络或服务不可用，通常不是项目后端报错，先用 Transcript 输入会更稳定。"
-                    : "API STT 路径会直接把麦克风音频分段上传到服务端转写，再回写当前会话。"}
+                    ? "浏览器麦克风依赖 Web Speech 服务。如果提示网络或服务不可用，通常不是项目后端报错；该路径不支持多人声纹识别。"
+                    : "默认推荐：麦克风音频会分段上传到讯飞 STT，命中时可做多人声纹盲认，再进入当前 Gate / Planner 协同链路。"}
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   {selectedRecognitionBackend === "browser_speech" ? (
@@ -2178,6 +2391,7 @@ export function RealtimeStudio() {
                     <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/42 px-4 py-3 text-xs leading-6 text-slate-500">
                       增强模式会连接本机 `audio helper`，由浏览器提供共享音频流，再由辅助层在本机完成分段转写。当前辅助层地址：
                       <span className="ml-1 font-medium text-slate-700">{audioHelper.baseUrl}</span>
+                      <span className="mt-1 block">该路径仍会进入当前 Gate / Planner，但不支持多人声纹识别。</span>
                     </div>
                     <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/46 px-4 py-4 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2215,7 +2429,7 @@ export function RealtimeStudio() {
                 ) : (
                   <>
                     <div className="rounded-[20px] border border-violet-200/50 bg-violet-100/42 px-4 py-3 text-xs leading-6 text-slate-500">
-                      API STT 路径会复用浏览器共享音频流，把系统声音分段上传到服务端转写。Windows 请勾选共享音频；macOS 请优先选择标签页音频。
+                      默认推荐：该路径会复用浏览器共享音频流，把系统声音分段上传到讯飞 STT；命中时可做多人声纹盲认，再进入当前 Gate / Planner。Windows 请勾选共享音频；macOS 请优先选择标签页音频。
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <Button className="py-3" variant="secondary" onClick={() => void startApiCapture()} disabled={!canStartCapture}>

@@ -7,20 +7,20 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.db import utc_now
-from app.legacy import RuntimeSessionState, new_runtime_session, restore_runtime_session
 from app.models import RealtimeChunk, RealtimeEvent, RealtimeSession, RealtimeSnapshot
+from app.services.realtime_coordination import CoordinationRuntimeSession, normalize_runtime_options
 
 
 _RUNTIME_LOCK = Lock()
-_RUNTIMES: dict[str, RuntimeSessionState] = {}
+_RUNTIMES: dict[str, CoordinationRuntimeSession] = {}
 
 
-def get_runtime(session_id: str) -> RuntimeSessionState | None:
+def get_runtime(session_id: str) -> CoordinationRuntimeSession | None:
     with _RUNTIME_LOCK:
         return _RUNTIMES.get(session_id)
 
 
-def put_runtime(runtime: RuntimeSessionState) -> None:
+def put_runtime(runtime: CoordinationRuntimeSession) -> None:
     with _RUNTIME_LOCK:
         _RUNTIMES[runtime.session_id] = runtime
 
@@ -30,7 +30,7 @@ def drop_runtime(session_id: str) -> None:
         _RUNTIMES.pop(session_id, None)
 
 
-def restore_runtime_if_needed(db: Session, session_obj: RealtimeSession) -> RuntimeSessionState:
+def restore_runtime_if_needed(db: Session, session_obj: RealtimeSession) -> CoordinationRuntimeSession:
     runtime = get_runtime(session_obj.id)
     if runtime is not None:
         return runtime
@@ -46,17 +46,28 @@ def restore_runtime_if_needed(db: Session, session_obj: RealtimeSession) -> Runt
             select(RealtimeChunk).where(RealtimeChunk.session_id == session_obj.id).order_by(RealtimeChunk.sequence_no.asc())
         ).all()
     ]
-    runtime = restore_runtime_session(session_obj.id, session_obj.config_snapshot, rows)
+    runtime = CoordinationRuntimeSession.restore(
+        session_obj.id,
+        config_snapshot=session_obj.config_snapshot if isinstance(session_obj.config_snapshot, dict) else {},
+        pipeline_payload=session_obj.pipeline_payload if isinstance(session_obj.pipeline_payload, dict) else {},
+        evaluation_payload=session_obj.evaluation_payload if isinstance(session_obj.evaluation_payload, dict) else {},
+        rows=rows,
+    )
     put_runtime(runtime)
     return runtime
 
 
-def create_runtime_session(db: Session, session_obj: RealtimeSession) -> RuntimeSessionState:
-    runtime = new_runtime_session(
+def create_runtime_session(db: Session, session_obj: RealtimeSession) -> CoordinationRuntimeSession:
+    runtime_options = normalize_runtime_options(
+        (
+            session_obj.config_snapshot.get("runtime_options", {})
+            if isinstance(session_obj.config_snapshot, dict)
+            else {}
+        )
+    )
+    runtime = CoordinationRuntimeSession.create(
         session_obj.id,
-        min_wait_k=int(session_obj.config_snapshot.get("min_wait_k", 1)),
-        base_wait_k=int(session_obj.config_snapshot.get("base_wait_k", 2)),
-        max_wait_k=int(session_obj.config_snapshot.get("max_wait_k", 4)),
+        diagram_type=str(runtime_options.get("diagram_type", "flowchart") or "flowchart"),
     )
     put_runtime(runtime)
     return runtime

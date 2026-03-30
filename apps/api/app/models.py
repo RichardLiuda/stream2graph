@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base, utc_now
@@ -136,6 +136,39 @@ class RealtimeSnapshot(Base):
     pipeline_payload: Mapped[dict] = mapped_column(JSON, default=dict)
     evaluation_payload: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class VoiceprintGroup(Base):
+    __tablename__ = "voiceprint_groups"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_id)
+    stt_profile_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    group_id: Mapped[str] = mapped_column(String(64), index=True)
+    display_name: Mapped[str] = mapped_column(String(255))
+    provider_kind: Mapped[str] = mapped_column(String(64), default="xfyun_isv")
+    status: Mapped[str] = mapped_column(String(32), default="active")
+    remote_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    last_synced_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class VoiceprintFeature(Base):
+    __tablename__ = "voiceprint_features"
+    __table_args__ = (
+        UniqueConstraint("stt_profile_id", "feature_id", name="uq_voiceprint_features_profile_feature"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_id)
+    stt_profile_id: Mapped[str] = mapped_column(String(64), index=True)
+    group_id: Mapped[str] = mapped_column(String(64), index=True)
+    feature_id: Mapped[str] = mapped_column(String(64), index=True)
+    speaker_label: Mapped[str] = mapped_column(String(255))
+    feature_info: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(32), default="active")
+    remote_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 class StudyTask(Base):

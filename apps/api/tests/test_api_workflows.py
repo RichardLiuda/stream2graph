@@ -5,8 +5,11 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.models import RealtimeChunk, RealtimeSession
+from app.db import utc_now
+from app.models import RealtimeChunk, RealtimeSession, VoiceprintFeature, VoiceprintGroup
+from app.services.realtime_coordination import GateDecision, PlannerDecision
 from app.services.runtime_sessions import drop_runtime
+from tools.incremental_dataset.schema import GraphGroup, GraphIR, GraphNode
 
 
 def test_realtime_session_workflow_requires_auth_and_persists_reports(
@@ -16,18 +19,32 @@ def test_realtime_session_workflow_requires_auth_and_persists_reports(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        "app.routers.realtime.generate_mermaid_state",
-        lambda db, obj: {
-            "code": "flowchart TD\nA[Gateway] --> B[Parser]",
-            "normalized_code": "flowchart TD\nA[Gateway] --> B[Parser]",
-            "compile_ok": True,
-            "render_ok": True,
-            "provider": "test-llm",
-            "model": "test-model",
-            "latency_ms": 12.3,
-            "error_message": None,
-            "updated_at": 1,
-        },
+        "app.services.realtime_coordination.CoordinationRuntimeSession._decide_gate",
+        lambda self, db, obj, pending_turns, force_emit=False: GateDecision(
+            action="EMIT_UPDATE",
+            reason="enough structure",
+            confidence=0.96,
+            metadata={"provider": "test-gate", "model_name": "test-gate-model", "latency_ms": 7.1},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._plan_update",
+        lambda self, db, obj, pending_turns: PlannerDecision(
+            delta_ops=[
+                {"op": "add_node", "node_id": "Gateway", "id": "Gateway", "label": "Gateway"},
+                {"op": "add_node", "node_id": "Parser", "id": "Parser", "label": "Parser"},
+                {
+                    "op": "add_edge",
+                    "edge_id": "edge_gateway_parser",
+                    "id": "edge_gateway_parser",
+                    "source": "Gateway",
+                    "target": "Parser",
+                    "label": "",
+                },
+            ],
+            notes="bootstrap graph",
+            metadata={"provider": "test-planner", "model_name": "test-planner-model", "latency_ms": 12.3},
+        ),
     )
 
     unauthorized = client.post("/api/v1/realtime/sessions", json={"title": "unauthorized"})
@@ -41,8 +58,10 @@ def test_realtime_session_workflow_requires_auth_and_persists_reports(
             "min_wait_k": 1,
             "base_wait_k": 2,
             "max_wait_k": 4,
-            "llm_profile_id": "test-llm",
-            "llm_model": "test-model",
+            "gate_profile_id": "test-gate",
+            "gate_model": "test-gate-model",
+            "planner_profile_id": "test-planner",
+            "planner_model": "test-planner-model",
             "stt_profile_id": "test-stt",
             "stt_model": "test-stt-model",
             "client_context": {
@@ -78,13 +97,16 @@ def test_realtime_session_workflow_requires_auth_and_persists_reports(
     )
     assert chunk.status_code == 200
     assert chunk.json()["pipeline"]["meta"]["input_chunk_count"] == 1
-    assert chunk.json()["pipeline"]["mermaid_state"]["provider"] == "test-llm"
+    assert chunk.json()["pipeline"]["graph_state"]["update_index"] == 1
+    assert chunk.json()["pipeline"]["planner_state"]["provider"] == "test-planner"
+    assert chunk.json()["pipeline"]["mermaid_state"]["source"] == "algorithm_preview"
 
     with session_factory() as db:
         saved_session = db.scalar(select(RealtimeSession).where(RealtimeSession.id == session_id))
         assert saved_session is not None
         assert saved_session.config_snapshot["input_runtime"]["input_source"] == "transcript"
-        assert saved_session.config_snapshot["runtime_options"]["llm_profile_id"] == "test-llm"
+        assert saved_session.config_snapshot["runtime_options"]["gate_profile_id"] == "test-gate"
+        assert saved_session.config_snapshot["runtime_options"]["planner_profile_id"] == "test-planner"
         saved_chunk = db.scalar(select(RealtimeChunk).where(RealtimeChunk.session_id == session_id))
         assert saved_chunk is not None
         assert saved_chunk.meta_json["capture_mode"] == "manual_text"
@@ -93,6 +115,73 @@ def test_realtime_session_workflow_requires_auth_and_persists_reports(
     restored = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/snapshot")
     assert restored.status_code == 200
     assert restored.json()["pipeline"]["meta"]["input_chunk_count"] == 1
+    assert restored.json()["pipeline"]["summary"]["latency_gate_ms"]["count"] == 1.0
+    assert restored.json()["pipeline"]["summary"]["latency_planner_ms"]["count"] == 1.0
+
+
+def test_realtime_chunk_batch_runs_single_coordination_cycle(
+    admin_client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._decide_gate",
+        lambda self, db, obj, pending_turns, force_emit=False: GateDecision(
+            action="EMIT_UPDATE",
+            reason="enough structure",
+            confidence=0.91,
+            metadata={"provider": "test-gate", "model_name": "test-gate-model", "latency_ms": 5.0},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._plan_update",
+        lambda self, db, obj, pending_turns: PlannerDecision(
+            delta_ops=[
+                {"op": "add_node", "node_id": "Gateway", "id": "Gateway", "label": "Gateway"},
+                {"op": "add_node", "node_id": "Manager", "id": "Manager", "label": "Manager"},
+            ],
+            notes="batch graph",
+            metadata={"provider": "test-planner", "model_name": "test-planner-model", "latency_ms": 11.0},
+        ),
+    )
+
+    created = admin_client.post(
+        "/api/v1/realtime/sessions",
+        json={
+            "title": "batch session",
+            "gate_profile_id": "test-gate",
+            "gate_model": "test-gate-model",
+            "planner_profile_id": "test-planner",
+            "planner_model": "test-planner-model",
+            "stt_profile_id": "test-stt",
+            "stt_model": "test-stt-model",
+            "client_context": {
+                "input_source": "transcript",
+                "capture_mode": "manual_text",
+                "platform": "macos",
+                "browser_family": "chrome",
+                "capability_status": "supported",
+                "capability_reason": "always available",
+            },
+        },
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    batch = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/chunks/batch",
+        json={
+            "chunks": [
+                {"timestamp_ms": 0, "text": "Add Gateway.", "speaker": "expert", "metadata": {"input_source": "transcript"}},
+                {"timestamp_ms": 450, "text": "Add Manager.", "speaker": "expert", "metadata": {"input_source": "transcript"}},
+            ]
+        },
+    )
+    assert batch.status_code == 200
+    payload = batch.json()
+    assert payload["pipeline"]["meta"]["input_chunk_count"] == 2
+    assert payload["pipeline"]["graph_state"]["update_index"] == 1
+    assert payload["pipeline"]["planner_state"]["provider"] == "test-planner"
+    assert len(payload["emitted_events"]) == 1
 
     flushed = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/flush")
     assert flushed.status_code == 200
@@ -128,62 +217,109 @@ def test_runtime_options_and_audio_transcription_endpoint(
     monkeypatch.setattr(
         "app.routers.catalog.list_runtime_options",
         lambda db, include_secrets=False: {
-            "llm_profiles": [
+            "gate_profiles": [
                 {
-                    "id": "llm-default",
-                    "label": "LLM Default",
+                    "id": "gate-default",
+                    "label": "Gate Default",
                     "provider_kind": "openai_compatible",
-                    "models": ["model-a"],
-                    "default_model": "model-a",
+                    "models": ["model-small"],
+                    "default_model": "model-small",
+                }
+            ],
+            "planner_profiles": [
+                {
+                    "id": "planner-default",
+                    "label": "Planner Default",
+                    "provider_kind": "openai_compatible",
+                    "models": ["model-large"],
+                    "default_model": "model-large",
                 }
             ],
             "stt_profiles": [
                 {
                     "id": "stt-default",
                     "label": "STT Default",
-                    "provider_kind": "openai_compatible",
-                    "models": ["stt-a"],
-                    "default_model": "stt-a",
+                    "provider_kind": "xfyun_asr",
+                    "models": ["iat"],
+                    "default_model": "iat",
                 }
             ],
         },
     )
     monkeypatch.setattr(
-        "app.routers.realtime.generate_mermaid_state",
-        lambda db, obj: {
-            "code": "flowchart TD\nA[Audio] --> B[Mermaid]",
-            "normalized_code": "flowchart TD\nA[Audio] --> B[Mermaid]",
-            "compile_ok": True,
-            "render_ok": True,
-            "provider": "llm-default",
-            "model": "model-a",
-            "latency_ms": 10.0,
-            "error_message": None,
-            "updated_at": 2,
-        },
+        "app.services.realtime_coordination.CoordinationRuntimeSession._decide_gate",
+        lambda self, db, obj, pending_turns, force_emit=False: GateDecision(
+            action="EMIT_UPDATE",
+            reason="audio yielded concrete structure",
+            confidence=0.91,
+            metadata={"provider": "gate-default", "model_name": "model-small", "latency_ms": 5.0},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._plan_update",
+        lambda self, db, obj, pending_turns: PlannerDecision(
+            delta_ops=[
+                {"op": "add_node", "node_id": "Audio", "id": "Audio", "label": "Audio"},
+                {"op": "add_node", "node_id": "Mermaid", "id": "Mermaid", "label": "Mermaid"},
+                {
+                    "op": "add_edge",
+                    "edge_id": "edge_audio_mermaid",
+                    "id": "edge_audio_mermaid",
+                    "source": "Audio",
+                    "target": "Mermaid",
+                    "label": "",
+                },
+            ],
+            notes="audio graph",
+            metadata={"provider": "planner-default", "model_name": "model-large", "latency_ms": 10.0},
+        ),
     )
     monkeypatch.setattr(
         "app.routers.realtime.transcribe_audio_chunk",
         lambda db, session_obj, payload: {
             "text": "识别出的系统音频文本",
             "provider": "stt-default",
-            "model": "stt-a",
+            "model": "iat",
             "latency_ms": 88.6,
+        },
+    )
+    monkeypatch.setattr(
+        "app.routers.realtime.blind_recognize_speaker",
+        lambda db, stt_profile_id, profile, pcm_s16le_base64, sample_rate, channel_count, fallback_speaker: {
+            "matched": True,
+            "provider": "xfyun_isv",
+            "group_id": "demo_group",
+            "feature_id": "speaker_zhangsan",
+            "speaker_label": "张三",
+            "score": 0.96,
+            "top_candidates": [
+                {
+                    "feature_id": "speaker_zhangsan",
+                    "speaker_label": "张三",
+                    "score": 0.96,
+                }
+            ],
+            "latency_ms": 33.2,
+            "threshold": 0.75,
+            "error_message": None,
         },
     )
 
     runtime_options = admin_client.get("/api/v1/catalog/runtime-options")
     assert runtime_options.status_code == 200
-    assert runtime_options.json()["llm_profiles"][0]["id"] == "llm-default"
+    assert runtime_options.json()["gate_profiles"][0]["id"] == "gate-default"
+    assert runtime_options.json()["planner_profiles"][0]["id"] == "planner-default"
 
     created = admin_client.post(
         "/api/v1/realtime/sessions",
         json={
             "title": "audio session",
-            "llm_profile_id": "llm-default",
-            "llm_model": "model-a",
+            "gate_profile_id": "gate-default",
+            "gate_model": "model-small",
+            "planner_profile_id": "planner-default",
+            "planner_model": "model-large",
             "stt_profile_id": "stt-default",
-            "stt_model": "stt-a",
+            "stt_model": "iat",
             "client_context": {"input_source": "system_audio"},
         },
     )
@@ -205,36 +341,273 @@ def test_runtime_options_and_audio_transcription_endpoint(
     assert response.status_code == 200
     payload = response.json()
     assert payload["text"] == "识别出的系统音频文本"
+    assert payload["speaker"] == "张三"
+    assert payload["voiceprint"]["matched"] is True
     assert payload["provider"] == "stt-default"
-    assert payload["pipeline"]["mermaid_state"]["model"] == "model-a"
+    assert payload["pipeline"]["planner_state"]["model"] == "model-large"
+    assert payload["pipeline"]["mermaid_state"]["source"] == "algorithm_preview"
 
 
-def test_realtime_session_gracefully_degrades_when_mermaid_generation_errors(
+def test_runtime_options_can_persist_stt_voiceprint_config(admin_client: TestClient) -> None:
+    response = admin_client.put(
+        "/api/v1/catalog/runtime-options/admin",
+        json={
+            "gate_profiles": [],
+            "planner_profiles": [],
+            "stt_profiles": [
+                {
+                    "id": "xfyun-stt",
+                    "label": "XFYun STT",
+                    "provider_kind": "xfyun_asr",
+                    "endpoint": "wss://iat-api.xfyun.cn/v2/iat",
+                    "models": ["iat", "xfime-mianqie"],
+                    "default_model": "iat",
+                    "app_id": "xfyun-app",
+                    "api_key": "test-xfyun-key",
+                    "api_secret": "test-xfyun-secret",
+                    "api_key_env": "",
+                    "api_secret_env": "",
+                    "voiceprint": {
+                        "enabled": True,
+                        "provider_kind": "xfyun_isv",
+                        "group_id": "lab_group",
+                        "score_threshold": 0.82,
+                        "top_k": 4,
+                    },
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["stt_profiles"][0]["voiceprint"]["group_id"] == "lab_group"
+    assert payload["stt_profiles"][0]["voiceprint"]["api_base"] == "https://api.xf-yun.com"
+    assert "api_secret" not in payload["stt_profiles"][0]["voiceprint"]
+
+    public_view = admin_client.get("/api/v1/catalog/runtime-options")
+    assert public_view.status_code == 200
+    assert public_view.json()["stt_profiles"][0]["voiceprint"]["enabled"] is True
+    assert "test-xfyun-secret" not in public_view.text
+
+
+def test_voiceprint_management_api_and_audio_transcription_fallback(
     admin_client: TestClient,
     monkeypatch,
+    session_factory,
 ) -> None:
-    monkeypatch.setattr(
-        "app.services.realtime_ai.resolve_profile",
-        lambda db, kind, profile_id: {
-            "id": "llm-default",
-            "endpoint": "https://example.invalid/v1/chat/completions",
-            "default_model": "model-a",
-        }
-        if kind == "llm"
-        else None,
+    admin_client.put(
+        "/api/v1/catalog/runtime-options/admin",
+        json={
+            "gate_profiles": [],
+            "planner_profiles": [],
+            "stt_profiles": [
+                {
+                    "id": "voice-stt",
+                    "label": "Voice STT",
+                    "provider_kind": "xfyun_asr",
+                    "endpoint": "wss://iat-api.xfyun.cn/v2/iat",
+                    "models": ["iat"],
+                    "default_model": "iat",
+                    "app_id": "xfyun-app",
+                    "api_key": "test-xfyun-key",
+                    "api_secret": "test-xfyun-secret",
+                    "api_key_env": "",
+                    "api_secret_env": "",
+                    "voiceprint": {
+                        "enabled": True,
+                        "provider_kind": "xfyun_isv",
+                        "api_base": "https://api.xf-yun.com",
+                        "group_id": "meeting_group",
+                        "score_threshold": 0.88,
+                        "top_k": 3,
+                    },
+                }
+            ],
+        },
     )
 
-    def _raise_attribute_error(*args, **kwargs):
-        raise AttributeError("tls settings missing")
+    monkeypatch.setattr(
+        "app.routers.voiceprints.sync_group_and_features",
+        lambda db, stt_profile_id, profile, display_name=None, group_info=None: (
+            VoiceprintGroup(
+                id="voice_group_1",
+                stt_profile_id=stt_profile_id,
+                group_id="meeting_group",
+                display_name=display_name or "Voice STT",
+                provider_kind="xfyun_isv",
+                status="active",
+                remote_payload={"group_id": "meeting_group"},
+                created_at=utc_now(),
+                updated_at=utc_now(),
+            ),
+            [{"featureId": "remote_feature_a", "featureInfo": "Alice"}],
+        ),
+    )
+    monkeypatch.setattr(
+        "app.routers.voiceprints.create_voiceprint_feature",
+        lambda db, stt_profile_id, profile, speaker_label, feature_info, pcm_s16le_base64, sample_rate, channel_count: VoiceprintFeature(
+            id="voice_feature_1",
+            stt_profile_id=stt_profile_id,
+            group_id="meeting_group",
+            feature_id="feature_alice",
+            speaker_label=speaker_label,
+            feature_info=feature_info,
+            status="active",
+            remote_payload={"featureId": "feature_alice"},
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.routers.voiceprints.delete_voiceprint_feature",
+        lambda db, stt_profile_id, profile, feature_id: VoiceprintFeature(
+            id="voice_feature_1",
+            stt_profile_id=stt_profile_id,
+            group_id="meeting_group",
+            feature_id=feature_id,
+            speaker_label="Alice",
+            feature_info="Alice",
+            status="deleted",
+            remote_payload={"msg": "success"},
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.routers.realtime.transcribe_audio_chunk",
+        lambda db, session_obj, payload: {
+            "text": "这段音频会回退到原 speaker",
+            "provider": "voice-stt",
+            "model": "iat",
+            "latency_ms": 55.2,
+        },
+    )
+    monkeypatch.setattr(
+        "app.routers.realtime.blind_recognize_speaker",
+        lambda db, stt_profile_id, profile, pcm_s16le_base64, sample_rate, channel_count, fallback_speaker: {
+            "matched": False,
+            "provider": "xfyun_isv",
+            "group_id": "meeting_group",
+            "feature_id": "feature_alice",
+            "speaker_label": fallback_speaker,
+            "score": 0.42,
+            "top_candidates": [{"feature_id": "feature_alice", "speaker_label": "Alice", "score": 0.42}],
+            "latency_ms": 22.5,
+            "threshold": 0.88,
+            "error_message": None,
+        },
+    )
 
-    monkeypatch.setattr("app.services.realtime_ai._request_mermaid_candidate", _raise_attribute_error)
+    sync_response = admin_client.post(
+        "/api/v1/voiceprints/stt-profiles/voice-stt/group/sync",
+        json={"display_name": "会议声纹库", "group_info": "demo"},
+    )
+    assert sync_response.status_code == 200
+    assert sync_response.json()["group"]["group_id"] == "meeting_group"
+
+    create_feature_response = admin_client.post(
+        "/api/v1/voiceprints/stt-profiles/voice-stt/features",
+        json={
+            "speaker_label": "Alice",
+            "feature_info": "Alice sample",
+            "sample_rate": 16000,
+            "channel_count": 1,
+            "pcm_s16le_base64": "AAA=",
+        },
+    )
+    assert create_feature_response.status_code == 200
+    assert create_feature_response.json()["feature_id"] == "feature_alice"
+
+    features_response = admin_client.get("/api/v1/voiceprints/stt-profiles/voice-stt/features")
+    assert features_response.status_code == 200
+
+    delete_feature_response = admin_client.delete("/api/v1/voiceprints/stt-profiles/voice-stt/features/feature_alice")
+    assert delete_feature_response.status_code == 200
+    assert delete_feature_response.json()["ok"] is True
+
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._decide_gate",
+        lambda self, db, obj, pending_turns, force_emit=False: GateDecision(
+            action="EMIT_UPDATE",
+            reason="audio update",
+            confidence=0.91,
+            metadata={"provider": "gate-default", "model_name": "gate-model", "latency_ms": 5.0},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._plan_update",
+        lambda self, db, obj, pending_turns: PlannerDecision(
+            delta_ops=[{"op": "add_node", "node_id": "Audio", "id": "Audio", "label": "Audio"}],
+            notes="audio node",
+            metadata={"provider": "planner-default", "model_name": "planner-model", "latency_ms": 9.0},
+        ),
+    )
 
     created = admin_client.post(
         "/api/v1/realtime/sessions",
         json={
-            "title": "degraded mermaid session",
-            "llm_profile_id": "llm-default",
-            "llm_model": "model-a",
+            "title": "voiceprint fallback",
+            "stt_profile_id": "voice-stt",
+            "stt_model": "iat",
+        },
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    response = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/audio/transcriptions",
+        json={
+            "chunk_id": 0,
+            "sample_rate": 16000,
+            "channel_count": 1,
+            "pcm_s16le_base64": "AAA=",
+            "speaker": "speaker",
+            "is_final": True,
+            "metadata": {"input_source": "microphone_browser", "capture_mode": "api_stt"},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["speaker"] == "speaker"
+    assert payload["voiceprint"]["matched"] is False
+
+    with session_factory() as db:
+        chunk = db.scalar(select(RealtimeChunk).where(RealtimeChunk.session_id == session_id))
+        assert chunk is not None
+        assert chunk.speaker == "speaker"
+        assert chunk.meta_json["voiceprint_result"]["score"] == 0.42
+
+
+def test_realtime_session_gracefully_degrades_when_planner_errors(
+    admin_client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._decide_gate",
+        lambda self, db, obj, pending_turns, force_emit=False: GateDecision(
+            action="EMIT_UPDATE",
+            reason="emit update",
+            confidence=0.8,
+            metadata={"provider": "gate-default", "model_name": "gate-model", "latency_ms": 1.0},
+        ),
+    )
+
+    def _raise_planner_error(self, db, obj, pending_turns):
+        raise AttributeError("tls settings missing")
+
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._plan_update",
+        _raise_planner_error,
+    )
+
+    created = admin_client.post(
+        "/api/v1/realtime/sessions",
+        json={
+            "title": "degraded collaborative session",
+            "gate_profile_id": "gate-default",
+            "gate_model": "gate-model",
+            "planner_profile_id": "planner-default",
+            "planner_model": "planner-model",
             "client_context": {"input_source": "transcript"},
         },
     )
@@ -255,18 +628,141 @@ def test_realtime_session_gracefully_degrades_when_mermaid_generation_errors(
     drop_runtime(session_id)
     snapshot = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/snapshot")
     assert snapshot.status_code == 200
-    assert snapshot.json()["pipeline"]["mermaid_state"]["render_ok"] is False
-    assert "tls settings missing" in snapshot.json()["pipeline"]["mermaid_state"]["error_message"]
+    assert snapshot.json()["pipeline"]["planner_state"]["status"] == "error"
+    assert "tls settings missing" in snapshot.json()["pipeline"]["planner_state"]["error_message"]
+    assert snapshot.json()["pipeline"]["mermaid_state"]["render_ok"] is True
+
+
+def test_legacy_llm_runtime_session_remains_writable(
+    admin_client: TestClient,
+    session_factory,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._decide_gate",
+        lambda self, db, obj, pending_turns, force_emit=False: GateDecision(
+            action="EMIT_UPDATE",
+            reason="legacy mapped",
+            confidence=0.9,
+            metadata={"provider": "legacy-llm", "model_name": "legacy-model", "latency_ms": 4.0},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._plan_update",
+        lambda self, db, obj, pending_turns: PlannerDecision(
+            delta_ops=[{"op": "add_node", "node_id": "Legacy", "id": "Legacy", "label": "Legacy"}],
+            notes="legacy graph",
+            metadata={"provider": "legacy-llm", "model_name": "legacy-model", "latency_ms": 6.0},
+        ),
+    )
+
+    with session_factory() as db:
+        session = RealtimeSession(
+            title="legacy session",
+            status="active",
+            config_snapshot={
+                "runtime_options": {
+                    "llm_profile_id": "legacy-llm",
+                    "llm_model": "legacy-model",
+                }
+            },
+            summary_json={},
+            pipeline_payload={"meta": {}, "summary": {}, "events": []},
+            evaluation_payload={},
+        )
+        db.add(session)
+        db.commit()
+        session_id = session.id
+
+    chunk = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/chunks",
+        json={"timestamp_ms": 0, "text": "Continue the old session.", "speaker": "expert", "is_final": True},
+    )
+    assert chunk.status_code == 200
+    assert chunk.json()["pipeline"]["graph_state"]["update_index"] == 1
+    assert chunk.json()["pipeline"]["planner_state"]["provider"] == "legacy-llm"
+
+
+def test_realtime_session_uses_requested_diagram_type_and_preserves_groups(
+    admin_client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._decide_gate",
+        lambda self, db, obj, pending_turns, force_emit=False: GateDecision(
+            action="EMIT_UPDATE",
+            reason="enough structure",
+            confidence=0.95,
+            metadata={"provider": "test-gate", "model_name": "test-gate-model", "latency_ms": 2.0},
+        ),
+    )
+
+    def _plan_sequence(self, db, obj, pending_turns):
+        return PlannerDecision(
+            target_graph_ir=GraphIR(
+                graph_id=self.session_id,
+                diagram_type="sequence",
+                nodes=[
+                    GraphNode(id="User", label="User", parent="actors"),
+                    GraphNode(id="API", label="API", parent="actors"),
+                ],
+                edges=[],
+                groups=[GraphGroup(id="actors", label="Actors", member_ids=["User", "API"])],
+            ),
+            notes="sequence graph",
+            metadata={"provider": "test-planner", "model_name": "test-planner-model", "latency_ms": 8.0},
+        )
+
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._plan_update",
+        _plan_sequence,
+    )
+
+    created = admin_client.post(
+        "/api/v1/realtime/sessions",
+        json={
+            "title": "sequence session",
+            "diagram_type": "sequence",
+            "gate_profile_id": "test-gate",
+            "gate_model": "test-gate-model",
+            "planner_profile_id": "test-planner",
+            "planner_model": "test-planner-model",
+        },
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    chunk = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/chunks",
+        json={"timestamp_ms": 0, "text": "User calls API.", "speaker": "expert", "is_final": True},
+    )
+    assert chunk.status_code == 200
+    pipeline = chunk.json()["pipeline"]
+    assert pipeline["graph_state"]["diagram_type"] == "sequence"
+    assert pipeline["mermaid_state"]["code"].splitlines()[0] == "sequenceDiagram"
+    assert pipeline["renderer_state"]["groups"][0]["id"] == "actors"
 
 
 def test_runtime_options_can_be_saved_from_admin_ui(admin_client: TestClient) -> None:
     response = admin_client.put(
         "/api/v1/catalog/runtime-options/admin",
         json={
-            "llm_profiles": [
+            "gate_profiles": [
                 {
-                    "id": "openai-main",
-                    "label": "OpenAI Main",
+                    "id": "openai-gate",
+                    "label": "OpenAI Gate",
+                    "provider_kind": "openai_compatible",
+                    "endpoint": "https://api.openai.com/v1/chat/completions",
+                    "models": ["gpt-4.1-mini", "gpt-4.1"],
+                    "default_model": "gpt-4.1-mini",
+                    "api_key": "test-openai-key",
+                    "api_key_env": "",
+                }
+            ],
+            "planner_profiles": [
+                {
+                    "id": "openai-planner",
+                    "label": "OpenAI Planner",
                     "provider_kind": "openai_compatible",
                     "endpoint": "https://api.openai.com/v1/chat/completions",
                     "models": ["gpt-4.1-mini", "gpt-4.1"],
@@ -277,30 +773,39 @@ def test_runtime_options_can_be_saved_from_admin_ui(admin_client: TestClient) ->
             ],
             "stt_profiles": [
                 {
-                    "id": "openai-stt",
-                    "label": "OpenAI STT",
-                    "provider_kind": "openai_compatible",
-                    "endpoint": "https://api.openai.com/v1/audio/transcriptions",
-                    "models": ["gpt-4o-mini-transcribe"],
-                    "default_model": "gpt-4o-mini-transcribe",
-                    "api_key": "test-openai-key",
+                    "id": "xfyun-stt",
+                    "label": "XFYun STT",
+                    "provider_kind": "xfyun_asr",
+                    "endpoint": "wss://iat-api.xfyun.cn/v2/iat",
+                    "models": ["iat", "xfime-mianqie"],
+                    "default_model": "iat",
+                    "app_id": "xfyun-app",
+                    "api_key": "test-xfyun-key",
+                    "api_secret": "test-xfyun-secret",
                     "api_key_env": "",
+                    "api_secret_env": "",
                 }
             ],
         },
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["llm_profiles"][0]["endpoint"] == "https://api.openai.com/v1/chat/completions"
-    assert payload["llm_profiles"][0]["api_key"] == "test-openai-key"
+    assert payload["gate_profiles"][0]["endpoint"] == "https://api.openai.com/v1/chat/completions"
+    assert payload["gate_profiles"][0]["api_key"] == "test-openai-key"
+    assert payload["planner_profiles"][0]["id"] == "openai-planner"
+    assert payload["stt_profiles"][0]["provider_kind"] == "xfyun_asr"
+    assert payload["stt_profiles"][0]["app_id"] == "xfyun-app"
 
     admin_view = admin_client.get("/api/v1/catalog/runtime-options/admin")
     assert admin_view.status_code == 200
-    assert admin_view.json()["llm_profiles"][0]["id"] == "openai-main"
+    assert admin_view.json()["gate_profiles"][0]["id"] == "openai-gate"
+    assert admin_view.json()["planner_profiles"][0]["id"] == "openai-planner"
+    assert admin_view.json()["stt_profiles"][0]["endpoint"] == "wss://iat-api.xfyun.cn/v2/iat"
 
     public_view = admin_client.get("/api/v1/catalog/runtime-options")
     assert public_view.status_code == 200
-    assert public_view.json()["llm_profiles"][0]["id"] == "openai-main"
+    assert public_view.json()["gate_profiles"][0]["id"] == "openai-gate"
+    assert public_view.json()["planner_profiles"][0]["id"] == "openai-planner"
     assert "api_key" not in public_view.text
 
 
@@ -327,6 +832,21 @@ def test_runtime_model_probe_endpoint(admin_client: TestClient, monkeypatch) -> 
     assert payload["ok"] is True
     assert payload["models_endpoint"] == "https://api.openai.com/v1/models"
     assert payload["models"] == ["gpt-4.1", "gpt-4.1-mini"]
+
+
+def test_runtime_model_probe_endpoint_for_xfyun_stt(admin_client: TestClient) -> None:
+    response = admin_client.post(
+        "/api/v1/catalog/runtime-options/admin/probe-models",
+        json={
+            "endpoint": "wss://iat-api.xfyun.cn/v2/iat",
+            "provider_kind": "xfyun_asr",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["models_endpoint"] == "wss://iat-api.xfyun.cn/v2/iat"
+    assert payload["models"] == ["iat", "xfime-mianqie"]
 
 
 def test_study_participant_workflow_records_submission_survey_and_exports(
