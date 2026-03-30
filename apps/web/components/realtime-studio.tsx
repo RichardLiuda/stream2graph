@@ -1657,7 +1657,7 @@ export function RealtimeStudio() {
         >
           <div className="soft-enter soft-enter-delay-1 flex min-h-0 min-w-0 flex-1 flex-col">
             <Tabs.Root value={stageTab} onValueChange={setStageTab} className="flex min-h-0 flex-1 flex-col">
-            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-violet-200/50 bg-[linear-gradient(180deg,rgba(242,240,255,0.94),rgba(226,222,250,0.82))] p-0 shadow-[0_18px_46px_rgba(36,80,198,0.08)] backdrop-blur-md">
+            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-white/12 bg-[linear-gradient(180deg,rgba(15,23,42,0.55),rgba(77,124,255,0.10))] p-0 shadow-[0_18px_46px_rgba(0,0,0,0.32)] backdrop-blur-md">
               <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-violet-200/50 px-4 pb-2 pt-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <Tabs.List className="glass-panel inline-flex w-fit min-w-0 max-w-full shrink-0 flex-wrap gap-1.5 self-start rounded-full border border-violet-200/50 p-1.5 sm:gap-2">

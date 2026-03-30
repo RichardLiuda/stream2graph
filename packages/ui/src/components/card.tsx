@@ -20,7 +20,7 @@ export function Card({ className, children, ...props }: PropsWithChildren<HTMLAt
     >
       <div
         className={cn(
-          "surface-panel flex h-full min-h-0 flex-col rounded-[30px] border border-violet-200/50 p-6 shadow-[0_20px_48px_rgba(91,64,180,0.12)] transition-[transform,box-shadow,border-color,background-color] duration-300 md:p-7",
+          "flex h-full min-h-0 flex-col rounded-[30px] border !border-white/25 !bg-white/[0.03] text-white/90 backdrop-blur-md p-6 !shadow-[0_28px_80px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(143,212,245,0.22)] !ring-1 !ring-[#8fd4f5]/25 !ring-inset transition-[transform,box-shadow,border-color,background-color,ring-color] duration-300 hover:!border-white/12 hover:!shadow-none hover:!ring-0 hover:!ring-inset md:p-7",
           className,
         )}
         {...props}

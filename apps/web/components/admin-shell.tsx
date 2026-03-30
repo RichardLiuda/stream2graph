@@ -80,7 +80,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             : "pointer-events-none -translate-x-full"
         }`}
       >
-        <Card className="m-0 flex h-full w-full flex-col overflow-hidden rounded-none border-y-0 border-l-0 border-r border-white/60 p-3 shadow-[inset_1px_0_0_rgba(255,255,255,0.35)] sm:my-4 sm:ml-4 sm:h-[calc(100vh-2rem)] sm:rounded-[28px] sm:border sm:ring-1 sm:ring-white/25">
+        <Card className="m-0 flex h-full w-full flex-col overflow-hidden rounded-none border-y-0 border-l-0 border-r border-white/12 p-3 shadow-none sm:my-4 sm:ml-4 sm:h-[calc(100vh-2rem)] sm:rounded-[28px] sm:border !ring-0">
           <div className="flex shrink-0 items-center gap-2 pb-3">
             <Button
               type="button"

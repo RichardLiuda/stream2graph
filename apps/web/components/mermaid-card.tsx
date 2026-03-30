@@ -344,11 +344,11 @@ function MermaidCardBody({
           {svg ? (
             <div dangerouslySetInnerHTML={{ __html: svg }} />
           ) : (
-            <div className="flex min-h-[220px] items-center justify-center text-sm text-slate-500">等待 Mermaid 内容...</div>
+          <div className="flex min-h-[220px] items-center justify-center text-sm text-slate-200">等待 Mermaid 内容...</div>
           )}
         </div>
         {!embedded && (provider || model || updatedAt) ? (
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-200">
             {updatedAt ? <span>Updated at: {updatedAt}</span> : null}
             {compileOk === false ? (
               <Tooltip.Provider delayDuration={150}>
@@ -368,7 +368,7 @@ function MermaidCardBody({
           </div>
         ) : null}
         {embedded && compileOk === false ? (
-          <div className="mt-4 text-xs text-slate-500">
+          <div className="mt-4 text-xs text-slate-200">
             <Tooltip.Provider delayDuration={150}>
               <Tooltip.Root>
                 <Tooltip.Trigger asChild>
@@ -395,7 +395,7 @@ function MermaidCardBody({
     <Card className="overflow-hidden p-0">
       <div className="border-b border-white/70 px-6 py-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-slate-900">{title}</div>
+          <div className="text-sm font-semibold text-white/90">{title}</div>
           <div className="flex max-w-[min(100%,720px)] flex-wrap items-center justify-end gap-1.5">
             {provider ? <Badge>{provider}</Badge> : null}
             {model ? <Badge>{model}</Badge> : null}
