@@ -13,7 +13,7 @@ Require-File $script:VenvUvicorn
 Require-File (Join-Path $script:RootDir "package.json")
 
 Ensure-Postgres
-if ((Get-S2GFlag -Name "S2G_START_DB" -Default "1") -or (Test-TcpPort -Host "127.0.0.1" -Port 5432)) {
+if ((Get-S2GFlag -Name "S2G_START_DB" -Default "1") -or (Test-TcpPort -Hostname "127.0.0.1" -Port 5432)) {
   Invoke-S2GMigrations
 }
 

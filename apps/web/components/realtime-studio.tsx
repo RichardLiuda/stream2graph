@@ -299,6 +299,11 @@ export function RealtimeStudio() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
+  useEffect(() => {
+    if (!notice) return;
+    const t = window.setTimeout(() => setNotice(null), 3500);
+    return () => window.clearTimeout(t);
+  }, [notice]);
   /** @description 客户端挂载后再 portal，避免 SSR 访问 `document` */
   const [detailDrawerPortalReady, setDetailDrawerPortalReady] = useState(false);
   /** @description 主舞台 Tab，用于顶栏与「主图」徽章联动 */
@@ -430,6 +435,15 @@ export function RealtimeStudio() {
   const selectedLlmProfile = runtimeOptions.data?.llm_profiles.find((item) => item.id === llmProfileId) ?? null;
   const selectedSttProfile = runtimeOptions.data?.stt_profiles.find((item) => item.id === sttProfileId) ?? null;
   const effectiveError = error ?? machineError;
+
+  useEffect(() => {
+    if (!effectiveError) return;
+    const t = window.setTimeout(() => {
+      setError(null);
+      studioSend({ type: "error.clear" });
+    }, 3500);
+    return () => window.clearTimeout(t);
+  }, [effectiveError, studioSend]);
 
   useEffect(() => {
     if (!inputOptions.some((item) => item.source === selectedInputSource)) {
@@ -1340,38 +1354,67 @@ export function RealtimeStudio() {
     ];
   }, [snapshot?.evaluation?.metrics]);
 
-  /** @description 主舞台顶栏：CAP/STT/LLM/MER 步骤徽章（绿=可用/正常，红=异常） */
+  /** @description 主舞台顶栏：CAP/STT/LLM/MER 步骤徽章（4 色：空闲/进行中/成功/失败） */
   const pipelineStages = useMemo(() => {
-    const sttOk = sttStatus !== "error";
-    const llmOk = llmStatus !== "error";
-    const merOk = llmStatus !== "error";
+    const mapBackendTone = (status: BackendStatus) => {
+      if (status === "working") return "working";
+      if (status === "success") return "success";
+      if (status === "error") return "error";
+      return "idle";
+    };
+
+    // CAP 本身没有 success/error，由后续转写状态推断结果；capturing/uploading 期间视为进行中。
+    const capTone =
+      captureStatus === "idle"
+        ? sttStatus === "success"
+          ? "success"
+          : sttStatus === "error"
+            ? "error"
+            : "idle"
+        : "working";
+
+    const sttTone = mapBackendTone(sttStatus);
+    const llmTone = mapBackendTone(llmStatus);
+
+    // MER：优先用 mermaid_state 的 compile/error 信号定色；没有信号时用 llmStatus/更新时间兜底。
+    let merTone: "idle" | "working" | "success" | "error" = "idle";
+    if (mermaidState?.error_message) {
+      merTone = "error";
+    } else if (typeof mermaidState?.compile_ok === "boolean") {
+      merTone = mermaidState.compile_ok ? "success" : "error";
+    } else if (llmStatus === "working") {
+      merTone = "working";
+    } else if (lastMermaidUpdatedAt) {
+      merTone = "success";
+    }
+
     return [
       {
         abbr: "CAP",
         label: "采集",
         value: captureStatusLabel(captureStatus),
-        ok: true,
+        tone: capTone,
         help: "是否在录音或上传声音。",
       },
       {
         abbr: "STT",
         label: "转写",
         value: backendStatusLabel(sttStatus),
-        ok: sttOk,
+        tone: sttTone,
         help: `转写方式：${backendLabel(selectedRecognitionBackend)}`,
       },
       {
         abbr: "LLM",
         label: "对话",
         value: backendStatusLabel(llmStatus),
-        ok: llmOk,
+        tone: llmTone,
         help: selectedLlmProfile ? `${selectedLlmProfile.label} / ${llmModel || "未选择模型"}` : "尚未配置对话模型。",
       },
       {
         abbr: "MER",
         label: "出图",
         value: lastMermaidUpdatedAt ? "已更新" : "等待中",
-        ok: merOk,
+        tone: merTone,
         help: lastMermaidUpdatedAt || "还没有生成流程图。",
       },
     ];
@@ -1380,6 +1423,8 @@ export function RealtimeStudio() {
     sttStatus,
     llmStatus,
     lastMermaidUpdatedAt,
+    mermaidState?.error_message,
+    mermaidState?.compile_ok,
     selectedRecognitionBackend,
     selectedLlmProfile,
     llmModel,
@@ -1444,14 +1489,18 @@ export function RealtimeStudio() {
   const canStopStageCapture = selectedInputSource !== "transcript" && canStopCapture;
 
   return (
-    <div className="space-y-4">
+    <div>
       {effectiveError ? (
-        <div className="rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="soft-enter fixed left-1/2 top-16 z-[19000] w-[min(720px,92vw)] -translate-x-1/2 rounded-[24px] border border-red-200 bg-red-50/95 px-4 py-3 text-sm text-red-700">
           {effectiveError}
         </div>
       ) : null}
       {notice ? (
-        <div className={`rounded-[24px] border px-4 py-3 text-sm ${getNoticeClassName(notice.tone)}`}>{notice.text}</div>
+        <div
+          className={`soft-enter fixed left-1/2 top-4 z-[20000] w-[min(720px,92vw)] -translate-x-1/2 rounded-[24px] border px-4 py-3 text-sm ${getNoticeClassName(notice.tone)}`}
+        >
+          {notice.text}
+        </div>
       ) : null}
 
       <div className="space-y-4">
@@ -1638,7 +1687,15 @@ export function RealtimeStudio() {
                           className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/55 bg-violet-50/95 px-2 py-1 text-[11px] font-medium text-slate-600 shadow-[0_1px_3px_rgba(91,64,180,0.08)] transition hover:shadow-[0_2px_6px_rgba(91,64,180,0.1)]"
                         >
                           <span
-                            className={`h-2 w-2 shrink-0 rounded-full ${step.ok ? "bg-emerald-500" : "bg-red-500"}`}
+                            className={`h-2 w-2 shrink-0 rounded-full ${
+                              step.tone === "working"
+                                ? "bg-sky-500"
+                                : step.tone === "success"
+                                  ? "bg-emerald-500"
+                                  : step.tone === "error"
+                                    ? "bg-red-500"
+                                    : "bg-slate-300"
+                            }`}
                             aria-hidden
                           />
                           {step.label}
@@ -1647,7 +1704,7 @@ export function RealtimeStudio() {
                       <Tooltip.Portal>
                         <Tooltip.Content
                           sideOffset={6}
-                          className="max-w-[280px] rounded-xl border border-violet-200/60 bg-violet-50 px-3 py-2 text-xs leading-relaxed text-slate-700 shadow-lg"
+                          className="max-w-[280px] rounded-xl border border-violet-200/60 bg-violet-50 px-3 py-2 text-xs leading-relaxed text-slate-700 shadow-lg z-[9999]"
                         >
                           <div className="font-semibold text-slate-900">
                             {step.label}
