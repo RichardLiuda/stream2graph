@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   BarChart3,
   BookOpenText,
   ChevronLeft,
-  LogOut,
   Menu,
   RadioTower,
   Rows4,
@@ -15,9 +14,6 @@ import {
 import { useEffect, useState } from "react";
 
 import { Button, Card } from "@stream2graph/ui";
-
-import { clearAuthPending } from "@/lib/auth-session";
-import { api } from "@/lib/api";
 
 const navItems = [
   { href: "/app/realtime", label: "实时工作", icon: RadioTower },
@@ -30,7 +26,6 @@ const navItems = [
 /** @description 已登录 /app 区工作区侧滑导航壳层 */
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const currentItem = navItems.find((item) => pathname === item.href);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -54,9 +49,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         aria-expanded={drawerOpen}
         aria-controls="workspace-nav-drawer"
         aria-label="打开工作区导航"
-        className={`fixed left-4 top-4 z-[105] flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/75 bg-white/[0.92] text-slate-700 shadow-[0_8px_28px_rgba(185,167,211,0.22)] backdrop-blur-md transition duration-200 hover:bg-white hover:text-slate-900 active:scale-[0.96] focus-visible:outline focus-visible:ring-4 focus-visible:ring-[rgba(185,167,211,0.28)] ${
-          drawerOpen ? "pointer-events-none opacity-0" : "opacity-100"
-        }`}
+        className={`group fixed left-4 top-4 z-[105] flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white shadow-[0_12px_40px_rgba(15,23,42,0.55)] backdrop-blur-xl transition duration-300 ease-out hover:bg-white/16 hover:border-white/40 hover:text-white active:scale-[0.94] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(185,167,211,0.4)] ${
+          drawerOpen ? "pointer-events-none scale-[0.96] opacity-0" : "opacity-100 hover:scale-[1.05] hover:-translate-y-[1px]"
+        } before:pointer-events-none before:absolute before:-z-10 before:h-16 before:w-16 before:rounded-full before:bg-[radial-gradient(circle,rgba(167,139,250,0.55),transparent_62%)] before:opacity-40 before:blur-[1px] before:transition before:duration-700 before:ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:before:opacity-70`}
         onClick={() => setDrawerOpen(true)}
       >
         <Menu className="h-5 w-5" strokeWidth={2} />
@@ -141,20 +136,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 })}
               </div>
             </div>
-            <div className="mt-5 pb-1">
-              <Button
-                variant="secondary"
-                className="w-full justify-center py-3 transition active:scale-[0.99]"
-                onClick={async () => {
-                  await api.logout();
-                  clearAuthPending();
-                  router.replace("/login");
-                }}
-              >
-                <LogOut className="h-4 w-4" />
-                退出管理员
-              </Button>
-            </div>
+            <div className="mt-5 pb-1 text-xs text-white/60">当前环境为公开访问模式，无需登录。</div>
           </div>
         </Card>
       </aside>

@@ -6,9 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import DatasetVersion
-from app.routers.auth import get_current_admin
 from app.schemas import (
-    AdminIdentity,
     DatasetSplitSummary,
     DatasetVersionSummary,
     RuntimeOptionProfile,
@@ -46,7 +44,6 @@ def get_runtime_options(db: Session = Depends(get_db)) -> RuntimeOptionsResponse
 @router.get("/runtime-options/admin", response_model=RuntimeOptionsAdminResponse)
 def get_runtime_options_admin(
     db: Session = Depends(get_db),
-    _admin: AdminIdentity = Depends(get_current_admin),
 ) -> RuntimeOptionsAdminResponse:
     payload = list_persisted_runtime_options(db, include_secrets=True)
     return RuntimeOptionsAdminResponse(
@@ -60,7 +57,6 @@ def get_runtime_options_admin(
 def save_runtime_options_admin(
     payload: RuntimeOptionsAdminUpdateRequest,
     db: Session = Depends(get_db),
-    _admin: AdminIdentity = Depends(get_current_admin),
 ) -> RuntimeOptionsAdminResponse:
     saved = save_runtime_options(db, payload.model_dump())
     db.commit()
@@ -74,7 +70,6 @@ def save_runtime_options_admin(
 @router.post("/runtime-options/admin/probe-models", response_model=RuntimeModelProbeResponse)
 def probe_runtime_models_admin(
     payload: RuntimeModelProbeRequest,
-    _admin: AdminIdentity = Depends(get_current_admin),
 ) -> RuntimeModelProbeResponse:
     try:
         result = probe_runtime_models(

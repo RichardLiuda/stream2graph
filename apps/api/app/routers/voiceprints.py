@@ -4,9 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.routers.auth import get_current_admin
 from app.schemas import (
-    AdminIdentity,
     VoiceprintFeatureCreateRequest,
     VoiceprintFeatureSummary,
     VoiceprintGroupSummary,
@@ -22,7 +20,7 @@ from app.services.voiceprints import (
 )
 
 
-router = APIRouter(prefix="/voiceprints", tags=["voiceprints"], dependencies=[Depends(get_current_admin)])
+router = APIRouter(prefix="/voiceprints", tags=["voiceprints"])
 
 
 def _resolve_stt_profile(db: Session, stt_profile_id: str) -> dict:
@@ -66,7 +64,6 @@ def _group_summary(row) -> VoiceprintGroupSummary:
 def get_voiceprint_features(
     stt_profile_id: str,
     db: Session = Depends(get_db),
-    _admin: AdminIdentity = Depends(get_current_admin),
 ) -> list[VoiceprintFeatureSummary]:
     _resolve_stt_profile(db, stt_profile_id)
     return [_feature_summary(row) for row in list_voiceprint_features(db, stt_profile_id=stt_profile_id)]
@@ -77,7 +74,6 @@ def create_feature(
     stt_profile_id: str,
     payload: VoiceprintFeatureCreateRequest,
     db: Session = Depends(get_db),
-    _admin: AdminIdentity = Depends(get_current_admin),
 ) -> VoiceprintFeatureSummary:
     profile = _resolve_stt_profile(db, stt_profile_id)
     try:
@@ -102,7 +98,6 @@ def remove_feature(
     stt_profile_id: str,
     feature_id: str,
     db: Session = Depends(get_db),
-    _admin: AdminIdentity = Depends(get_current_admin),
 ) -> dict[str, bool]:
     profile = _resolve_stt_profile(db, stt_profile_id)
     try:
@@ -125,7 +120,6 @@ def sync_group(
     stt_profile_id: str,
     payload: VoiceprintGroupSyncRequest,
     db: Session = Depends(get_db),
-    _admin: AdminIdentity = Depends(get_current_admin),
 ) -> VoiceprintGroupSyncResponse:
     profile = _resolve_stt_profile(db, stt_profile_id)
     try:

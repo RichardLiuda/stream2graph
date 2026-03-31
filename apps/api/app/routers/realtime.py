@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.db import get_db, utc_now
 from app.legacy import evaluate_payload
 from app.models import RealtimeChunk, RealtimeSession
-from app.routers.auth import get_current_admin
 from app.schemas import (
     RealtimeAudioTranscriptionRequest,
     RealtimeAudioTranscriptionResponse,
@@ -34,7 +33,7 @@ from app.services.runtime_sessions import (
 from app.services.voiceprints import blind_recognize_speaker
 
 
-router = APIRouter(prefix="/realtime/sessions", tags=["realtime"], dependencies=[Depends(get_current_admin)])
+router = APIRouter(prefix="/realtime/sessions", tags=["realtime"])
 logger = logging.getLogger(__name__)
 
 

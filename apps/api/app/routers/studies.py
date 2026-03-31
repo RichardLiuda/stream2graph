@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.routers.auth import get_current_admin
 from app.schemas import (
     StudyDraftUpdateRequest,
     StudyEventCreateRequest,
@@ -72,7 +71,7 @@ def _session_schema(session, task) -> StudySessionSchema:
 
 
 @router.get("/tasks", response_model=list[StudyTaskSchema])
-def get_tasks(db: Session = Depends(get_db), _: object = Depends(get_current_admin)) -> list[StudyTaskSchema]:
+def get_tasks(db: Session = Depends(get_db)) -> list[StudyTaskSchema]:
     return [_task_schema(item) for item in list_tasks(db)]
 
 
@@ -80,7 +79,6 @@ def get_tasks(db: Session = Depends(get_db), _: object = Depends(get_current_adm
 def create_task_route(
     payload: StudyTaskCreateRequest,
     db: Session = Depends(get_db),
-    _: object = Depends(get_current_admin),
 ) -> StudyTaskSchema:
     task = create_task(
         db,
@@ -101,7 +99,6 @@ def create_session_for_task(
     task_id: str,
     payload: StudySessionCreateRequest,
     db: Session = Depends(get_db),
-    _: object = Depends(get_current_admin),
 ) -> StudySessionSchema:
     try:
         task = get_task_or_404(db, task_id)
@@ -119,7 +116,7 @@ def create_session_for_task(
 
 
 @router.get("/sessions", response_model=list[StudySessionSchema])
-def get_sessions(db: Session = Depends(get_db), _: object = Depends(get_current_admin)) -> list[StudySessionSchema]:
+def get_sessions(db: Session = Depends(get_db)) -> list[StudySessionSchema]:
     rows = []
     for item in list_study_sessions(db):
         task = get_task_or_404(db, item.task_id)

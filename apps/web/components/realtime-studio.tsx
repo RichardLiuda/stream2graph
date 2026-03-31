@@ -1717,7 +1717,13 @@ export function RealtimeStudio() {
 
       <div className="flex h-full flex-col overflow-hidden space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="pl-8 text-[2rem] font-semibold tracking-[-0.04em] text-violet-200">实时工作台</div>
+          <div className="flex items-center gap-3 pl-8">
+            <div className="text-[2rem] font-semibold tracking-[-0.04em] text-violet-200">实时工作台</div>
+            <div className="hidden rounded-full border border-violet-200/45 bg-violet-100/25 px-3 py-1 text-[11px] text-violet-50/90 md:inline-flex md:items-center md:gap-2">
+              <span className="inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.85)]" />
+              <span>开麦或发送 Transcript 后，这里会自动刷新主图与结构图。</span>
+            </div>
+          </div>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
             {stageTab === "mermaid" ? (
               <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
@@ -1757,7 +1763,7 @@ export function RealtimeStudio() {
             <Button
               type="button"
               variant="secondary"
-              className="shrink-0 gap-2 text-sm"
+              className="group relative shrink-0 gap-2 overflow-visible text-sm transition duration-300 ease-out hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.98] before:pointer-events-none before:absolute before:-inset-2 before:-z-10 before:rounded-[22px] before:bg-[radial-gradient(70%_70%_at_50%_50%,rgba(167,139,250,0.45),transparent_70%)] before:opacity-0 before:blur-[1px] before:transition before:duration-700 before:ease-[cubic-bezier(0.22,1,0.36,1)] hover:before:opacity-70"
               onClick={() => setDetailDrawerOpen(true)}
             >
               <PanelRight className="h-4 w-4" />
@@ -1895,7 +1901,7 @@ export function RealtimeStudio() {
         >
           <div className="soft-enter soft-enter-delay-1 flex min-h-0 min-w-0 flex-1 flex-col">
             <Tabs.Root value={stageTab} onValueChange={setStageTab} className="flex min-h-0 flex-1 flex-col">
-            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-white/12 bg-[linear-gradient(180deg,rgba(15,23,42,0.55),rgba(185,167,211,0.10))] p-0 shadow-[0_18px_46px_rgba(0,0,0,0.32)] backdrop-blur-md max-h-[calc(100%-46px)]">
+            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-slate-400/20 bg-[linear-gradient(180deg,rgba(15,23,42,0.55),rgba(185,167,211,0.10))] p-0 shadow-[0_18px_46px_rgba(0,0,0,0.32)] backdrop-blur-md max-h-[calc(100%-46px)]">
               <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-2 pt-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <Tabs.List className="glass-panel inline-flex w-fit min-w-0 max-w-full shrink-0 flex-wrap gap-1.5 self-start rounded-full border border-violet-200/50 p-1.5 sm:gap-2">
@@ -1998,7 +2004,7 @@ export function RealtimeStudio() {
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
             <Tabs.Content value="mermaid" className="h-full min-h-0 outline-none">
               <div className="flex h-full min-h-0 px-4">
-                <Card className="flex-1 rounded-[30px] border border-violet-200/50 bg-violet-100/28 p-2.5">
+                <Card className="flex-1 rounded-[30px] border border-slate-400/20 bg-violet-100/28 p-2.5">
                   <div className="h-full min-h-0 overflow-hidden rounded-[24px]">
                     <MermaidCard
                       title=""
@@ -2020,13 +2026,19 @@ export function RealtimeStudio() {
             </Tabs.Content>
 
             <Tabs.Content value="structure">
-              <GraphStage
-                embedded
-                title="结构图"
-                nodes={rendererState.nodes || []}
-                edges={rendererState.edges || []}
-                groups={rendererGroups}
-              />
+              <div className="flex h-full min-h-0 px-4">
+                <Card className="flex-1 rounded-[30px] border border-slate-400/20 bg-violet-100/28 p-2.5">
+                  <div className="h-full min-h-0 overflow-hidden rounded-[24px]">
+                    <GraphStage
+                      embedded
+                      title="结构图"
+                      nodes={rendererState.nodes || []}
+                      edges={rendererState.edges || []}
+                      groups={rendererGroups}
+                    />
+                  </div>
+                </Card>
+              </div>
             </Tabs.Content>
 
             <Tabs.Content value="events" className="h-full min-h-0">

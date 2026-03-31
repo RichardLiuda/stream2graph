@@ -342,7 +342,7 @@ function MermaidCardBody({
           </div>
         ) : null}
         <div
-          className={`overflow-auto rounded-[24px] border border-white/75 bg-white/[0.84] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ${
+          className={`overflow-auto rounded-[24px] border border-slate-400/20 bg-white/[0.84] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ${
             embedded ? "min-h-0 flex-1" : ""
           }`}
           style={embedded ? undefined : { minHeight: height }}
@@ -402,7 +402,7 @@ function MermaidCardBody({
 
   return (
     <Card className="overflow-hidden p-0">
-      <div className="border-b border-white/70 px-6 py-5">
+      <div className="border-b border-slate-400/20 px-6 py-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm font-semibold text-white/90">{title}</div>
           <div className="flex max-w-[min(100%,720px)] flex-wrap items-center justify-end gap-1.5">
