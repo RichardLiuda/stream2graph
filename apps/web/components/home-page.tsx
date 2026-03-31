@@ -126,14 +126,27 @@ export function HomePage() {
           aria-hidden
         />
         <div className="relative px-6 py-12 text-center text-white md:px-10 md:py-14">
-          <Badge className="border-white/20 bg-white/8 text-white">Stream2Graph 正式平台</Badge>
-          <h1 className="mt-8 text-4xl font-semibold tracking-[-0.05em] md:text-6xl">Stream2Graph 正式平台</h1>
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-white/[0.82] md:text-lg">
-            面向实时成图演示、样本比较、用户研究与结果归档的统一入口。
-          </p>
-          <p className="mx-auto mt-4 max-w-2xl text-[13px] leading-7 text-white/65 md:text-sm">
-            ① 进入实时工作台 · ② 说话 / 推入 Transcript · ③ 一键生成结构图与评测报告。
-          </p>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-8 h-[340px] w-[min(980px,92vw)] -translate-x-1/2 rounded-[44px] bg-[radial-gradient(70%_65%_at_50%_18%,rgba(2,6,23,0.78),rgba(2,6,23,0.32)_52%,transparent_78%)] blur-[6px]"
+          />
+          <Badge className="border-white/22 bg-white/10 text-white/95 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur-md">
+            Stream2Graph 正式平台
+          </Badge>
+          <h1 className="mt-8 text-4xl font-semibold tracking-[-0.06em] text-white drop-shadow-[0_2px_18px_rgba(0,0,0,0.62)] md:text-6xl">
+            语流生图
+            <span className="ml-4 text-[0.42em] font-semibold tracking-[0.14em] text-violet-200/90 align-middle">
+              STREAM2GRAPH
+            </span>
+          </h1>
+          <div className="mx-auto mt-5 max-w-2xl rounded-[28px] border border-white/14 bg-black/28 px-5 py-4 text-left shadow-[0_18px_60px_rgba(0,0,0,0.55)] backdrop-blur-xl md:px-6 md:py-5">
+            <p className="text-sm leading-7 text-white/90 drop-shadow-[0_2px_12px_rgba(0,0,0,0.55)] md:text-base">
+              面向实时成图演示、样本比较、用户研究与结果归档的统一入口。
+            </p>
+            <p className="mt-3 text-xs leading-6 text-white/75 drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)] md:text-[13px]">
+              ① 进入实时工作台 · ② 说话 / 推入 Transcript · ③ 一键生成结构图与评测报告。
+            </p>
+          </div>
 
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             <Link href="/app/realtime">
