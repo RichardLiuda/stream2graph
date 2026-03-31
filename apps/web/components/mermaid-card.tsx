@@ -338,13 +338,16 @@ function MermaidCardBody({
           </div>
         ) : null}
         <div
-          className="overflow-auto rounded-[26px] border border-white/75 bg-white/[0.84] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
+          className="overflow-auto rounded-[24px] border border-white/75 bg-white/[0.84] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
           style={{ minHeight: height }}
         >
           {svg ? (
-            <div dangerouslySetInnerHTML={{ __html: svg }} />
+            <div
+              className="overflow-hidden rounded-[24px] [&_svg]:block [&_svg]:max-w-full [&_svg]:rounded-[24px]"
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
           ) : (
-          <div className="flex min-h-[220px] items-center justify-center text-sm text-slate-200">等待 Mermaid 内容...</div>
+          <div className="flex min-h-[220px] items-center justify-center text-sm text-slate-500">等待 Mermaid 内容...</div>
           )}
         </div>
         {!embedded && (provider || model || updatedAt) ? (

@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 
-import { Badge, Button, Card, Input, SectionHeading, Textarea } from "@stream2graph/ui";
+import { Badge, Button, Card, Input, Textarea } from "@stream2graph/ui";
 
 import { api, subscribeRun } from "@/lib/api";
 import { MermaidCard } from "@/components/mermaid-card";
@@ -101,11 +101,7 @@ export function SampleCompareWorkbench() {
 
   return (
     <div className="space-y-6">
-      <SectionHeading
-        eyebrow="Sample Compare"
-        title="静态样本浏览与对比"
-        description="明确展示当前数据集版本、split、样本内容与双模型预测结果。每次对比都会创建可追溯的 run_job。"
-      />
+      <div className="pl-8 text-[2rem] font-semibold tracking-[-0.04em] text-violet-200">静态样本浏览与对比</div>
 
       {runError ? (
         <div className="rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{runError}</div>
@@ -140,7 +136,7 @@ export function SampleCompareWorkbench() {
             <div className="space-y-3">
               <label className="text-sm font-medium text-slate-300">数据集版本</label>
               <select
-                className="h-12 w-full rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                className="h-12 w-full rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
                 value={datasetVersion}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setDatasetVersion(event.target.value)}
               >
@@ -154,7 +150,7 @@ export function SampleCompareWorkbench() {
             <div className="space-y-3">
               <label className="text-sm font-medium text-slate-300">Split</label>
               <select
-                className="h-12 w-full rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                className="h-12 w-full rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
                 value={split}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setSplit(event.target.value)}
               >
@@ -178,7 +174,7 @@ export function SampleCompareWorkbench() {
                 <button
                   key={item.sample_id}
                   className={`lift-hover w-full rounded-[22px] border px-4 py-3.5 text-left ${
-                    item.sample_id === sampleId ? "border-[var(--accent)] bg-[rgba(77,124,255,0.08)]" : "border-white/70 bg-white/[0.64]"
+                    item.sample_id === sampleId ? "border-[var(--accent)] bg-[rgba(185,167,211,0.10)]" : "border-white/70 bg-white/[0.64]"
                   }`}
                   onClick={() => setSampleId(item.sample_id)}
                 >

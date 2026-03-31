@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight, Plus, RefreshCcw, Save, Settings2, Trash2 } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
-import { Badge, Button, Card, Input, SectionHeading, Textarea } from "@stream2graph/ui";
+import { Badge, Button, Card, Input, Textarea } from "@stream2graph/ui";
 
 import { api } from "@/lib/api";
 import { decodeAudioFileToVoiceprintPayload } from "@/lib/audio";
@@ -70,7 +70,7 @@ const ENDPOINT_ROUTE_OPTIONS: Record<
 };
 
 function selectClassName(disabled = false) {
-  return `h-12 w-full rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)] ${
+  return `h-12 w-full rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)] ${
     disabled ? "cursor-not-allowed opacity-55" : ""
   }`;
 }
@@ -550,19 +550,15 @@ export function PlatformSettings() {
 
   return (
     <div className="space-y-6">
-      <SectionHeading
-        eyebrow="Settings"
-        title="设置"
-        description="在这里配置服务端的 Gate、Planner、听写服务，以及本浏览器的默认偏好。"
-        actions={
-          <Link href="/app/realtime">
-            <Button variant="secondary">
-              返回实时工作
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Link>
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="pl-8 text-[2rem] font-semibold tracking-[-0.04em] text-violet-200">设置</div>
+        <Link href="/app/realtime">
+          <Button variant="secondary">
+            返回实时工作
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </Link>
+      </div>
 
       <Card className="soft-enter space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -598,16 +594,16 @@ export function PlatformSettings() {
           </div>
         ) : null}
         {probeFeedback ? (
-          <div className="rounded-[20px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+          <div className="rounded-[20px] border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
             {probeFeedback}
           </div>
         ) : null}
 
         <div className="grid gap-6 xl:grid-cols-2">
           {[
-            { kind: "gate" as const, title: "Gate Profiles", drafts: gateDrafts },
-            { kind: "planner" as const, title: "Planner Profiles", drafts: plannerDrafts },
-            { kind: "stt" as const, title: "STT Profiles", drafts: sttDrafts },
+            { kind: "gate" as const, title: "Gate 配置", drafts: gateDrafts },
+            { kind: "planner" as const, title: "Planner 配置", drafts: plannerDrafts },
+            { kind: "stt" as const, title: "听写服务配置", drafts: sttDrafts },
           ].map((group) => (
             <div key={group.kind} className="space-y-4 rounded-[24px] border border-white/70 bg-white/[0.52] p-4">
               <div className="flex items-center justify-between gap-3">

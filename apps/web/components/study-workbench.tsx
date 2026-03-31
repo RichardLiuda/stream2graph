@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Send, ShieldCheck } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 
-import { Badge, Button, Card, SectionHeading, Textarea } from "@stream2graph/ui";
+import { Badge, Button, Card, Textarea } from "@stream2graph/ui";
 
 import { api } from "@/lib/api";
 import { MermaidCard } from "@/components/mermaid-card";
@@ -94,12 +94,12 @@ export function StudyWorkbench({ participantCode }: { participantCode: string })
 
   return (
     <div className="mx-auto max-w-[1680px] px-4 py-6 md:px-6 md:py-8">
-      <SectionHeading
-        eyebrow="Study Task"
-        title={session.data?.task_title || "参与者任务"}
-        description={session.data?.task_description || "请根据材料完成 Mermaid 成图任务。"}
-        actions={<Badge>{statusBadge}</Badge>}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="pl-8 text-[2rem] font-semibold tracking-[-0.04em] text-violet-200">
+          {session.data?.task_title || "参与者任务"}
+        </div>
+        <Badge>{statusBadge}</Badge>
+      </div>
 
       {error ? (
         <div className="mt-5 rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
@@ -173,7 +173,7 @@ export function StudyWorkbench({ participantCode }: { participantCode: string })
                 <div key={label as string} className="space-y-2">
                   <label className="text-xs font-medium text-slate-400">{label as string}</label>
                   <select
-                    className="h-11 w-full rounded-[20px] border border-white/70 bg-white/[0.72] px-3 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                    className="h-11 w-full rounded-[20px] border border-white/70 bg-white/[0.72] px-3 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
                     value={value as string}
                     onChange={(event: ChangeEvent<HTMLSelectElement>) => (setter as (value: string) => void)(event.target.value)}
                   >

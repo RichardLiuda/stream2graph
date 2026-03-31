@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Plus, Users } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 
-import { Badge, Button, Card, Input, SectionHeading, StatCard, Textarea } from "@stream2graph/ui";
+import { Badge, Button, Card, Input, StatCard, Textarea } from "@stream2graph/ui";
 
 import { api, apiUrl } from "@/lib/api";
 
@@ -101,11 +101,7 @@ export function ReportsDashboard() {
 
   return (
     <div className="space-y-6">
-      <SectionHeading
-        eyebrow="Reports & Ops"
-        title="实验、用户研究与报告页"
-        description="这里汇总所有运行记录，并提供用户研究任务配置、participant code 发放和多格式导出。"
-      />
+      <div className="pl-8 text-[2rem] font-semibold tracking-[-0.04em] text-violet-200">实验、用户研究与报告页</div>
 
       {creationError ? (
         <div className="rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{creationError}</div>
@@ -208,7 +204,7 @@ export function ReportsDashboard() {
                 rows={4}
               />
               <select
-                className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
                 value={taskDataset}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskDataset(event.target.value)}
               >
@@ -220,7 +216,7 @@ export function ReportsDashboard() {
               </select>
               <div className="grid gap-3 md:grid-cols-2">
                 <select
-                  className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                  className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
                   value={taskSplit}
                   onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskSplit(event.target.value)}
                 >
@@ -231,7 +227,7 @@ export function ReportsDashboard() {
                   ))}
                 </select>
                 <select
-                  className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                  className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
                   value={taskSampleId}
                   onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskSampleId(event.target.value)}
                 >
@@ -258,7 +254,7 @@ export function ReportsDashboard() {
                 发放 Participant Code
               </div>
               <select
-                className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
                 value={selectedTaskId}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setSelectedTaskId(event.target.value)}
               >
@@ -275,7 +271,7 @@ export function ReportsDashboard() {
                 placeholder="participant id"
               />
               <select
-                className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
                 value={participantCondition}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setParticipantCondition(event.target.value)}
               >

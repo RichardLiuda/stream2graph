@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, Blocks, FlaskConical, Mic2, NotebookTabs } from "lucide-react";
 
-import { Badge, Button, Card, SectionHeading } from "@stream2graph/ui";
+import { Badge, Button, Card } from "@stream2graph/ui";
 
 const entryCards = [
   {
@@ -68,12 +68,7 @@ export function HomePage() {
       </section>
 
       <section id="modules" className="mt-10 space-y-6">
-        <SectionHeading
-          tone="onDark"
-          eyebrow="Navigation"
-          title="页面入口"
-          description="按你的使用目标直接进入对应页面。"
-        />
+        <div className="pl-8 text-[2rem] font-semibold tracking-[-0.04em] text-violet-200">页面入口</div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {entryCards.map((item) => {
