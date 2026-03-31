@@ -9,11 +9,8 @@ import { Badge, Button, Card, Input, Textarea } from "@stream2graph/ui";
 
 import { api } from "@/lib/api";
 import { decodeAudioFileToVoiceprintPayload } from "@/lib/audio";
-import {
-  loadRuntimePreferences,
-  resolveRuntimePreferences,
-  saveRuntimePreferences,
-} from "@/lib/runtime-preferences";
+import { loadRuntimePreferences, resolveRuntimePreferences, saveRuntimePreferences } from "@/lib/runtime-preferences";
+import { RealtimeDefaultConfig } from "@/components/realtime-default-config";
 
 type AdminRuntimeOptions = Awaited<ReturnType<typeof api.getAdminRuntimeOptions>>;
 type ProviderKind = "openai_compatible" | "xfyun_asr";
@@ -892,8 +889,20 @@ export function PlatformSettings() {
           ))}
         </div>
       </Card>
+      <RealtimeDefaultConfig
+        runtimeOptions={runtimeOptions.data}
+        datasetVersion={runtimeOptions.data?.datasets?.[0]?.slug || ""}
+        setDatasetVersion={() => undefined}
+        gateLabel={selectedGateProfile?.label || null}
+        gateModel={gateModel}
+        plannerLabel={selectedPlannerProfile?.label || null}
+        plannerModel={plannerModel}
+        sttLabel={selectedSttProfile?.label || null}
+        sttModel={sttModel}
+        diagramMode={diagramMode}
+      />
 
-      <Card className="soft-enter soft-enter-delay-1 space-y-4">
+      <Card className="soft-enter soft-enter-delay-2 space-y-4">
         <div className="flex items-center gap-3">
           <div className="glass-panel flex h-11 w-11 items-center justify-center rounded-[18px] border border-white/70 text-[var(--accent-strong)]">
             <Settings2 className="h-5 w-5" />

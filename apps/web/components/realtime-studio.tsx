@@ -314,6 +314,8 @@ export function RealtimeStudio() {
   const [detailDrawerPortalReady, setDetailDrawerPortalReady] = useState(false);
   /** @description 主舞台 Tab，用于顶栏与「主图」徽章联动 */
   const [stageTab, setStageTab] = useState("mermaid");
+  /** @description 工作台两页：第 1 页（输入来源 + 主图），第 2 页（会话与录音设置 + 默认设置） */
+  const [studioPage] = useState<1 | 2>(1);
   const [listening, setListening] = useState(false);
   const [audioContext, setAudioContext] = useState<ClientAudioContext | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -1699,7 +1701,7 @@ export function RealtimeStudio() {
   }
 
   return (
-    <div className="text-slate-100 selection:bg-white/20 selection:text-white">
+    <div className="text-slate-100 selection:bg-white/20 selection:text-white h-[100dvh] overflow-hidden">
       {effectiveError ? (
         <div className="soft-enter fixed left-1/2 top-16 z-[19000] w-[min(720px,92vw)] -translate-x-1/2 rounded-[24px] border border-red-200 bg-red-50/95 px-4 py-3 text-sm text-red-700">
           {effectiveError}
@@ -1713,7 +1715,7 @@ export function RealtimeStudio() {
         </div>
       ) : null}
 
-      <div className="space-y-4">
+      <div className="flex h-full flex-col overflow-hidden space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="pl-8 text-[2rem] font-semibold tracking-[-0.04em] text-violet-200">实时工作台</div>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
@@ -1763,8 +1765,9 @@ export function RealtimeStudio() {
             </Button>
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(240px,320px)_minmax(0,1fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
-        <Card className="soft-enter order-1 flex h-full min-h-0 min-w-0 flex-col space-y-3 overflow-hidden text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none">
+        <div className="flex-1 min-h-0 overflow-hidden pb-0 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(240px,320px)_minmax(0,1fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
+        {studioPage === 1 ? (
+          <Card className="soft-enter order-1 flex h-full min-h-0 min-w-0 flex-col space-y-3 overflow-hidden text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none max-h-[calc(100%-46px)]">
           <div className="shrink-0 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="text-sm font-semibold text-white/90">输入来源</label>
@@ -1874,10 +1877,16 @@ export function RealtimeStudio() {
               {activeCaptureSource ? "采集中刷新。" : "开始采集后显示音量。"}
             </p>
           </div>
-        </Card>
+          </Card>
+        ) : null}
 
-        <div className="order-3 flex min-h-0 min-w-0 flex-1 flex-col xl:col-start-2 xl:row-start-2 xl:min-h-0">
-        <ErrorBoundary
+        <div
+          className={`order-3 flex min-h-0 min-w-0 flex-1 flex-col xl:row-start-2 xl:min-h-0 ${
+            studioPage === 1 ? "xl:col-start-2" : "xl:col-start-1 xl:col-span-2"
+          }`}
+        >
+        {studioPage === 1 ? (
+          <ErrorBoundary
           fallbackRender={({ error: boundaryError }: FallbackProps) => (
             <Card className="rounded-[26px] border border-red-200 bg-red-50 p-5 text-sm text-red-700">
               本页异常：{boundaryError.message}
@@ -1886,7 +1895,7 @@ export function RealtimeStudio() {
         >
           <div className="soft-enter soft-enter-delay-1 flex min-h-0 min-w-0 flex-1 flex-col">
             <Tabs.Root value={stageTab} onValueChange={setStageTab} className="flex min-h-0 flex-1 flex-col">
-            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-white/12 bg-[linear-gradient(180deg,rgba(15,23,42,0.55),rgba(185,167,211,0.10))] p-0 shadow-[0_18px_46px_rgba(0,0,0,0.32)] backdrop-blur-md">
+            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-white/12 bg-[linear-gradient(180deg,rgba(15,23,42,0.55),rgba(185,167,211,0.10))] p-0 shadow-[0_18px_46px_rgba(0,0,0,0.32)] backdrop-blur-md max-h-[calc(100%-46px)]">
               <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-2 pt-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <Tabs.List className="glass-panel inline-flex w-fit min-w-0 max-w-full shrink-0 flex-wrap gap-1.5 self-start rounded-full border border-violet-200/50 p-1.5 sm:gap-2">
@@ -1933,7 +1942,7 @@ export function RealtimeStudio() {
                 <div className="grid w-full max-w-[min(100%,260px)] shrink-0 grid-cols-2 gap-1 sm:ml-auto">
                   <Button
                     type="button"
-                    variant="secondary"
+                    variant="danger"
                     title={
                       selectedInputSource === "transcript"
                         ? "请先在左侧栏选择麦克风或系统音输入"
@@ -1986,15 +1995,14 @@ export function RealtimeStudio() {
                 </div>
               </div>
 
-            <div className="min-h-0 min-w-0 flex-1 overflow-auto">
-            <Tabs.Content value="mermaid" className="outline-none">
-              <div className="px-4">
-                <Card className="rounded-[30px] border border-violet-200/50 bg-violet-100/28 p-2.5">
-                  <div className="overflow-hidden rounded-[24px]">
+            <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+            <Tabs.Content value="mermaid" className="h-full min-h-0 outline-none">
+              <div className="flex h-full min-h-0 px-4">
+                <Card className="flex-1 rounded-[30px] border border-violet-200/50 bg-violet-100/28 p-2.5">
+                  <div className="h-full min-h-0 overflow-hidden rounded-[24px]">
                     <MermaidCard
                       title=""
                       embedded
-                      height={420}
                       code={mermaidState?.code || mermaidState?.normalized_code || ""}
                       rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
                       repairRawOutputText={
@@ -2021,8 +2029,8 @@ export function RealtimeStudio() {
               />
             </Tabs.Content>
 
-            <Tabs.Content value="events">
-              <Card>
+            <Tabs.Content value="events" className="h-full min-h-0">
+              <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div className="mb-5 flex items-center justify-between gap-4">
                   <div>
                     <div className="text-sm font-semibold text-slate-100">更新记录</div>
@@ -2030,7 +2038,7 @@ export function RealtimeStudio() {
                   </div>
                   <Badge>{events.length} updates</Badge>
                 </div>
-                <div className="max-h-[460px] space-y-3 overflow-auto pr-2">
+                <div className="flex-1 min-h-0 space-y-3 overflow-auto pr-2">
                   {events.length ? (
                     events.slice(-12).map((event: Record<string, any>, index: number) => (
                       <div
@@ -2100,8 +2108,12 @@ export function RealtimeStudio() {
               <div className="flex w-full max-w-[min(100%,28rem)] items-center gap-2">
                 <Button
                   type="button"
-                  variant="secondary"
-                  className="h-8 shrink-0 gap-1 px-3 text-xs font-semibold"
+                  variant={currentSessionId ? "secondary" : "primary"}
+                  className={
+                    currentSessionId
+                      ? "h-8 shrink-0 gap-1 px-3 text-xs font-semibold"
+                      : "h-8 shrink-0 gap-1 px-3 text-xs font-semibold bg-[linear-gradient(135deg,#4d7cff,#a78bfa)] text-white"
+                  }
                   onClick={() => createSession.mutate()}
                   disabled={createSession.isPending}
                 >
@@ -2179,85 +2191,12 @@ export function RealtimeStudio() {
             </Card>
             </Tabs.Root>
           </div>
-        </ErrorBoundary>
+          </ErrorBoundary>
+        ) : null}
         </div>
       </div>
 
-        <Card className="soft-enter space-y-4">
-          <div className="text-sm font-semibold text-slate-100">会话与录音设置</div>
-          <details className="rounded-[20px] border border-violet-200/45 bg-violet-100/35 px-4 py-3">
-            <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 marker:content-none [&::-webkit-details-marker]:hidden">
-              高级选项
-            </summary>
-            <div className="mt-3 space-y-3">
-              <label className="text-sm font-medium text-slate-700">数据版本</label>
-              <div className="relative">
-                <select
-                  className="h-11 w-full appearance-none rounded-full border border-violet-200/50 bg-violet-50/88 px-4 pr-10 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-violet-50 focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
-                  value={datasetVersion}
-                  onChange={(event: ChangeEvent<HTMLSelectElement>) => setDatasetVersion(event.target.value)}
-                >
-                  {datasets.data?.map((item) => (
-                    <option key={item.slug} value={item.slug}>
-                      {item.slug}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-              </div>
-              <p className="text-xs leading-6 text-slate-500">用于会话记录与报表追踪，不影响实时识别流程。</p>
-            </div>
-          </details>
-        </Card>
-
-        <Card className="soft-enter space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="text-base font-semibold text-slate-100">默认设置（只读）</div>
-              <p className="mt-2 text-sm leading-6 text-slate-300">
-                详细模型与显示方式请在「设置」里改。这里只显示当前会话会沿用的默认值。
-              </p>
-            </div>
-            <Link href="/app/settings">
-              <Button variant="secondary">
-                打开配置页
-                <WandSparkles className="h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-          {!hasGateProfiles || !hasPlannerProfiles || !hasSttProfiles ? (
-            <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-              服务端还缺少 Gate / Planner / STT 运行配置。请打开「设置」按提示补全环境变量后重启 API。
-            </div>
-          ) : null}
-          <div className="grid gap-4 md:grid-cols-4">
-            {[
-              {
-                label: "默认 Gate 模型",
-                value: hasGateProfiles ? `${selectedGateProfile?.label || "未选择"} / ${gateModel || "未选择模型"}` : "未配置",
-              },
-              {
-                label: "默认 Planner 模型",
-                value: hasPlannerProfiles
-                  ? `${selectedPlannerProfile?.label || "未选择"} / ${plannerModel || "未选择模型"}`
-                  : "未配置",
-              },
-              {
-                label: "默认听写服务",
-                value: hasSttProfiles ? `${selectedSttProfile?.label || "未选择"} / ${sttModel || "未选择模型"}` : "未配置",
-              },
-              {
-                label: "显示方式",
-                value: diagramMode === "dual_view" ? "流程图+结构图" : "仅流程图",
-              },
-            ].map((item) => (
-              <div key={item.label} className="rounded-[22px] border border-violet-200/50 bg-violet-100/46 px-4 py-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</div>
-                <div className="mt-3 text-sm font-semibold leading-6 text-slate-100">{item.value}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
+        {studioPage === 2 ? null : null}
       </div>
 
       {detailDrawerPortalReady

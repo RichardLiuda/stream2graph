@@ -330,7 +330,11 @@ function MermaidCardBody({
   }, [code, id, compileOk, height, latencyMs, model, provider, title, updatedAt]);
 
   const body = (
-    <div className="bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(246,249,255,0.84))] p-5">
+    <div
+      className={`bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(246,249,255,0.84))] p-4 ${
+        embedded ? "flex h-full min-h-0 flex-col" : ""
+      }`}
+    >
         {error ? (
           <div className="mb-4 rounded-[24px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
             Mermaid 渲染错误：{error}
@@ -338,8 +342,10 @@ function MermaidCardBody({
           </div>
         ) : null}
         <div
-          className="overflow-auto rounded-[24px] border border-white/75 bg-white/[0.84] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
-          style={{ minHeight: height }}
+          className={`overflow-auto rounded-[24px] border border-white/75 bg-white/[0.84] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ${
+            embedded ? "min-h-0 flex-1" : ""
+          }`}
+          style={embedded ? undefined : { minHeight: height }}
         >
           {svg ? (
             <div
@@ -347,7 +353,7 @@ function MermaidCardBody({
               dangerouslySetInnerHTML={{ __html: svg }}
             />
           ) : (
-          <div className="flex min-h-[220px] items-center justify-center text-sm text-slate-500">等待 Mermaid 内容...</div>
+          <div className="flex min-h-[160px] items-center justify-center text-sm text-slate-500">等待 Mermaid 内容...</div>
           )}
         </div>
         {!embedded && (provider || model || updatedAt) ? (
@@ -391,7 +397,7 @@ function MermaidCardBody({
   );
 
   if (embedded) {
-    return <div className="min-h-0 overflow-hidden">{body}</div>;
+    return <div className="h-full min-h-0 overflow-hidden">{body}</div>;
   }
 
   return (

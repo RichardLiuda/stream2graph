@@ -89,7 +89,7 @@ function Wait-ForPort([string] $Hostname, [int] $Port, [string] $Label, [int] $W
 
 function Test-HttpUrl([string] $Url) {
   try {
-    Invoke-WebRequest -Uri $Url -Method Get -TimeoutSec 2 | Out-Null
+    Invoke-WebRequest -Uri $Url -Method Get -TimeoutSec 2 -UseBasicParsing | Out-Null
     return $true
   } catch {
     return $false
