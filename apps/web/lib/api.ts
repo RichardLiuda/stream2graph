@@ -98,46 +98,109 @@ function logBrowserApiEvent(label: string, payload: Record<string, unknown>, lev
   method(`[S2G][API] ${label}`, payload);
 }
 
+/** 解析 FastAPI / Starlette 的 `detail`（字符串、对象数组等） */
+function messageFromErrorPayload(raw: Record<string, unknown>): string {
+  const d = raw.detail;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) {
+    return d
+      .map((item) =>
+        typeof item === "object" && item !== null && "msg" in item
+          ? String((item as { msg: string }).msg)
+          : JSON.stringify(item),
+      )
+      .join("；");
+  }
+  if (d != null && typeof d === "object" && "msg" in d) {
+    return String((d as { msg: string }).msg);
+  }
+  const err = raw.error;
+  if (typeof err === "string") return err;
+  return "请求失败";
+}
+
+const REQUEST_TIMEOUT_MS = 25_000;
+
 async function request<TSchema extends z.ZodTypeAny>(
   path: string,
   schema: TSchema,
   init?: RequestInit,
 ): Promise<z.infer<TSchema>> {
-  const response = await fetch(apiUrl(path), {
-    credentials: "include",
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
-  });
-  const text = await response.text();
-  const raw = text ? JSON.parse(text) : {};
-  if (!response.ok) {
-    logBrowserApiEvent(
-      "request failed",
-      {
-        path,
-        method: init?.method || "GET",
-        status: response.status,
-        payload: raw,
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(apiUrl(path), {
+      credentials: "include",
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers || {}),
       },
-      "error",
-    );
-    throw new ApiError(response.status, raw.detail || raw.error || `HTTP ${response.status}`, raw);
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    const text = await response.text();
+    let raw: Record<string, unknown> = {};
+    try {
+      raw = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    } catch {
+      raw = { detail: text || response.statusText };
+    }
+    if (!response.ok) {
+      logBrowserApiEvent(
+        "request failed",
+        {
+          path,
+          method: init?.method || "GET",
+          status: response.status,
+          payload: raw,
+        },
+        "error",
+      );
+      throw new ApiError(response.status, messageFromErrorPayload(raw), raw);
+    }
+    return schema.parse(raw);
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e instanceof ApiError) throw e;
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new ApiError(
+        0,
+        "请求超时。请确认：① API 已启动；② PostgreSQL 可连接（登录会查库，库不可达时会一直卡住）；③ 前端与 `NEXT_PUBLIC_API_BASE_URL` 指向同一套服务。",
+        {},
+      );
+    }
+    if (e instanceof TypeError) {
+      throw new ApiError(
+        0,
+        "无法连接 API。请检查服务是否已启动；若用局域网 IP 打开本页，请在 API 的 S2G_CORS_ORIGINS 中加入该前端地址（如 http://192.168.x.x:3000）。",
+        {},
+      );
+    }
+    throw e;
   }
-  return schema.parse(raw);
 }
 
 export const api = {
   health: async () => request("/api/health", z.record(z.any())),
   login: async (payload: { username: string; password: string }) =>
-    request("/api/v1/auth/login", z.object({ username: z.string(), display_name: z.string() }), {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+    request(
+      "/api/v1/auth/login",
+      z.object({
+        username: z.string(),
+        display_name: z.string().optional().nullable().transform((v) => v ?? ""),
+      }),
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
   logout: async () => request("/api/v1/auth/logout", z.object({ ok: z.boolean() }), { method: "POST" }),
-  me: async () => request("/api/v1/auth/me", z.object({ username: z.string(), display_name: z.string() })),
+  me: async () =>
+    request("/api/v1/auth/me", z.object({
+      username: z.string(),
+      display_name: z.string().optional().nullable().transform((v) => v ?? ""),
+    })),
   listDatasets: async () => request("/api/v1/catalog/datasets", z.array(datasetVersionSummarySchema)),
   listRuntimeOptions: async () => request("/api/v1/catalog/runtime-options", runtimeOptionsSchema),
   getAdminRuntimeOptions: async () => request("/api/v1/catalog/runtime-options/admin", runtimeOptionsAdminSchema),

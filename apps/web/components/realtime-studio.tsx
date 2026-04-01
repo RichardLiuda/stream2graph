@@ -2163,7 +2163,7 @@ export function RealtimeStudio() {
 
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
             <Tabs.Content value="mermaid" className="h-full min-h-0 outline-none">
-              <div className="flex h-full min-h-0 px-4">
+              <div className="flex h-full min-h-0 px-4 pb-4">
                 <Card className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2">
                   <div className="h-full min-h-0 overflow-hidden rounded-lg">
               <MermaidCard
@@ -2186,7 +2186,7 @@ export function RealtimeStudio() {
             </Tabs.Content>
 
             <Tabs.Content value="structure">
-              <div className="flex h-full min-h-0 px-4">
+              <div className="flex h-full min-h-0 px-4 pb-4">
                 <Card className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2">
                   <div className="h-full min-h-0 overflow-hidden rounded-lg">
               <GraphStage

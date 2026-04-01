@@ -5,6 +5,7 @@ import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
 import { Badge, Card } from "@stream2graph/ui";
+import { PanZoomCanvas } from "@/components/pan-zoom-canvas";
 
 let mermaidReady: Promise<typeof import("mermaid")> | null = null;
 let mermaidInitialized = false;
@@ -345,20 +346,43 @@ function MermaidCardBody({
           }`}
           style={embedded ? undefined : { minHeight: height }}
         >
-          {svg ? (
-            <div
-              className="overflow-hidden rounded-lg bg-slate-100 p-3 [&_svg]:block [&_svg]:max-w-full [&_svg]:rounded-md"
-              dangerouslySetInnerHTML={{ __html: svg }}
-            />
-          ) : (
-            <div className="flex min-h-[min(240px,40vh)] flex-col items-center justify-center gap-3 px-4 py-8 text-center">
-              <p className="text-sm font-medium text-zinc-300">尚无图内容</p>
-              <ol className="max-w-sm list-decimal space-y-1.5 pl-5 text-left text-xs leading-relaxed text-zinc-500">
-                <li>在左侧输入 Transcript 并发送，或启动麦克风采集。</li>
-                <li>会话建立后，Planner 返回的 Mermaid 会显示在此区域。</li>
-              </ol>
-            </div>
-          )}
+          <div className="min-h-[min(380px,52vh)]">
+            <PanZoomCanvas
+              className="relative flex h-full min-h-[min(380px,52vh)] min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-zinc-800/90 bg-zinc-950/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+              contentClassName="min-h-0 flex-1"
+              minScale={0.55}
+              maxScale={2.6}
+              initialScale={1}
+              initialOffset={{ x: 0, y: 0 }}
+            >
+              {/* 空画布也要像画布：细网格 + 提示条 */}
+              <div
+                className="pointer-events-none absolute inset-3 rounded-md opacity-[0.45]"
+                aria-hidden
+                style={{
+                  backgroundImage:
+                    "linear-gradient(rgba(63,63,70,0.32) 1px, transparent 1px), linear-gradient(90deg, rgba(63,63,70,0.32) 1px, transparent 1px)",
+                  backgroundSize: "24px 24px",
+                  backgroundPosition: "10px 10px",
+                }}
+              />
+              {!svg ? (
+                <div className="absolute left-3 top-3 right-3 z-[2] rounded-lg border border-amber-900/55 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
+                  画布已就绪，但目前没有可渲染的 Mermaid。
+                  <span className="text-amber-200/80">
+                    {" "}
+                    你可以：左侧发送 Transcript / 开始录音；会话建立后这里会自动更新。
+                  </span>
+                </div>
+              ) : null}
+              {svg ? (
+                <div
+                  className="relative z-[1] min-h-0 flex-1 [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
+                  dangerouslySetInnerHTML={{ __html: svg }}
+                />
+              ) : null}
+            </PanZoomCanvas>
+          </div>
         </div>
         {!embedded && (provider || model || updatedAt) ? (
           <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-200">
