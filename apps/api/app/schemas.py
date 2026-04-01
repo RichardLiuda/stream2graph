@@ -168,6 +168,37 @@ class RealtimeSnapshot(BaseModel):
     evaluation: dict[str, Any] | None = None
 
 
+class RealtimeDiagramPoint(BaseModel):
+    x: float
+    y: float
+
+
+class RealtimeDiagramEntityPosition(BaseModel):
+    id: str
+    label: str
+    kind: Literal["node", "group"] = "node"
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+class RealtimeDiagramRelayoutRequest(BaseModel):
+    node_id: str
+    node_label: str
+    from_position: RealtimeDiagramPoint
+    to_position: RealtimeDiagramPoint
+    delta: RealtimeDiagramPoint
+    relation_hint: str | None = None
+    nearest_anchor_id: str | None = None
+    nearest_anchor_label: str | None = None
+    target_group_id: str | None = None
+    target_group_label: str | None = None
+    node_positions: list[RealtimeDiagramEntityPosition] = Field(default_factory=list)
+    group_positions: list[RealtimeDiagramEntityPosition] = Field(default_factory=list)
+    spatial_summary: str = ""
+
+
 class RealtimeAudioTranscriptionRequest(BaseModel):
     chunk_id: int = 0
     sample_rate: int

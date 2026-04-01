@@ -8,7 +8,7 @@ import time
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, TypeVar
 
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,7 @@ from app.config import get_settings
 from app.legacy import IncrementalGraphRenderer
 from app.models import RealtimeSession
 from app.services.runtime_options import resolve_profile
-from incremental_renderer import NodeState
+from incremental_renderer import NodeState, RenderFrame
 from tools.eval.common import strip_think_traces
 from tools.incremental_dataset.schema import GraphEdge, GraphGroup, GraphIR, GraphNode
 from tools.incremental_dataset.staging import render_preview_mermaid
@@ -38,6 +38,7 @@ from tools.incremental_system.schema import DialogueTurn
 
 
 logger = logging.getLogger(__name__)
+GraphEntityT = TypeVar("GraphEntityT")
 
 
 def _log_coordination_event(message: str, payload: dict[str, Any]) -> None:
@@ -259,6 +260,179 @@ def _sanitize_graph_ir(base: GraphIR, candidate: GraphIR) -> GraphIR:
     if len(clean_nodes) + len(clean_edges) + len(clean_groups) < len(base.nodes) + len(base.edges) + len(base.groups):
         return _clone_graph_ir(base)
     return sanitized
+
+
+def _normalize_source_index_order(items: list[GraphEntityT]) -> list[GraphEntityT]:
+    ordered = sorted(
+        enumerate(items),
+        key=lambda pair: (int(getattr(pair[1], "source_index", 0) or 0), pair[0]),
+    )
+    normalized: list[GraphEntityT] = []
+    for rank, (_index, item) in enumerate(ordered, start=1):
+        setattr(item, "source_index", rank)
+        normalized.append(item)
+    return normalized
+
+
+def _sanitize_relayout_graph_ir(base: GraphIR, candidate: GraphIR) -> GraphIR:
+    if candidate.diagram_type and candidate.diagram_type != base.diagram_type:
+        candidate.diagram_type = base.diagram_type
+
+    base_nodes = {node.id: node for node in base.nodes}
+    base_groups = {group.id: group for group in base.groups}
+    candidate_nodes = {node.id: node for node in candidate.nodes if node.id in base_nodes}
+    candidate_groups = {group.id: group for group in candidate.groups if group.id in base_groups}
+
+    ordered_nodes: list[GraphNode] = []
+    seen_node_ids: set[str] = set()
+    for row in list(candidate.nodes) + list(base.nodes):
+        if row.id not in base_nodes or row.id in seen_node_ids:
+            continue
+        source = candidate_nodes.get(row.id) or base_nodes[row.id]
+        seen_node_ids.add(row.id)
+        ordered_nodes.append(
+            GraphNode(
+                id=row.id,
+                label=source.label or base_nodes[row.id].label or row.id,
+                kind=source.kind or base_nodes[row.id].kind or "node",
+                parent=source.parent if row.id in candidate_nodes else base_nodes[row.id].parent,
+                source_index=int(source.source_index or 0),
+                metadata=dict(base_nodes[row.id].metadata) | dict(source.metadata),
+            )
+        )
+
+    ordered_groups: list[GraphGroup] = []
+    seen_group_ids: set[str] = set()
+    for row in list(candidate.groups) + list(base.groups):
+        if row.id not in base_groups or row.id in seen_group_ids:
+            continue
+        source = candidate_groups.get(row.id) or base_groups[row.id]
+        seen_group_ids.add(row.id)
+        ordered_groups.append(
+            GraphGroup(
+                id=row.id,
+                label=source.label or base_groups[row.id].label or row.id,
+                parent=source.parent if row.id in candidate_groups else base_groups[row.id].parent,
+                member_ids=list(source.member_ids) if candidate_groups.get(row.id) else list(base_groups[row.id].member_ids),
+                source_index=int(source.source_index or 0),
+                metadata=dict(base_groups[row.id].metadata) | dict(source.metadata),
+            )
+        )
+
+    valid_group_ids = {group.id for group in ordered_groups}
+    valid_node_ids = {node.id for node in ordered_nodes}
+    for node in ordered_nodes:
+        if node.parent and node.parent not in valid_group_ids:
+            node.parent = None
+
+    for group in ordered_groups:
+        if group.parent and group.parent not in valid_group_ids:
+            group.parent = None
+        group.member_ids = list(dict.fromkeys(member_id for member_id in group.member_ids if member_id in valid_node_ids))
+
+    edge_source = candidate.edges if candidate.edges or not base.edges else base.edges
+    ordered_edges: list[GraphEdge] = []
+    seen_edge_ids: set[str] = set()
+    for index, edge in enumerate(edge_source, start=1):
+        edge_id = str(edge.id or f"{edge.source}__{edge.target}__{index}").strip()
+        if (
+            not edge_id
+            or edge_id in seen_edge_ids
+            or edge.source not in valid_node_ids
+            or edge.target not in valid_node_ids
+        ):
+            continue
+        seen_edge_ids.add(edge_id)
+        ordered_edges.append(
+            GraphEdge(
+                id=edge_id,
+                source=edge.source,
+                target=edge.target,
+                label=edge.label,
+                kind=edge.kind or "edge",
+                source_index=int(edge.source_index or 0),
+                metadata=dict(edge.metadata),
+            )
+        )
+
+    sanitized = GraphIR(
+        graph_id=base.graph_id,
+        diagram_type=base.diagram_type,
+        nodes=_normalize_source_index_order(ordered_nodes),
+        edges=_normalize_source_index_order(ordered_edges),
+        groups=_normalize_source_index_order(ordered_groups),
+        styles=list(candidate.styles) if candidate.styles else list(base.styles),
+        metadata=dict(base.metadata) | dict(candidate.metadata),
+    )
+    if not sanitized.nodes:
+        return _clone_graph_ir(base)
+    return sanitized
+
+
+def _node_positions_from_drag_payload(payload: dict[str, Any]) -> dict[str, dict[str, float]]:
+    positions: dict[str, dict[str, float]] = {}
+    rows = payload.get("node_positions", [])
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            node_id = str(row.get("id", "")).strip()
+            if not node_id:
+                continue
+            try:
+                positions[node_id] = {
+                    "x": float(row.get("x", 0.0) or 0.0),
+                    "y": float(row.get("y", 0.0) or 0.0),
+                }
+            except (TypeError, ValueError):
+                continue
+    node_id = str(payload.get("node_id", "")).strip()
+    to_position = payload.get("to_position")
+    if node_id and isinstance(to_position, dict):
+        try:
+            positions[node_id] = {
+                "x": float(to_position.get("x", 0.0) or 0.0),
+                "y": float(to_position.get("y", 0.0) or 0.0),
+            }
+        except (TypeError, ValueError):
+            pass
+    return positions
+
+
+def _rebuild_renderer_from_graph(
+    graph_ir: GraphIR,
+    *,
+    update_id: int,
+    node_positions: dict[str, dict[str, float]] | None = None,
+    previous_frames: list[RenderFrame] | None = None,
+) -> tuple[IncrementalGraphRenderer, RenderFrame]:
+    renderer = IncrementalGraphRenderer()
+    render_ops = _renderer_operations(_graph_delta(build_empty_graph(graph_ir.graph_id, graph_ir.diagram_type), graph_ir))
+    frame = renderer.apply_update(update_id, render_ops, "manual_relayout")
+    if node_positions:
+        for node_id, position in node_positions.items():
+            if node_id not in renderer.nodes:
+                continue
+            renderer.nodes[node_id].x = float(position.get("x", renderer.nodes[node_id].x))
+            renderer.nodes[node_id].y = float(position.get("y", renderer.nodes[node_id].y))
+    if previous_frames is not None:
+        frame = RenderFrame(
+            frame_id=len(previous_frames) + 1,
+            update_id=frame.update_id,
+            node_count=frame.node_count,
+            edge_count=frame.edge_count,
+            touched_nodes=frame.touched_nodes,
+            added_nodes=frame.added_nodes,
+            added_edges=frame.added_edges,
+            flicker_index=frame.flicker_index,
+            mean_displacement=frame.mean_displacement,
+            p95_displacement=frame.p95_displacement,
+            unchanged_max_drift=frame.unchanged_max_drift,
+            mental_map_score=frame.mental_map_score,
+        )
+        renderer.frames = [*previous_frames, frame]
+        renderer.frame_id = len(renderer.frames)
+    return renderer, frame
 
 
 def _merge_structural_metadata_from_snapshot(base: GraphIR, snapshot: GraphIR) -> GraphIR:
@@ -540,6 +714,18 @@ LIVE_PLANNER_SYSTEM_PROMPT = (
     "Reuse literal identifiers from the dialogue whenever possible. "
     "If you are unsure about a full graph snapshot, omit target_graph_ir and return delta_ops only. "
     "If target_graph_ir is provided, it must include all previously existing items and all new additions."
+)
+
+
+LIVE_RELAYOUT_SYSTEM_PROMPT = (
+    "You are the large planner model for a collaborative realtime diagram editor. "
+    "A user manually dragged one existing Mermaid node to a new position, and you must infer the intended structural reorganization. "
+    "Return one JSON object only. No markdown, no explanations, no prose before or after JSON. "
+    "Top-level keys: notes, target_graph_ir. "
+    "Preserve every existing node id and group id. Do not create or delete nodes or groups. "
+    "You may reorder source_index, rewire edges, change edge labels, change node parent, and update group member_ids to reflect the new meaning of the drag. "
+    "Prefer the smallest coherent graph edit that explains the new spatial arrangement. "
+    "If the drag does not imply a real structural change, return the current graph unchanged with a short note."
 )
 
 
@@ -1338,6 +1524,281 @@ class CoordinationRuntimeSession:
                 ]
 
         raise RuntimeError(str(last_error) if last_error else "planner failed without an explicit error")
+
+    def _plan_relayout(
+        self,
+        db: Session,
+        session_obj: RealtimeSession,
+        drag_payload: dict[str, Any],
+    ) -> PlannerDecision:
+        runtime_options = _current_runtime_options(session_obj)
+        profile = resolve_profile(db, "planner", runtime_options.get("planner_profile_id"))
+        model = str(runtime_options.get("planner_model") or (profile or {}).get("default_model") or "")
+        if not profile or not model:
+            raise RuntimeError("鏈厤缃彲鐢ㄧ殑 Planner profile / model銆?")
+
+        _log_coordination_event(
+            "Diagram relayout request started",
+            {
+                "session_id": self.session_id,
+                "provider": str(profile.get("id", "")),
+                "model": model,
+                "node_id": str(drag_payload.get("node_id", "")),
+                "relation_hint": str(drag_payload.get("relation_hint", "")),
+            },
+        )
+        client = build_chat_client(profile, model)
+        sample_hint = SimpleNamespace(sample_id=self.session_id, diagram_type=self.diagram_type)
+        base_messages = [
+            {"role": "system", "content": LIVE_RELAYOUT_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "session_id": self.session_id,
+                        "diagram_type": self.diagram_type,
+                        "recent_turns": [_dialogue_payload(turn) for turn in self.turns[-24:]],
+                        "current_graph_ir": self.current_graph_ir.to_payload(),
+                        "current_graph_metrics": _graph_metrics(self.current_graph_ir),
+                        "current_mermaid_preview": self.rendered_mermaid,
+                        "manual_relayout_intent": drag_payload,
+                        "output_contract": {
+                            "notes": "short string",
+                            "target_graph_ir": {
+                                "graph_id": self.current_graph_ir.graph_id,
+                                "diagram_type": self.current_graph_ir.diagram_type,
+                                "nodes": "full list with every existing node id",
+                                "edges": "full list after rewiring",
+                                "groups": "full list with every existing group id",
+                            },
+                        },
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            },
+        ]
+        current_messages = list(base_messages)
+        last_error: Exception | None = None
+        last_result_text = ""
+
+        for attempt in range(2):
+            result = client.chat(current_messages)
+            try:
+                last_result_text = result.text or ""
+                payload = _parse_json_object(result.text)
+                raw_graph_payload = _extract_graph_payload(payload)
+                if not isinstance(raw_graph_payload, dict) or not raw_graph_payload:
+                    raise ValueError("relayout planner returned no target_graph_ir")
+                target_graph_ir = _graph_ir_from_payload(raw_graph_payload)
+                target_graph_ir = _refine_graph_ir(sample_hint, self.turns, target_graph_ir)
+                decision = PlannerDecision(
+                    target_graph_ir=target_graph_ir,
+                    notes=str(payload.get("notes", "")).strip(),
+                    metadata={
+                        "provider": str(profile.get("id", "")),
+                        "model_name": model,
+                        "latency_ms": result.latency_ms,
+                        "usage": result.usage,
+                        "semantic_attempt": attempt + 1,
+                        "raw_text_preview": (result.text or "")[:400],
+                        "manual_relayout": True,
+                    },
+                )
+                self.planner_latency_ms.append(float(result.latency_ms))
+                _log_coordination_event(
+                    "Diagram relayout request succeeded",
+                    {
+                        "session_id": self.session_id,
+                        "provider": str(profile.get("id", "")),
+                        "model": model,
+                        "latency_ms": result.latency_ms,
+                        "semantic_attempt": attempt + 1,
+                    },
+                )
+                return decision
+            except Exception as exc:
+                last_error = exc
+                if attempt >= 1:
+                    preview = strip_think_traces(last_result_text).strip().replace("\n", " ")[:300]
+                    raise RuntimeError(f"{exc}; raw_preview={preview}") from exc
+                current_messages = [
+                    *base_messages,
+                    {"role": "assistant", "content": strip_think_traces(result.text or "")[:4000]},
+                    {"role": "user", "content": _repair_prompt(exc)},
+                ]
+
+        raise RuntimeError(str(last_error) if last_error else "relayout planner failed without an explicit error")
+
+    def relayout_from_drag(
+        self,
+        db: Session,
+        session_obj: RealtimeSession,
+        drag_payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        if self.read_only:
+            raise RuntimeError("legacy realtime sessions are read-only and cannot apply manual relayout")
+
+        base_graph = _clone_graph_ir(self.current_graph_ir)
+        try:
+            planner_decision = self._plan_relayout(db, session_obj, drag_payload)
+        except Exception as exc:
+            self.planner_state = {
+                "status": "error",
+                "provider": "",
+                "model": "",
+                "latency_ms": 0.0,
+                "delta_ops_count": 0,
+                "graph_changed": False,
+                "notes": "",
+                "updated_at": int(time.time() * 1000),
+                "error_message": str(exc),
+            }
+            _log_coordination_event(
+                "Diagram relayout failed",
+                {
+                    "session_id": self.session_id,
+                    "error": str(exc),
+                    "drag_payload": drag_payload,
+                },
+            )
+            raise
+
+        next_graph = _sanitize_relayout_graph_ir(base_graph, planner_decision.target_graph_ir or base_graph)
+        graph_changed = _graph_payload_signature(base_graph) != _graph_payload_signature(next_graph)
+        self.gate_state = {
+            "status": "success",
+            "last_action": "EMIT_UPDATE",
+            "reason": "manual Mermaid node drag requested a planner relayout",
+            "confidence": 1.0,
+            "provider": "manual_drag_intent",
+            "model": "manual_drag_intent",
+            "latency_ms": 0.0,
+            "updated_at": int(time.time() * 1000),
+            "error_message": None,
+        }
+
+        if not graph_changed:
+            self.planner_noop_count += 1
+            self.planner_state = {
+                "status": "success",
+                "provider": planner_decision.metadata.get("provider", ""),
+                "model": planner_decision.metadata.get("model_name", ""),
+                "latency_ms": float(planner_decision.metadata.get("latency_ms") or 0.0),
+                "delta_ops_count": 0,
+                "graph_changed": False,
+                "notes": planner_decision.notes,
+                "updated_at": int(time.time() * 1000),
+                "error_message": None,
+                "debug": {
+                    "semantic_attempt": planner_decision.metadata.get("semantic_attempt"),
+                    "raw_text_preview": planner_decision.metadata.get("raw_text_preview"),
+                    "usage": planner_decision.metadata.get("usage"),
+                    "manual_relayout": True,
+                },
+            }
+            return None
+
+        self.update_index += 1
+        render_t0 = time.time()
+        node_positions = _node_positions_from_drag_payload(drag_payload)
+        previous_frames = list(self.renderer.frames)
+        self.renderer, frame = _rebuild_renderer_from_graph(
+            next_graph,
+            update_id=self.update_index,
+            node_positions=node_positions,
+            previous_frames=previous_frames,
+        )
+        render_ms = round((time.time() - render_t0) * 1000.0, 4)
+        self.render_latency_ms.append(render_ms)
+        self.current_graph_ir = next_graph
+        self.rendered_mermaid = render_preview_mermaid(next_graph)
+
+        planner_latency = float(planner_decision.metadata.get("latency_ms") or 0.0)
+        e2e_ms = round(planner_latency + render_ms, 4)
+        self.e2e_latency_ms.append(e2e_ms)
+        focus_entities = [
+            item
+            for item in (
+                str(drag_payload.get("node_id", "")).strip(),
+                str(drag_payload.get("nearest_anchor_id", "")).strip(),
+                str(drag_payload.get("target_group_id", "")).strip(),
+            )
+            if item
+        ]
+        now_ms = int(time.time() * 1000)
+        event = {
+            "update": {
+                "update_id": self.update_index,
+                "intent_type": "manual_relayout",
+                "semantic_action": "manual_relayout",
+                "operations": [],
+                "focus_entities": focus_entities,
+                "annotations": [
+                    value
+                    for value in (
+                        planner_decision.notes,
+                        str(drag_payload.get("spatial_summary", "")).strip(),
+                    )
+                    if value
+                ],
+                "transcript_text": "",
+                "start_ms": now_ms,
+                "end_ms": now_ms,
+                "processing_latency_ms": planner_latency,
+                "manual_relayout": drag_payload,
+            },
+            "gate": GateDecision(
+                action="EMIT_UPDATE",
+                reason="manual Mermaid node drag requested a planner relayout",
+                confidence=1.0,
+                metadata={
+                    "provider": "manual_drag_intent",
+                    "model_name": "manual_drag_intent",
+                    "latency_ms": 0.0,
+                },
+            ).to_payload(),
+            "planner": planner_decision.to_payload(),
+            "pending_turns": [],
+            "graph_before": _graph_metrics(base_graph),
+            "graph_after": _graph_metrics(next_graph),
+            "render_frame": asdict(frame),
+            "gold_intent": None,
+            "intent_correct": None,
+            "render_latency_ms": render_ms,
+            "e2e_latency_ms": e2e_ms,
+        }
+        self.events.append(event)
+        self.planner_state = {
+            "status": "success",
+            "provider": planner_decision.metadata.get("provider", ""),
+            "model": planner_decision.metadata.get("model_name", ""),
+            "latency_ms": planner_latency,
+            "delta_ops_count": len(_graph_delta(base_graph, next_graph)),
+            "graph_changed": True,
+            "notes": planner_decision.notes,
+            "updated_at": int(time.time() * 1000),
+            "error_message": None,
+            "debug": {
+                "semantic_attempt": planner_decision.metadata.get("semantic_attempt"),
+                "raw_text_preview": planner_decision.metadata.get("raw_text_preview"),
+                "usage": planner_decision.metadata.get("usage"),
+                "manual_relayout": True,
+            },
+        }
+        _log_coordination_event(
+            "Diagram relayout applied",
+            {
+                "session_id": self.session_id,
+                "update_index": self.update_index,
+                "planner_latency_ms": planner_latency,
+                "render_latency_ms": render_ms,
+                "graph_before": _graph_metrics(base_graph),
+                "graph_after": _graph_metrics(next_graph),
+                "focus_entities": focus_entities,
+            },
+        )
+        return event
 
     def _apply_planner_decision(
         self,

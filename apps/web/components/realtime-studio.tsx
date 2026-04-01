@@ -57,7 +57,7 @@ import {
   saveRuntimePreferences,
 } from "@/lib/runtime-preferences";
 import { GraphStage } from "@/components/graph-stage";
-import { MermaidCard } from "@/components/mermaid-card";
+import { MermaidCard, type MermaidNodeRelayoutPayload } from "@/components/mermaid-card";
 
 const LOCAL_SESSION_KEY = "s2g:last-realtime-session";
 
@@ -1268,6 +1268,24 @@ export function RealtimeStudio() {
     onError: (err) => setError((err as Error).message),
   });
 
+  const relayoutMutation = useMutation({
+    mutationFn: ({ sessionId, payload }: { sessionId: string; payload: MermaidNodeRelayoutPayload }) => {
+      studioSend({ type: "planner.working" });
+      return api.relayoutRealtimeDiagram(sessionId, payload as unknown as Record<string, unknown>);
+    },
+    onSuccess: (data) => {
+      setSnapshot(data);
+      setError(null);
+      syncPipelineStatus(data.pipeline);
+      setNotice({ tone: "success", text: "已按节点拖动结果重组 Mermaid 关系。" });
+      queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+    },
+    onError: (err) => {
+      logBrowserRuntime("diagram relayout failed", { error: (err as Error).message }, "error");
+      setError((err as Error).message);
+    },
+  });
+
   const closeMutation = useMutation({
     mutationFn: (sessionId: string) => api.closeRealtime(sessionId),
     onSuccess: () => {
@@ -1517,6 +1535,13 @@ export function RealtimeStudio() {
   const mermaidState = snapshot?.pipeline?.mermaid_state ?? null;
   const rendererGroups =
     rendererState.groups || snapshot?.pipeline?.graph_state?.current_graph_ir?.groups || [];
+  const currentGraphPayload = snapshot?.pipeline?.graph_state?.current_graph_ir ?? null;
+
+  function handleMermaidNodeRelayout(payload: MermaidNodeRelayoutPayload) {
+    if (!currentSessionId || relayoutMutation.isPending) return;
+    relayoutMutation.mutate({ sessionId: currentSessionId, payload });
+  }
+
   const hasGateProfiles = Boolean(runtimeOptions.data?.gate_profiles.length);
   const hasPlannerProfiles = Boolean(runtimeOptions.data?.planner_profiles.length);
   const hasSttProfiles = Boolean(runtimeOptions.data?.stt_profiles.length);
@@ -1563,6 +1588,7 @@ export function RealtimeStudio() {
       sendTranscript.isPending ||
       snapshotMutation.isPending ||
       flushMutation.isPending ||
+      relayoutMutation.isPending ||
       gateStatus === "working" ||
       plannerStatus === "working";
     const modelStatus: "idle" | "working" | "success" | "error" =
@@ -1644,6 +1670,7 @@ export function RealtimeStudio() {
     sendTranscript.isPending,
     snapshotMutation.isPending,
     flushMutation.isPending,
+    relayoutMutation.isPending,
   ]);
 
   const systemAudioExperimentalVisible = supportsSystemAudioExperimentalUi(audioContext);
@@ -2179,6 +2206,9 @@ export function RealtimeStudio() {
                 latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
                 compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
                 updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null)}
+                graphPayload={currentGraphPayload}
+                onNodeRelayout={handleMermaidNodeRelayout}
+                relayoutBusy={relayoutMutation.isPending}
               />
                   </div>
                 </Card>

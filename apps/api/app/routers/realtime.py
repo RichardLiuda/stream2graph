@@ -15,6 +15,7 @@ from app.schemas import (
     RealtimeAudioTranscriptionResponse,
     RealtimeChunkBatchCreateRequest,
     RealtimeChunkCreateRequest,
+    RealtimeDiagramRelayoutRequest,
     RealtimeSession as RealtimeSessionSchema,
     RealtimeSessionCreateRequest,
     RealtimeSnapshot,
@@ -422,6 +423,20 @@ def flush(session_id: str, db: Session = Depends(get_db)) -> RealtimeSnapshot:
     obj = _get_session_or_404(db, session_id)
     runtime = restore_runtime_if_needed(db, obj)
     runtime.flush(db, obj)
+    pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
+    db.commit()
+    return RealtimeSnapshot(session_id=session_id, pipeline=pipeline, evaluation=evaluation)
+
+
+@router.post("/{session_id}/diagram-relayout", response_model=RealtimeSnapshot)
+def diagram_relayout(
+    session_id: str,
+    payload: RealtimeDiagramRelayoutRequest,
+    db: Session = Depends(get_db),
+) -> RealtimeSnapshot:
+    obj = _get_session_or_404(db, session_id)
+    runtime = restore_runtime_if_needed(db, obj)
+    runtime.relayout_from_drag(db, obj, payload.model_dump())
     pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
     db.commit()
     return RealtimeSnapshot(session_id=session_id, pipeline=pipeline, evaluation=evaluation)

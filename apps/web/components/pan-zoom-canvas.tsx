@@ -111,7 +111,7 @@ export function PanZoomCanvas({
         // 鼠标只允许左键拖拽；触摸/笔则忽略 button
         if (event.pointerType === "mouse" && event.button !== 0) return;
         const target = event.target as HTMLElement | null;
-        if (target?.closest?.("[data-panzoom-controls]")) return;
+        if (target?.closest?.("[data-panzoom-controls], [data-panzoom-no-pan]")) return;
         (event.currentTarget as HTMLDivElement).setPointerCapture(event.pointerId);
         dragRef.current = {
           pointerId: event.pointerId,

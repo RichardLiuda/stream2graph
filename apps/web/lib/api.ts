@@ -320,6 +320,11 @@ export const api = {
     request(`/api/v1/realtime/sessions/${sessionId}/flush`, realtimeSnapshotSchema, {
       method: "POST",
     }),
+  relayoutRealtimeDiagram: async (sessionId: string, payload: Record<string, unknown>) =>
+    request(`/api/v1/realtime/sessions/${sessionId}/diagram-relayout`, realtimeSnapshotSchema, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   closeRealtime: async (sessionId: string) =>
     request(`/api/v1/realtime/sessions/${sessionId}/close`, z.object({ ok: z.boolean(), session_id: z.string(), closed: z.boolean() }), {
       method: "POST",

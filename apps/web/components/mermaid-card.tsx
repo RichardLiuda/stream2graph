@@ -68,6 +68,215 @@ const MERMAID_THEME_CSS = `
 }
 `;
 
+type MermaidGraphNode = {
+  id: string;
+  label: string;
+};
+
+type MermaidGraphGroup = {
+  id: string;
+  label: string;
+};
+
+export type MermaidGraphPayload = {
+  nodes?: MermaidGraphNode[];
+  groups?: MermaidGraphGroup[];
+} | null;
+
+export type MermaidDiagramEntityPosition = {
+  id: string;
+  label: string;
+  kind: "node" | "group";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type MermaidNodeRelayoutPayload = {
+  node_id: string;
+  node_label: string;
+  from_position: { x: number; y: number };
+  to_position: { x: number; y: number };
+  delta: { x: number; y: number };
+  relation_hint: string | null;
+  nearest_anchor_id: string | null;
+  nearest_anchor_label: string | null;
+  target_group_id: string | null;
+  target_group_label: string | null;
+  node_positions: MermaidDiagramEntityPosition[];
+  group_positions: MermaidDiagramEntityPosition[];
+  spatial_summary: string;
+};
+
+type MermaidInteractiveEntity = MermaidDiagramEntityPosition & {
+  element: SVGGElement;
+};
+
+type SvgPoint = {
+  x: number;
+  y: number;
+};
+
+function roundCoordinate(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function normalizeLabelText(value: string | null | undefined) {
+  return (value || "").replace(/\s+/g, " ").trim();
+}
+
+function buildLabelToIdMap(items: Array<{ id: string; label: string }> | undefined) {
+  const counts = new Map<string, number>();
+  for (const item of items || []) {
+    const label = normalizeLabelText(item.label);
+    if (!label) continue;
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+  const mapping = new Map<string, string>();
+  for (const item of items || []) {
+    const label = normalizeLabelText(item.label);
+    if (!label || counts.get(label) !== 1) continue;
+    mapping.set(label, item.id);
+  }
+  return mapping;
+}
+
+function resolveSvgPoint(svg: SVGSVGElement, clientX: number, clientY: number): SvgPoint | null {
+  const matrix = svg.getScreenCTM();
+  if (!matrix) return null;
+  const point = svg.createSVGPoint();
+  point.x = clientX;
+  point.y = clientY;
+  const resolved = point.matrixTransform(matrix.inverse());
+  return {
+    x: roundCoordinate(resolved.x),
+    y: roundCoordinate(resolved.y),
+  };
+}
+
+function measureEntity(svg: SVGSVGElement, element: SVGGElement) {
+  const rect = element.getBoundingClientRect();
+  if (!rect.width && !rect.height) return null;
+  const topLeft = resolveSvgPoint(svg, rect.left, rect.top);
+  const bottomRight = resolveSvgPoint(svg, rect.right, rect.bottom);
+  if (!topLeft || !bottomRight) return null;
+  const width = Math.abs(bottomRight.x - topLeft.x);
+  const height = Math.abs(bottomRight.y - topLeft.y);
+  return {
+    x: roundCoordinate((topLeft.x + bottomRight.x) / 2),
+    y: roundCoordinate((topLeft.y + bottomRight.y) / 2),
+    width: roundCoordinate(width),
+    height: roundCoordinate(height),
+  };
+}
+
+function resolveFlowchartEntityId(
+  rawId: string,
+  kind: "node" | "group",
+  knownIds: string[],
+  label: string,
+  labelToId: Map<string, string>,
+) {
+  const candidates = [...knownIds].sort((left, right) => right.length - left.length);
+  if (kind === "node") {
+    const matched = candidates.find((item) => rawId.includes(`flowchart-${item}-`));
+    if (matched) return matched;
+  } else {
+    const matched = candidates.find((item) => rawId.endsWith(`-${item}`));
+    if (matched) return matched;
+  }
+  return labelToId.get(label) || null;
+}
+
+function collectInteractiveEntities(
+  svg: SVGSVGElement,
+  graphPayload: MermaidGraphPayload,
+): { nodes: MermaidInteractiveEntity[]; groups: MermaidInteractiveEntity[] } {
+  const graphNodes = graphPayload?.nodes || [];
+  const graphGroups = graphPayload?.groups || [];
+  const nodeLabelToId = buildLabelToIdMap(graphNodes);
+  const groupLabelToId = buildLabelToIdMap(graphGroups);
+
+  const nodes: MermaidInteractiveEntity[] = [];
+  for (const element of Array.from(svg.querySelectorAll<SVGGElement>("g.node"))) {
+    const label = normalizeLabelText(element.textContent);
+    const id = resolveFlowchartEntityId(
+      element.getAttribute("id") || "",
+      "node",
+      graphNodes.map((item) => item.id),
+      label,
+      nodeLabelToId,
+    );
+    if (!id) continue;
+    const measured = measureEntity(svg, element);
+    if (!measured) continue;
+    const matchedNode = graphNodes.find((item) => item.id === id);
+    nodes.push({
+      element,
+      id,
+      label: matchedNode?.label || label || id,
+      kind: "node",
+      ...measured,
+    });
+  }
+
+  const groups: MermaidInteractiveEntity[] = [];
+  for (const element of Array.from(svg.querySelectorAll<SVGGElement>("g.cluster"))) {
+    const label = normalizeLabelText(element.textContent);
+    const id = resolveFlowchartEntityId(
+      element.getAttribute("id") || "",
+      "group",
+      graphGroups.map((item) => item.id),
+      label,
+      groupLabelToId,
+    );
+    if (!id) continue;
+    const measured = measureEntity(svg, element);
+    if (!measured) continue;
+    const matchedGroup = graphGroups.find((item) => item.id === id);
+    groups.push({
+      element,
+      id,
+      label: matchedGroup?.label || label || id,
+      kind: "group",
+      ...measured,
+    });
+  }
+
+  return { nodes, groups };
+}
+
+function relationHintBetween(source: SvgPoint, target: SvgPoint | null) {
+  if (!target) return null;
+  const dx = roundCoordinate(source.x - target.x);
+  const dy = roundCoordinate(source.y - target.y);
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+  if (absX <= 12 && absY <= 12) return "overlapping";
+  if (absX > absY * 1.25) return dx >= 0 ? "right_of" : "left_of";
+  if (absY > absX * 1.25) return dy >= 0 ? "below" : "above";
+  if (dx >= 0 && dy >= 0) return "lower_right_of";
+  if (dx >= 0) return "upper_right_of";
+  if (dy >= 0) return "lower_left_of";
+  return "upper_left_of";
+}
+
+function pointInsideEntity(point: SvgPoint, entity: MermaidDiagramEntityPosition) {
+  return (
+    point.x >= entity.x - entity.width / 2 &&
+    point.x <= entity.x + entity.width / 2 &&
+    point.y >= entity.y - entity.height / 2 &&
+    point.y <= entity.y + entity.height / 2
+  );
+}
+
+function svgTransformWithDelta(originalTransform: string, delta: SvgPoint) {
+  const prefix = originalTransform.trim();
+  const extra = `translate(${delta.x} ${delta.y})`;
+  return prefix ? `${prefix} ${extra}` : extra;
+}
+
 function extractMermaidCandidate(text: string) {
   const raw = (text || "").trim();
   const fenceMatch = raw.match(/```(?:mermaid)?\s*([\s\S]*?)```/i);
@@ -335,6 +544,9 @@ function MermaidCardBody({
   updatedAt,
   headerExtra,
   embedded = false,
+  graphPayload = null,
+  onNodeRelayout,
+  relayoutBusy = false,
 }: {
   title: string;
   code: string;
@@ -350,6 +562,9 @@ function MermaidCardBody({
   headerExtra?: ReactNode;
   /** @description 为 true 时不渲染顶栏与外层 Card，由外层主舞台承载 */
   embedded?: boolean;
+  graphPayload?: MermaidGraphPayload;
+  onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
+  relayoutBusy?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
   const [svg, setSvg] = useState("");
@@ -359,6 +574,8 @@ function MermaidCardBody({
   const lastLoggedRepairRawOutputRef = useRef("");
   const lastSuccessfulSvgRef = useRef("");
   const renderSequenceRef = useRef(0);
+  const renderSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const interactiveRelayoutEnabled = Boolean(onNodeRelayout && graphPayload?.nodes?.length);
 
   useEffect(() => {
     const raw = (rawOutputText || "").trim();
@@ -424,6 +641,192 @@ function MermaidCardBody({
     };
   }, [code, id, compileOk, height, latencyMs, model, provider, title, updatedAt]);
 
+  useEffect(() => {
+    const host = renderSurfaceRef.current;
+    if (!host || !svg || !interactiveRelayoutEnabled || !onNodeRelayout) return;
+    const svgElement = host.querySelector("svg");
+    if (!(svgElement instanceof SVGSVGElement)) return;
+
+    const collected = collectInteractiveEntities(svgElement, graphPayload);
+    if (!collected.nodes.length) return;
+
+    const nodeEntities = collected.nodes.map(({ element, ...entity }) => entity);
+    const groupEntities = collected.groups.map(({ element, ...entity }) => entity);
+    const entityByElement = new Map<SVGGElement, MermaidInteractiveEntity>();
+
+    for (const entity of collected.nodes) {
+      entity.element.setAttribute("data-panzoom-no-pan", "true");
+      entity.element.style.cursor = relayoutBusy ? "wait" : "grab";
+      entityByElement.set(entity.element, entity);
+    }
+
+    type DragState = {
+      pointerId: number;
+      element: SVGGElement;
+      entity: MermaidInteractiveEntity;
+      startPoint: SvgPoint;
+      originalTransform: string;
+      currentDelta: SvgPoint;
+    };
+
+    let dragState: DragState | null = null;
+
+    const resetTransform = (state: DragState) => {
+      if (state.originalTransform.trim()) {
+        state.element.setAttribute("transform", state.originalTransform);
+      } else {
+        state.element.removeAttribute("transform");
+      }
+      state.element.style.cursor = relayoutBusy ? "wait" : "grab";
+    };
+
+    const commitDrag = (state: DragState) => {
+      const movedDistance = Math.hypot(state.currentDelta.x, state.currentDelta.y);
+      if (movedDistance < 18) return;
+
+      const movedNodes = nodeEntities.map((entity) =>
+        entity.id === state.entity.id
+          ? {
+              ...entity,
+              x: roundCoordinate(entity.x + state.currentDelta.x),
+              y: roundCoordinate(entity.y + state.currentDelta.y),
+            }
+          : entity,
+      );
+      const movedNode = movedNodes.find((entity) => entity.id === state.entity.id);
+      if (!movedNode) return;
+
+      const nearestAnchor =
+        movedNodes
+          .filter((entity) => entity.id !== movedNode.id)
+          .sort((left, right) => {
+            const leftDistance = Math.hypot(left.x - movedNode.x, left.y - movedNode.y);
+            const rightDistance = Math.hypot(right.x - movedNode.x, right.y - movedNode.y);
+            return leftDistance - rightDistance;
+          })[0] || null;
+      const targetGroup =
+        groupEntities
+          .filter((entity) => pointInsideEntity({ x: movedNode.x, y: movedNode.y }, entity))
+          .sort((left, right) => left.width * left.height - right.width * right.height)[0] || null;
+      const relationHint = relationHintBetween(
+        { x: movedNode.x, y: movedNode.y },
+        nearestAnchor ? { x: nearestAnchor.x, y: nearestAnchor.y } : null,
+      );
+
+      onNodeRelayout({
+        node_id: movedNode.id,
+        node_label: movedNode.label,
+        from_position: {
+          x: state.entity.x,
+          y: state.entity.y,
+        },
+        to_position: {
+          x: movedNode.x,
+          y: movedNode.y,
+        },
+        delta: {
+          x: state.currentDelta.x,
+          y: state.currentDelta.y,
+        },
+        relation_hint: relationHint,
+        nearest_anchor_id: nearestAnchor?.id || null,
+        nearest_anchor_label: nearestAnchor?.label || null,
+        target_group_id: targetGroup?.id || null,
+        target_group_label: targetGroup?.label || null,
+        node_positions: movedNodes,
+        group_positions: groupEntities,
+        spatial_summary: [
+          `Moved node "${movedNode.label}" (${movedNode.id}) from (${state.entity.x}, ${state.entity.y}) to (${movedNode.x}, ${movedNode.y}).`,
+          nearestAnchor
+            ? `Nearest anchor after drop: "${nearestAnchor.label}" (${nearestAnchor.id}); relation_hint=${relationHint || "unknown"}.`
+            : "No nearby anchor node after drop.",
+          targetGroup ? `Dropped inside group "${targetGroup.label}" (${targetGroup.id}).` : "Dropped outside any group.",
+        ].join(" "),
+      });
+    };
+
+    const finishDrag = (pointerId: number, commit: boolean) => {
+      if (!dragState || dragState.pointerId !== pointerId) return;
+      const completedDrag = dragState;
+      dragState = null;
+      try {
+        if (host.hasPointerCapture(pointerId)) {
+          host.releasePointerCapture(pointerId);
+        }
+      } catch {
+        // Ignore stale capture cleanup.
+      }
+      resetTransform(completedDrag);
+      if (commit) {
+        commitDrag(completedDrag);
+      }
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (relayoutBusy || (event.pointerType === "mouse" && event.button !== 0)) return;
+      const target = event.target as Element | null;
+      const nodeElement = target?.closest?.("g.node");
+      if (!(nodeElement instanceof SVGGElement)) return;
+      const entity = entityByElement.get(nodeElement);
+      if (!entity) return;
+      const startPoint = resolveSvgPoint(svgElement, event.clientX, event.clientY);
+      if (!startPoint) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      host.setPointerCapture(event.pointerId);
+      nodeElement.style.cursor = "grabbing";
+      dragState = {
+        pointerId: event.pointerId,
+        element: nodeElement,
+        entity,
+        startPoint,
+        originalTransform: nodeElement.getAttribute("transform") || "",
+        currentDelta: { x: 0, y: 0 },
+      };
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!dragState || dragState.pointerId !== event.pointerId) return;
+      const currentPoint = resolveSvgPoint(svgElement, event.clientX, event.clientY);
+      if (!currentPoint) return;
+      dragState.currentDelta = {
+        x: roundCoordinate(currentPoint.x - dragState.startPoint.x),
+        y: roundCoordinate(currentPoint.y - dragState.startPoint.y),
+      };
+      dragState.element.setAttribute(
+        "transform",
+        svgTransformWithDelta(dragState.originalTransform, dragState.currentDelta),
+      );
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      finishDrag(event.pointerId, true);
+    };
+
+    const handlePointerCancel = (event: PointerEvent) => {
+      finishDrag(event.pointerId, false);
+    };
+
+    host.addEventListener("pointerdown", handlePointerDown);
+    host.addEventListener("pointermove", handlePointerMove);
+    host.addEventListener("pointerup", handlePointerUp);
+    host.addEventListener("pointercancel", handlePointerCancel);
+
+    return () => {
+      host.removeEventListener("pointerdown", handlePointerDown);
+      host.removeEventListener("pointermove", handlePointerMove);
+      host.removeEventListener("pointerup", handlePointerUp);
+      host.removeEventListener("pointercancel", handlePointerCancel);
+      if (dragState) {
+        resetTransform(dragState);
+        dragState = null;
+      }
+    };
+  }, [graphPayload, interactiveRelayoutEnabled, onNodeRelayout, relayoutBusy, svg]);
+
   const body = (
     <div
       className={`p-4 ${embedded ? "flex h-full min-h-0 flex-col bg-zinc-950/25" : "bg-zinc-950/40"}`}
@@ -460,6 +863,13 @@ function MermaidCardBody({
                   backgroundPosition: "10px 10px",
                 }}
               />
+              {interactiveRelayoutEnabled ? (
+                <div className="pointer-events-none absolute bottom-3 left-3 z-[2] rounded-md border border-zinc-700/80 bg-zinc-950/80 px-2.5 py-1.5 text-[11px] text-zinc-300 shadow-lg">
+                  {relayoutBusy
+                    ? "Planner is reorganizing the diagram..."
+                    : "Drag a node to let the current planner reorganize the graph."}
+                </div>
+              ) : null}
               {!svg ? (
                 <div className="absolute left-3 top-3 right-3 z-[2] rounded-lg border border-amber-900/55 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
                   画布已就绪，但目前没有可渲染的 Mermaid。
@@ -471,6 +881,7 @@ function MermaidCardBody({
               ) : null}
               {svg ? (
                 <div
+                  ref={renderSurfaceRef}
                   className="relative z-[1] min-h-0 flex-1 [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
                   dangerouslySetInnerHTML={{ __html: svg }}
                 />
@@ -554,6 +965,9 @@ export function MermaidCard(props: {
   updatedAt?: string | null;
   headerExtra?: ReactNode;
   embedded?: boolean;
+  graphPayload?: MermaidGraphPayload;
+  onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
+  relayoutBusy?: boolean;
 }) {
   return (
     <ErrorBoundary
