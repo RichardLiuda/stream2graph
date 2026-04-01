@@ -1,17 +1,23 @@
 "use client";
-
-import DOMPurify from "dompurify";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { AlertTriangle, CheckCircle2, Clock3 } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
 import { Badge, Card } from "@stream2graph/ui";
+import { PanZoomCanvas } from "@/components/pan-zoom-canvas";
 
 let mermaidReady: Promise<typeof import("mermaid")> | null = null;
 let mermaidInitialized = false;
 const GRAPH_HEADER_PATTERN = /^(graph|flowchart)(?:\s+([A-Za-z]{2}))?(?:\s*;\s*(.+))?$/i;
 const GRAPH_CONTROL_PREFIXES = ["subgraph ", "end", "class ", "classdef ", "style ", "linkstyle ", "click "];
+const GRAPH_NODE_PATTERN = String.raw`[A-Za-z][A-Za-z0-9_]{0,63}(?:\s*(?:\[[^\]\n]*\]|\([^\)\n]*\)|\{[^}\n]*\}|>[^<\n]*\]))?`;
+const GRAPH_LABELED_EDGE_PATTERN = new RegExp(
+  String.raw`^(?<lhs>${GRAPH_NODE_PATTERN})\s+--\s+(?<label>.+?)\s+--\s+(?<rhs>${GRAPH_NODE_PATTERN})$`,
+);
+const GRAPH_DOTTED_LABELED_EDGE_PATTERN = new RegExp(
+  String.raw`^(?<lhs>${GRAPH_NODE_PATTERN})\s+-\.\s+(?<label>.+?)\s+\.-\s+(?<rhs>${GRAPH_NODE_PATTERN})$`,
+);
 const GRAPH_BOUNDARY_PATTERNS = [
   /(?<=[\]\)\}])\s+(?=[A-Za-z][A-Za-z0-9_]{0,63}\s*(?:\[|\(|\{|>|-->|==>|-.->|->>|-->>|<<--|<--|<->|---|--\s))/g,
   /(?<=[A-Za-z0-9_])\s+(?=[A-Za-z][A-Za-z0-9_]{0,63}\s*(?:-->|==>|-.->|->>|-->>|<<--|<--|<->|---|--\s))/g,
@@ -82,6 +88,18 @@ function splitTopLevelStatements(line: string) {
 function normalizeGraphStatement(statement: string) {
   let repaired = statement.trim();
   if (!repaired) return [];
+  if (!/(-->|==>|-.->|->>|-->>|<<--|<--|<->)/.test(repaired)) {
+    const labeledEdge = repaired.match(GRAPH_LABELED_EDGE_PATTERN);
+    if (labeledEdge?.groups) {
+      const label = labeledEdge.groups.label.trim().replace(/\s+/g, " ");
+      return [`${labeledEdge.groups.lhs} -- ${label} --> ${labeledEdge.groups.rhs}`];
+    }
+    const dottedLabeledEdge = repaired.match(GRAPH_DOTTED_LABELED_EDGE_PATTERN);
+    if (dottedLabeledEdge?.groups) {
+      const label = dottedLabeledEdge.groups.label.trim().replace(/\s+/g, " ");
+      return [`${dottedLabeledEdge.groups.lhs} -. ${label} .-> ${dottedLabeledEdge.groups.rhs}`];
+    }
+  }
   repaired = repaired.replace(
     /([A-Za-z][A-Za-z0-9_]{0,63}(?:\s*(?:\[[^\]\n]*\]|\([^\)\n]*\)|\{[^}\n]*\}|>[^<\n]*\]))?)\s+--\s+([A-Za-z][A-Za-z0-9_]{0,63}(?:\s*(?:\[[^\]\n]*\]|\([^\)\n]*\)|\{[^}\n]*\}|>[^<\n]*\]))?)(?=$|\s+[A-Za-z])/g,
     "$1 --> $2",
@@ -169,33 +187,43 @@ async function getMermaid() {
       startOnLoad: false,
       securityLevel: "loose",
       theme: "neutral",
+      flowchart: {
+        htmlLabels: false,
+      },
     });
     mermaidInitialized = true;
   }
   return mermaidPackage.default;
 }
 
-function StatusBadge({ compileOk, updatedAt }: { compileOk?: boolean | null; updatedAt?: string | null }) {
+/** @description Mermaid 编译/就绪状态徽章，供主舞台顶栏与卡片内复用 */
+export function MermaidCompileStatusBadge({
+  compileOk,
+  updatedAt,
+}: {
+  compileOk?: boolean | null;
+  updatedAt?: string | null;
+}) {
   if (compileOk === false) {
     return (
-      <Badge className="border-amber-200 bg-amber-50 text-amber-700">
-        <AlertTriangle className="mr-1 h-3.5 w-3.5" />
-        compile failed
+      <Badge className="border-amber-900/60 bg-amber-950/45 text-amber-200/95 normal-case tracking-normal">
+        <AlertTriangle className="mr-1 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+        编译失败
       </Badge>
     );
   }
   if (updatedAt) {
     return (
-      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
-        <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-        latest ready
+      <Badge className="border-emerald-900/55 bg-emerald-950/35 text-emerald-200/90 normal-case tracking-normal">
+        <CheckCircle2 className="mr-1 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+        已就绪
       </Badge>
     );
   }
   return (
-    <Badge>
-      <Clock3 className="mr-1 h-3.5 w-3.5" />
-      waiting
+    <Badge className="normal-case tracking-normal text-zinc-400">
+      <Clock3 className="mr-1 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+      等待内容
     </Badge>
   );
 }
@@ -203,36 +231,64 @@ function StatusBadge({ compileOk, updatedAt }: { compileOk?: boolean | null; upd
 function MermaidCardBody({
   title,
   code,
+  rawOutputText,
+  repairRawOutputText,
   height = 360,
   provider,
   model,
   latencyMs,
   compileOk,
   updatedAt,
+  headerExtra,
+  embedded = false,
 }: {
   title: string;
   code: string;
+  rawOutputText?: string | null;
+  repairRawOutputText?: string | null;
   height?: number;
   provider?: string | null;
   model?: string | null;
   latencyMs?: number | null;
   compileOk?: boolean | null;
   updatedAt?: string | null;
+  /** @description 标题行右侧、与 latest ready 同排的附加徽章等 */
+  headerExtra?: ReactNode;
+  /** @description 为 true 时不渲染顶栏与外层 Card，由外层主舞台承载 */
+  embedded?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
   const [svg, setSvg] = useState("");
   const [lastSuccessfulSvg, setLastSuccessfulSvg] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const lastLoggedRawOutputRef = useRef("");
+  const lastLoggedRepairRawOutputRef = useRef("");
+  const lastSuccessfulSvgRef = useRef("");
+  const renderSequenceRef = useRef(0);
+
+  useEffect(() => {
+    const raw = (rawOutputText || "").trim();
+    if (raw && raw !== lastLoggedRawOutputRef.current) {
+      console.log(`[MermaidRawOutput]\n${raw}`);
+      lastLoggedRawOutputRef.current = raw;
+    }
+
+    const repairRaw = (repairRawOutputText || "").trim();
+    if (repairRaw && repairRaw !== lastLoggedRepairRawOutputRef.current) {
+      console.log(`[MermaidRepairRawOutput]\n${repairRaw}`);
+      lastLoggedRepairRawOutputRef.current = repairRaw;
+    }
+  }, [rawOutputText, repairRawOutputText]);
 
   useEffect(() => {
     let active = true;
     async function render() {
-      const normalizedCode = normalizeMermaidForRender(code);
+      const candidate = normalizeMermaidForRender(code);
       console.groupCollapsed("[MermaidCard] render start");
       console.info("[MermaidCard] card meta", { title, height, compileOk, updatedAt, provider, model, latencyMs });
       console.debug("[MermaidCard] raw code", summarizeMermaid(code));
-      console.debug("[MermaidCard] normalized code", summarizeMermaid(normalizedCode));
-      if (!normalizedCode.trim()) {
+      console.debug("[MermaidCard] render candidate", summarizeMermaid(candidate));
+      if (!candidate) {
         setSvg("");
         setError("暂无 Mermaid 内容");
         console.warn("[MermaidCard] skipped: empty Mermaid content");
@@ -241,55 +297,30 @@ function MermaidCardBody({
       }
       try {
         const mermaid = await getMermaid();
-        const candidates = Array.from(new Set([normalizedCode, code.trim()].filter(Boolean)));
-        let renderedSvg = "";
-        let renderError: string | null = null;
-
-        for (const candidate of candidates) {
-          try {
-            console.info("[MermaidCard] trying candidate", {
-              length: candidate.length,
-              preview: summarizeMermaid(candidate, 240),
-            });
-            const { svg: rendered } = await mermaid.render(`mermaid-${id}`, candidate);
-            renderedSvg = DOMPurify.sanitize(rendered, {
-              USE_PROFILES: { svg: true, svgFilters: true },
-            });
-            renderError = null;
-            console.info("[MermaidCard] render success", {
-              candidateLength: candidate.length,
-              svgLength: renderedSvg.length,
-            });
-            break;
-          } catch (err) {
-            renderError = err instanceof Error ? err.message : "渲染失败";
-            console.warn("[MermaidCard] candidate render failed", {
-              message: renderError,
-              preview: summarizeMermaid(candidate, 240),
-            });
-          }
-        }
+        renderSequenceRef.current += 1;
+        const renderId = `mermaid-${id}-${renderSequenceRef.current}`;
+        console.info("[MermaidCard] trying candidate", {
+          length: candidate.length,
+          preview: summarizeMermaid(candidate, 240),
+        });
+        const { svg: rendered } = await mermaid.render(renderId, candidate);
+        const renderedSvg = rendered;
 
         if (!active) return;
-        if (!renderedSvg) {
-          setSvg(lastSuccessfulSvg);
-          setError(renderError || "渲染失败");
-          console.error("[MermaidCard] all candidates failed", {
-            error: renderError || "渲染失败",
-            reusedLastSuccessfulSvg: Boolean(lastSuccessfulSvg),
-          });
-          console.groupEnd();
-          return;
-        }
         setSvg(renderedSvg);
+        lastSuccessfulSvgRef.current = renderedSvg;
         setLastSuccessfulSvg(renderedSvg);
         setError(null);
+        console.info("[MermaidCard] render success", {
+          candidateLength: candidate.length,
+          svgLength: renderedSvg.length,
+        });
         console.groupEnd();
       } catch (err) {
         if (!active) return;
-        setSvg(lastSuccessfulSvg);
+        setSvg(lastSuccessfulSvgRef.current);
         setError(err instanceof Error ? err.message : "渲染失败");
-        console.error("[MermaidCard] unexpected render error", err);
+        console.warn("[MermaidCard] render failed", err);
         console.groupEnd();
       }
     }
@@ -297,40 +328,64 @@ function MermaidCardBody({
     return () => {
       active = false;
     };
-  }, [code, id, lastSuccessfulSvg]);
+  }, [code, id, compileOk, height, latencyMs, model, provider, title, updatedAt]);
 
-  return (
-    <Card className="overflow-hidden p-0">
-      <div className="border-b border-white/70 px-6 py-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-slate-900">{title}</div>
-          <div className="flex flex-wrap items-center gap-2">
-            {provider ? <Badge>{provider}</Badge> : null}
-            {model ? <Badge>{model}</Badge> : null}
-            {typeof latencyMs === "number" ? <Badge>{latencyMs.toFixed(1)} ms</Badge> : null}
-            <StatusBadge compileOk={compileOk} updatedAt={updatedAt} />
-          </div>
-        </div>
-      </div>
-      <div className="bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(246,249,255,0.84))] p-5">
+  const body = (
+    <div
+      className={`p-4 ${embedded ? "flex h-full min-h-0 flex-col bg-zinc-950/25" : "bg-zinc-950/40"}`}
+    >
         {error ? (
-          <div className="mb-4 rounded-[24px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
-            Mermaid 渲染错误：{error}
-            {lastSuccessfulSvg ? " 已保留最近一次成功结果。" : ""}
+          <div className="mb-3 rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2.5 text-xs leading-relaxed text-amber-100">
+            渲染错误：{error}
+            {lastSuccessfulSvg ? " 已保留最近一次可用图。" : ""}
           </div>
         ) : null}
         <div
-          className="overflow-auto rounded-[26px] border border-white/75 bg-white/[0.84] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
-          style={{ minHeight: height }}
+          className={`overflow-auto rounded-xl border border-zinc-700/90 bg-zinc-950 p-4 ${
+            embedded ? "min-h-0 flex-1" : ""
+          }`}
+          style={embedded ? undefined : { minHeight: height }}
         >
-          {svg ? (
-            <div dangerouslySetInnerHTML={{ __html: svg }} />
-          ) : (
-            <div className="flex min-h-[220px] items-center justify-center text-sm text-slate-500">等待 Mermaid 内容...</div>
-          )}
+          <div className="min-h-[min(380px,52vh)]">
+            <PanZoomCanvas
+              className="relative flex h-full min-h-[min(380px,52vh)] min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-zinc-800/90 bg-zinc-950/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+              contentClassName="min-h-0 flex-1"
+              minScale={0.55}
+              maxScale={2.6}
+              initialScale={1}
+              initialOffset={{ x: 0, y: 0 }}
+            >
+              {/* 空画布也要像画布：细网格 + 提示条 */}
+              <div
+                className="pointer-events-none absolute inset-3 rounded-md opacity-[0.45]"
+                aria-hidden
+                style={{
+                  backgroundImage:
+                    "linear-gradient(rgba(63,63,70,0.32) 1px, transparent 1px), linear-gradient(90deg, rgba(63,63,70,0.32) 1px, transparent 1px)",
+                  backgroundSize: "24px 24px",
+                  backgroundPosition: "10px 10px",
+                }}
+              />
+              {!svg ? (
+                <div className="absolute left-3 top-3 right-3 z-[2] rounded-lg border border-amber-900/55 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
+                  画布已就绪，但目前没有可渲染的 Mermaid。
+                  <span className="text-amber-200/80">
+                    {" "}
+                    你可以：左侧发送 Transcript / 开始录音；会话建立后这里会自动更新。
+                  </span>
+                </div>
+              ) : null}
+              {svg ? (
+                <div
+                  className="relative z-[1] min-h-0 flex-1 [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
+                  dangerouslySetInnerHTML={{ __html: svg }}
+                />
+              ) : null}
+            </PanZoomCanvas>
+          </div>
         </div>
-        {(provider || model || updatedAt) && (
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+        {!embedded && (provider || model || updatedAt) ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-200">
             {updatedAt ? <span>Updated at: {updatedAt}</span> : null}
             {compileOk === false ? (
               <Tooltip.Provider delayDuration={150}>
@@ -348,8 +403,46 @@ function MermaidCardBody({
               </Tooltip.Provider>
             ) : null}
           </div>
-        )}
+        ) : null}
+        {embedded && compileOk === false ? (
+          <div className="mt-4 text-xs text-slate-200">
+            <Tooltip.Provider delayDuration={150}>
+              <Tooltip.Root>
+                <Tooltip.Trigger asChild>
+                  <span className="cursor-help underline decoration-dotted">compile warning</span>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content sideOffset={8} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-lg">
+                    服务端已检测到 Mermaid 编译失败，并保留了最近一次可用图。
+                    <Tooltip.Arrow className="fill-white" />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
+            </Tooltip.Provider>
+          </div>
+        ) : null}
       </div>
+  );
+
+  if (embedded) {
+    return <div className="h-full min-h-0 overflow-hidden">{body}</div>;
+  }
+
+  return (
+    <Card className="overflow-hidden p-0">
+      <div className="border-b border-zinc-800 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-zinc-200">{title}</div>
+          <div className="flex max-w-[min(100%,720px)] flex-wrap items-center justify-end gap-1.5">
+            {provider ? <Badge>{provider}</Badge> : null}
+            {model ? <Badge>{model}</Badge> : null}
+            {typeof latencyMs === "number" ? <Badge>{latencyMs.toFixed(1)} ms</Badge> : null}
+            <MermaidCompileStatusBadge compileOk={compileOk} updatedAt={updatedAt} />
+            {headerExtra}
+          </div>
+        </div>
+      </div>
+      {body}
     </Card>
   );
 }
@@ -357,12 +450,16 @@ function MermaidCardBody({
 export function MermaidCard(props: {
   title: string;
   code: string;
+  rawOutputText?: string | null;
+  repairRawOutputText?: string | null;
   height?: number;
   provider?: string | null;
   model?: string | null;
   latencyMs?: number | null;
   compileOk?: boolean | null;
   updatedAt?: string | null;
+  headerExtra?: ReactNode;
+  embedded?: boolean;
 }) {
   return (
     <ErrorBoundary

@@ -20,10 +20,63 @@ def _escape_label(label: str) -> str:
 
 
 def render_preview_mermaid(graph_ir: GraphIR) -> str:
+    diagram_type = (graph_ir.diagram_type or "flowchart").strip()
+    normalized_type = diagram_type.lower()
+
+    if normalized_type in {"sequence", "sequencediagram"}:
+        lines = ["sequenceDiagram"]
+        for node in sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)):
+            label = _escape_label(node.label or node.id)
+            lines.append(f"    participant {node.id} as {label}")
+        for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
+            edge_label = _escape_label(edge.label or edge.id or "relates")
+            lines.append(f"    {edge.source}->>{edge.target}: {edge_label}")
+        return "\n".join(lines)
+
+    if normalized_type in {"class", "classdiagram"}:
+        lines = ["classDiagram"]
+        for node in sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)):
+            lines.append(f"    class {node.id}")
+        for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
+            edge_label = f" : {_escape_label(edge.label)}" if edge.label else ""
+            lines.append(f"    {edge.source} --> {edge.target}{edge_label}")
+        return "\n".join(lines)
+
+    if normalized_type in {"state", "statediagram", "statediagram-v2"}:
+        lines = ["stateDiagram-v2"]
+        for node in sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)):
+            label = _escape_label(node.label or node.id)
+            lines.append(f'    state "{label}" as {node.id}')
+        for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
+            edge_label = f" : {_escape_label(edge.label)}" if edge.label else ""
+            lines.append(f"    {edge.source} --> {edge.target}{edge_label}")
+        return "\n".join(lines)
+
     lines = ["graph TD"]
+    groups_by_id = {group.id: group for group in graph_ir.groups}
+    child_groups: dict[str | None, list] = defaultdict(list)
+    for group in sorted(graph_ir.groups, key=lambda item: (item.source_index, item.id)):
+        child_groups[group.parent].append(group)
+
+    nodes_by_parent: dict[str | None, list] = defaultdict(list)
     for node in sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)):
+        parent_id = node.parent if node.parent in groups_by_id else None
+        nodes_by_parent[parent_id].append(node)
+
+    def emit_group(group_id: str | None, indent: int = 1) -> None:
+        prefix = "    " * indent
+        for group in child_groups.get(group_id, []):
+            lines.append(f'{prefix}subgraph {group.id}["{_escape_label(group.label or group.id)}"]')
+            for node in nodes_by_parent.get(group.id, []):
+                label = _escape_label(node.label or node.id)
+                lines.append(f'{prefix}    {node.id}["{label}"]')
+            emit_group(group.id, indent + 1)
+            lines.append(f"{prefix}end")
+
+    for node in nodes_by_parent.get(None, []):
         label = _escape_label(node.label or node.id)
         lines.append(f'    {node.id}["{label}"]')
+    emit_group(None)
     for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
         edge_label = f"|{_escape_label(edge.label)}|" if edge.label else ""
         lines.append(f"    {edge.source} -->{edge_label} {edge.target}")

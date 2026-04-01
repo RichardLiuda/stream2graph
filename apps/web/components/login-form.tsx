@@ -2,10 +2,11 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { useState } from "react";
 
 import { Button, Card, Input } from "@stream2graph/ui";
 
@@ -22,6 +23,7 @@ type FormValues = z.infer<typeof schema>;
 export function LoginForm() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -32,7 +34,7 @@ export function LoginForm() {
 
   const mutation = useMutation({
     mutationFn: api.login,
-    onSuccess: async () => {
+    onSuccess: () => {
       markAuthPending();
       queryClient.removeQueries({ queryKey: ["auth", "me"], exact: true });
       router.replace("/app/realtime");
@@ -40,49 +42,64 @@ export function LoginForm() {
   });
 
   return (
-    <Card className="mx-auto w-full max-w-[460px] p-6 md:p-8">
+    <Card
+      variant="dark"
+      className="mx-auto w-full max-w-[460px] border border-zinc-800/90 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.45)] md:p-8"
+    >
       <div className="mb-8">
-        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--accent-strong)]">
-          管理员登录
-        </div>
-        <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-slate-950">
-          进入正式研究平台
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">
-          登录后可以管理实时实验、样本对比、用户研究任务以及报告导出。
+        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">管理员登录</div>
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-zinc-100">进入正式研究平台</h1>
+        <p className="mt-2 text-sm leading-snug text-zinc-500">
+          管理实时实验、样本对照、研究与报告导出。
         </p>
       </div>
 
       <form
         className="space-y-4"
         method="post"
-        autoComplete="on"
+        autoComplete="off"
         onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
       >
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700">管理员账号</label>
-          <Input autoComplete="username" {...form.register("username")} />
+          <label className="text-sm font-medium text-zinc-400">管理员账号</label>
+          <Input variant="dark" autoComplete="username" {...form.register("username")} />
           {form.formState.errors.username ? (
-            <p className="text-xs text-red-600">{form.formState.errors.username.message}</p>
+            <p className="text-xs text-red-400">{form.formState.errors.username.message}</p>
           ) : null}
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700">密码</label>
-          <Input type="password" autoComplete="current-password" {...form.register("password")} />
+          <label className="text-sm font-medium text-zinc-400">密码</label>
+          <div className="relative">
+            <Input
+              variant="dark"
+              type={passwordVisible ? "text" : "password"}
+              autoComplete="current-password"
+              className="pr-11"
+              {...form.register("password")}
+            />
+            <button
+              type="button"
+              aria-label={passwordVisible ? "隐藏密码" : "显示密码"}
+              className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md border border-zinc-700/80 bg-zinc-950/40 text-zinc-300 transition hover:border-zinc-600 hover:bg-zinc-900/60 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+              onClick={() => setPasswordVisible((v) => !v)}
+            >
+              {passwordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
           {form.formState.errors.password ? (
-            <p className="text-xs text-red-600">{form.formState.errors.password.message}</p>
+            <p className="text-xs text-red-400">{form.formState.errors.password.message}</p>
           ) : null}
         </div>
 
         {mutation.isError ? (
-          <div className="rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="rounded-xl border border-red-900/55 bg-red-950/45 px-4 py-3 text-sm leading-relaxed text-red-200">
             {(mutation.error as Error).message}
           </div>
         ) : null}
 
         <Button type="submit" className="w-full justify-center" disabled={mutation.isPending}>
-          {mutation.isPending ? "登录中..." : "进入工作台"}
+          {mutation.isPending ? "登录中…" : "进入工作台"}
           <ArrowRight className="h-4 w-4" />
         </Button>
       </form>

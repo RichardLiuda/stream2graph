@@ -44,10 +44,12 @@ class RuntimeOptionProfile(BaseModel):
     provider_kind: str
     models: list[str]
     default_model: str
+    voiceprint: dict[str, Any] | None = None
 
 
 class RuntimeOptionsResponse(BaseModel):
-    llm_profiles: list[RuntimeOptionProfile]
+    gate_profiles: list[RuntimeOptionProfile]
+    planner_profiles: list[RuntimeOptionProfile]
     stt_profiles: list[RuntimeOptionProfile]
 
 
@@ -58,17 +60,23 @@ class RuntimeOptionProfileConfig(BaseModel):
     endpoint: str
     models: list[str]
     default_model: str = ""
+    app_id: str | None = None
     api_key_env: str | None = None
     api_key: str | None = None
+    api_secret_env: str | None = None
+    api_secret: str | None = None
+    voiceprint: dict[str, Any] | None = None
 
 
 class RuntimeOptionsAdminResponse(BaseModel):
-    llm_profiles: list[RuntimeOptionProfileConfig]
+    gate_profiles: list[RuntimeOptionProfileConfig]
+    planner_profiles: list[RuntimeOptionProfileConfig]
     stt_profiles: list[RuntimeOptionProfileConfig]
 
 
 class RuntimeOptionsAdminUpdateRequest(BaseModel):
-    llm_profiles: list[RuntimeOptionProfileConfig] = Field(default_factory=list)
+    gate_profiles: list[RuntimeOptionProfileConfig] = Field(default_factory=list)
+    planner_profiles: list[RuntimeOptionProfileConfig] = Field(default_factory=list)
     stt_profiles: list[RuntimeOptionProfileConfig] = Field(default_factory=list)
 
 
@@ -111,8 +119,11 @@ class RealtimeSessionCreateRequest(BaseModel):
     min_wait_k: int = 1
     base_wait_k: int = 2
     max_wait_k: int = 4
-    llm_profile_id: str | None = None
-    llm_model: str | None = None
+    diagram_type: str = "flowchart"
+    gate_profile_id: str | None = None
+    gate_model: str | None = None
+    planner_profile_id: str | None = None
+    planner_model: str | None = None
     stt_profile_id: str | None = None
     stt_model: str | None = None
     diagram_mode: str = "mermaid_primary"
@@ -126,6 +137,10 @@ class RealtimeChunkCreateRequest(BaseModel):
     is_final: bool = True
     expected_intent: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RealtimeChunkBatchCreateRequest(BaseModel):
+    chunks: list[RealtimeChunkCreateRequest] = Field(default_factory=list)
 
 
 class RealtimeChunkEvent(BaseModel):
@@ -167,12 +182,59 @@ class RealtimeAudioTranscriptionRequest(BaseModel):
 class RealtimeAudioTranscriptionResponse(BaseModel):
     ok: bool
     text: str
+    speaker: str
+    voiceprint: dict[str, Any] | None = None
     is_final: bool
     provider: str
     model: str
     latency_ms: float
     pipeline: dict[str, Any]
     evaluation: dict[str, Any] | None = None
+
+
+class VoiceprintFeatureCreateRequest(BaseModel):
+    speaker_label: str
+    feature_info: str | None = None
+    sample_rate: int
+    channel_count: int = 1
+    pcm_s16le_base64: str
+
+
+class VoiceprintFeatureSummary(BaseModel):
+    id: str
+    stt_profile_id: str
+    group_id: str
+    feature_id: str
+    speaker_label: str
+    feature_info: str
+    status: str
+    remote_payload: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
+class VoiceprintGroupSyncRequest(BaseModel):
+    display_name: str | None = None
+    group_info: str | None = None
+
+
+class VoiceprintGroupSummary(BaseModel):
+    id: str
+    stt_profile_id: str
+    group_id: str
+    display_name: str
+    provider_kind: str
+    status: str
+    remote_payload: dict[str, Any]
+    last_synced_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class VoiceprintGroupSyncResponse(BaseModel):
+    ok: bool
+    group: VoiceprintGroupSummary
+    remote_features: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class RunConfigSnapshot(BaseModel):

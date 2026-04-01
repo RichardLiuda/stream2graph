@@ -6,9 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import DatasetVersion
-from app.routers.auth import get_current_admin
 from app.schemas import (
-    AdminIdentity,
     DatasetSplitSummary,
     DatasetVersionSummary,
     RuntimeOptionProfile,
@@ -37,7 +35,8 @@ router = APIRouter(prefix="/catalog", tags=["catalog"])
 def get_runtime_options(db: Session = Depends(get_db)) -> RuntimeOptionsResponse:
     payload = list_runtime_options(db)
     return RuntimeOptionsResponse(
-        llm_profiles=[RuntimeOptionProfile(**row) for row in payload["llm_profiles"]],
+        gate_profiles=[RuntimeOptionProfile(**row) for row in payload["gate_profiles"]],
+        planner_profiles=[RuntimeOptionProfile(**row) for row in payload["planner_profiles"]],
         stt_profiles=[RuntimeOptionProfile(**row) for row in payload["stt_profiles"]],
     )
 
@@ -45,11 +44,11 @@ def get_runtime_options(db: Session = Depends(get_db)) -> RuntimeOptionsResponse
 @router.get("/runtime-options/admin", response_model=RuntimeOptionsAdminResponse)
 def get_runtime_options_admin(
     db: Session = Depends(get_db),
-    _admin: AdminIdentity = Depends(get_current_admin),
 ) -> RuntimeOptionsAdminResponse:
     payload = list_persisted_runtime_options(db, include_secrets=True)
     return RuntimeOptionsAdminResponse(
-        llm_profiles=[RuntimeOptionProfileConfig(**row) for row in payload["llm_profiles"]],
+        gate_profiles=[RuntimeOptionProfileConfig(**row) for row in payload["gate_profiles"]],
+        planner_profiles=[RuntimeOptionProfileConfig(**row) for row in payload["planner_profiles"]],
         stt_profiles=[RuntimeOptionProfileConfig(**row) for row in payload["stt_profiles"]],
     )
 
@@ -58,12 +57,12 @@ def get_runtime_options_admin(
 def save_runtime_options_admin(
     payload: RuntimeOptionsAdminUpdateRequest,
     db: Session = Depends(get_db),
-    _admin: AdminIdentity = Depends(get_current_admin),
 ) -> RuntimeOptionsAdminResponse:
     saved = save_runtime_options(db, payload.model_dump())
     db.commit()
     return RuntimeOptionsAdminResponse(
-        llm_profiles=[RuntimeOptionProfileConfig(**row) for row in saved["llm_profiles"]],
+        gate_profiles=[RuntimeOptionProfileConfig(**row) for row in saved["gate_profiles"]],
+        planner_profiles=[RuntimeOptionProfileConfig(**row) for row in saved["planner_profiles"]],
         stt_profiles=[RuntimeOptionProfileConfig(**row) for row in saved["stt_profiles"]],
     )
 
@@ -71,7 +70,6 @@ def save_runtime_options_admin(
 @router.post("/runtime-options/admin/probe-models", response_model=RuntimeModelProbeResponse)
 def probe_runtime_models_admin(
     payload: RuntimeModelProbeRequest,
-    _admin: AdminIdentity = Depends(get_current_admin),
 ) -> RuntimeModelProbeResponse:
     try:
         result = probe_runtime_models(

@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.db import Base, engine, session_scope
 from app.models import AdminUser
-from app.routers import auth, catalog, realtime, reports, runs, studies
+from app.routers import auth, catalog, realtime, reports, runs, studies, voiceprints
 from app.security import hash_password, verify_password
 from app.services.catalog import sync_dataset_versions
 from app.services.runs import process_next_queued_job
@@ -69,6 +69,7 @@ def create_app(*, register_startup: bool = True) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
+        allow_origin_regex=settings.cors_origin_regex or None,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -86,6 +87,7 @@ def create_app(*, register_startup: bool = True) -> FastAPI:
     app.include_router(auth.router, prefix=settings.api_v1_prefix)
     app.include_router(catalog.router, prefix=settings.api_v1_prefix)
     app.include_router(realtime.router, prefix=settings.api_v1_prefix)
+    app.include_router(voiceprints.router, prefix=settings.api_v1_prefix)
     app.include_router(runs.router, prefix=settings.api_v1_prefix)
     app.include_router(studies.router, prefix=settings.api_v1_prefix)
     app.include_router(reports.router, prefix=settings.api_v1_prefix)

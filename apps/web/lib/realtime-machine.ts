@@ -24,9 +24,14 @@ type RealtimeStudioEvent =
   | { type: "stt.working" }
   | { type: "stt.success"; text: string }
   | { type: "stt.error"; message: string }
-  | { type: "llm.working" }
-  | { type: "llm.success"; updatedAt: string | null }
-  | { type: "llm.error"; message: string; updatedAt: string | null }
+  | { type: "gate.working" }
+  | { type: "gate.success" }
+  | { type: "gate.error"; message: string }
+  | { type: "planner.working" }
+  | { type: "planner.success" }
+  | { type: "planner.error"; message: string }
+  | { type: "mermaid.success"; updatedAt: string | null }
+  | { type: "mermaid.error"; message: string; updatedAt: string | null }
   | { type: "error.clear" };
 
 export const realtimeStudioMachine = setup({
@@ -36,7 +41,9 @@ export const realtimeStudioMachine = setup({
       recognitionBackend: RecognitionBackend;
       captureStatus: CaptureStatus;
       sttStatus: BackendStatus;
-      llmStatus: BackendStatus;
+      gateStatus: BackendStatus;
+      plannerStatus: BackendStatus;
+      mermaidStatus: BackendStatus;
       inputLevel: number;
       liveTranscript: string;
       error: string | null;
@@ -51,7 +58,9 @@ export const realtimeStudioMachine = setup({
     recognitionBackend: "manual",
     captureStatus: "idle",
     sttStatus: "idle",
-    llmStatus: "idle",
+    gateStatus: "idle",
+    plannerStatus: "idle",
+    mermaidStatus: "idle",
     inputLevel: 0,
     liveTranscript: "",
     error: null,
@@ -66,7 +75,9 @@ export const realtimeStudioMachine = setup({
           event.backend,
         captureStatus: "idle",
         sttStatus: "idle",
-        llmStatus: "idle",
+        gateStatus: "idle",
+        plannerStatus: "idle",
+        mermaidStatus: "idle",
         inputLevel: 0,
         liveTranscript: "",
         error: null,
@@ -78,7 +89,9 @@ export const realtimeStudioMachine = setup({
           event.backend,
         captureStatus: "idle",
         sttStatus: "idle",
-        llmStatus: "idle",
+        gateStatus: "idle",
+        plannerStatus: "idle",
+        mermaidStatus: "idle",
         inputLevel: 0,
         liveTranscript: "",
         error: null,
@@ -100,6 +113,8 @@ export const realtimeStudioMachine = setup({
       actions: assign({
         captureStatus: "idle",
         sttStatus: "idle",
+        gateStatus: "idle",
+        plannerStatus: "idle",
         inputLevel: 0,
       }),
     },
@@ -133,24 +148,53 @@ export const realtimeStudioMachine = setup({
         error: ({ event }: { event: Extract<RealtimeStudioEvent, { type: "stt.error" }> }) => event.message,
       }),
     },
-    "llm.working": {
+    "gate.working": {
       actions: assign({
-        llmStatus: "working",
+        gateStatus: "working",
       }),
     },
-    "llm.success": {
+    "gate.success": {
       actions: assign({
-        llmStatus: "success",
+        gateStatus: "success",
         error: null,
-        lastMermaidUpdatedAt: ({ event }: { event: Extract<RealtimeStudioEvent, { type: "llm.success" }> }) =>
+      }),
+    },
+    "gate.error": {
+      actions: assign({
+        gateStatus: "error",
+        error: ({ event }: { event: Extract<RealtimeStudioEvent, { type: "gate.error" }> }) => event.message,
+      }),
+    },
+    "planner.working": {
+      actions: assign({
+        plannerStatus: "working",
+      }),
+    },
+    "planner.success": {
+      actions: assign({
+        plannerStatus: "success",
+        error: null,
+      }),
+    },
+    "planner.error": {
+      actions: assign({
+        plannerStatus: "error",
+        error: ({ event }: { event: Extract<RealtimeStudioEvent, { type: "planner.error" }> }) => event.message,
+      }),
+    },
+    "mermaid.success": {
+      actions: assign({
+        mermaidStatus: "success",
+        error: null,
+        lastMermaidUpdatedAt: ({ event }: { event: Extract<RealtimeStudioEvent, { type: "mermaid.success" }> }) =>
           event.updatedAt,
       }),
     },
-    "llm.error": {
+    "mermaid.error": {
       actions: assign({
-        llmStatus: "error",
-        error: ({ event }: { event: Extract<RealtimeStudioEvent, { type: "llm.error" }> }) => event.message,
-        lastMermaidUpdatedAt: ({ event }: { event: Extract<RealtimeStudioEvent, { type: "llm.error" }> }) =>
+        mermaidStatus: "error",
+        error: ({ event }: { event: Extract<RealtimeStudioEvent, { type: "mermaid.error" }> }) => event.message,
+        lastMermaidUpdatedAt: ({ event }: { event: Extract<RealtimeStudioEvent, { type: "mermaid.error" }> }) =>
           event.updatedAt,
       }),
     },

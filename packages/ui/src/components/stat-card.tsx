@@ -10,10 +10,10 @@ export function StatCard({
   hint?: string;
 }) {
   return (
-    <Card className="lift-hover p-5 md:p-6">
-      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</div>
-      <div className="mt-4 text-[2rem] font-semibold tracking-[-0.04em] text-slate-950">{value}</div>
-      {hint ? <div className="mt-3 text-xs leading-6 text-slate-500">{hint}</div> : null}
+    <Card className="p-4 md:p-5">
+      <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-500">{label}</div>
+      <div className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-zinc-100">{value}</div>
+      {hint ? <div className="mt-1.5 text-[11px] leading-snug text-zinc-500">{hint}</div> : null}
     </Card>
   );
 }

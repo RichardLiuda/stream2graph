@@ -63,9 +63,20 @@ export function getSystemAudioExperimentalLabel(context: ClientAudioContext | nu
   return "系统声音（实验性）";
 }
 
-export function supportsSystemAudioUi(context: ClientAudioContext | null) {
+/** 实验性「共享屏幕 / 标签页音频」采集入口，仅在桌面 Chrome / Edge 展示。 */
+export function supportsSystemAudioExperimentalUi(context: ClientAudioContext | null) {
   if (!context) return false;
   return context.is_desktop && (context.browser_family === "chrome" || context.browser_family === "edge");
+}
+
+/** 与 {@link supportsSystemAudioExperimentalUi} 等价，保留旧导出名。 */
+export function supportsSystemAudioUi(context: ClientAudioContext | null) {
+  return supportsSystemAudioExperimentalUi(context);
+}
+
+/** 桌面端可展示「增强模式」（本机 helper）；与浏览器是否为 Chrome/Edge 无关。 */
+export function supportsHelperSystemAudioUi(context: ClientAudioContext | null) {
+  return Boolean(context?.is_desktop);
 }
 
 export function getSystemAudioUnavailableReason(context: ClientAudioContext | null) {
@@ -83,8 +94,8 @@ export function getSystemAudioUnavailableReason(context: ClientAudioContext | nu
 export function getInputSourceOptions(context: ClientAudioContext | null): InputSourceOption[] {
   const transcriptOption: InputSourceOption = {
     source: "transcript",
-    label: "Transcript 输入",
-    description: "最稳定的输入方式，适合演示、回放和手工控制节奏。",
+    label: "打字输入",
+    description: "自己打字，最稳定，适合演示和慢慢试。",
     capture_mode: "manual_text",
     capability_status: "supported",
     capability_reason: "始终可用。",
@@ -93,7 +104,7 @@ export function getInputSourceOptions(context: ClientAudioContext | null): Input
   const microphoneOption: InputSourceOption = {
     source: "microphone_browser",
     label: "浏览器麦克风",
-    description: "使用浏览器自带语音识别服务，适合快速验证。",
+    description: "用麦克风，由浏览器听写，适合快速试一下。",
     capture_mode: "browser_speech",
     capability_status: context?.supports_speech_recognition ? "supported" : "limited",
     capability_reason: context?.supports_speech_recognition
@@ -103,24 +114,34 @@ export function getInputSourceOptions(context: ClientAudioContext | null): Input
 
   const options: InputSourceOption[] = [transcriptOption, microphoneOption];
 
-  if (supportsSystemAudioUi(context)) {
+  if (supportsSystemAudioExperimentalUi(context)) {
     options.push({
       source: "system_audio_browser_experimental",
       label: getSystemAudioExperimentalLabel(context),
-      description: "只做浏览器原生能力验证，不承诺稳定转成文本。",
+      description: "只检查能不能抓到共享声音，不保证能稳定转成文字。",
       capture_mode: "browser_display_audio",
       capability_status: context?.supports_display_audio ? "limited" : "unsupported",
       capability_reason: context?.supports_display_audio
         ? "浏览器支持共享音频流，但当前版本仅用于验证可达性。"
         : "当前浏览器不支持共享音频采集。",
     });
+  }
+
+  if (supportsHelperSystemAudioUi(context)) {
+    const nonChromeEdgeDesktop =
+      context &&
+      (context.browser_family === "safari" ||
+        context.browser_family === "firefox" ||
+        context.browser_family === "other");
     options.push({
       source: "system_audio_helper",
       label: "系统声音（增强模式）",
-      description: "通过本地 helper 接收共享音频并在本机转文本，是当前正式体验路线。",
+      description: "用本机小助手接收系统声音并在电脑里转成文字，推荐正式使用。",
       capture_mode: "helper_native_capture",
       capability_status: "limited",
-      capability_reason: "需要本机启动 audio helper，并准备好本地转写依赖。",
+      capability_reason: nonChromeEdgeDesktop
+        ? "需要本机启动 audio helper。实验性共享音频验证入口仅在 Chrome / Edge 提供。"
+        : "需要本机启动 audio helper，并准备好本地转写依赖。",
     });
   }
 

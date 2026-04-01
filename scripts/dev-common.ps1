@@ -60,10 +60,10 @@ function Require-File([string] $Path) {
   }
 }
 
-function Test-TcpPort([string] $Host, [int] $Port) {
+function Test-TcpPort([string] $Hostname, [int] $Port) {
   $client = New-Object System.Net.Sockets.TcpClient
   try {
-    $async = $client.BeginConnect($Host, $Port, $null, $null)
+    $async = $client.BeginConnect($Hostname, $Port, $null, $null)
     if (-not $async.AsyncWaitHandle.WaitOne(1000)) {
       return $false
     }
@@ -76,20 +76,20 @@ function Test-TcpPort([string] $Host, [int] $Port) {
   }
 }
 
-function Wait-ForPort([string] $Host, [int] $Port, [string] $Label, [int] $WaitSeconds = 30) {
+function Wait-ForPort([string] $Hostname, [int] $Port, [string] $Label, [int] $WaitSeconds = 30) {
   for ($i = 0; $i -lt $WaitSeconds; $i += 1) {
-    if (Test-TcpPort -Host $Host -Port $Port) {
-      Write-Host "$Label is ready on ${Host}:$Port"
+    if (Test-TcpPort -Hostname $Hostname -Port $Port) {
+      Write-Host "$Label is ready on ${Hostname}:$Port"
       return
     }
     Start-Sleep -Seconds 1
   }
-  throw "$Label did not become ready on ${Host}:$Port within ${WaitSeconds}s."
+  throw "$Label did not become ready on ${Hostname}:$Port within ${WaitSeconds}s."
 }
 
 function Test-HttpUrl([string] $Url) {
   try {
-    Invoke-WebRequest -Uri $Url -Method Get -TimeoutSec 2 | Out-Null
+    Invoke-WebRequest -Uri $Url -Method Get -TimeoutSec 2 -UseBasicParsing | Out-Null
     return $true
   } catch {
     return $false
@@ -107,9 +107,9 @@ function Wait-ForHttp([string] $Url, [string] $Label, [int] $WaitSeconds = 40) {
   throw "$Label did not become ready at $Url within ${WaitSeconds}s."
 }
 
-function Test-ProcessAlive([int] $Pid) {
+function Test-ProcessAlive([int] $ProcessId) {
   try {
-    Get-Process -Id $Pid -ErrorAction Stop | Out-Null
+    Get-Process -Id $ProcessId -ErrorAction Stop | Out-Null
     return $true
   } catch {
     return $false
@@ -133,7 +133,7 @@ function Test-RunningFromPidFile([string] $PidFile) {
     return $false
   }
 
-  if (Test-ProcessAlive -Pid $pidValue) {
+  if (Test-ProcessAlive -ProcessId $pidValue) {
     return $true
   }
 
@@ -181,11 +181,11 @@ function Start-ManagedService(
       }
       "port" {
         $parts = $ReadinessTarget -split ":", 2
-        Wait-ForPort -Host $parts[0] -Port ([int] $parts[1]) -Label $Name
+        Wait-ForPort -Hostname $parts[0] -Port ([int] $parts[1]) -Label $Name
       }
       default {
         Start-Sleep -Seconds 2
-        if (-not (Test-ProcessAlive -Pid $process.Id)) {
+        if (-not (Test-ProcessAlive -ProcessId $process.Id)) {
           throw "$Name exited early."
         }
         Write-Host "$Name is running (pid $($process.Id))"
@@ -208,7 +208,7 @@ function Stop-ManagedService([string] $Name, [string] $PidFile) {
 
   $raw = (Get-Content $PidFile -ErrorAction SilentlyContinue | Select-Object -First 1).Trim()
   $pidValue = 0
-  if ($raw -and [int]::TryParse($raw, [ref] $pidValue) -and (Test-ProcessAlive -Pid $pidValue)) {
+  if ($raw -and [int]::TryParse($raw, [ref] $pidValue) -and (Test-ProcessAlive -ProcessId $pidValue)) {
     cmd.exe /d /c "taskkill /PID $pidValue /T /F" | Out-Null
     Write-Host "Stopped $Name (pid $pidValue)"
   } else {
@@ -257,7 +257,7 @@ function Ensure-Postgres {
     return
   }
 
-  if (Test-TcpPort -Host "127.0.0.1" -Port 5432) {
+  if (Test-TcpPort -Hostname "127.0.0.1" -Port 5432) {
     Write-Host "PostgreSQL already listening on 5432"
     return
   }
@@ -311,7 +311,7 @@ function Write-ServiceStatus([string] $Name, [string] $PidFile, [string] $ExtraS
 
   $raw = (Get-Content $PidFile -ErrorAction SilentlyContinue | Select-Object -First 1).Trim()
   $pidValue = 0
-  if ($raw -and [int]::TryParse($raw, [ref] $pidValue) -and (Test-ProcessAlive -Pid $pidValue)) {
+  if ($raw -and [int]::TryParse($raw, [ref] $pidValue) -and (Test-ProcessAlive -ProcessId $pidValue)) {
     if ($ExtraStatus) {
       "{0,-12} {1}" -f $Name, "running (pid $pidValue, $ExtraStatus)" | Write-Host
     } else {

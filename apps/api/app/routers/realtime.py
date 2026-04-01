@@ -1,23 +1,27 @@
 from __future__ import annotations
 
+import json
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db, utc_now
-from app.legacy import evaluate_payload, TranscriptChunk
+from app.legacy import evaluate_payload
 from app.models import RealtimeChunk, RealtimeSession
-from app.routers.auth import get_current_admin
 from app.schemas import (
     RealtimeAudioTranscriptionRequest,
     RealtimeAudioTranscriptionResponse,
+    RealtimeChunkBatchCreateRequest,
     RealtimeChunkCreateRequest,
     RealtimeSession as RealtimeSessionSchema,
     RealtimeSessionCreateRequest,
     RealtimeSnapshot,
 )
-from app.services.realtime_ai import generate_mermaid_state, transcribe_audio_chunk
+from app.services.realtime_ai import transcribe_audio_chunk
 from app.services.reports import create_report
+from app.services.runtime_options import resolve_profile
 from app.services.runtime_sessions import (
     create_runtime_session,
     drop_runtime,
@@ -26,9 +30,15 @@ from app.services.runtime_sessions import (
     restore_runtime_if_needed,
     save_snapshot,
 )
+from app.services.voiceprints import blind_recognize_speaker
 
 
-router = APIRouter(prefix="/realtime/sessions", tags=["realtime"], dependencies=[Depends(get_current_admin)])
+router = APIRouter(prefix="/realtime/sessions", tags=["realtime"])
+logger = logging.getLogger(__name__)
+
+
+def _log_runtime_event(message: str, payload: dict) -> None:
+    logger.info("%s %s", message, json.dumps(payload, ensure_ascii=False))
 
 
 def _get_session_or_404(db: Session, session_id: str) -> RealtimeSession:
@@ -52,7 +62,6 @@ def _timestamp_for_chunk(db: Session, session_id: str, requested: int | None) ->
 
 def _rebuild_snapshot(db: Session, obj: RealtimeSession, runtime) -> tuple[dict, dict]:
     pipeline = runtime.pipeline_payload()
-    pipeline["mermaid_state"] = generate_mermaid_state(db, obj)
     evaluation = evaluate_payload(pipeline)
     replace_events(db, obj.id, pipeline["events"])
     save_snapshot(db, obj, pipeline=pipeline, evaluation=evaluation)
@@ -72,12 +81,12 @@ def _ingest_transcript_payload(
 ) -> tuple[list[dict], dict, dict]:
     runtime = restore_runtime_if_needed(db, obj)
     emitted = runtime.ingest_chunk(
-        TranscriptChunk(
-            timestamp_ms=timestamp_ms,
-            text=text,
-            speaker=speaker,
-            is_final=is_final,
-        ),
+        db,
+        obj,
+        timestamp_ms=timestamp_ms,
+        text=text,
+        speaker=speaker,
+        is_final=is_final,
         expected_intent=expected_intent,
     )
     persist_chunk(
@@ -92,6 +101,12 @@ def _ingest_transcript_payload(
             "metadata": metadata,
         },
     )
+    _merge_input_runtime_metadata(obj, metadata)
+    pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
+    return emitted, pipeline, evaluation
+
+
+def _merge_input_runtime_metadata(obj: RealtimeSession, metadata: dict) -> None:
     if isinstance(metadata, dict) and metadata:
         snapshot = obj.config_snapshot if isinstance(obj.config_snapshot, dict) else {}
         input_runtime = snapshot.get("input_runtime", {}) if isinstance(snapshot.get("input_runtime"), dict) else {}
@@ -102,8 +117,6 @@ def _ingest_transcript_payload(
                 **metadata,
             },
         }
-    pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
-    return emitted, pipeline, evaluation
 
 
 @router.get("", response_model=list[RealtimeSessionSchema])
@@ -134,8 +147,11 @@ def create_session(payload: RealtimeSessionCreateRequest, db: Session = Depends(
             "base_wait_k": payload.base_wait_k,
             "max_wait_k": payload.max_wait_k,
             "runtime_options": {
-                "llm_profile_id": payload.llm_profile_id,
-                "llm_model": payload.llm_model,
+                "diagram_type": payload.diagram_type,
+                "gate_profile_id": payload.gate_profile_id,
+                "gate_model": payload.gate_model,
+                "planner_profile_id": payload.planner_profile_id,
+                "planner_model": payload.planner_model,
                 "stt_profile_id": payload.stt_profile_id,
                 "stt_model": payload.stt_model,
                 "diagram_mode": payload.diagram_mode,
@@ -145,6 +161,16 @@ def create_session(payload: RealtimeSessionCreateRequest, db: Session = Depends(
     )
     db.add(obj)
     db.flush()
+    _log_runtime_event(
+        "Realtime session created",
+        {
+            "session_id": obj.id,
+            "title": obj.title,
+            "dataset_version_slug": obj.dataset_version_slug,
+            "runtime_options": obj.config_snapshot.get("runtime_options", {}),
+            "input_runtime": obj.config_snapshot.get("input_runtime", {}),
+        },
+    )
     create_runtime_session(db, obj)
     db.commit()
     return RealtimeSessionSchema(
@@ -177,6 +203,17 @@ def get_session(session_id: str, db: Session = Depends(get_db)) -> RealtimeSessi
 def add_chunk(session_id: str, payload: RealtimeChunkCreateRequest, db: Session = Depends(get_db)) -> dict:
     obj = _get_session_or_404(db, session_id)
     timestamp_ms = _timestamp_for_chunk(db, session_id, payload.timestamp_ms)
+    _log_runtime_event(
+        "Realtime chunk ingest requested",
+        {
+            "session_id": session_id,
+            "timestamp_ms": timestamp_ms,
+            "speaker": payload.speaker,
+            "is_final": payload.is_final,
+            "text_chars": len(payload.text or ""),
+            "metadata": payload.metadata,
+        },
+    )
     emitted, pipeline, evaluation = _ingest_transcript_payload(
         db,
         obj,
@@ -188,6 +225,81 @@ def add_chunk(session_id: str, payload: RealtimeChunkCreateRequest, db: Session 
         metadata=payload.metadata,
     )
     db.commit()
+    _log_runtime_event(
+        "Realtime chunk ingest completed",
+        {
+            "session_id": session_id,
+            "emitted_event_count": len(emitted),
+            "updates_emitted": pipeline.get("summary", {}).get("updates_emitted"),
+            "pending_turn_count": pipeline.get("coordination_summary", {}).get("pending_turn_count"),
+            "gate_state": pipeline.get("gate_state"),
+            "planner_state": pipeline.get("planner_state"),
+        },
+    )
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "emitted_events": emitted,
+        "pipeline": pipeline,
+        "evaluation": evaluation,
+    }
+
+
+@router.post("/{session_id}/chunks/batch")
+def add_chunk_batch(session_id: str, payload: RealtimeChunkBatchCreateRequest, db: Session = Depends(get_db)) -> dict:
+    obj = _get_session_or_404(db, session_id)
+    runtime = restore_runtime_if_needed(db, obj)
+    last_metadata: dict = {}
+    for row in payload.chunks:
+        timestamp_ms = _timestamp_for_chunk(db, session_id, row.timestamp_ms)
+        _log_runtime_event(
+            "Realtime chunk buffered",
+            {
+                "session_id": session_id,
+                "timestamp_ms": timestamp_ms,
+                "speaker": row.speaker,
+                "is_final": row.is_final,
+                "text_chars": len(row.text or ""),
+                "metadata": row.metadata,
+            },
+        )
+        runtime.buffer_chunk(
+            timestamp_ms=timestamp_ms,
+            text=row.text,
+            speaker=row.speaker,
+            is_final=row.is_final,
+            expected_intent=row.expected_intent,
+        )
+        persist_chunk(
+            db,
+            obj.id,
+            {
+                "timestamp_ms": timestamp_ms,
+                "text": row.text,
+                "speaker": row.speaker,
+                "is_final": row.is_final,
+                "expected_intent": row.expected_intent,
+                "metadata": row.metadata,
+            },
+        )
+        if isinstance(row.metadata, dict):
+            last_metadata = row.metadata
+    _merge_input_runtime_metadata(obj, last_metadata)
+    emitted = runtime.run_pending(db, obj)
+    pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
+    db.commit()
+    _log_runtime_event(
+        "Realtime chunk batch completed",
+        {
+            "session_id": session_id,
+            "buffered_count": len(payload.chunks),
+            "emitted_event_count": len(emitted),
+            "updates_emitted": pipeline.get("summary", {}).get("updates_emitted"),
+            "pending_turn_count": pipeline.get("coordination_summary", {}).get("pending_turn_count"),
+            "gate_state": pipeline.get("gate_state"),
+            "planner_state": pipeline.get("planner_state"),
+        },
+    )
     return {
         "ok": True,
         "session_id": session_id,
@@ -200,6 +312,20 @@ def add_chunk(session_id: str, payload: RealtimeChunkCreateRequest, db: Session 
 @router.post("/{session_id}/audio/transcriptions", response_model=RealtimeAudioTranscriptionResponse)
 def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest, db: Session = Depends(get_db)) -> RealtimeAudioTranscriptionResponse:
     obj = _get_session_or_404(db, session_id)
+    runtime_options = obj.config_snapshot.get("runtime_options", {}) if isinstance(obj.config_snapshot, dict) else {}
+    stt_profile = resolve_profile(db, "stt", runtime_options.get("stt_profile_id"))
+    _log_runtime_event(
+        "Realtime audio transcription requested",
+        {
+            "session_id": session_id,
+            "stt_profile_id": (stt_profile or {}).get("id", runtime_options.get("stt_profile_id")),
+            "stt_model": runtime_options.get("stt_model"),
+            "sample_rate": payload.sample_rate,
+            "channel_count": payload.channel_count,
+            "speaker": payload.speaker,
+            "metadata": payload.metadata,
+        },
+    )
     try:
         result = transcribe_audio_chunk(
             db,
@@ -211,7 +337,26 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
             },
         )
     except Exception as exc:
+        logger.exception(
+            "Realtime audio transcription failed for session=%s stt_profile_id=%s stt_model=%s",
+            session_id,
+            (stt_profile or {}).get("id", runtime_options.get("stt_profile_id")),
+            runtime_options.get("stt_model"),
+        )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    recognized_speaker = payload.speaker
+    voiceprint_result = blind_recognize_speaker(
+        db,
+        stt_profile_id=str((stt_profile or {}).get("id", runtime_options.get("stt_profile_id") or "")),
+        profile=stt_profile,
+        pcm_s16le_base64=payload.pcm_s16le_base64,
+        sample_rate=payload.sample_rate,
+        channel_count=payload.channel_count,
+        fallback_speaker=payload.speaker,
+    )
+    if isinstance(voiceprint_result, dict) and voiceprint_result.get("matched"):
+        recognized_speaker = str(voiceprint_result.get("speaker_label", payload.speaker) or payload.speaker)
 
     pipeline = obj.pipeline_payload if isinstance(obj.pipeline_payload, dict) else {}
     evaluation = obj.evaluation_payload if isinstance(obj.evaluation_payload, dict) else {}
@@ -222,20 +367,38 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
             "stt_provider": result["provider"],
             "stt_model": result["model"],
         }
+        if voiceprint_result is not None:
+            merged_metadata["voiceprint_result"] = voiceprint_result
         _emitted, pipeline, evaluation = _ingest_transcript_payload(
             db,
             obj,
             timestamp_ms=_timestamp_for_chunk(db, session_id, payload.timestamp_ms),
             text=result["text"],
-            speaker=payload.speaker,
+            speaker=recognized_speaker,
             is_final=payload.is_final,
             expected_intent=None,
             metadata=merged_metadata,
         )
         db.commit()
+    _log_runtime_event(
+        "Realtime audio transcription completed",
+        {
+            "session_id": session_id,
+            "provider": result.get("provider"),
+            "model": result.get("model"),
+            "latency_ms": result.get("latency_ms"),
+            "text_chars": len(result.get("text", "") or ""),
+            "recognized_speaker": recognized_speaker,
+            "voiceprint_matched": bool((voiceprint_result or {}).get("matched")) if isinstance(voiceprint_result, dict) else False,
+            "gate_state": pipeline.get("gate_state") if isinstance(pipeline, dict) else None,
+            "planner_state": pipeline.get("planner_state") if isinstance(pipeline, dict) else None,
+        },
+    )
     return RealtimeAudioTranscriptionResponse(
         ok=True,
         text=result["text"],
+        speaker=recognized_speaker,
+        voiceprint=voiceprint_result,
         is_final=payload.is_final,
         provider=result["provider"],
         model=result["model"],
@@ -258,7 +421,7 @@ def snapshot(session_id: str, db: Session = Depends(get_db)) -> RealtimeSnapshot
 def flush(session_id: str, db: Session = Depends(get_db)) -> RealtimeSnapshot:
     obj = _get_session_or_404(db, session_id)
     runtime = restore_runtime_if_needed(db, obj)
-    runtime.flush()
+    runtime.flush(db, obj)
     pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
     db.commit()
     return RealtimeSnapshot(session_id=session_id, pipeline=pipeline, evaluation=evaluation)

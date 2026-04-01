@@ -9,12 +9,11 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.routers.auth import get_current_admin
 from app.schemas import CreateBenchmarkRunRequest, CreateSampleCompareRunRequest, RunArtifactSummary, RunJob
 from app.services.runs import create_benchmark_job, create_sample_compare_job, get_run_or_404, list_run_artifacts, list_runs
 
 
-router = APIRouter(prefix="/runs", tags=["runs"], dependencies=[Depends(get_current_admin)])
+router = APIRouter(prefix="/runs", tags=["runs"])
 
 
 def _serialize_job(job) -> RunJob:

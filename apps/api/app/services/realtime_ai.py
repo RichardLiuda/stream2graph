@@ -19,6 +19,11 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models import RealtimeChunk, RealtimeSession
 from app.services.runtime_options import resolve_profile
+from app.services.xfyun_asr import (
+    DEFAULT_XFYUN_ASR_ENDPOINT,
+    XFYUN_ASR_PROVIDER_KIND,
+    transcribe_pcm_s16le_with_xfyun,
+)
 from tools.eval.common import extract_mermaid_candidate
 from tools.eval.metrics import MermaidCompileChecker, normalize_mermaid
 from tools.mermaid_prompting import (
@@ -220,6 +225,8 @@ def generate_mermaid_state(db: Session, session_obj: RealtimeSession) -> dict[st
         current_best=True,
     )
     t0 = time.time()
+    raw_text = ""
+    repair_raw_text = ""
     _log_payload(
         "Mermaid generation started",
         {
@@ -333,11 +340,14 @@ def generate_mermaid_state(db: Session, session_obj: RealtimeSession) -> dict[st
             "syntax_profile": MERMAID_SYNTAX_PROFILE,
             "repair_attempted": repair_attempted,
             "repair_succeeded": repair_succeeded,
+            "raw_output_text": raw_text,
         }
+        if repair_raw_text:
+            state["repair_raw_output_text"] = repair_raw_text
         if compile_payload is not None:
             state["compile_payload"] = compile_payload
         return state
-    except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+    except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError, AttributeError) as exc:
         logger.exception(
             "Mermaid generation failed %s",
             json.dumps(
@@ -358,6 +368,32 @@ def generate_mermaid_state(db: Session, session_obj: RealtimeSession) -> dict[st
             "latency_ms": round((time.time() - t0) * 1000.0, 4),
             "error_message": str(exc),
             "updated_at": int(time.time() * 1000),
+            "raw_output_text": raw_text or str(previous.get("raw_output_text", "")),
+            "repair_raw_output_text": repair_raw_text or str(previous.get("repair_raw_output_text", "")),
+        }
+    except Exception as exc:
+        logger.exception(
+            "Mermaid generation failed %s",
+            json.dumps(
+                {
+                    "session_id": session_obj.id,
+                    "provider": str((profile or {}).get("id", "")),
+                    "model": model,
+                    "error": str(exc),
+                },
+                ensure_ascii=False,
+            ),
+        )
+        return {
+            **previous,
+            "provider": str(profile.get("id", "")),
+            "model": model,
+            "render_ok": False,
+            "latency_ms": round((time.time() - t0) * 1000.0, 4),
+            "error_message": str(exc),
+            "updated_at": int(time.time() * 1000),
+            "raw_output_text": raw_text or str(previous.get("raw_output_text", "")),
+            "repair_raw_output_text": repair_raw_text or str(previous.get("repair_raw_output_text", "")),
         }
 
 
@@ -377,6 +413,62 @@ def transcribe_audio_chunk(db: Session, session_obj: RealtimeSession, payload: d
     model = str(runtime_options.get("stt_model") or (profile or {}).get("default_model") or "")
     if not profile or not model:
         raise RuntimeError("未配置可用的 STT profile / model。")
+    provider_kind = str(profile.get("provider_kind", "openai_compatible")).strip() or "openai_compatible"
+    _log_payload(
+        "STT transcription started",
+        {
+            "session_id": session_obj.id,
+            "provider": str(profile.get("id", "")),
+            "provider_kind": provider_kind,
+            "model": model,
+            "sample_rate": int(payload["sample_rate"]),
+            "channel_count": int(payload.get("channel_count", 1)),
+        },
+    )
+    if provider_kind == XFYUN_ASR_PROVIDER_KIND:
+        app_id = str(profile.get("app_id", "")).strip()
+        api_key = str(profile.get("api_key", "")).strip()
+        api_secret = str(profile.get("api_secret", "")).strip()
+        api_key_env = str(profile.get("api_key_env", "")).strip()
+        api_secret_env = str(profile.get("api_secret_env", "")).strip()
+        if not api_key and api_key_env:
+            api_key = os.getenv(api_key_env, "").strip()
+        if not api_secret and api_secret_env:
+            api_secret = os.getenv(api_secret_env, "").strip()
+        missing = [name for name, value in (("app_id", app_id), ("api_key", api_key), ("api_secret", api_secret)) if not value]
+        if missing:
+            raise RuntimeError(f"讯飞 STT 配置不完整：缺少 {', '.join(missing)}。")
+        result = transcribe_pcm_s16le_with_xfyun(
+            endpoint=str(profile.get("endpoint", DEFAULT_XFYUN_ASR_ENDPOINT) or DEFAULT_XFYUN_ASR_ENDPOINT),
+            app_id=app_id,
+            api_key=api_key,
+            api_secret=api_secret,
+            pcm_s16le_base64=str(payload["pcm_s16le_base64"]),
+            sample_rate=int(payload["sample_rate"]),
+            channel_count=int(payload.get("channel_count", 1)),
+            model=model,
+        )
+        response = {
+            "text": str(result.get("text", "")).strip(),
+            "provider": str(profile.get("id", "")),
+            "model": model,
+            "latency_ms": float(result.get("latency_ms", 0.0) or 0.0),
+            "sid": str(result.get("sid", "")).strip(),
+        }
+        _log_payload(
+            "STT transcription succeeded",
+            {
+                "session_id": session_obj.id,
+                "provider": response["provider"],
+                "provider_kind": provider_kind,
+                "model": model,
+                "latency_ms": response["latency_ms"],
+                "text_chars": len(response["text"]),
+                "sid": response["sid"],
+            },
+        )
+        return response
+
     raw_pcm = base64.b64decode(str(payload["pcm_s16le_base64"]).encode("utf-8"))
     wav_bytes = _pcm_s16le_to_wav_bytes(raw_pcm, int(payload["sample_rate"]), int(payload.get("channel_count", 1)))
     t0 = time.time()
@@ -394,9 +486,21 @@ def transcribe_audio_chunk(db: Session, session_obj: RealtimeSession, payload: d
         _profile_headers(profile),
     )
     latency_ms = round((time.time() - t0) * 1000.0, 4)
-    return {
+    response = {
         "text": str(response.get("text", "")).strip(),
         "provider": str(profile.get("id", "")),
         "model": model,
         "latency_ms": latency_ms,
     }
+    _log_payload(
+        "STT transcription succeeded",
+        {
+            "session_id": session_obj.id,
+            "provider": response["provider"],
+            "provider_kind": provider_kind,
+            "model": model,
+            "latency_ms": latency_ms,
+            "text_chars": len(response["text"]),
+        },
+    )
+    return response

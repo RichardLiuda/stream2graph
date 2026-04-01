@@ -24,10 +24,12 @@ export const runtimeOptionProfileSchema = z.object({
   provider_kind: z.string(),
   models: z.array(z.string()),
   default_model: z.string(),
+  voiceprint: z.record(z.any()).nullable().optional(),
 });
 
 export const runtimeOptionsSchema = z.object({
-  llm_profiles: z.array(runtimeOptionProfileSchema),
+  gate_profiles: z.array(runtimeOptionProfileSchema),
+  planner_profiles: z.array(runtimeOptionProfileSchema),
   stt_profiles: z.array(runtimeOptionProfileSchema),
 });
 
@@ -69,12 +71,46 @@ export const realtimeSnapshotSchema = z.object({
 export const realtimeAudioTranscriptionSchema = z.object({
   ok: z.boolean(),
   text: z.string(),
+  speaker: z.string(),
+  voiceprint: z.record(z.any()).nullable().optional(),
   is_final: z.boolean(),
   provider: z.string(),
   model: z.string(),
   latency_ms: z.number(),
   pipeline: z.record(z.any()),
   evaluation: z.record(z.any()).nullable().optional(),
+});
+
+export const voiceprintFeatureSchema = z.object({
+  id: z.string(),
+  stt_profile_id: z.string(),
+  group_id: z.string(),
+  feature_id: z.string(),
+  speaker_label: z.string(),
+  feature_info: z.string(),
+  status: z.string(),
+  remote_payload: z.record(z.any()),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const voiceprintGroupSchema = z.object({
+  id: z.string(),
+  stt_profile_id: z.string(),
+  group_id: z.string(),
+  display_name: z.string(),
+  provider_kind: z.string(),
+  status: z.string(),
+  remote_payload: z.record(z.any()),
+  last_synced_at: z.string().nullable().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const voiceprintGroupSyncSchema = z.object({
+  ok: z.boolean(),
+  group: voiceprintGroupSchema,
+  remote_features: z.array(z.record(z.any())),
 });
 
 export const runJobSchema = z.object({
@@ -165,6 +201,9 @@ export type SampleDetail = z.infer<typeof sampleDetailSchema>;
 export type RealtimeSession = z.infer<typeof realtimeSessionSchema>;
 export type RealtimeSnapshot = z.infer<typeof realtimeSnapshotSchema>;
 export type RealtimeAudioTranscription = z.infer<typeof realtimeAudioTranscriptionSchema>;
+export type VoiceprintFeature = z.infer<typeof voiceprintFeatureSchema>;
+export type VoiceprintGroup = z.infer<typeof voiceprintGroupSchema>;
+export type VoiceprintGroupSync = z.infer<typeof voiceprintGroupSyncSchema>;
 export type RunJob = z.infer<typeof runJobSchema>;
 export type RunArtifact = z.infer<typeof runArtifactSchema>;
 export type StudyTask = z.infer<typeof studyTaskSchema>;

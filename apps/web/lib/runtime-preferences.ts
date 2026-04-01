@@ -7,13 +7,16 @@ export type RuntimeProfileOption = {
 };
 
 export type RuntimeOptionsPayload = {
-  llm_profiles: RuntimeProfileOption[];
+  gate_profiles: RuntimeProfileOption[];
+  planner_profiles: RuntimeProfileOption[];
   stt_profiles: RuntimeProfileOption[];
 };
 
 export type RuntimePreferences = {
-  llmProfileId: string;
-  llmModel: string;
+  gateProfileId: string;
+  gateModel: string;
+  plannerProfileId: string;
+  plannerModel: string;
   sttProfileId: string;
   sttModel: string;
   diagramMode: "mermaid_primary" | "dual_view";
@@ -32,7 +35,11 @@ export function loadRuntimePreferences() {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as Partial<RuntimePreferences>;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as Partial<RuntimePreferences>;
   } catch {
     return null;
   }
@@ -47,16 +54,29 @@ export function resolveRuntimePreferences(
   options: RuntimeOptionsPayload,
   seed?: Partial<RuntimePreferences> | null,
 ): RuntimePreferences {
-  const llmProfile =
-    options.llm_profiles.find((item) => item.id === seed?.llmProfileId) || options.llm_profiles[0];
+  const safeSeed = seed ?? {};
+  const legacySeed = safeSeed as Partial<RuntimePreferences> & {
+    llmProfileId?: string;
+    llmModel?: string;
+  };
+  const gateSeedId = safeSeed.gateProfileId || legacySeed.llmProfileId;
+  const gateSeedModel = safeSeed.gateModel || legacySeed.llmModel;
+  const plannerSeedId = safeSeed.plannerProfileId || legacySeed.llmProfileId;
+  const plannerSeedModel = safeSeed.plannerModel || legacySeed.llmModel;
+  const gateProfile =
+    options.gate_profiles.find((item) => item.id === gateSeedId) || options.gate_profiles[0];
+  const plannerProfile =
+    options.planner_profiles.find((item) => item.id === plannerSeedId) || options.planner_profiles[0];
   const sttProfile =
-    options.stt_profiles.find((item) => item.id === seed?.sttProfileId) || options.stt_profiles[0];
+    options.stt_profiles.find((item) => item.id === safeSeed.sttProfileId) || options.stt_profiles[0];
 
   return {
-    llmProfileId: llmProfile?.id || "",
-    llmModel: pickModel(llmProfile, seed?.llmModel),
+    gateProfileId: gateProfile?.id || "",
+    gateModel: pickModel(gateProfile, gateSeedModel),
+    plannerProfileId: plannerProfile?.id || "",
+    plannerModel: pickModel(plannerProfile, plannerSeedModel),
     sttProfileId: sttProfile?.id || "",
-    sttModel: pickModel(sttProfile, seed?.sttModel),
-    diagramMode: seed?.diagramMode === "dual_view" ? "dual_view" : "mermaid_primary",
+    sttModel: pickModel(sttProfile, safeSeed.sttModel),
+    diagramMode: safeSeed.diagramMode === "dual_view" ? "dual_view" : "mermaid_primary",
   };
 }

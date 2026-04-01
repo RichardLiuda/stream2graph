@@ -5,11 +5,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Plus, Users } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 
-import { Badge, Button, Card, Input, SectionHeading, StatCard, Textarea } from "@stream2graph/ui";
+import { Badge, Button, Card, Input, StatCard, Textarea } from "@stream2graph/ui";
 
 import { api, apiUrl } from "@/lib/api";
 
 export function ReportsDashboard() {
+  const DASHBOARD_TABS: Array<[string, string]> = [
+    ["overview", "总览"],
+    ["study", "用户研究配置"],
+    ["exports", "导出"],
+  ];
   const queryClient = useQueryClient();
   const [taskTitle, setTaskTitle] = useState("基线比较任务");
   const [taskDescription, setTaskDescription] = useState("请根据给定对话材料产出或修订 Mermaid 图。");
@@ -31,6 +36,7 @@ export function ReportsDashboard() {
   const [participantId, setParticipantId] = useState("P-001");
   const [participantCondition, setParticipantCondition] = useState("manual");
   const [creationError, setCreationError] = useState<string | null>(null);
+  const [dashboardTab, setDashboardTab] = useState<(typeof DASHBOARD_TABS)[number][0]>("overview");
 
   const datasets = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const samples = useQuery({
@@ -100,35 +106,39 @@ export function ReportsDashboard() {
   });
 
   return (
-    <div className="space-y-6">
-      <SectionHeading
-        eyebrow="Reports & Ops"
-        title="实验、用户研究与报告页"
-        description="这里汇总所有运行记录，并提供用户研究任务配置、participant code 发放和多格式导出。"
-      />
+    <div className="space-y-5">
+      <h1 className="page-title">实验、用户研究与报告</h1>
 
       {creationError ? (
-        <div className="rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{creationError}</div>
+        <div className="rounded-lg border border-red-900/50 bg-red-950/40 px-3 py-2.5 text-sm text-red-200">{creationError}</div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {stats.map((item) => (
           <StatCard key={item.label} label={item.label} value={String(item.value)} />
         ))}
       </div>
 
-      <Tabs.Root defaultValue="overview" className="space-y-5">
-        <Tabs.List className="glass-panel inline-flex flex-wrap gap-2 rounded-full border border-white/70 p-1.5">
-          {[
-            ["overview", "总览"],
-            ["study", "用户研究配置"],
-            ["exports", "导出"],
-          ].map(([value, label]) => (
-            <Tabs.Trigger
-              key={value}
-              value={value}
-              className="rounded-full border border-transparent bg-transparent px-4 py-2.5 text-sm font-medium text-slate-600 transition data-[state=active]:border-white/80 data-[state=active]:bg-white/[0.88] data-[state=active]:text-slate-950"
-            >
+      <Tabs.Root
+        value={dashboardTab}
+        onValueChange={(value) => setDashboardTab(value as typeof dashboardTab)}
+        className="space-y-4"
+      >
+        <Tabs.List className="workspace-tab-list max-w-[560px] grid-cols-3">
+          <span
+            aria-hidden
+            className="workspace-tab-indicator"
+            style={{
+              left: "0.25rem",
+              width: "calc((100% - 0.5rem) / 3)",
+              transform: `translateX(calc(${Math.max(
+                0,
+                DASHBOARD_TABS.findIndex(([value]) => value === dashboardTab),
+              )} * 100%))`,
+            }}
+          />
+          {DASHBOARD_TABS.map(([value, label]) => (
+            <Tabs.Trigger key={value} value={value} className="workspace-tab-trigger px-4 py-2">
               {label}
             </Tabs.Trigger>
           ))}
@@ -138,14 +148,14 @@ export function ReportsDashboard() {
           <div className="grid gap-6 xl:grid-cols-3">
             <Card>
               <div className="mb-5 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-900">最近运行</div>
+                <div className="text-sm font-semibold text-slate-100">最近运行</div>
                 <Badge>{runs.data?.length ?? 0}</Badge>
               </div>
               <div className="space-y-4">
                 {runs.data?.slice(0, 6).map((item) => (
-                  <div key={item.run_id} className="glass-panel rounded-[24px] border border-white/70 p-4">
+                  <div key={item.run_id} className="glass-panel p-3">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold text-slate-900">{item.title}</div>
+                      <div className="font-semibold text-slate-100">{item.title}</div>
                       <Badge>{item.status}</Badge>
                     </div>
                     <div className="mt-1 text-xs text-slate-500">
@@ -157,13 +167,13 @@ export function ReportsDashboard() {
             </Card>
             <Card>
               <div className="mb-5 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-900">研究会话</div>
+                <div className="text-sm font-semibold text-slate-100">研究会话</div>
                 <Badge>{studySessions.data?.length ?? 0}</Badge>
               </div>
               <div className="space-y-4">
                 {studySessions.data?.slice(0, 6).map((item) => (
-                  <div key={item.session_id} className="glass-panel rounded-[24px] border border-white/70 p-4">
-                    <div className="font-semibold text-slate-900">{item.participant_code}</div>
+                  <div key={item.session_id} className="glass-panel p-3">
+                    <div className="font-semibold text-slate-100">{item.participant_code}</div>
                     <div className="mt-1 text-xs text-slate-500">
                       {item.study_condition} · {item.task_title}
                     </div>
@@ -173,13 +183,13 @@ export function ReportsDashboard() {
             </Card>
             <Card>
               <div className="mb-5 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-900">报告归档</div>
+                <div className="text-sm font-semibold text-slate-100">报告归档</div>
                 <Badge>{reports.data?.length ?? 0}</Badge>
               </div>
               <div className="space-y-4">
                 {reports.data?.slice(0, 6).map((item) => (
-                  <div key={item.report_id} className="glass-panel rounded-[24px] border border-white/70 p-4">
-                    <div className="font-semibold text-slate-900">{item.title}</div>
+                  <div key={item.report_id} className="glass-panel p-3">
+                    <div className="font-semibold text-slate-100">{item.title}</div>
                     <div className="mt-1 text-xs text-slate-500">
                       {item.report_type} · {item.status}
                     </div>
@@ -193,7 +203,7 @@ export function ReportsDashboard() {
         <Tabs.Content value="study">
           <div className="grid gap-6 xl:grid-cols-2">
             <Card className="space-y-5">
-              <div className="flex items-center gap-2 text-lg font-semibold text-slate-950">
+              <div className="flex items-center gap-2 text-lg font-semibold text-slate-50">
                 <Plus className="h-5 w-5" />
                 创建研究任务
               </div>
@@ -208,7 +218,7 @@ export function ReportsDashboard() {
                 rows={4}
               />
               <select
-                className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
                 value={taskDataset}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskDataset(event.target.value)}
               >
@@ -220,7 +230,7 @@ export function ReportsDashboard() {
               </select>
               <div className="grid gap-3 md:grid-cols-2">
                 <select
-                  className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                  className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
                   value={taskSplit}
                   onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskSplit(event.target.value)}
                 >
@@ -231,7 +241,7 @@ export function ReportsDashboard() {
                   ))}
                 </select>
                 <select
-                  className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                  className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
                   value={taskSampleId}
                   onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskSampleId(event.target.value)}
                 >
@@ -253,12 +263,12 @@ export function ReportsDashboard() {
             </Card>
 
             <Card className="space-y-5">
-              <div className="flex items-center gap-2 text-lg font-semibold text-slate-950">
+              <div className="flex items-center gap-2 text-lg font-semibold text-slate-50">
                 <Users className="h-5 w-5" />
                 发放 Participant Code
               </div>
               <select
-                className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
                 value={selectedTaskId}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setSelectedTaskId(event.target.value)}
               >
@@ -275,7 +285,7 @@ export function ReportsDashboard() {
                 placeholder="participant id"
               />
               <select
-                className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(77,124,255,0.12)]"
+                className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
                 value={participantCondition}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setParticipantCondition(event.target.value)}
               >
@@ -294,9 +304,9 @@ export function ReportsDashboard() {
               </Button>
               <div className="space-y-4">
                 {studySessions.data?.slice(0, 8).map((item) => (
-                  <div key={item.session_id} className="glass-panel rounded-[24px] border border-white/70 p-4">
+                  <div key={item.session_id} className="glass-panel p-3">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold text-slate-900">{item.participant_code}</div>
+                      <div className="font-semibold text-slate-100">{item.participant_code}</div>
                       <a
                         className="text-sm font-medium text-[var(--accent-strong)]"
                         href={`/study/${item.participant_code}`}
@@ -323,8 +333,8 @@ export function ReportsDashboard() {
               ["realtime", "实时会话"],
             ].map(([target, label]) => (
               <Card key={target} className="lift-hover space-y-5">
-                <div className="text-lg font-semibold text-slate-950">{label}</div>
-                <p className="text-sm leading-6 text-slate-600">
+                <div className="text-lg font-semibold text-slate-50">{label}</div>
+                <p className="text-sm leading-6 text-slate-400">
                   导出为 JSON、CSV 或 Markdown，支持实验复现、论文整理和归档审计。
                 </p>
                 <div className="flex flex-wrap gap-2">

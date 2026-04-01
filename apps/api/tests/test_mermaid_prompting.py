@@ -130,4 +130,6 @@ def test_generate_mermaid_state_repairs_failed_candidate(
     assert repaired["repair_succeeded"] is True
     assert repaired["mermaid_version"] == MERMAID_RUNTIME_VERSION
     assert repaired["syntax_profile"] == MERMAID_SYNTAX_PROFILE
+    assert "APIGateway -- Auth[Auth]" in repaired["raw_output_text"]
+    assert "APIGateway --> Auth[Auth]" in repaired["repair_raw_output_text"]
     assert repaired["normalized_code"] == "flowchart TD\nClient[Client] --> APIGateway[API Gateway]\nAPIGateway --> Auth[Auth]"

@@ -17,6 +17,8 @@ import {
   sampleListItemSchema,
   studySessionSchema,
   studyTaskSchema,
+  voiceprintFeatureSchema,
+  voiceprintGroupSyncSchema,
 } from "@stream2graph/contracts";
 
 const CONFIGURED_API_BASE_URL =
@@ -33,12 +35,17 @@ const runtimeOptionProfileConfigSchema = z.object({
   endpoint: z.string(),
   models: z.array(z.string()),
   default_model: z.string(),
+  app_id: z.string().nullable().optional(),
   api_key_env: z.string().nullable().optional(),
   api_key: z.string().nullable().optional(),
+  api_secret_env: z.string().nullable().optional(),
+  api_secret: z.string().nullable().optional(),
+  voiceprint: z.record(z.any()).nullable().optional(),
 });
 
 const runtimeOptionsAdminSchema = z.object({
-  llm_profiles: z.array(runtimeOptionProfileConfigSchema),
+  gate_profiles: z.array(runtimeOptionProfileConfigSchema),
+  planner_profiles: z.array(runtimeOptionProfileConfigSchema),
   stt_profiles: z.array(runtimeOptionProfileConfigSchema),
 });
 
@@ -85,36 +92,123 @@ export function apiUrl(path: string) {
   return `${resolveApiBaseUrl()}${path}`;
 }
 
+function logBrowserApiEvent(label: string, payload: Record<string, unknown>, level: "info" | "error" = "info") {
+  if (typeof window === "undefined") return;
+  const method = level === "error" ? console.error : console.info;
+  method(`[S2G][API] ${label}`, payload);
+}
+
+function apiErrorLogLevel(path: string, status: number) {
+  // `/auth/me` returning 401 is part of the normal boot flow before redirecting to `/login`.
+  if (path === "/api/v1/auth/me" && status === 401) {
+    return "info" as const;
+  }
+  return "error" as const;
+}
+
+/** 解析 FastAPI / Starlette 的 `detail`（字符串、对象数组等） */
+function messageFromErrorPayload(raw: Record<string, unknown>): string {
+  const d = raw.detail;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) {
+    return d
+      .map((item) =>
+        typeof item === "object" && item !== null && "msg" in item
+          ? String((item as { msg: string }).msg)
+          : JSON.stringify(item),
+      )
+      .join("；");
+  }
+  if (d != null && typeof d === "object" && "msg" in d) {
+    return String((d as { msg: string }).msg);
+  }
+  const err = raw.error;
+  if (typeof err === "string") return err;
+  return "请求失败";
+}
+
+const REQUEST_TIMEOUT_MS = 25_000;
+
 async function request<TSchema extends z.ZodTypeAny>(
   path: string,
   schema: TSchema,
   init?: RequestInit,
 ): Promise<z.infer<TSchema>> {
-  const response = await fetch(apiUrl(path), {
-    credentials: "include",
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
-  });
-  const text = await response.text();
-  const raw = text ? JSON.parse(text) : {};
-  if (!response.ok) {
-    throw new ApiError(response.status, raw.detail || raw.error || `HTTP ${response.status}`, raw);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(apiUrl(path), {
+      credentials: "include",
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers || {}),
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    const text = await response.text();
+    let raw: Record<string, unknown> = {};
+    try {
+      raw = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    } catch {
+      raw = { detail: text || response.statusText };
+    }
+    if (!response.ok) {
+      logBrowserApiEvent(
+        "request failed",
+        {
+          path,
+          method: init?.method || "GET",
+          status: response.status,
+          payload: raw,
+        },
+        apiErrorLogLevel(path, response.status),
+      );
+      throw new ApiError(response.status, messageFromErrorPayload(raw), raw);
+    }
+    return schema.parse(raw);
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e instanceof ApiError) throw e;
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new ApiError(
+        0,
+        "请求超时。请确认：① API 已启动；② PostgreSQL 可连接（登录会查库，库不可达时会一直卡住）；③ 前端与 `NEXT_PUBLIC_API_BASE_URL` 指向同一套服务。",
+        {},
+      );
+    }
+    if (e instanceof TypeError) {
+      throw new ApiError(
+        0,
+        "无法连接 API。请检查服务是否已启动；若用局域网 IP 打开本页，请在 API 的 S2G_CORS_ORIGINS 中加入该前端地址（如 http://192.168.x.x:3000）。",
+        {},
+      );
+    }
+    throw e;
   }
-  return schema.parse(raw);
 }
 
 export const api = {
   health: async () => request("/api/health", z.record(z.any())),
   login: async (payload: { username: string; password: string }) =>
-    request("/api/v1/auth/login", z.object({ username: z.string(), display_name: z.string() }), {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+    request(
+      "/api/v1/auth/login",
+      z.object({
+        username: z.string(),
+        display_name: z.string().optional().nullable().transform((v) => v ?? ""),
+      }),
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
   logout: async () => request("/api/v1/auth/logout", z.object({ ok: z.boolean() }), { method: "POST" }),
-  me: async () => request("/api/v1/auth/me", z.object({ username: z.string(), display_name: z.string() })),
+  me: async () =>
+    request("/api/v1/auth/me", z.object({
+      username: z.string(),
+      display_name: z.string().optional().nullable().transform((v) => v ?? ""),
+    })),
   listDatasets: async () => request("/api/v1/catalog/datasets", z.array(datasetVersionSummarySchema)),
   listRuntimeOptions: async () => request("/api/v1/catalog/runtime-options", runtimeOptionsSchema),
   getAdminRuntimeOptions: async () => request("/api/v1/catalog/runtime-options/admin", runtimeOptionsAdminSchema),
@@ -128,6 +222,37 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  listVoiceprintFeatures: async (sttProfileId: string) =>
+    request(
+      `/api/v1/voiceprints/stt-profiles/${sttProfileId}/features`,
+      z.array(voiceprintFeatureSchema),
+    ),
+  createVoiceprintFeature: async (sttProfileId: string, payload: Record<string, unknown>) =>
+    request(
+      `/api/v1/voiceprints/stt-profiles/${sttProfileId}/features`,
+      voiceprintFeatureSchema,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
+  deleteVoiceprintFeature: async (sttProfileId: string, featureId: string) =>
+    request(
+      `/api/v1/voiceprints/stt-profiles/${sttProfileId}/features/${featureId}`,
+      z.object({ ok: z.boolean() }),
+      {
+        method: "DELETE",
+      },
+    ),
+  syncVoiceprintGroup: async (sttProfileId: string, payload: Record<string, unknown>) =>
+    request(
+      `/api/v1/voiceprints/stt-profiles/${sttProfileId}/group/sync`,
+      voiceprintGroupSyncSchema,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
   listSplits: async (slug: string) =>
     request(`/api/v1/catalog/datasets/${slug}/splits`, z.array(datasetSplitSummarySchema)),
   listSamples: async (slug: string, split: string, search = "", offset = 0, limit = 25) =>
@@ -151,6 +276,21 @@ export const api = {
   addRealtimeChunk: async (sessionId: string, payload: Record<string, unknown>) =>
     request(
       `/api/v1/realtime/sessions/${sessionId}/chunks`,
+      z.object({
+        ok: z.boolean(),
+        session_id: z.string(),
+        emitted_events: z.array(z.record(z.any())),
+        pipeline: z.record(z.any()),
+        evaluation: z.record(z.any()),
+      }),
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
+  addRealtimeChunksBatch: async (sessionId: string, payload: Record<string, unknown>) =>
+    request(
+      `/api/v1/realtime/sessions/${sessionId}/chunks/batch`,
       z.object({
         ok: z.boolean(),
         session_id: z.string(),

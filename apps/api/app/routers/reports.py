@@ -8,12 +8,11 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.routers.auth import get_current_admin
 from app.schemas import ReportDetail, ReportSummary
 from app.services.reports import create_report, export_rows_for_target, get_report_or_404, list_reports
 
 
-router = APIRouter(prefix="/reports", tags=["reports"], dependencies=[Depends(get_current_admin)])
+router = APIRouter(prefix="/reports", tags=["reports"])
 
 
 @router.get("", response_model=list[ReportSummary])
