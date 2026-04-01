@@ -22,6 +22,51 @@ const GRAPH_BOUNDARY_PATTERNS = [
   /(?<=[\]\)\}])\s+(?=[A-Za-z][A-Za-z0-9_]{0,63}\s*(?:\[|\(|\{|>|-->|==>|-.->|->>|-->>|<<--|<--|<->|---|--\s))/g,
   /(?<=[A-Za-z0-9_])\s+(?=[A-Za-z][A-Za-z0-9_]{0,63}\s*(?:-->|==>|-.->|->>|-->>|<<--|<--|<->|---|--\s))/g,
 ];
+const RICH_TEXT_TAG_PATTERN = /<\/?(?:span|b|strong|i|em|u|small|sub|sup|code|br)\b/i;
+const MERMAID_THEME_CSS = `
+.label p,
+.nodeLabel p,
+.edgeLabel p,
+.cluster-label p {
+  margin: 0;
+}
+
+.label strong,
+.nodeLabel strong,
+.edgeLabel strong,
+.cluster-label strong {
+  font-weight: 700;
+}
+
+.label em,
+.nodeLabel em,
+.edgeLabel em,
+.cluster-label em {
+  font-style: italic;
+}
+
+.label u,
+.nodeLabel u,
+.edgeLabel u,
+.cluster-label u {
+  text-decoration: underline;
+}
+
+.label code,
+.nodeLabel code,
+.edgeLabel code,
+.cluster-label code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.92em;
+}
+
+.label small,
+.nodeLabel small,
+.edgeLabel small,
+.cluster-label small {
+  font-size: 0.82em;
+}
+`;
 
 function extractMermaidCandidate(text: string) {
   const raw = (text || "").trim();
@@ -117,9 +162,58 @@ function normalizeGraphStatement(statement: string) {
     .filter(Boolean);
 }
 
+function shouldBypassFlowchartRepair(source: string) {
+  if (RICH_TEXT_TAG_PATTERN.test(source)) {
+    return true;
+  }
+
+  let squareDepth = 0;
+  let roundDepth = 0;
+  let curlyDepth = 0;
+  let quote: string | null = null;
+  let escaped = false;
+
+  for (const char of source) {
+    if (char === "\n" && (quote || squareDepth > 0 || roundDepth > 0 || curlyDepth > 0)) {
+      return true;
+    }
+
+    if (quote) {
+      if (!escaped && char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (!escaped && char === quote) {
+        quote = null;
+      }
+      escaped = false;
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === "[") squareDepth += 1;
+    else if (char === "]") squareDepth = Math.max(0, squareDepth - 1);
+    else if (char === "(") roundDepth += 1;
+    else if (char === ")") roundDepth = Math.max(0, roundDepth - 1);
+    else if (char === "{") curlyDepth += 1;
+    else if (char === "}") curlyDepth = Math.max(0, curlyDepth - 1);
+  }
+
+  return false;
+}
+
 function normalizeMermaidForRender(code: string) {
-  const lines = extractMermaidCandidate(code)
-    .replace(/\r\n/g, "\n")
+  const source = extractMermaidCandidate(code).replace(/\r\n/g, "\n");
+  if (shouldBypassFlowchartRepair(source)) {
+    return source.trim();
+  }
+
+  const lines = source
     .split("\n")
     .map((line) => line.replace(/\s+$/g, ""))
     .filter((line) => line.trim());
@@ -186,10 +280,10 @@ async function getMermaid() {
     mermaidPackage.default.initialize({
       startOnLoad: false,
       securityLevel: "loose",
-      theme: "neutral",
-      flowchart: {
-        htmlLabels: false,
-      },
+      suppressErrorRendering: true,
+      theme: "base",
+      htmlLabels: true,
+      themeCSS: MERMAID_THEME_CSS,
     });
     mermaidInitialized = true;
   }
