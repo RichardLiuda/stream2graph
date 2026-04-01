@@ -40,17 +40,13 @@ export function LoginForm() {
   });
 
   return (
-    <Card className="mx-auto w-full max-w-[460px] p-6 md:p-8">
+    <Card variant="light" className="mx-auto w-full max-w-[460px] p-6 md:p-8">
       <div className="mb-8">
         <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--accent-strong)]">
           管理员登录
         </div>
-        <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-slate-950">
-          进入正式研究平台
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">
-          登录后可以管理实时实验、样本对比、用户研究任务以及报告导出。
-        </p>
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">进入正式研究平台</h1>
+        <p className="mt-2 text-sm leading-snug text-slate-600">管理实时实验、样本对照、研究与报告导出。</p>
       </div>
 
       <form
@@ -61,7 +57,7 @@ export function LoginForm() {
       >
         <div className="space-y-2">
           <label className="text-sm font-medium text-slate-700">管理员账号</label>
-          <Input autoComplete="username" {...form.register("username")} />
+          <Input variant="light" autoComplete="username" {...form.register("username")} />
           {form.formState.errors.username ? (
             <p className="text-xs text-red-600">{form.formState.errors.username.message}</p>
           ) : null}
@@ -69,7 +65,7 @@ export function LoginForm() {
 
         <div className="space-y-2">
           <label className="text-sm font-medium text-slate-700">密码</label>
-          <Input type="password" autoComplete="current-password" {...form.register("password")} />
+          <Input variant="light" type="password" autoComplete="current-password" {...form.register("password")} />
           {form.formState.errors.password ? (
             <p className="text-xs text-red-600">{form.formState.errors.password.message}</p>
           ) : null}

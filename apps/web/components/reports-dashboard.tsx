@@ -106,14 +106,14 @@ export function ReportsDashboard() {
   });
 
   return (
-    <div className="space-y-6">
-      <div className="pl-8 text-[2rem] font-semibold tracking-[-0.04em] text-violet-200">实验、用户研究与报告页</div>
+    <div className="space-y-5">
+      <h1 className="page-title">实验、用户研究与报告</h1>
 
       {creationError ? (
-        <div className="rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{creationError}</div>
+        <div className="rounded-lg border border-red-900/50 bg-red-950/40 px-3 py-2.5 text-sm text-red-200">{creationError}</div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {stats.map((item) => (
           <StatCard key={item.label} label={item.label} value={String(item.value)} />
         ))}
@@ -122,12 +122,12 @@ export function ReportsDashboard() {
       <Tabs.Root
         value={dashboardTab}
         onValueChange={(value) => setDashboardTab(value as typeof dashboardTab)}
-        className="space-y-5"
+        className="space-y-4"
       >
-        <Tabs.List className="glass-panel relative grid w-full max-w-[560px] grid-cols-3 rounded-full border border-violet-200/55 p-1">
+        <Tabs.List className="workspace-tab-list max-w-[560px] grid-cols-3">
           <span
             aria-hidden
-            className="pointer-events-none absolute inset-y-1 rounded-full border border-violet-300/85 bg-violet-300 shadow-[0_8px_24px_rgba(124,58,237,0.28)] transition-transform duration-300 ease-out"
+            className="workspace-tab-indicator"
             style={{
               left: "0.25rem",
               width: "calc((100% - 0.5rem) / 3)",
@@ -138,11 +138,7 @@ export function ReportsDashboard() {
             }}
           />
           {DASHBOARD_TABS.map(([value, label]) => (
-            <Tabs.Trigger
-              key={value}
-              value={value}
-              className="relative z-[1] rounded-full border border-transparent px-4 py-2.5 text-sm font-medium text-slate-200 transition-colors data-[state=active]:text-violet-950"
-            >
+            <Tabs.Trigger key={value} value={value} className="workspace-tab-trigger px-4 py-2">
               {label}
             </Tabs.Trigger>
           ))}
@@ -157,7 +153,7 @@ export function ReportsDashboard() {
               </div>
               <div className="space-y-4">
                 {runs.data?.slice(0, 6).map((item) => (
-                  <div key={item.run_id} className="glass-panel rounded-[24px] border border-white/70 p-4">
+                  <div key={item.run_id} className="glass-panel p-3">
                     <div className="flex items-center justify-between gap-3">
                       <div className="font-semibold text-slate-100">{item.title}</div>
                       <Badge>{item.status}</Badge>
@@ -176,7 +172,7 @@ export function ReportsDashboard() {
               </div>
               <div className="space-y-4">
                 {studySessions.data?.slice(0, 6).map((item) => (
-                  <div key={item.session_id} className="glass-panel rounded-[24px] border border-white/70 p-4">
+                  <div key={item.session_id} className="glass-panel p-3">
                     <div className="font-semibold text-slate-100">{item.participant_code}</div>
                     <div className="mt-1 text-xs text-slate-500">
                       {item.study_condition} · {item.task_title}
@@ -192,7 +188,7 @@ export function ReportsDashboard() {
               </div>
               <div className="space-y-4">
                 {reports.data?.slice(0, 6).map((item) => (
-                  <div key={item.report_id} className="glass-panel rounded-[24px] border border-white/70 p-4">
+                  <div key={item.report_id} className="glass-panel p-3">
                     <div className="font-semibold text-slate-100">{item.title}</div>
                     <div className="mt-1 text-xs text-slate-500">
                       {item.report_type} · {item.status}
@@ -222,7 +218,7 @@ export function ReportsDashboard() {
                 rows={4}
               />
               <select
-                className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
+                className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
                 value={taskDataset}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskDataset(event.target.value)}
               >
@@ -234,7 +230,7 @@ export function ReportsDashboard() {
               </select>
               <div className="grid gap-3 md:grid-cols-2">
                 <select
-                  className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
+                  className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
                   value={taskSplit}
                   onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskSplit(event.target.value)}
                 >
@@ -245,7 +241,7 @@ export function ReportsDashboard() {
                   ))}
                 </select>
                 <select
-                  className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
+                  className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
                   value={taskSampleId}
                   onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskSampleId(event.target.value)}
                 >
@@ -272,7 +268,7 @@ export function ReportsDashboard() {
                 发放 Participant Code
               </div>
               <select
-                className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
+                className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
                 value={selectedTaskId}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setSelectedTaskId(event.target.value)}
               >
@@ -289,7 +285,7 @@ export function ReportsDashboard() {
                 placeholder="participant id"
               />
               <select
-                className="h-12 rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
+                className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
                 value={participantCondition}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setParticipantCondition(event.target.value)}
               >
@@ -308,7 +304,7 @@ export function ReportsDashboard() {
               </Button>
               <div className="space-y-4">
                 {studySessions.data?.slice(0, 8).map((item) => (
-                  <div key={item.session_id} className="glass-panel rounded-[24px] border border-white/70 p-4">
+                  <div key={item.session_id} className="glass-panel p-3">
                     <div className="flex items-center justify-between gap-3">
                       <div className="font-semibold text-slate-100">{item.participant_code}</div>
                       <a

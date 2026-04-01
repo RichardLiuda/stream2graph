@@ -205,24 +205,24 @@ export function MermaidCompileStatusBadge({
 }) {
   if (compileOk === false) {
     return (
-      <Badge className="border-amber-200 bg-amber-50 text-amber-700">
-        <AlertTriangle className="mr-1 h-3.5 w-3.5" />
-        compile failed
+      <Badge className="border-amber-900/60 bg-amber-950/45 text-amber-200/95 normal-case tracking-normal">
+        <AlertTriangle className="mr-1 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+        编译失败
       </Badge>
     );
   }
   if (updatedAt) {
     return (
-      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
-        <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-        latest ready
+      <Badge className="border-emerald-900/55 bg-emerald-950/35 text-emerald-200/90 normal-case tracking-normal">
+        <CheckCircle2 className="mr-1 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+        已就绪
       </Badge>
     );
   }
   return (
-    <Badge>
-      <Clock3 className="mr-1 h-3.5 w-3.5" />
-      waiting
+    <Badge className="normal-case tracking-normal text-zinc-400">
+      <Clock3 className="mr-1 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+      等待内容
     </Badge>
   );
 }
@@ -331,29 +331,33 @@ function MermaidCardBody({
 
   const body = (
     <div
-      className={`bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(246,249,255,0.84))] p-4 ${
-        embedded ? "flex h-full min-h-0 flex-col" : ""
-      }`}
+      className={`p-4 ${embedded ? "flex h-full min-h-0 flex-col bg-zinc-950/25" : "bg-zinc-950/40"}`}
     >
         {error ? (
-          <div className="mb-4 rounded-[24px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
-            Mermaid 渲染错误：{error}
-            {lastSuccessfulSvg ? " 已保留最近一次成功结果。" : ""}
+          <div className="mb-3 rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2.5 text-xs leading-relaxed text-amber-100">
+            渲染错误：{error}
+            {lastSuccessfulSvg ? " 已保留最近一次可用图。" : ""}
           </div>
         ) : null}
         <div
-          className={`overflow-auto rounded-[24px] border border-slate-400/20 bg-white/[0.84] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ${
+          className={`overflow-auto rounded-xl border border-zinc-700/90 bg-zinc-950 p-4 ${
             embedded ? "min-h-0 flex-1" : ""
           }`}
           style={embedded ? undefined : { minHeight: height }}
         >
           {svg ? (
             <div
-              className="overflow-hidden rounded-[24px] [&_svg]:block [&_svg]:max-w-full [&_svg]:rounded-[24px]"
+              className="overflow-hidden rounded-lg bg-slate-100 p-3 [&_svg]:block [&_svg]:max-w-full [&_svg]:rounded-md"
               dangerouslySetInnerHTML={{ __html: svg }}
             />
           ) : (
-          <div className="flex min-h-[160px] items-center justify-center text-sm text-slate-500">等待 Mermaid 内容...</div>
+            <div className="flex min-h-[min(240px,40vh)] flex-col items-center justify-center gap-3 px-4 py-8 text-center">
+              <p className="text-sm font-medium text-zinc-300">尚无图内容</p>
+              <ol className="max-w-sm list-decimal space-y-1.5 pl-5 text-left text-xs leading-relaxed text-zinc-500">
+                <li>在左侧输入 Transcript 并发送，或启动麦克风采集。</li>
+                <li>会话建立后，Planner 返回的 Mermaid 会显示在此区域。</li>
+              </ol>
+            </div>
           )}
         </div>
         {!embedded && (provider || model || updatedAt) ? (
@@ -402,9 +406,9 @@ function MermaidCardBody({
 
   return (
     <Card className="overflow-hidden p-0">
-      <div className="border-b border-slate-400/20 px-6 py-5">
+      <div className="border-b border-zinc-800 px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-white/90">{title}</div>
+          <div className="text-sm font-semibold text-zinc-200">{title}</div>
           <div className="flex max-w-[min(100%,720px)] flex-wrap items-center justify-end gap-1.5">
             {provider ? <Badge>{provider}</Badge> : null}
             {model ? <Badge>{model}</Badge> : null}

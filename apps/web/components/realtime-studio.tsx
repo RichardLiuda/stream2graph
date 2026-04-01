@@ -30,7 +30,7 @@ import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
 import { Badge, Button, Card, Input, StatCard, Textarea } from "@stream2graph/ui";
 
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { encodeFloat32ToBase64Pcm16 } from "@/lib/audio";
 import {
   audioHelper,
@@ -162,7 +162,7 @@ function parseTranscriptInput(raw: string): TranscriptRow[] {
 function getNoticeClassName(tone: NoticeTone) {
   if (tone === "success") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (tone === "warning") return "border-amber-200 bg-amber-50 text-amber-700";
-  return "border-violet-200 bg-violet-50 text-violet-700";
+  return "border-zinc-600 bg-zinc-900 text-zinc-200";
 }
 
 function getSourceBadgeLabel(source: InputSource | null) {
@@ -1726,8 +1726,40 @@ export function RealtimeStudio() {
     setIsTitleEditing(false);
   }
 
+  if (authQuery.isLoading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center px-4 text-sm text-zinc-500">
+        正在验证管理员身份…
+      </div>
+    );
+  }
+
+  if (authQuery.isError) {
+    const err = authQuery.error;
+    if (err instanceof ApiError && err.status === 401) {
+      return (
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4 text-center">
+          <p className="max-w-md text-sm leading-relaxed text-zinc-400">
+            未登录或会话已过期。请先登录管理员账号，再加载会话、模型与数据集。
+          </p>
+          <Link href="/login">
+            <Button>前往登录</Button>
+          </Link>
+        </div>
+      );
+    }
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-4 text-center">
+        <p className="max-w-md text-sm text-red-300">{(err as Error).message}</p>
+        <Button type="button" variant="secondary" onClick={() => void authQuery.refetch()}>
+          重试
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="text-slate-100 selection:bg-white/20 selection:text-white h-[100dvh] overflow-hidden">
+  <div className="text-slate-100 selection:bg-white/20 selection:text-white h-[100dvh] overflow-hidden">
       {effectiveError ? (
         <div className="soft-enter fixed left-1/2 top-16 z-[19000] w-[min(720px,92vw)] -translate-x-1/2 rounded-[24px] border border-red-200 bg-red-50/95 px-4 py-3 text-sm text-red-700">
           {effectiveError}
@@ -1743,26 +1775,25 @@ export function RealtimeStudio() {
 
       <div className="flex h-full flex-col overflow-hidden space-y-4">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
-          <div className="flex items-center gap-3 pl-8">
-            <div className="text-[2rem] font-semibold tracking-[-0.04em] text-violet-200">实时工作台</div>
-            <div className="hidden rounded-full border border-violet-200/45 bg-violet-100/25 px-3 py-1 text-[11px] text-violet-50/90 md:inline-flex md:items-center md:gap-2">
-              <span className="inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.85)]" />
-              <span>开麦或发送 Transcript 后，这里会自动刷新主图与结构图。</span>
-            </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2 md:gap-3">
+            <h1 className="page-title">实时工作台</h1>
+            <p className="hidden max-w-md text-[11px] leading-snug text-zinc-500 md:block">
+              开麦或发送 Transcript 后，主图与结构视图会更新。
+            </p>
           </div>
           <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
             <div className="group relative">
               <Badge
-                className="cursor-default border-violet-200/70 bg-violet-100/70 px-3 py-1 text-xs font-semibold text-slate-800 shadow-[0_8px_20px_rgba(124,58,237,0.18)]"
+                className="cursor-default border-zinc-600 bg-zinc-900 px-2.5 py-1 text-xs font-medium normal-case tracking-normal text-zinc-300"
                 title="运行状态"
               >
                 运行状态
               </Badge>
-              <div className="pointer-events-none invisible absolute right-0 top-[calc(100%+8px)] z-[120] w-[min(460px,82vw)] rounded-[16px] border border-white/20 bg-[linear-gradient(180deg,rgba(20,28,56,0.94),rgba(16,22,44,0.94))] p-3 opacity-0 shadow-[0_18px_44px_rgba(0,0,0,0.42)] backdrop-blur-xl transition duration-200 group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100">
-                <div className="mb-2 text-[11px] font-semibold tracking-[0.08em] text-white/80">状态速览</div>
+              <div className="pointer-events-none invisible absolute right-0 top-[calc(100%+8px)] z-[120] w-[min(460px,82vw)] rounded-xl border border-zinc-700 bg-zinc-950 p-3 opacity-0 shadow-xl transition duration-200 group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">状态速览</div>
                 <div className="flex flex-wrap gap-1.5">
                   <Badge
-                    className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700"
+                    className="text-[10px] font-normal normal-case tracking-normal text-zinc-300"
                     title={currentSessionId || undefined}
                   >
                     <span className="block max-w-[180px] min-w-0 truncate">
@@ -1775,14 +1806,14 @@ export function RealtimeStudio() {
                   {mermaidState?.model || plannerModel ? <Badge>{mermaidState?.model || plannerModel}</Badge> : null}
                   {typeof mermaidState?.latency_ms === "number" ? <Badge>{mermaidState.latency_ms.toFixed(1)} ms</Badge> : null}
                   <Badge
-                    className={`text-[10px] font-normal ${
+                    className={`text-[10px] font-normal normal-case tracking-normal ${
                       gateStatus === "error" || plannerStatus === "error"
-                        ? "border-red-200 bg-red-50 text-red-700"
+                        ? "border-red-900/60 bg-red-950/50 text-red-200"
                         : gateStatus === "working" || plannerStatus === "working"
-                          ? "border-violet-200/60 bg-violet-100/60 text-violet-800"
+                          ? "border-amber-900/55 bg-amber-950/40 text-amber-100"
                           : gateStatus === "success" || plannerStatus === "success"
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : "border-slate-300/65 bg-slate-100/65 text-slate-700"
+                            ? "border-emerald-900/55 bg-emerald-950/40 text-emerald-100"
+                            : "border-zinc-600 bg-zinc-900 text-zinc-400"
                     }`}
                   >
                     {gateStatus === "error" || plannerStatus === "error"
@@ -1793,13 +1824,13 @@ export function RealtimeStudio() {
                           ? "模型：已返回"
                           : "模型：空闲"}
                   </Badge>
-                  <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-zinc-400">
                     来源：{getSourceBadgeLabel(activeCaptureSource)}
                   </Badge>
-                  <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-zinc-400">
                     转写：{backendLabel(selectedRecognitionBackend)}
                   </Badge>
-                  <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-zinc-400">
                     出图：
                     {typeof mermaidState?.compile_ok === "boolean"
                       ? mermaidState.compile_ok
@@ -1808,7 +1839,7 @@ export function RealtimeStudio() {
                       : "等待中"}
                   </Badge>
                   {snapshot?.evaluation?.realtime_eval_pass === true ? (
-                    <Badge className="border-emerald-200 bg-emerald-50 text-[10px] font-normal text-emerald-700">
+                    <Badge className="border-emerald-900/55 bg-emerald-950/40 text-[10px] font-normal normal-case tracking-normal text-emerald-200">
                       评测通过
                     </Badge>
                   ) : null}
@@ -1818,7 +1849,7 @@ export function RealtimeStudio() {
             <Button
               type="button"
               variant="secondary"
-              className="group relative shrink-0 gap-2 overflow-visible text-sm transition duration-300 ease-out hover:-translate-y-[1px] active:translate-y-0 active:scale-[0.98] before:pointer-events-none before:absolute before:-inset-2 before:-z-10 before:rounded-[22px] before:bg-[radial-gradient(70%_70%_at_50%_50%,rgba(167,139,250,0.45),transparent_70%)] before:opacity-0 before:blur-[1px] before:transition before:duration-700 before:ease-[cubic-bezier(0.22,1,0.36,1)] hover:before:opacity-70"
+              className="shrink-0 gap-2 text-sm"
               onClick={() => setDetailDrawerOpen(true)}
             >
               <PanelRight className="h-4 w-4" />
@@ -1837,7 +1868,7 @@ export function RealtimeStudio() {
             <div ref={inputSourceMenuRef} className="relative">
               <button
                 type="button"
-                className="flex h-10 w-full items-center justify-between rounded-full border border-violet-200/80 bg-violet-50/95 px-3.5 pr-3 text-left text-sm font-medium text-slate-900 outline-none transition hover:border-violet-300/80 hover:bg-violet-100/95 focus-visible:ring-4 focus-visible:ring-[rgba(196,181,253,0.35)]"
+                className="flex h-10 w-full items-center justify-between rounded-lg border border-zinc-600 bg-zinc-900/90 px-3.5 pr-3 text-left text-sm font-medium text-zinc-100 outline-none transition hover:border-zinc-500 hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-zinc-500"
                 aria-haspopup="listbox"
                 aria-expanded={inputSourceMenuOpen}
                 onClick={() => setInputSourceMenuOpen((open) => !open)}
@@ -1846,12 +1877,12 @@ export function RealtimeStudio() {
                   {selectedOption.label} · {selectedOption.capability_status}
                 </span>
                 <ChevronDown
-                  className={`h-4 w-4 shrink-0 text-violet-500 transition-transform duration-200 ${inputSourceMenuOpen ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform duration-200 ${inputSourceMenuOpen ? "rotate-180" : ""}`}
                 />
               </button>
               {inputSourceMenuOpen ? (
-                <div className="absolute z-[21000] mt-2 w-full rounded-[20px] border border-violet-200/90 bg-[linear-gradient(180deg,rgba(252,248,255,0.99),rgba(247,239,255,0.97))] p-2 shadow-[0_14px_30px_rgba(76,29,149,0.12)] backdrop-blur-lg">
-                  <div className="space-y-1" role="listbox" aria-label="输入来源">
+                <div className="absolute z-[21000] mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 p-1.5 shadow-xl">
+                  <div className="space-y-0.5" role="listbox" aria-label="输入来源">
                     {inputOptions.map((option) => {
                       const active = option.source === selectedInputSource;
                       return (
@@ -1867,19 +1898,19 @@ export function RealtimeStudio() {
                             studioSend({ type: "source.select", source: option.source, backend: nextBackend });
                             setInputSourceMenuOpen(false);
                           }}
-                          className={`flex w-full items-center justify-between rounded-[14px] border px-3 py-2 text-left text-sm transition duration-200 ${
+                          className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition ${
                             active
-                              ? "border-violet-300/90 bg-violet-200/72 text-slate-900"
-                              : "border-violet-200/85 bg-violet-50 text-slate-900 hover:scale-[1.02] hover:border-violet-300/90 hover:bg-violet-100/92"
+                              ? "border-zinc-500 bg-zinc-800 text-zinc-100"
+                              : "border-transparent bg-transparent text-zinc-300 hover:bg-zinc-800/80"
                           }`}
                         >
                           <div className="flex min-w-0 items-center gap-2">
-                            <span className={`inline-flex h-4 w-4 items-center justify-center ${active ? "text-violet-700" : "text-violet-400"}`}>
-                              {active ? <Check className="h-3.5 w-3.5" /> : null}
+                            <span className={`inline-flex h-4 w-4 items-center justify-center ${active ? "text-zinc-200" : "text-zinc-600"}`}>
+                              {active ? <Check className="h-3.5 w-3.5" strokeWidth={2} /> : null}
                             </span>
                             <span className="truncate">{option.label}</span>
             </div>
-                          <span className="ml-2 shrink-0 text-xs text-violet-700/90">{option.capability_status}</span>
+                          <span className="ml-2 shrink-0 text-xs text-zinc-500">{option.capability_status}</span>
                         </button>
                       );
                     })}
@@ -1891,17 +1922,17 @@ export function RealtimeStudio() {
               {selectedOption.description}
             </p>
             {!audioContext?.is_desktop ? (
-              <div className="rounded-[14px] border border-violet-200/50 bg-violet-100/38 px-3 py-2 text-[11px] leading-relaxed text-white/65">
+              <div className="rounded-lg border border-zinc-700/80 bg-zinc-900/50 px-3 py-2 text-[11px] leading-relaxed text-zinc-500">
                 移动端不提供系统声音相关采集入口。
               </div>
             ) : !systemAudioExperimentalVisible ? (
-              <div className="rounded-[14px] border border-violet-200/50 bg-violet-100/38 px-3 py-2 text-[11px] leading-relaxed text-white/65">
+              <div className="rounded-lg border border-zinc-700/80 bg-zinc-900/50 px-3 py-2 text-[11px] leading-relaxed text-zinc-500">
                 实验性「共享屏幕音频」仅 Chrome/Edge；可用「增强模式」+ 本机 audio helper。
               </div>
             ) : null}
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col rounded-[12px] border border-violet-200/50 bg-violet-100/46 px-2.5 py-2">
+          <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-zinc-700/80 bg-zinc-900/40 px-2.5 py-2">
             <div className="flex shrink-0 items-center justify-between gap-2">
               <div className="text-sm font-semibold text-white/90">实时转写</div>
               <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
@@ -1909,7 +1940,7 @@ export function RealtimeStudio() {
             {selectedInputSource === "transcript" ? (
               <div className="mt-1.5 flex min-h-[4rem] flex-1 flex-col gap-1.5">
                 <Textarea
-                  className="min-h-[7rem] flex-1 resize-y rounded-[10px] border border-violet-200/55 bg-violet-50/80 px-2 py-2 text-[12px] leading-relaxed text-slate-800"
+                  className="min-h-[7rem] flex-1 resize-y text-[12px] leading-relaxed"
                   rows={8}
                   value={transcriptText}
                   onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -1930,11 +1961,11 @@ export function RealtimeStudio() {
                 </Button>
               </div>
             ) : (
-              <div className="mt-1.5 min-h-[4rem] flex-1 overflow-auto whitespace-pre-wrap rounded-[10px] bg-violet-50/80 px-2 py-2 text-[12px] leading-relaxed text-slate-800">
+              <div className="mt-1.5 min-h-[4rem] flex-1 overflow-auto whitespace-pre-wrap rounded-lg border border-zinc-700/60 bg-zinc-950/50 px-2 py-2 text-[12px] leading-relaxed text-zinc-200">
                 {activeCaptureSource ? (
                   formatLiveTranscript(liveTranscript)
                 ) : (
-                  <div className="text-slate-600">尚未开始录音。点击右侧“开始录音”后，这里会显示实时转写内容。</div>
+                  <div className="text-zinc-500">尚未开始录音。点击右侧「开始录音」后显示转写。</div>
                 )}
               </div>
             )}
@@ -1945,7 +1976,7 @@ export function RealtimeStudio() {
             </p>
           </div>
 
-          <div className="shrink-0 rounded-[12px] border border-violet-200/50 bg-violet-100/44 px-2.5 py-2">
+          <div className="shrink-0 rounded-lg border border-zinc-700/80 bg-zinc-900/40 px-2.5 py-2">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-semibold text-white/90">输入音量</div>
               <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
@@ -1958,10 +1989,10 @@ export function RealtimeStudio() {
                 return (
                   <span
                     key={index}
-                    className={`h-3 flex-1 rounded-sm border transition-all duration-150 ${
+                    className={`h-3 flex-1 rounded-sm border transition-colors duration-150 ${
                       isActive
-                        ? "border-emerald-300/80 bg-[linear-gradient(180deg,rgba(52,211,153,0.95),rgba(16,185,129,0.85))] shadow-[0_0_10px_rgba(16,185,129,0.35)]"
-                        : "border-white/8 bg-white/10"
+                        ? "border-emerald-800/80 bg-emerald-700/90"
+                        : "border-zinc-700 bg-zinc-800/60"
                     }`}
                   />
                 );
@@ -1989,13 +2020,13 @@ export function RealtimeStudio() {
         >
           <div className="soft-enter soft-enter-delay-1 flex min-h-0 min-w-0 flex-1 flex-col">
             <Tabs.Root value={stageTab} onValueChange={setStageTab} className="flex min-h-0 flex-1 flex-col">
-            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-slate-400/20 bg-[linear-gradient(180deg,rgba(15,23,42,0.55),rgba(185,167,211,0.10))] p-0 shadow-[0_18px_46px_rgba(0,0,0,0.32)] backdrop-blur-md max-h-[calc(100%-46px)]">
+            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/90 p-0 shadow-lg max-h-[calc(100%-46px)]">
               <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-2 pt-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                <Tabs.List className="glass-panel relative grid w-full max-w-[760px] grid-cols-5 self-start rounded-full border border-violet-200/55 p-1">
+                <Tabs.List className="workspace-tab-list w-full max-w-[760px] grid-cols-5 self-start">
               <span
                 aria-hidden
-                className="pointer-events-none absolute inset-y-1 rounded-full border border-violet-300/85 bg-violet-300 shadow-[0_8px_24px_rgba(124,58,237,0.28)] transition-transform duration-300 ease-out"
+                className="workspace-tab-indicator"
                 style={{
                   left: "0.25rem",
                   width: "calc((100% - 0.5rem) / 5)",
@@ -2006,35 +2037,54 @@ export function RealtimeStudio() {
                 <Tabs.Trigger
                   key={value}
                   value={value}
-                  className="relative z-[1] rounded-full border border-transparent px-2 py-2 text-sm font-medium text-slate-200 transition-colors data-[state=active]:text-violet-950"
+                  className="workspace-tab-trigger px-2 py-2"
                 >
                   {label}
                 </Tabs.Trigger>
               ))}
             </Tabs.List>
-                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                  {pipelineStages.map((step) => (
-                        <button
-                      key={step.abbr}
-                          type="button"
-                      className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/55 bg-violet-50/95 px-2 py-1 text-[11px] font-medium text-slate-600"
-                        >
-                          <span
-                            className={`h-2 w-2 shrink-0 rounded-full ${
-                              step.tone === "working"
-                            ? "bg-violet-500"
-                                : step.tone === "success"
-                                  ? "bg-emerald-500"
-                                  : step.tone === "error"
-                                    ? "bg-red-500"
-                                    : "bg-slate-300"
-                            }`}
-                            aria-hidden
-                          />
-                          {step.label}
-                        </button>
-                  ))}
-                  </div>
+                  <Tooltip.Provider delayDuration={120}>
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      {pipelineStages.map((step) => (
+                        <Tooltip.Root key={step.abbr}>
+                          <Tooltip.Trigger asChild>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-600 bg-zinc-900/80 px-2 py-1 text-[11px] font-medium text-zinc-300"
+                              aria-label={`${step.label}：${step.value}`}
+                            >
+                              <span
+                                className={`h-2 w-2 shrink-0 rounded-full ${
+                                  step.tone === "working"
+                                    ? "bg-amber-500"
+                                    : step.tone === "success"
+                                      ? "bg-emerald-500"
+                                      : step.tone === "error"
+                                        ? "bg-red-500"
+                                        : "bg-slate-300"
+                                }`}
+                                aria-hidden
+                              />
+                              {step.label}
+                            </button>
+                          </Tooltip.Trigger>
+                          <Tooltip.Portal>
+                            <Tooltip.Content
+                              side="bottom"
+                              align="center"
+                              sideOffset={8}
+                              collisionPadding={12}
+                              className="z-[24000] w-[220px] rounded-lg border border-zinc-600 bg-zinc-900 px-2.5 py-2 text-left shadow-xl"
+                            >
+                              <div className="text-[10px] font-semibold tracking-wide text-zinc-300">{step.label}</div>
+                              <div className="mt-1 text-[11px] font-medium text-zinc-100">{step.value}</div>
+                              <div className="mt-1.5 text-[10px] leading-4 text-zinc-500">{step.help}</div>
+                            </Tooltip.Content>
+                          </Tooltip.Portal>
+                        </Tooltip.Root>
+                      ))}
+                    </div>
+                  </Tooltip.Provider>
                 </div>
                 <div className="flex w-full max-w-[min(100%,360px)] shrink-0 flex-col items-center gap-2 sm:ml-auto sm:items-start">
                   <div className="flex w-full flex-nowrap items-start justify-center gap-6">
@@ -2048,7 +2098,7 @@ export function RealtimeStudio() {
                     }
                     onClick={() => void stageStartCapture()}
                     disabled={!canStartStageCapture}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-red-200/35 bg-red-500/[0.10] text-red-50 shadow-[0_12px_40px_rgba(239,68,68,0.22)] backdrop-blur-xl transition duration-300 ease-out hover:bg-red-500/[0.16] hover:border-red-200/50 active:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(185,167,211,0.35)] sm:h-12 sm:w-12"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-red-900/50 bg-red-950/40 text-red-200 transition hover:border-red-800 hover:bg-red-950/60 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-800 sm:h-12 sm:w-12"
                         aria-label="开始录音"
                       >
                         <Mic className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -2066,7 +2116,7 @@ export function RealtimeStudio() {
                     }
                     onClick={() => void stageStopCapture()}
                     disabled={!canStopStageCapture}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white shadow-[0_12px_40px_rgba(15,23,42,0.40)] backdrop-blur-xl transition duration-300 ease-out hover:bg-white/16 hover:border-white/40 active:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(185,167,211,0.35)] sm:h-12 sm:w-12"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-600 bg-zinc-800/80 text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 sm:h-12 sm:w-12"
                         aria-label="暂停录音"
                       >
                         <Pause className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -2080,7 +2130,7 @@ export function RealtimeStudio() {
                         title={`${snapshotLabelForSource(selectedInputSource)}（仅重新拉取当前结果）`}
                     onClick={() => (currentSessionId ? snapshotMutation.mutate(currentSessionId) : null)}
                     disabled={!currentSessionId}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white shadow-[0_12px_40px_rgba(15,23,42,0.40)] backdrop-blur-xl transition duration-300 ease-out hover:bg-white/16 hover:border-white/40 active:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(185,167,211,0.35)] sm:h-12 sm:w-12"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-600 bg-zinc-800/80 text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 sm:h-12 sm:w-12"
                         aria-label={snapshotLabelForSource(selectedInputSource)}
                       >
                         <Eye className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -2094,7 +2144,7 @@ export function RealtimeStudio() {
                         title={`${flushLabelForSource(selectedInputSource)}（强制处理未完成内容）`}
                     onClick={() => (currentSessionId ? flushMutation.mutate(currentSessionId) : null)}
                     disabled={!currentSessionId}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white shadow-[0_12px_40px_rgba(15,23,42,0.40)] backdrop-blur-xl transition duration-300 ease-out hover:bg-white/16 hover:border-white/40 active:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(185,167,211,0.35)] sm:h-12 sm:w-12"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-600 bg-zinc-800/80 text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 sm:h-12 sm:w-12"
                         aria-label={flushLabelForSource(selectedInputSource)}
                       >
                         {selectedInputSource === "system_audio_helper" ? (
@@ -2114,8 +2164,8 @@ export function RealtimeStudio() {
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
             <Tabs.Content value="mermaid" className="h-full min-h-0 outline-none">
               <div className="flex h-full min-h-0 px-4">
-                <Card className="flex-1 rounded-[30px] border border-slate-400/20 bg-violet-100/28 p-2.5">
-                  <div className="h-full min-h-0 overflow-hidden rounded-[24px]">
+                <Card className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2">
+                  <div className="h-full min-h-0 overflow-hidden rounded-lg">
               <MermaidCard
                 title=""
                 embedded
@@ -2137,8 +2187,8 @@ export function RealtimeStudio() {
 
             <Tabs.Content value="structure">
               <div className="flex h-full min-h-0 px-4">
-                <Card className="flex-1 rounded-[30px] border border-slate-400/20 bg-violet-100/28 p-2.5">
-                  <div className="h-full min-h-0 overflow-hidden rounded-[24px]">
+                <Card className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2">
+                  <div className="h-full min-h-0 overflow-hidden rounded-lg">
               <GraphStage
                 embedded
                 title="结构图"
@@ -2165,7 +2215,7 @@ export function RealtimeStudio() {
                     events.slice(-12).map((event: Record<string, any>, index: number) => (
                       <div
                         key={`${event.update?.update_id}-${index}`}
-                        className="glass-panel rounded-[24px] border border-violet-200/50 p-4"
+                        className="glass-panel p-4"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="text-sm font-semibold text-slate-100">
@@ -2247,7 +2297,7 @@ export function RealtimeStudio() {
                     <Input
                       value={titleDraft}
                       onChange={(event: ChangeEvent<HTMLInputElement>) => setTitleDraft(event.target.value)}
-                      className="h-8 min-w-0 flex-1 rounded-full border-violet-200/50 bg-violet-50/85 text-sm text-slate-900"
+                      className="h-8 min-w-0 flex-1 rounded-lg border border-zinc-600 bg-zinc-900/80 text-sm text-zinc-100"
                       placeholder="输入会话名称"
                     />
                     <Button
@@ -2271,11 +2321,11 @@ export function RealtimeStudio() {
                   </div>
                 ) : (
                   <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                    <div className="flex h-8 min-w-0 flex-1 items-center justify-between gap-2 rounded-full border border-violet-200/50 bg-violet-50/80 px-2.5 text-sm font-medium text-slate-900">
+                    <div className="flex h-8 min-w-0 flex-1 items-center justify-between gap-2 rounded-lg border border-zinc-600 bg-zinc-900/80 px-2.5 text-sm font-medium text-zinc-100">
                       <span className="min-w-0 flex-1 truncate pl-0.5">{titleDisplay}</span>
                       <button
                         type="button"
-                        className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-violet-300/60 bg-white/80 px-2 text-[11px] font-semibold text-slate-700 transition hover:bg-white"
+                        className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-zinc-600 bg-zinc-800 px-2 text-[11px] font-medium text-zinc-300 transition hover:bg-zinc-700"
                         onClick={startTitleEdit}
                       >
                         <Pencil className="h-3.5 w-3.5 shrink-0" />
@@ -2338,22 +2388,14 @@ export function RealtimeStudio() {
                   detailDrawerOpen ? "translate-x-0 shadow-[0_0_40px_rgba(15,23,42,0.12)]" : "pointer-events-none translate-x-full"
                 }`}
               >
-        <Card className="m-0 flex h-full w-full flex-col overflow-hidden rounded-none border-y-0 border-r-0 border-l border-white/12 p-3 shadow-none sm:my-4 sm:mr-4 sm:h-[calc(100vh-2rem)] sm:rounded-[28px] sm:border sm:border-white/12 !ring-0">
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-[22px] border border-white/15 bg-white/9 p-2 backdrop-blur-md shadow-[0_18px_50px_rgba(15,23,42,0.30),inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-1px_0_rgba(0,0,0,0.18)] ring-1 ring-white/12 before:pointer-events-none before:absolute before:inset-x-4 before:top-[1px] before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.55),transparent)] before:opacity-80 after:pointer-events-none after:absolute after:inset-[1px] after:rounded-[21px] after:border after:border-white/10 after:content-['']">
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-[radial-gradient(110%_90%_at_20%_0%,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0.05)_35%,rgba(255,255,255,0)_70%),radial-gradient(120%_100%_at_80%_120%,rgba(167,139,250,0.16)_0%,rgba(167,139,250,0.06)_38%,rgba(167,139,250,0)_72%)] opacity-90"
-            />
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.32)_0%,rgba(2,6,23,0.08)_45%,rgba(2,6,23,0.20)_100%)] opacity-80"
-            />
-            <div className="relative z-[1] flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-2.5 py-2">
-              <div className="text-base font-semibold tracking-wide text-white">历史会话</div>
+        <Card className="m-0 flex h-full w-full flex-col overflow-hidden rounded-none border-y-0 border-r-0 border-l border-zinc-800 bg-zinc-950 p-3 shadow-none sm:my-4 sm:mr-4 sm:h-[calc(100vh-2rem)] sm:rounded-2xl sm:border sm:border-zinc-800 sm:shadow-xl">
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-2 py-2">
+              <div className="text-sm font-semibold text-zinc-100">历史会话</div>
                   <Button
               type="button"
                     variant="ghost"
-              className="h-9 shrink-0 gap-2 rounded-[18px] px-3 text-xs font-medium text-white/80 transition hover:bg-white/10 hover:text-white/95"
+              className="h-9 shrink-0 gap-2 rounded-lg px-3 text-xs"
               onClick={() => setDetailDrawerOpen(false)}
               aria-label="收起历史记录"
                   >
@@ -2361,16 +2403,16 @@ export function RealtimeStudio() {
               <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
-            <div className="relative z-[1] min-h-0 flex-1 space-y-3 overflow-y-auto px-2.5 pb-2.5 pt-3">
-              <div className="rounded-[20px] border border-white/12 bg-white/8 px-3 py-3">
-                <div className="mb-2 text-xs font-semibold tracking-[0.08em] text-white/70">运行详情</div>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-2 pb-2 pt-3">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-3">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">运行详情</div>
                 <div className="flex flex-wrap gap-1.5">
                   {mermaidState?.provider || selectedPlannerProfile?.label ? (
                     <Badge>{mermaidState?.provider || selectedPlannerProfile?.label}</Badge>
             ) : null}
                   {mermaidState?.model || plannerModel ? <Badge>{mermaidState?.model || plannerModel}</Badge> : null}
                   {typeof mermaidState?.latency_ms === "number" ? <Badge>{mermaidState.latency_ms.toFixed(1)} ms</Badge> : null}
-                  <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-zinc-400">
                     出图：
                     {typeof mermaidState?.compile_ok === "boolean"
                       ? mermaidState.compile_ok
@@ -2378,14 +2420,14 @@ export function RealtimeStudio() {
                         : "编译失败"
                       : "等待中"}
                         </Badge>
-                  <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-zinc-400">
                     来源：{getSourceBadgeLabel(activeCaptureSource)}
                   </Badge>
-                  <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-zinc-400">
                     转写：{backendLabel(selectedRecognitionBackend)}
                   </Badge>
                   {snapshot?.evaluation?.realtime_eval_pass === true ? (
-                    <Badge className="border-emerald-200 bg-emerald-50 text-[10px] font-normal text-emerald-700">
+                    <Badge className="border-emerald-900/55 bg-emerald-950/40 text-[10px] font-normal normal-case tracking-normal text-emerald-200">
                       评测通过
                     </Badge>
                   ) : null}
@@ -2395,10 +2437,10 @@ export function RealtimeStudio() {
                 <button
                   key={item.session_id}
                   type="button"
-                  className={`group w-full rounded-[22px] border px-4 py-3.5 text-left text-sm backdrop-blur-sm transition duration-200 ${
+                  className={`group w-full rounded-lg border px-3 py-3 text-left text-sm transition ${
                     currentSessionId === item.session_id
-                      ? "border-white/15 bg-[rgba(185,167,211,0.16)] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] ring-1 ring-white/12 ring-inset"
-                      : "border-white/10 bg-white/7 hover:border-white/15 hover:bg-white/10 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                      ? "border-zinc-500 bg-zinc-800"
+                      : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-600 hover:bg-zinc-800/60"
                   }`}
                   onClick={() => {
                     setCurrentSessionId(item.session_id);
@@ -2409,14 +2451,14 @@ export function RealtimeStudio() {
                     setDetailDrawerOpen(false);
                   }}
                 >
-                  <div className={`font-semibold ${currentSessionId === item.session_id ? "text-violet-200" : "text-white/85"}`}>
+                  <div className={`font-semibold ${currentSessionId === item.session_id ? "text-zinc-100" : "text-zinc-400"}`}>
                     {item.title}
                     </div>
-                  <div className={`mt-1 text-xs ${currentSessionId === item.session_id ? "text-white/65" : "text-white/55"}`}>
+                  <div className={`mt-1 text-xs ${currentSessionId === item.session_id ? "text-zinc-400" : "text-zinc-500"}`}>
                     {item.session_id}
                     </div>
                   {item.summary?.input_runtime?.input_source ? (
-                    <div className={`mt-2 text-xs ${currentSessionId === item.session_id ? "text-white/75" : "text-white/60"}`}>
+                    <div className={`mt-2 text-xs ${currentSessionId === item.session_id ? "text-zinc-400" : "text-zinc-500"}`}>
                       输入源：{String(item.summary.input_runtime.input_source)}
               </div>
             ) : null}

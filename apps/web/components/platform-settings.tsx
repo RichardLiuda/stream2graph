@@ -7,7 +7,7 @@ import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge, Button, Card, Input, Textarea } from "@stream2graph/ui";
 
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { decodeAudioFileToVoiceprintPayload } from "@/lib/audio";
 import { loadRuntimePreferences, resolveRuntimePreferences, saveRuntimePreferences } from "@/lib/runtime-preferences";
 import { RealtimeDefaultConfig } from "@/components/realtime-default-config";
@@ -67,7 +67,7 @@ const ENDPOINT_ROUTE_OPTIONS: Record<
 };
 
 function selectClassName(disabled = false) {
-  return `h-12 w-full rounded-[22px] border border-white/70 bg-white/[0.72] px-4 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)] ${
+  return `h-10 w-full rounded-lg border border-slate-300 bg-[rgba(245,246,248,0.96)] px-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 ${
     disabled ? "cursor-not-allowed opacity-55" : ""
   }`;
 }
@@ -255,6 +255,11 @@ export function PlatformSettings() {
     queryFn: api.listRuntimeOptions,
     retry: false,
   });
+  const datasetsCatalog = useQuery({
+    queryKey: ["datasets"],
+    queryFn: api.listDatasets,
+    retry: false,
+  });
   const adminRuntimeOptions = useQuery({
     queryKey: ["admin-runtime-options"],
     queryFn: api.getAdminRuntimeOptions,
@@ -338,6 +343,7 @@ export function PlatformSettings() {
   const hasPlannerProfiles = Boolean(runtimeOptions.data?.planner_profiles.length);
   const hasSttProfiles = Boolean(runtimeOptions.data?.stt_profiles.length);
   const adminReady = authQuery.isSuccess && authQuery.isFetchedAfterMount;
+  const authUnauthorized = authQuery.error instanceof ApiError && authQuery.error.status === 401;
 
   useEffect(() => {
     if (!selectedGateProfile) return;
@@ -548,7 +554,7 @@ export function PlatformSettings() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="pl-8 text-[2rem] font-semibold tracking-[-0.04em] text-violet-200">设置</div>
+        <h1 className="page-title">设置</h1>
         <Link href="/app/realtime">
           <Button variant="secondary">
             返回实时工作
@@ -560,8 +566,8 @@ export function PlatformSettings() {
       <Card className="soft-enter space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-base font-semibold text-slate-950">服务端模型配置</div>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+            <div className="text-base font-semibold text-zinc-100">服务端模型配置</div>
+            <p className="mt-2 text-sm leading-6 text-zinc-500">
               保存后直接写入服务端。实时工作与样本页都会用这里的 Gate、Planner 和听写服务。
             </p>
           </div>
@@ -579,19 +585,41 @@ export function PlatformSettings() {
           </div>
         </div>
 
-        {!adminReady ? (
-          <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            正在确认管理员登录状态。确认完成后才会启用服务端配置的读取、保存和模型探测。
+        {authQuery.isLoading ? (
+          <div className="rounded-lg border border-zinc-700/80 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-500">
+            正在确认管理员登录状态…
+          </div>
+        ) : null}
+        {authUnauthorized ? (
+          <div className="rounded-lg border border-amber-800/60 bg-amber-950/35 px-4 py-3 text-sm leading-relaxed text-amber-100">
+            <p>未登录或会话已过期，无法读写服务端模型配置。</p>
+            <Link
+              href="/login"
+              className="mt-2 inline-flex items-center gap-1 font-medium text-amber-50 underline underline-offset-4 hover:text-white"
+            >
+              前往管理员登录
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        ) : null}
+        {!adminReady && authQuery.isError && !authUnauthorized ? (
+          <div className="rounded-lg border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+            {(authQuery.error as Error).message}
+          </div>
+        ) : null}
+        {!adminReady && authQuery.isSuccess && !authUnauthorized ? (
+          <div className="rounded-lg border border-zinc-700/80 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-500">
+            正在启用服务端配置…
           </div>
         ) : null}
 
         {saveProfilesMutation.isError ? (
-          <div className="rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="rounded-lg border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm text-red-200">
             {(saveProfilesMutation.error as Error).message}
           </div>
         ) : null}
         {probeFeedback ? (
-          <div className="rounded-[20px] border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
+          <div className="rounded-lg border border-zinc-700/80 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-300">
             {probeFeedback}
           </div>
         ) : null}
@@ -602,9 +630,9 @@ export function PlatformSettings() {
             { kind: "planner" as const, title: "Planner 配置", drafts: plannerDrafts },
             { kind: "stt" as const, title: "听写服务配置", drafts: sttDrafts },
           ].map((group) => (
-            <div key={group.kind} className="space-y-4 rounded-[24px] border border-white/70 bg-white/[0.52] p-4">
+            <div key={group.kind} className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold text-slate-950">{group.title}</div>
+                <div className="text-sm font-semibold text-zinc-200">{group.title}</div>
                 <Button variant="secondary" onClick={() => addDraft(group.kind)}>
                   <Plus className="h-4 w-4" />
                   添加
@@ -613,7 +641,7 @@ export function PlatformSettings() {
 
               <div className="space-y-4">
                 {group.drafts.map((draft, index) => (
-                  <div key={`${group.kind}-${index}`} className="rounded-[22px] border border-white/70 bg-white/[0.72] p-4">
+                  <div key={`${group.kind}-${index}`} className="rounded-xl border border-zinc-800 bg-zinc-950/55 p-4">
                     {(() => {
                       const resolvedEndpoint = resolveEndpoint(group.kind, draft);
                       const draftModelOptions = modelOptionsFromDraft(draft);
@@ -625,7 +653,7 @@ export function PlatformSettings() {
                       return (
                     <>
                     <div className="mb-4 flex items-center justify-between gap-3">
-                      <div className="text-sm font-semibold text-slate-900">
+                      <div className="text-sm font-semibold text-zinc-100">
                         {draft.label || draft.id || `${group.kind.toUpperCase()} Profile ${index + 1}`}
                       </div>
                       <div className="flex items-center gap-2">
@@ -655,7 +683,7 @@ export function PlatformSettings() {
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700">Profile ID</label>
-                        <Input
+                        <Input variant="light"
                           value={draft.id}
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateDraft(group.kind, index, { id: event.target.value })
@@ -665,7 +693,7 @@ export function PlatformSettings() {
                       </div>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700">显示名称</label>
-                        <Input
+                        <Input variant="light"
                           value={draft.label}
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateDraft(group.kind, index, { label: event.target.value })
@@ -677,11 +705,11 @@ export function PlatformSettings() {
                         <>
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">Provider Kind</label>
-                            <Input value="xfyun_asr" readOnly />
+                            <Input variant="light" value="xfyun_asr" readOnly />
                           </div>
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">App ID</label>
-                            <Input
+                            <Input variant="light"
                               value={draft.appId}
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                 updateDraft(group.kind, index, { appId: event.target.value })
@@ -694,7 +722,7 @@ export function PlatformSettings() {
                         <>
                           <div className="space-y-2 md:col-span-2">
                             <label className="text-sm font-medium text-slate-700">Endpoint Base</label>
-                            <Input
+                            <Input variant="light"
                               value={draft.endpointBase}
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                 updateDraft(group.kind, index, { endpointBase: event.target.value })
@@ -749,7 +777,7 @@ export function PlatformSettings() {
                           {draft.endpointRouteMode === "custom" ? (
                             <div className="space-y-2 md:col-span-2">
                               <label className="text-sm font-medium text-slate-700">自定义路径</label>
-                              <Input
+                              <Input variant="light"
                                 value={draft.customEndpointPath}
                                 onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                   updateDraft(group.kind, index, { customEndpointPath: event.target.value })
@@ -762,11 +790,11 @@ export function PlatformSettings() {
                       )}
                       <div className="space-y-2 md:col-span-2">
                         <label className="text-sm font-medium text-slate-700">最终 Endpoint</label>
-                        <Input value={resolvedEndpoint} readOnly />
+                        <Input variant="light" value={resolvedEndpoint} readOnly />
                       </div>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700">API Key</label>
-                        <Input
+                        <Input variant="light"
                           type="password"
                           value={draft.apiKey}
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -777,7 +805,7 @@ export function PlatformSettings() {
                       </div>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-slate-700">API Key Env</label>
-                        <Input
+                        <Input variant="light"
                           value={draft.apiKeyEnv}
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateDraft(group.kind, index, { apiKeyEnv: event.target.value })
@@ -789,7 +817,7 @@ export function PlatformSettings() {
                         <>
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">API Secret</label>
-                            <Input
+                            <Input variant="light"
                               type="password"
                               value={draft.apiSecret}
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -800,7 +828,7 @@ export function PlatformSettings() {
                           </div>
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">API Secret Env</label>
-                            <Input
+                            <Input variant="light"
                               value={draft.apiSecretEnv}
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                 updateDraft(group.kind, index, { apiSecretEnv: event.target.value })
@@ -837,7 +865,7 @@ export function PlatformSettings() {
                         <label className="text-sm font-medium text-slate-700">
                           {isXfyunStt ? "识别域列表" : "模型列表"}
                         </label>
-                        <Textarea
+                        <Textarea variant="light"
                           rows={4}
                           value={draft.modelsText}
                           onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
@@ -891,7 +919,8 @@ export function PlatformSettings() {
       </Card>
       <RealtimeDefaultConfig
         runtimeOptions={runtimeOptions.data}
-        datasetVersion={runtimeOptions.data?.datasets?.[0]?.slug || ""}
+        datasetVersions={datasetsCatalog.data ?? []}
+        datasetVersion={datasetsCatalog.data?.[0]?.slug || ""}
         setDatasetVersion={() => undefined}
         gateLabel={selectedGateProfile?.label || null}
         gateModel={gateModel}
@@ -904,12 +933,12 @@ export function PlatformSettings() {
 
       <Card className="soft-enter soft-enter-delay-2 space-y-4">
         <div className="flex items-center gap-3">
-          <div className="glass-panel flex h-11 w-11 items-center justify-center rounded-[18px] border border-white/70 text-[var(--accent-strong)]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900/50 text-zinc-300">
             <Settings2 className="h-5 w-5" />
           </div>
           <div>
-            <div className="text-base font-semibold text-slate-950">默认运行参数</div>
-            <div className="mt-1 text-sm text-slate-500">这些默认值会保存在当前浏览器，用于新建实时会话。</div>
+            <div className="text-base font-semibold text-zinc-100">默认运行参数</div>
+            <div className="mt-1 text-sm text-zinc-500">这些默认值会保存在当前浏览器，用于新建实时会话。</div>
           </div>
         </div>
 
@@ -1051,9 +1080,9 @@ export function PlatformSettings() {
 
         <div className="grid gap-4 md:grid-cols-3">
           {summary.map((item) => (
-            <div key={item.label} className="rounded-[22px] border border-white/70 bg-white/[0.58] px-4 py-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</div>
-              <div className="mt-3 text-sm font-semibold leading-6 text-slate-900">{item.value}</div>
+            <div key={item.label} className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-4">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{item.label}</div>
+              <div className="mt-2 text-sm font-semibold leading-snug text-zinc-100">{item.value}</div>
             </div>
           ))}
         </div>
@@ -1062,8 +1091,8 @@ export function PlatformSettings() {
       <Card className="soft-enter soft-enter-delay-2 space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-base font-semibold text-slate-950">声纹库管理</div>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+            <div className="text-base font-semibold text-zinc-100">声纹库管理</div>
+            <p className="mt-2 text-sm leading-6 text-zinc-500">
               为某个 STT profile 注册多位说话人的声纹特征。实时 API STT 上传后会先转写，再做 1:N 盲认并回写 speaker。
             </p>
           </div>
@@ -1105,59 +1134,59 @@ export function PlatformSettings() {
         ) : null}
 
         {!managedVoiceprintProfile?.voiceprint?.enabled ? (
-          <div className="rounded-[20px] border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500">
+          <div className="rounded-lg border border-dashed border-zinc-700 px-4 py-5 text-sm text-zinc-500">
             当前选中的 STT profile 还没有启用声纹盲认。先在上方 STT Profile 里打开“声纹盲认增强”，填好讯飞配置并保存。
           </div>
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-4">
-              <div className="rounded-[22px] border border-white/70 bg-white/[0.58] px-4 py-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Group ID</div>
-                <div className="mt-3 text-sm font-semibold text-slate-900">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-4">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Group ID</div>
+                <div className="mt-2 text-sm font-semibold text-zinc-100">
                   {String(managedVoiceprintProfile.voiceprint?.group_id || "-")}
                 </div>
               </div>
-              <div className="rounded-[22px] border border-white/70 bg-white/[0.58] px-4 py-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Threshold</div>
-                <div className="mt-3 text-sm font-semibold text-slate-900">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-4">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Threshold</div>
+                <div className="mt-2 text-sm font-semibold text-zinc-100">
                   {String(managedVoiceprintProfile.voiceprint?.score_threshold ?? 0.75)}
                 </div>
               </div>
-              <div className="rounded-[22px] border border-white/70 bg-white/[0.58] px-4 py-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Top K</div>
-                <div className="mt-3 text-sm font-semibold text-slate-900">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-4">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Top K</div>
+                <div className="mt-2 text-sm font-semibold text-zinc-100">
                   {String(managedVoiceprintProfile.voiceprint?.top_k ?? 3)}
                 </div>
               </div>
-              <div className="rounded-[22px] border border-white/70 bg-white/[0.58] px-4 py-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">已注册特征</div>
-                <div className="mt-3 text-sm font-semibold text-slate-900">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-4">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">已注册特征</div>
+                <div className="mt-2 text-sm font-semibold text-zinc-100">
                   {voiceprintFeaturesQuery.data?.length ?? 0}
                 </div>
               </div>
             </div>
 
-            <div className="rounded-[24px] border border-white/70 bg-white/[0.6] p-4">
-              <div className="text-sm font-semibold text-slate-900">注册新说话人特征</div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+              <div className="text-sm font-semibold text-zinc-100">注册新说话人特征</div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Speaker Label</label>
-                  <Input value={speakerLabel} onChange={(event: ChangeEvent<HTMLInputElement>) => setSpeakerLabel(event.target.value)} placeholder="例如 张三" />
+                  <label className="text-sm font-medium text-zinc-300">Speaker Label</label>
+                  <Input variant="light" value={speakerLabel} onChange={(event: ChangeEvent<HTMLInputElement>) => setSpeakerLabel(event.target.value)} placeholder="例如 张三" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Feature Info</label>
-                  <Input value={featureInfo} onChange={(event: ChangeEvent<HTMLInputElement>) => setFeatureInfo(event.target.value)} placeholder="可选，默认同 speaker label" />
+                  <label className="text-sm font-medium text-zinc-300">Feature Info</label>
+                  <Input variant="light" value={featureInfo} onChange={(event: ChangeEvent<HTMLInputElement>) => setFeatureInfo(event.target.value)} placeholder="可选，默认同 speaker label" />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-medium text-slate-700">样本音频</label>
-                  <Input
+                  <label className="text-sm font-medium text-zinc-300">样本音频</label>
+                  <Input variant="light"
                     type="file"
                     accept="audio/*"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
                       setEnrollmentFile(event.target.files?.[0] || null)
                     }
                   />
-                  <p className="text-xs leading-6 text-slate-500">浏览器会先把上传音频转成 16k 单声道 PCM，再由后端转成讯飞要求的 mp3 进行注册。</p>
+                  <p className="text-xs leading-6 text-zinc-500">浏览器会先把上传音频转成 16k 单声道 PCM，再由后端转成讯飞要求的 mp3 进行注册。</p>
                 </div>
               </div>
               <div className="mt-4 flex justify-end">
@@ -1178,11 +1207,11 @@ export function PlatformSettings() {
               </div>
             </div>
 
-            <div className="rounded-[24px] border border-white/70 bg-white/[0.6] p-4">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-slate-900">已注册说话人</div>
-                  <div className="mt-1 text-xs leading-6 text-slate-500">删除后不会影响普通 STT，只会停止该说话人的声纹命中。</div>
+                  <div className="text-sm font-semibold text-zinc-100">已注册说话人</div>
+                  <div className="mt-1 text-xs leading-6 text-zinc-500">删除后不会影响普通 STT，只会停止该说话人的声纹命中。</div>
                 </div>
                 <Badge>{voiceprintFeaturesQuery.data?.length ?? 0} features</Badge>
               </div>
@@ -1212,7 +1241,7 @@ export function PlatformSettings() {
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-[20px] border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500">
+                  <div className="rounded-lg border border-dashed border-zinc-700 px-4 py-5 text-sm text-zinc-500">
                     还没有注册任何声纹特征。先同步远端组，再上传几段说话人样本音频。
                   </div>
                 )}

@@ -95,14 +95,14 @@ export function StudyWorkbench({ participantCode }: { participantCode: string })
   return (
     <div className="mx-auto max-w-[1680px] px-4 py-6 md:px-6 md:py-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="pl-8 text-[2rem] font-semibold tracking-[-0.04em] text-violet-200">
+        <h1 className="page-title">
           {session.data?.task_title || "参与者任务"}
-        </div>
+        </h1>
         <Badge>{statusBadge}</Badge>
       </div>
 
       {error ? (
-        <div className="mt-5 rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="mt-4 rounded-lg border border-red-900/50 bg-red-950/40 px-3 py-2.5 text-sm text-red-200">{error}</div>
       ) : null}
 
       <Card className="soft-enter mt-6 space-y-4">
@@ -113,16 +113,16 @@ export function StudyWorkbench({ participantCode }: { participantCode: string })
           </div>
           <Badge>{session.data?.study_condition ? `条件：${session.data.study_condition}` : "正在加载任务条件"}</Badge>
         </div>
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-2 md:grid-cols-3">
           {[
             ["1", "阅读材料", "先看输入对话和系统初稿，理解当前任务。"],
             ["2", "编辑与预览", "在编辑区修改 Mermaid，并随时查看实时预览。"],
             ["3", "提交问卷", "确认最终结果后，填写主观评分并提交。"],
           ].map(([step, titleText, desc]) => (
-            <div key={step} className="rounded-[22px] border border-white/70 bg-white/[0.56] px-4 py-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Step {step}</div>
-              <div className="mt-2 text-sm font-semibold text-slate-100">{titleText}</div>
-              <div className="mt-2 text-sm leading-6 text-slate-400">{desc}</div>
+            <div key={step} className="rounded-lg border border-zinc-700/80 bg-zinc-900/50 px-3 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Step {step}</div>
+              <div className="mt-1 text-sm font-medium text-zinc-200">{titleText}</div>
+              <div className="mt-1 text-xs leading-snug text-zinc-500">{desc}</div>
             </div>
           ))}
         </div>
@@ -173,7 +173,7 @@ export function StudyWorkbench({ participantCode }: { participantCode: string })
                 <div key={label as string} className="space-y-2">
                   <label className="text-xs font-medium text-slate-400">{label as string}</label>
                   <select
-                    className="h-11 w-full rounded-[20px] border border-white/70 bg-white/[0.72] px-3 text-sm outline-none transition focus:border-[var(--accent)] focus:bg-white focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
+                    className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
                     value={value as string}
                     onChange={(event: ChangeEvent<HTMLSelectElement>) => (setter as (value: string) => void)(event.target.value)}
                   >
