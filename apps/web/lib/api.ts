@@ -98,6 +98,14 @@ function logBrowserApiEvent(label: string, payload: Record<string, unknown>, lev
   method(`[S2G][API] ${label}`, payload);
 }
 
+function apiErrorLogLevel(path: string, status: number) {
+  // `/auth/me` returning 401 is part of the normal boot flow before redirecting to `/login`.
+  if (path === "/api/v1/auth/me" && status === 401) {
+    return "info" as const;
+  }
+  return "error" as const;
+}
+
 /** 解析 FastAPI / Starlette 的 `detail`（字符串、对象数组等） */
 function messageFromErrorPayload(raw: Record<string, unknown>): string {
   const d = raw.detail;
@@ -155,7 +163,7 @@ async function request<TSchema extends z.ZodTypeAny>(
           status: response.status,
           payload: raw,
         },
-        "error",
+        apiErrorLogLevel(path, response.status),
       );
       throw new ApiError(response.status, messageFromErrorPayload(raw), raw);
     }
