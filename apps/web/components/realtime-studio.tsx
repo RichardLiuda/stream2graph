@@ -10,17 +10,18 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Eye,
   Headphones,
   Mic,
   MicOff,
   Pause,
   PanelRight,
   Pencil,
-  Play,
-  RefreshCcw,
+  RotateCcw,
   Save,
   Send,
   StopCircle,
+  Trash2,
   WandSparkles,
 } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -56,7 +57,7 @@ import {
   saveRuntimePreferences,
 } from "@/lib/runtime-preferences";
 import { GraphStage } from "@/components/graph-stage";
-import { MermaidCard, MermaidCompileStatusBadge } from "@/components/mermaid-card";
+import { MermaidCard } from "@/components/mermaid-card";
 
 const LOCAL_SESSION_KEY = "s2g:last-realtime-session";
 
@@ -283,13 +284,21 @@ function capabilityBadgeTone(status: string) {
 
 /** @description 快捷操作「拉取快照」按钮：随输入来源略变 */
 function snapshotLabelForSource(_source: InputSource): string {
-  return "更新";
+  return "查看结果";
 }
 
 /** @description 快捷操作「冲刷」按钮：随输入来源略变 */
 function flushLabelForSource(source: InputSource): string {
-  return source === "system_audio_helper" ? "清空" : "刷新";
+  return source === "system_audio_helper" ? "强制清空" : "强制重算";
 }
+
+const STAGE_TABS: ReadonlyArray<readonly [string, string]> = [
+  ["mermaid", "主图"],
+  ["structure", "结构视图"],
+  ["events", "更新记录"],
+  ["metrics", "评测指标"],
+  ["pipeline", "运行摘要"],
+] as const;
 
 export function RealtimeStudio() {
   const queryClient = useQueryClient();
@@ -305,11 +314,23 @@ export function RealtimeStudio() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
+  const [inputSourceMenuOpen, setInputSourceMenuOpen] = useState(false);
   useEffect(() => {
     if (!notice) return;
     const t = window.setTimeout(() => setNotice(null), 3500);
     return () => window.clearTimeout(t);
   }, [notice]);
+  useEffect(() => {
+    if (!inputSourceMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!inputSourceMenuRef.current) return;
+      if (!inputSourceMenuRef.current.contains(event.target as Node)) {
+        setInputSourceMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [inputSourceMenuOpen]);
   /** @description 客户端挂载后再 portal，避免 SSR 访问 `document` */
   const [detailDrawerPortalReady, setDetailDrawerPortalReady] = useState(false);
   /** @description 主舞台 Tab，用于顶栏与「主图」徽章联动 */
@@ -352,6 +373,7 @@ export function RealtimeStudio() {
     captureMode: CaptureMode;
     speaker: string;
   } | null>(null);
+  const inputSourceMenuRef = useRef<HTMLDivElement | null>(null);
 
   const selectedInputSource = studioState.context.selectedInputSource;
   const selectedRecognitionBackend = studioState.context.recognitionBackend;
@@ -365,6 +387,10 @@ export function RealtimeStudio() {
   const mermaidStatus = studioState.context.mermaidStatus;
   const machineError = studioState.context.error;
   const lastMermaidUpdatedAt = studioState.context.lastMermaidUpdatedAt;
+  const activeStageTabIndex = Math.max(
+    0,
+    STAGE_TABS.findIndex(([value]) => value === stageTab),
+  );
 
   const authQuery = useQuery({
     queryKey: ["auth", "me"],
@@ -1716,7 +1742,7 @@ export function RealtimeStudio() {
       ) : null}
 
       <div className="flex h-full flex-col overflow-hidden space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
           <div className="flex items-center gap-3 pl-8">
             <div className="text-[2rem] font-semibold tracking-[-0.04em] text-violet-200">实时工作台</div>
             <div className="hidden rounded-full border border-violet-200/45 bg-violet-100/25 px-3 py-1 text-[11px] text-violet-50/90 md:inline-flex md:items-center md:gap-2">
@@ -1724,42 +1750,71 @@ export function RealtimeStudio() {
               <span>开麦或发送 Transcript 后，这里会自动刷新主图与结构图。</span>
             </div>
           </div>
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-            {stageTab === "mermaid" ? (
-              <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
-                {mermaidState?.provider || selectedPlannerProfile?.label ? (
-                  <Badge>{mermaidState?.provider || selectedPlannerProfile?.label}</Badge>
-                ) : null}
-                {mermaidState?.model || plannerModel ? <Badge>{mermaidState?.model || plannerModel}</Badge> : null}
-                {typeof mermaidState?.latency_ms === "number" ? <Badge>{mermaidState.latency_ms.toFixed(1)} ms</Badge> : null}
-                <MermaidCompileStatusBadge
-                  compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
-                  updatedAt={
-                    lastMermaidUpdatedAt ||
-                    toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null)
-                  }
-                />
-                <Badge
-                  className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700"
-                  title={currentSessionId || undefined}
-                >
-                  <span className="block max-w-[140px] min-w-0 truncate">
-                    {currentSessionId ? `Session ${currentSessionId}` : "未创建会话"}
-                  </span>
-                </Badge>
-                <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
-                  {getSourceBadgeLabel(activeCaptureSource)}
-                </Badge>
-                <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
-                  {backendLabel(selectedRecognitionBackend)}
-                </Badge>
-                {snapshot?.evaluation?.realtime_eval_pass === true ? (
-                  <Badge className="border-emerald-200 bg-emerald-50 text-[10px] font-normal text-emerald-700">
-                    评测通过
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
+            <div className="group relative">
+              <Badge
+                className="cursor-default border-violet-200/70 bg-violet-100/70 px-3 py-1 text-xs font-semibold text-slate-800 shadow-[0_8px_20px_rgba(124,58,237,0.18)]"
+                title="运行状态"
+              >
+                运行状态
+              </Badge>
+              <div className="pointer-events-none invisible absolute right-0 top-[calc(100%+8px)] z-[120] w-[min(460px,82vw)] rounded-[16px] border border-white/20 bg-[linear-gradient(180deg,rgba(20,28,56,0.94),rgba(16,22,44,0.94))] p-3 opacity-0 shadow-[0_18px_44px_rgba(0,0,0,0.42)] backdrop-blur-xl transition duration-200 group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100">
+                <div className="mb-2 text-[11px] font-semibold tracking-[0.08em] text-white/80">状态速览</div>
+                <div className="flex flex-wrap gap-1.5">
+                  <Badge
+                    className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700"
+                    title={currentSessionId || undefined}
+                  >
+                    <span className="block max-w-[180px] min-w-0 truncate">
+                      {currentSessionId ? `Session ${currentSessionId}` : "未创建会话"}
+                    </span>
                   </Badge>
-                ) : null}
+                  {mermaidState?.provider || selectedPlannerProfile?.label ? (
+                    <Badge>{mermaidState?.provider || selectedPlannerProfile?.label}</Badge>
+                  ) : null}
+                  {mermaidState?.model || plannerModel ? <Badge>{mermaidState?.model || plannerModel}</Badge> : null}
+                  {typeof mermaidState?.latency_ms === "number" ? <Badge>{mermaidState.latency_ms.toFixed(1)} ms</Badge> : null}
+                  <Badge
+                    className={`text-[10px] font-normal ${
+                      gateStatus === "error" || plannerStatus === "error"
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : gateStatus === "working" || plannerStatus === "working"
+                          ? "border-violet-200/60 bg-violet-100/60 text-violet-800"
+                          : gateStatus === "success" || plannerStatus === "success"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-slate-300/65 bg-slate-100/65 text-slate-700"
+                    }`}
+                  >
+                    {gateStatus === "error" || plannerStatus === "error"
+                      ? "模型：失败"
+                      : gateStatus === "working" || plannerStatus === "working"
+                        ? "模型：加载中"
+                        : gateStatus === "success" || plannerStatus === "success"
+                          ? "模型：已返回"
+                          : "模型：空闲"}
+                  </Badge>
+                  <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                    来源：{getSourceBadgeLabel(activeCaptureSource)}
+                  </Badge>
+                  <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                    转写：{backendLabel(selectedRecognitionBackend)}
+                  </Badge>
+                  <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                    出图：
+                    {typeof mermaidState?.compile_ok === "boolean"
+                      ? mermaidState.compile_ok
+                        ? "编译通过"
+                        : "编译失败"
+                      : "等待中"}
+                  </Badge>
+                  {snapshot?.evaluation?.realtime_eval_pass === true ? (
+                    <Badge className="border-emerald-200 bg-emerald-50 text-[10px] font-normal text-emerald-700">
+                      评测通过
+                    </Badge>
+                  ) : null}
+                </div>
               </div>
-            ) : null}
+            </div>
             <Button
               type="button"
               variant="secondary"
@@ -1779,25 +1834,58 @@ export function RealtimeStudio() {
               <label className="text-sm font-semibold text-white/90">输入来源</label>
               <Badge className="shrink-0 text-[10px]">{audioContext ? `${audioContext.platform} / ${getBrowserFamilyLabel(audioContext)}` : "检测中"}</Badge>
             </div>
-            <div className="relative">
-              <select
-                className="h-10 w-full appearance-none rounded-full border border-violet-200/50 bg-violet-50/92 px-3.5 pr-14 text-sm font-medium text-slate-900 outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[rgba(185,167,211,0.18)]"
-                value={selectedInputSource}
-                onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                  const nextSource = event.target.value as InputSource;
-                  clearFeedback();
-                  const opts = buildBackendOptions(nextSource, helperCapabilities);
-                  const nextBackend = opts.find((item) => !item.disabled)?.value ?? opts[0].value;
-                  studioSend({ type: "source.select", source: nextSource, backend: nextBackend });
-                }}
+            <div ref={inputSourceMenuRef} className="relative">
+              <button
+                type="button"
+                className="flex h-10 w-full items-center justify-between rounded-full border border-violet-200/80 bg-violet-50/95 px-3.5 pr-3 text-left text-sm font-medium text-slate-900 outline-none transition hover:border-violet-300/80 hover:bg-violet-100/95 focus-visible:ring-4 focus-visible:ring-[rgba(196,181,253,0.35)]"
+                aria-haspopup="listbox"
+                aria-expanded={inputSourceMenuOpen}
+                onClick={() => setInputSourceMenuOpen((open) => !open)}
               >
-                {inputOptions.map((option) => (
-                  <option key={option.source} value={option.source}>
-                    {option.label} · {option.capability_status}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <span className="truncate">
+                  {selectedOption.label} · {selectedOption.capability_status}
+                </span>
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-violet-500 transition-transform duration-200 ${inputSourceMenuOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+              {inputSourceMenuOpen ? (
+                <div className="absolute z-[21000] mt-2 w-full rounded-[20px] border border-violet-200/90 bg-[linear-gradient(180deg,rgba(252,248,255,0.99),rgba(247,239,255,0.97))] p-2 shadow-[0_14px_30px_rgba(76,29,149,0.12)] backdrop-blur-lg">
+                  <div className="space-y-1" role="listbox" aria-label="输入来源">
+                    {inputOptions.map((option) => {
+                      const active = option.source === selectedInputSource;
+                      return (
+                        <button
+                          key={option.source}
+                          type="button"
+                          role="option"
+                          aria-selected={active}
+                          onClick={() => {
+                  clearFeedback();
+                            const opts = buildBackendOptions(option.source, helperCapabilities);
+                  const nextBackend = opts.find((item) => !item.disabled)?.value ?? opts[0].value;
+                            studioSend({ type: "source.select", source: option.source, backend: nextBackend });
+                            setInputSourceMenuOpen(false);
+                          }}
+                          className={`flex w-full items-center justify-between rounded-[14px] border px-3 py-2 text-left text-sm transition duration-200 ${
+                            active
+                              ? "border-violet-300/90 bg-violet-200/72 text-slate-900"
+                              : "border-violet-200/85 bg-violet-50 text-slate-900 hover:scale-[1.02] hover:border-violet-300/90 hover:bg-violet-100/92"
+                          }`}
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className={`inline-flex h-4 w-4 items-center justify-center ${active ? "text-violet-700" : "text-violet-400"}`}>
+                              {active ? <Check className="h-3.5 w-3.5" /> : null}
+                            </span>
+                            <span className="truncate">{option.label}</span>
+            </div>
+                          <span className="ml-2 shrink-0 text-xs text-violet-700/90">{option.capability_status}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </div>
             <p className="text-[11px] leading-relaxed text-white/65">
               {selectedOption.description}
@@ -1883,8 +1971,8 @@ export function RealtimeStudio() {
               {activeCaptureSource ? "采集中刷新。" : "开始采集后显示音量。"}
             </p>
           </div>
-          </Card>
-        ) : null}
+        </Card>
+                ) : null}
 
         <div
           className={`order-3 flex min-h-0 min-w-0 flex-1 flex-col xl:row-start-2 xl:min-h-0 ${
@@ -1892,7 +1980,7 @@ export function RealtimeStudio() {
           }`}
         >
         {studioPage === 1 ? (
-          <ErrorBoundary
+        <ErrorBoundary
           fallbackRender={({ error: boundaryError }: FallbackProps) => (
             <Card className="rounded-[26px] border border-red-200 bg-red-50 p-5 text-sm text-red-700">
               本页异常：{boundaryError.message}
@@ -1904,100 +1992,122 @@ export function RealtimeStudio() {
             <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-slate-400/20 bg-[linear-gradient(180deg,rgba(15,23,42,0.55),rgba(185,167,211,0.10))] p-0 shadow-[0_18px_46px_rgba(0,0,0,0.32)] backdrop-blur-md max-h-[calc(100%-46px)]">
               <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-2 pt-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                <Tabs.List className="glass-panel inline-flex w-fit min-w-0 max-w-full shrink-0 flex-wrap gap-1.5 self-start rounded-full border border-violet-200/50 p-1.5 sm:gap-2">
-              {[
-                ["mermaid", "主图"],
-                ["structure", "结构视图"],
-                ["events", "更新记录"],
-                ["metrics", "评测指标"],
-                ["pipeline", "运行摘要"],
-              ].map(([value, label]) => (
+                <Tabs.List className="glass-panel relative grid w-full max-w-[760px] grid-cols-5 self-start rounded-full border border-violet-200/55 p-1">
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-y-1 rounded-full border border-violet-300/85 bg-violet-300 shadow-[0_8px_24px_rgba(124,58,237,0.28)] transition-transform duration-300 ease-out"
+                style={{
+                  left: "0.25rem",
+                  width: "calc((100% - 0.5rem) / 5)",
+                  transform: `translateX(calc(${activeStageTabIndex} * 100%))`,
+                }}
+              />
+              {STAGE_TABS.map(([value, label]) => (
                 <Tabs.Trigger
                   key={value}
                   value={value}
-                  className="rounded-full border border-transparent bg-transparent px-3 py-2 text-sm font-medium text-slate-200 transition-colors data-[state=active]:border-violet-400 data-[state=active]:bg-violet-300 data-[state=active]:text-violet-950 data-[state=active]:ring-1 data-[state=active]:ring-violet-400/65 data-[state=active]:ring-inset sm:px-3.5"
+                  className="relative z-[1] rounded-full border border-transparent px-2 py-2 text-sm font-medium text-slate-200 transition-colors data-[state=active]:text-violet-950"
                 >
                   {label}
                 </Tabs.Trigger>
               ))}
             </Tabs.List>
-                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
                   {pipelineStages.map((step) => (
-                    <button
+                        <button
                       key={step.abbr}
-                      type="button"
+                          type="button"
                       className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/55 bg-violet-50/95 px-2 py-1 text-[11px] font-medium text-slate-600"
-                    >
-                      <span
-                        className={`h-2 w-2 shrink-0 rounded-full ${
-                          step.tone === "working"
+                        >
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${
+                              step.tone === "working"
                             ? "bg-violet-500"
-                            : step.tone === "success"
-                              ? "bg-emerald-500"
-                              : step.tone === "error"
-                                ? "bg-red-500"
-                                : "bg-slate-300"
-                        }`}
-                        aria-hidden
-                      />
-                      {step.label}
-                    </button>
+                                : step.tone === "success"
+                                  ? "bg-emerald-500"
+                                  : step.tone === "error"
+                                    ? "bg-red-500"
+                                    : "bg-slate-300"
+                            }`}
+                            aria-hidden
+                          />
+                          {step.label}
+                        </button>
                   ))}
+                  </div>
                 </div>
-                </div>
-                <div className="grid w-full max-w-[min(100%,260px)] shrink-0 grid-cols-2 gap-1 sm:ml-auto">
-                  <Button
+                <div className="flex w-full max-w-[min(100%,360px)] shrink-0 flex-col items-center gap-2 sm:ml-auto sm:items-start">
+                  <div className="flex w-full flex-nowrap items-start justify-center gap-6">
+                    <div className="flex w-full flex-col items-center">
+                      <button
                     type="button"
-                    variant="danger"
                     title={
                       selectedInputSource === "transcript"
                         ? "请先在左侧栏选择麦克风或系统音输入"
                         : "开始录音"
                     }
-                    className="h-7 min-w-0 justify-center gap-0.5 px-1 py-0 text-[10px] font-medium"
                     onClick={() => void stageStartCapture()}
                     disabled={!canStartStageCapture}
-                  >
-                    <Mic className="h-3 w-3 shrink-0" />
-                    <span className="truncate">开始录音</span>
-                  </Button>
-                  <Button
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-red-200/35 bg-red-500/[0.10] text-red-50 shadow-[0_12px_40px_rgba(239,68,68,0.22)] backdrop-blur-xl transition duration-300 ease-out hover:bg-red-500/[0.16] hover:border-red-200/50 active:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(185,167,211,0.35)] sm:h-12 sm:w-12"
+                        aria-label="开始录音"
+                      >
+                        <Mic className="h-5 w-5 sm:h-6 sm:w-6" />
+                      </button>
+                      <div className="mt-2 text-center text-xs leading-4 text-white/70">开始录音</div>
+                    </div>
+
+                    <div className="flex w-full flex-col items-center">
+                      <button
                     type="button"
-                    variant="secondary"
                     title={
                       selectedInputSource === "transcript"
                         ? "请先在左侧栏选择麦克风或系统音输入"
                         : "暂停录音（停止当前采集）"
                     }
-                    className="h-7 min-w-0 justify-center gap-0.5 px-1 py-0 text-[10px] font-medium"
                     onClick={() => void stageStopCapture()}
                     disabled={!canStopStageCapture}
-                  >
-                    <Pause className="h-3 w-3 shrink-0" />
-                    <span className="truncate">暂停录音</span>
-                  </Button>
-                  <Button
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white shadow-[0_12px_40px_rgba(15,23,42,0.40)] backdrop-blur-xl transition duration-300 ease-out hover:bg-white/16 hover:border-white/40 active:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(185,167,211,0.35)] sm:h-12 sm:w-12"
+                        aria-label="暂停录音"
+                      >
+                        <Pause className="h-5 w-5 sm:h-6 sm:w-6" />
+                      </button>
+                      <div className="mt-2 text-center text-xs leading-4 text-white/70">暂停录音</div>
+                    </div>
+
+                    <div className="flex w-full flex-col items-center">
+                      <button
                     type="button"
-                    variant="secondary"
-                    title={`${snapshotLabelForSource(selectedInputSource)}（拉取快照）`}
-                    className="h-7 min-w-0 justify-center gap-0.5 px-1 py-0 text-[10px] font-medium"
+                        title={`${snapshotLabelForSource(selectedInputSource)}（仅重新拉取当前结果）`}
                     onClick={() => (currentSessionId ? snapshotMutation.mutate(currentSessionId) : null)}
                     disabled={!currentSessionId}
-                  >
-                    <RefreshCcw className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{snapshotLabelForSource(selectedInputSource)}</span>
-                  </Button>
-                  <Button
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white shadow-[0_12px_40px_rgba(15,23,42,0.40)] backdrop-blur-xl transition duration-300 ease-out hover:bg-white/16 hover:border-white/40 active:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(185,167,211,0.35)] sm:h-12 sm:w-12"
+                        aria-label={snapshotLabelForSource(selectedInputSource)}
+                      >
+                        <Eye className="h-5 w-5 sm:h-6 sm:w-6" />
+                      </button>
+                      <div className="mt-2 text-center text-xs leading-4 text-white/70">{snapshotLabelForSource(selectedInputSource)}</div>
+                    </div>
+
+                    <div className="flex w-full flex-col items-center">
+                      <button
                     type="button"
-                    variant="secondary"
-                    title={`${flushLabelForSource(selectedInputSource)}（冲刷/刷新）`}
-                    className="h-7 min-w-0 justify-center gap-0.5 px-1 py-0 text-[10px] font-medium"
+                        title={`${flushLabelForSource(selectedInputSource)}（强制处理未完成内容）`}
                     onClick={() => (currentSessionId ? flushMutation.mutate(currentSessionId) : null)}
                     disabled={!currentSessionId}
-                  >
-                    <Play className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{flushLabelForSource(selectedInputSource)}</span>
-                  </Button>
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white shadow-[0_12px_40px_rgba(15,23,42,0.40)] backdrop-blur-xl transition duration-300 ease-out hover:bg-white/16 hover:border-white/40 active:scale-[0.94] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(185,167,211,0.35)] sm:h-12 sm:w-12"
+                        aria-label={flushLabelForSource(selectedInputSource)}
+                      >
+                        {selectedInputSource === "system_audio_helper" ? (
+                          <Trash2 className="h-5 w-5 sm:h-6 sm:w-6" />
+                        ) : (
+                          <RotateCcw className="h-5 w-5 sm:h-6 sm:w-6" />
+                        )}
+                      </button>
+                      <div className="mt-2 text-center text-xs leading-4 text-white/70">
+                        {flushLabelForSource(selectedInputSource)}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -2006,20 +2116,20 @@ export function RealtimeStudio() {
               <div className="flex h-full min-h-0 px-4">
                 <Card className="flex-1 rounded-[30px] border border-slate-400/20 bg-violet-100/28 p-2.5">
                   <div className="h-full min-h-0 overflow-hidden rounded-[24px]">
-                    <MermaidCard
-                      title=""
-                      embedded
-                      code={mermaidState?.code || mermaidState?.normalized_code || ""}
-                      rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
-                      repairRawOutputText={
-                        typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
-                      }
-                      provider={mermaidState?.provider || selectedPlannerProfile?.label || null}
-                      model={mermaidState?.model || plannerModel || null}
-                      latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
-                      compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
-                      updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null)}
-                    />
+              <MermaidCard
+                title=""
+                embedded
+                code={mermaidState?.code || mermaidState?.normalized_code || ""}
+                rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
+                repairRawOutputText={
+                  typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
+                }
+                provider={mermaidState?.provider || selectedPlannerProfile?.label || null}
+                model={mermaidState?.model || plannerModel || null}
+                latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
+                compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
+                updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null)}
+              />
                   </div>
                 </Card>
               </div>
@@ -2029,13 +2139,13 @@ export function RealtimeStudio() {
               <div className="flex h-full min-h-0 px-4">
                 <Card className="flex-1 rounded-[30px] border border-slate-400/20 bg-violet-100/28 p-2.5">
                   <div className="h-full min-h-0 overflow-hidden rounded-[24px]">
-                    <GraphStage
-                      embedded
-                      title="结构图"
-                      nodes={rendererState.nodes || []}
-                      edges={rendererState.edges || []}
-                      groups={rendererGroups}
-                    />
+              <GraphStage
+                embedded
+                title="结构图"
+                nodes={rendererState.nodes || []}
+                edges={rendererState.edges || []}
+                groups={rendererGroups}
+              />
                   </div>
                 </Card>
               </div>
@@ -2203,7 +2313,7 @@ export function RealtimeStudio() {
             </Card>
             </Tabs.Root>
           </div>
-          </ErrorBoundary>
+        </ErrorBoundary>
         ) : null}
         </div>
       </div>
@@ -2240,18 +2350,47 @@ export function RealtimeStudio() {
             />
             <div className="relative z-[1] flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-2.5 py-2">
               <div className="text-base font-semibold tracking-wide text-white">历史会话</div>
-            <Button
+                  <Button
               type="button"
-              variant="ghost"
+                    variant="ghost"
               className="h-9 shrink-0 gap-2 rounded-[18px] px-3 text-xs font-medium text-white/80 transition hover:bg-white/10 hover:text-white/95"
               onClick={() => setDetailDrawerOpen(false)}
               aria-label="收起历史记录"
-            >
+                  >
               收起历史记录
               <ChevronRight className="h-4 w-4" />
-            </Button>
-            </div>
+                  </Button>
+                </div>
             <div className="relative z-[1] min-h-0 flex-1 space-y-3 overflow-y-auto px-2.5 pb-2.5 pt-3">
+              <div className="rounded-[20px] border border-white/12 bg-white/8 px-3 py-3">
+                <div className="mb-2 text-xs font-semibold tracking-[0.08em] text-white/70">运行详情</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {mermaidState?.provider || selectedPlannerProfile?.label ? (
+                    <Badge>{mermaidState?.provider || selectedPlannerProfile?.label}</Badge>
+            ) : null}
+                  {mermaidState?.model || plannerModel ? <Badge>{mermaidState?.model || plannerModel}</Badge> : null}
+                  {typeof mermaidState?.latency_ms === "number" ? <Badge>{mermaidState.latency_ms.toFixed(1)} ms</Badge> : null}
+                  <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                    出图：
+                    {typeof mermaidState?.compile_ok === "boolean"
+                      ? mermaidState.compile_ok
+                        ? "编译通过"
+                        : "编译失败"
+                      : "等待中"}
+                        </Badge>
+                  <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                    来源：{getSourceBadgeLabel(activeCaptureSource)}
+                  </Badge>
+                  <Badge className="border-violet-200/50 bg-violet-100/50 text-[10px] font-normal text-slate-700">
+                    转写：{backendLabel(selectedRecognitionBackend)}
+                  </Badge>
+                  {snapshot?.evaluation?.realtime_eval_pass === true ? (
+                    <Badge className="border-emerald-200 bg-emerald-50 text-[10px] font-normal text-emerald-700">
+                      评测通过
+                    </Badge>
+                  ) : null}
+                      </div>
+                      </div>
               {sessions.data?.map((item) => (
                 <button
                   key={item.session_id}
@@ -2272,15 +2411,15 @@ export function RealtimeStudio() {
                 >
                   <div className={`font-semibold ${currentSessionId === item.session_id ? "text-violet-200" : "text-white/85"}`}>
                     {item.title}
-                  </div>
+                    </div>
                   <div className={`mt-1 text-xs ${currentSessionId === item.session_id ? "text-white/65" : "text-white/55"}`}>
                     {item.session_id}
-                  </div>
+                    </div>
                   {item.summary?.input_runtime?.input_source ? (
                     <div className={`mt-2 text-xs ${currentSessionId === item.session_id ? "text-white/75" : "text-white/60"}`}>
                       输入源：{String(item.summary.input_runtime.input_source)}
-                    </div>
-                  ) : null}
+              </div>
+            ) : null}
                 </button>
               ))}
             </div>

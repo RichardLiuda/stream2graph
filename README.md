@@ -24,8 +24,11 @@ pnpm dev:up:win
 pnpm dev:status:win
 pnpm dev:down:win
 pnpm dev:web
+pnpm dev:web:lan
 pnpm audio-helper:dev
+pnpm audio-helper:dev:lan
 pnpm api:dev
+pnpm api:dev:lan
 pnpm api:worker
 pnpm typecheck:web
 pnpm lint:web
@@ -37,9 +40,24 @@ pnpm api:test
 - `pnpm dev:up` 会自动补 `.env`、尝试拉起 PostgreSQL、执行迁移，并后台启动 API / Web / worker
 - `pnpm dev:up:win` / `dev:status:win` / `dev:down:win` / `dev:restart:win` 为 Windows PowerShell 对应脚本，默认也会管理 API / Web / worker / audio-helper
 - `pnpm audio-helper:dev` 会启动本地系统声音辅助层，默认监听 `127.0.0.1:8765`
+- `pnpm dev:web:lan` / `pnpm api:dev:lan` / `pnpm audio-helper:dev:lan` 会监听 `0.0.0.0`，用于局域网访问
 - 启动 helper 前，先在虚拟环境里安装：`./.venv-platform/bin/pip install -e "apps/audio-helper"`
 - 进程日志默认写到 `var/log/`，PID 写到 `var/run/`
 - `pnpm api:*` 系列命令默认在已经激活 `.venv-platform` 的 shell 中执行
+
+局域网访问（同一 Wi-Fi / 交换机）快速步骤：
+
+1. 机器 A（部署机）设置 `.env`：
+   - `NEXT_PUBLIC_API_BASE_URL=http://<机器A内网IP>:8000`
+   - `S2G_CORS_ORIGIN_REGEX=^https?://(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$`
+2. 启动：
+   - `pnpm api:dev:lan`
+   - `pnpm dev:web:lan`
+   - （可选）`pnpm audio-helper:dev:lan`
+3. 机器 B（同内网）访问：
+   - `http://<机器A内网IP>:3000`
+
+注意：需放行端口 `3000/8000/8765`（系统防火墙或云安全组）。
 
 Windows 额外说明：
 

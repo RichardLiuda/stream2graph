@@ -10,6 +10,11 @@ import { Badge, Button, Card, Input, StatCard, Textarea } from "@stream2graph/ui
 import { api, apiUrl } from "@/lib/api";
 
 export function ReportsDashboard() {
+  const DASHBOARD_TABS: Array<[string, string]> = [
+    ["overview", "总览"],
+    ["study", "用户研究配置"],
+    ["exports", "导出"],
+  ];
   const queryClient = useQueryClient();
   const [taskTitle, setTaskTitle] = useState("基线比较任务");
   const [taskDescription, setTaskDescription] = useState("请根据给定对话材料产出或修订 Mermaid 图。");
@@ -31,6 +36,7 @@ export function ReportsDashboard() {
   const [participantId, setParticipantId] = useState("P-001");
   const [participantCondition, setParticipantCondition] = useState("manual");
   const [creationError, setCreationError] = useState<string | null>(null);
+  const [dashboardTab, setDashboardTab] = useState<(typeof DASHBOARD_TABS)[number][0]>("overview");
 
   const datasets = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const samples = useQuery({
@@ -113,17 +119,29 @@ export function ReportsDashboard() {
         ))}
       </div>
 
-      <Tabs.Root defaultValue="overview" className="space-y-5">
-        <Tabs.List className="glass-panel inline-flex flex-wrap gap-2 rounded-full border border-white/70 p-1.5">
-          {[
-            ["overview", "总览"],
-            ["study", "用户研究配置"],
-            ["exports", "导出"],
-          ].map(([value, label]) => (
+      <Tabs.Root
+        value={dashboardTab}
+        onValueChange={(value) => setDashboardTab(value as typeof dashboardTab)}
+        className="space-y-5"
+      >
+        <Tabs.List className="glass-panel relative grid w-full max-w-[560px] grid-cols-3 rounded-full border border-violet-200/55 p-1">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-1 rounded-full border border-violet-300/85 bg-violet-300 shadow-[0_8px_24px_rgba(124,58,237,0.28)] transition-transform duration-300 ease-out"
+            style={{
+              left: "0.25rem",
+              width: "calc((100% - 0.5rem) / 3)",
+              transform: `translateX(calc(${Math.max(
+                0,
+                DASHBOARD_TABS.findIndex(([value]) => value === dashboardTab),
+              )} * 100%))`,
+            }}
+          />
+          {DASHBOARD_TABS.map(([value, label]) => (
             <Tabs.Trigger
               key={value}
               value={value}
-              className="rounded-full border border-transparent bg-transparent px-4 py-2.5 text-sm font-medium text-slate-400 transition data-[state=active]:border-white/80 data-[state=active]:bg-white/[0.88] data-[state=active]:text-slate-50"
+              className="relative z-[1] rounded-full border border-transparent px-4 py-2.5 text-sm font-medium text-slate-200 transition-colors data-[state=active]:text-violet-950"
             >
               {label}
             </Tabs.Trigger>

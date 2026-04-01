@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     admin_password: str = Field("admin123456", alias="S2G_ADMIN_PASSWORD")
     admin_display_name: str = Field("Stream2Graph Admin", alias="S2G_ADMIN_DISPLAY_NAME")
     cors_origins_raw: str = Field("http://127.0.0.1:3000,http://localhost:3000", alias="S2G_CORS_ORIGINS")
+    cors_origin_regex: str = Field("", alias="S2G_CORS_ORIGIN_REGEX")
     cookie_secure: bool = Field(False, alias="S2G_COOKIE_SECURE")
     cookie_samesite: str = Field("lax", alias="S2G_COOKIE_SAMESITE")
     cookie_domain: str | None = Field(None, alias="S2G_COOKIE_DOMAIN")
