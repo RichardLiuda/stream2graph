@@ -4,9 +4,9 @@ import { cn } from "../lib/cn";
 
 const surfaceClass = {
   dark:
-    "border-zinc-700/90 bg-zinc-950/40 text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:ring-zinc-600/40",
+    "border-[color:var(--ui-input-border)] bg-[var(--ui-input-bg)] text-[var(--ui-input-text)] placeholder:text-[var(--ui-input-placeholder)] focus:border-[color:var(--ui-input-focus-border)] focus:ring-[var(--ui-input-focus-ring)]",
   light:
-    "border-slate-300/90 bg-[rgba(245,246,248,0.96)] text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:ring-slate-300/50",
+    "border-[color:var(--ui-input-border)] bg-[var(--ui-input-bg)] text-[var(--ui-input-text)] placeholder:text-[var(--ui-input-placeholder)] focus:border-[color:var(--ui-input-focus-border)] focus:ring-[var(--ui-input-focus-ring)]",
 };
 
 export function Textarea({

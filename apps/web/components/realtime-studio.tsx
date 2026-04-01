@@ -162,7 +162,7 @@ function parseTranscriptInput(raw: string): TranscriptRow[] {
 function getNoticeClassName(tone: NoticeTone) {
   if (tone === "success") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (tone === "warning") return "border-amber-200 bg-amber-50 text-amber-700";
-  return "border-zinc-600 bg-zinc-900 text-zinc-200";
+  return "border-theme-default bg-surface-2 text-theme-2";
 }
 
 function getSourceBadgeLabel(source: InputSource | null) {
@@ -1755,7 +1755,7 @@ export function RealtimeStudio() {
 
   if (authQuery.isLoading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center px-4 text-sm text-zinc-500">
+      <div className="flex min-h-[50vh] items-center justify-center px-4 text-sm text-theme-4">
         正在验证管理员身份…
       </div>
     );
@@ -1766,7 +1766,7 @@ export function RealtimeStudio() {
     if (err instanceof ApiError && err.status === 401) {
       return (
         <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4 text-center">
-          <p className="max-w-md text-sm leading-relaxed text-zinc-400">
+          <p className="max-w-md text-sm leading-relaxed text-theme-3">
             未登录或会话已过期。请先登录管理员账号，再加载会话、模型与数据集。
           </p>
           <Link href="/login">
@@ -1777,7 +1777,7 @@ export function RealtimeStudio() {
     }
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-4 text-center">
-        <p className="max-w-md text-sm text-red-300">{(err as Error).message}</p>
+        <p className="max-w-md text-sm text-red-400 theme-light:text-red-700">{(err as Error).message}</p>
         <Button type="button" variant="secondary" onClick={() => void authQuery.refetch()}>
           重试
         </Button>
@@ -1786,7 +1786,7 @@ export function RealtimeStudio() {
   }
 
   return (
-  <div className="text-slate-100 selection:bg-white/20 selection:text-white h-[100dvh] overflow-hidden">
+  <div className="h-[100dvh] overflow-hidden text-theme-2 selection:bg-[rgba(124,111,154,0.22)] selection:text-theme-1">
       {effectiveError ? (
         <div className="soft-enter fixed left-1/2 top-16 z-[19000] w-[min(720px,92vw)] -translate-x-1/2 rounded-[24px] border border-red-200 bg-red-50/95 px-4 py-3 text-sm text-red-700">
           {effectiveError}
@@ -1804,23 +1804,23 @@ export function RealtimeStudio() {
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2 pl-3 md:gap-3 md:pl-6 lg:pl-8">
             <h1 className="page-title">实时工作台</h1>
-            <p className="hidden max-w-md text-[11px] leading-snug text-zinc-500 md:block">
+            <p className="hidden max-w-md text-[11px] leading-snug text-theme-4 md:block">
               开麦或发送 Transcript 后，主图与结构视图会更新。
             </p>
           </div>
-          <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-2 pr-12 sm:pr-14">
             <div className="group relative">
               <Badge
-                className="cursor-default border-zinc-600 bg-zinc-900 px-2.5 py-1 text-xs font-medium normal-case tracking-normal text-zinc-300"
+                className="cursor-default border-theme-default bg-surface-2 px-2.5 py-1 text-xs font-medium normal-case tracking-normal text-theme-2"
                 title="运行状态"
               >
                 运行状态
               </Badge>
-              <div className="pointer-events-none invisible absolute right-0 top-[calc(100%+8px)] z-[120] w-[min(460px,82vw)] rounded-xl border border-zinc-700 bg-zinc-950 p-3 opacity-0 shadow-xl transition duration-200 group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100">
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">状态速览</div>
+              <div className="pointer-events-none invisible absolute right-0 top-[calc(100%+8px)] z-[120] w-[min(460px,82vw)] rounded-xl border border-theme-subtle bg-surface-1 p-3 opacity-0 shadow-xl transition duration-200 group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-theme-4">状态速览</div>
                 <div className="flex flex-wrap gap-1.5">
                   <Badge
-                    className="text-[10px] font-normal normal-case tracking-normal text-zinc-300"
+                    className="text-[10px] font-normal normal-case tracking-normal text-theme-2"
                     title={currentSessionId || undefined}
                   >
                     <span className="block max-w-[180px] min-w-0 truncate">
@@ -1840,7 +1840,7 @@ export function RealtimeStudio() {
                           ? "border-amber-900/55 bg-amber-950/40 text-amber-100"
                           : gateStatus === "success" || plannerStatus === "success"
                             ? "border-emerald-900/55 bg-emerald-950/40 text-emerald-100"
-                            : "border-zinc-600 bg-zinc-900 text-zinc-400"
+                            : "border-theme-default bg-surface-2 text-theme-3"
                     }`}
                   >
                     {gateStatus === "error" || plannerStatus === "error"
@@ -1851,13 +1851,13 @@ export function RealtimeStudio() {
                           ? "模型：已返回"
                           : "模型：空闲"}
                   </Badge>
-                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-zinc-400">
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
                     来源：{getSourceBadgeLabel(activeCaptureSource)}
                   </Badge>
-                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-zinc-400">
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
                     转写：{backendLabel(selectedRecognitionBackend)}
                   </Badge>
-                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-zinc-400">
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
                     出图：
                     {typeof mermaidState?.compile_ok === "boolean"
                       ? mermaidState.compile_ok
@@ -1889,13 +1889,13 @@ export function RealtimeStudio() {
           <Card className="soft-enter order-1 flex h-full min-h-0 min-w-0 flex-col space-y-3 overflow-hidden text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none max-h-[calc(100%-46px)]">
           <div className="shrink-0 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="text-sm font-semibold text-white/90">输入来源</label>
+              <label className="text-sm font-semibold text-theme-1">输入来源</label>
               <Badge className="shrink-0 text-[10px]">{audioContext ? `${audioContext.platform} / ${getBrowserFamilyLabel(audioContext)}` : "检测中"}</Badge>
             </div>
             <div ref={inputSourceMenuRef} className="relative">
               <button
                 type="button"
-                className="flex h-10 w-full items-center justify-between rounded-lg border border-zinc-600 bg-zinc-900/90 px-3.5 pr-3 text-left text-sm font-medium text-zinc-100 outline-none transition hover:border-zinc-500 hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-zinc-500"
+                className="flex h-10 w-full items-center justify-between rounded-lg border border-theme-default bg-surface-2 px-3.5 pr-3 text-left text-sm font-medium text-theme-1 outline-none transition hover:border-theme-strong hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-theme-focus"
                 aria-haspopup="listbox"
                 aria-expanded={inputSourceMenuOpen}
                 onClick={() => setInputSourceMenuOpen((open) => !open)}
@@ -1904,11 +1904,11 @@ export function RealtimeStudio() {
                   {selectedOption.label} · {selectedOption.capability_status}
                 </span>
                 <ChevronDown
-                  className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform duration-200 ${inputSourceMenuOpen ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 shrink-0 text-theme-4 transition-transform duration-200 ${inputSourceMenuOpen ? "rotate-180" : ""}`}
                 />
               </button>
               {inputSourceMenuOpen ? (
-                <div className="absolute z-[21000] mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 p-1.5 shadow-xl">
+                <div className="absolute z-[21000] mt-2 w-full rounded-lg border border-theme-subtle bg-surface-1 p-1.5 shadow-xl">
                   <div className="space-y-0.5" role="listbox" aria-label="输入来源">
                     {inputOptions.map((option) => {
                       const active = option.source === selectedInputSource;
@@ -1927,17 +1927,17 @@ export function RealtimeStudio() {
                           }}
                           className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition ${
                             active
-                              ? "border-zinc-500 bg-zinc-800 text-zinc-100"
-                              : "border-transparent bg-transparent text-zinc-300 hover:bg-zinc-800/80"
+                              ? "border-theme-strong bg-surface-3 text-theme-1"
+                              : "border-transparent bg-transparent text-theme-2 hover:bg-surface-3"
                           }`}
                         >
                           <div className="flex min-w-0 items-center gap-2">
-                            <span className={`inline-flex h-4 w-4 items-center justify-center ${active ? "text-zinc-200" : "text-zinc-600"}`}>
+                            <span className={`inline-flex h-4 w-4 items-center justify-center ${active ? "text-theme-2" : "text-theme-5"}`}>
                               {active ? <Check className="h-3.5 w-3.5" strokeWidth={2} /> : null}
                             </span>
                             <span className="truncate">{option.label}</span>
             </div>
-                          <span className="ml-2 shrink-0 text-xs text-zinc-500">{option.capability_status}</span>
+                          <span className="ml-2 shrink-0 text-xs text-theme-4">{option.capability_status}</span>
                         </button>
                       );
                     })}
@@ -1945,23 +1945,23 @@ export function RealtimeStudio() {
                 </div>
               ) : null}
             </div>
-            <p className="text-[11px] leading-relaxed text-white/65">
+            <p className="text-[11px] leading-relaxed text-theme-3">
               {selectedOption.description}
             </p>
             {!audioContext?.is_desktop ? (
-              <div className="rounded-lg border border-zinc-700/80 bg-zinc-900/50 px-3 py-2 text-[11px] leading-relaxed text-zinc-500">
+              <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
                 移动端不提供系统声音相关采集入口。
               </div>
             ) : !systemAudioExperimentalVisible ? (
-              <div className="rounded-lg border border-zinc-700/80 bg-zinc-900/50 px-3 py-2 text-[11px] leading-relaxed text-zinc-500">
+              <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
                 实验性「共享屏幕音频」仅 Chrome/Edge；可用「增强模式」+ 本机 audio helper。
               </div>
             ) : null}
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-zinc-700/80 bg-zinc-900/40 px-2.5 py-2">
+          <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-theme-subtle bg-surface-muted px-2.5 py-2">
             <div className="flex shrink-0 items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-white/90">实时转写</div>
+              <div className="text-sm font-semibold text-theme-1">实时转写</div>
               <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
             </div>
             {selectedInputSource === "transcript" ? (
@@ -1979,7 +1979,7 @@ export function RealtimeStudio() {
                 <Button
                   type="button"
                   variant="secondary"
-                  className="shrink-0 py-2 text-xs"
+                  className="shrink-0 border-violet-900/50 bg-violet-950/45 py-2 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
                   onClick={() => sendTranscript.mutate()}
                   disabled={sendTranscript.isPending || !transcriptText.trim()}
                 >
@@ -1988,24 +1988,24 @@ export function RealtimeStudio() {
                 </Button>
               </div>
             ) : (
-              <div className="mt-1.5 min-h-[4rem] flex-1 overflow-auto whitespace-pre-wrap rounded-lg border border-zinc-700/60 bg-zinc-950/50 px-2 py-2 text-[12px] leading-relaxed text-zinc-200">
+              <div className="mt-1.5 min-h-[4rem] flex-1 overflow-auto whitespace-pre-wrap rounded-lg border border-theme-subtle bg-surface-muted px-2 py-2 text-[12px] leading-relaxed text-theme-2">
                 {activeCaptureSource ? (
                   formatLiveTranscript(liveTranscript)
                 ) : (
-                  <div className="text-zinc-500">尚未开始录音。点击右侧「开始录音」后显示转写。</div>
+                  <div className="text-theme-4">尚未开始录音。点击右侧「开始录音」后显示转写。</div>
                 )}
               </div>
             )}
-            <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-white/60">
+            <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-theme-4">
               {selectedInputSource === "transcript"
                 ? "与侧栏同一输入；发送后写入会话。"
                 : "浏览器听写多为临时内容；本机助手 / 云端听写会写回这里。"}
             </p>
           </div>
 
-          <div className="shrink-0 rounded-lg border border-zinc-700/80 bg-zinc-900/40 px-2.5 py-2">
+          <div className="shrink-0 rounded-lg border border-theme-subtle bg-surface-muted px-2.5 py-2">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-white/90">输入音量</div>
+              <div className="text-sm font-semibold text-theme-1">输入音量</div>
               <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
             </div>
             <div className="mt-2 flex h-5 items-center gap-1.5">
@@ -2019,13 +2019,13 @@ export function RealtimeStudio() {
                     className={`h-3 flex-1 rounded-sm border transition-colors duration-150 ${
                       isActive
                         ? "border-emerald-800/80 bg-emerald-700/90"
-                        : "border-zinc-700 bg-zinc-800/60"
+                        : "border-theme-subtle bg-surface-muted"
                     }`}
                   />
                 );
               })}
             </div>
-            <p className="mt-1.5 text-[9px] leading-snug text-white/60">
+            <p className="mt-1.5 text-[9px] leading-snug text-theme-4">
               {activeCaptureSource ? "采集中刷新。" : "开始采集后显示音量。"}
             </p>
           </div>
@@ -2047,7 +2047,7 @@ export function RealtimeStudio() {
         >
           <div className="soft-enter soft-enter-delay-1 flex min-h-0 min-w-0 flex-1 flex-col">
             <Tabs.Root value={stageTab} onValueChange={setStageTab} className="flex min-h-0 flex-1 flex-col">
-            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/90 p-0 shadow-lg max-h-[calc(100%-46px)]">
+            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-surface-1 p-0 shadow-lg max-h-[calc(100%-46px)]">
               <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-2 pt-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <Tabs.List className="workspace-tab-list w-full max-w-[760px] grid-cols-5 self-start">
@@ -2077,7 +2077,7 @@ export function RealtimeStudio() {
                           <Tooltip.Trigger asChild>
                             <button
                               type="button"
-                              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-600 bg-zinc-900/80 px-2 py-1 text-[11px] font-medium text-zinc-300"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-theme-default bg-surface-2 px-2 py-1 text-[11px] font-medium text-theme-2"
                               aria-label={`${step.label}：${step.value}`}
                             >
                               <span
@@ -2088,7 +2088,7 @@ export function RealtimeStudio() {
                                       ? "bg-emerald-500"
                                       : step.tone === "error"
                                         ? "bg-red-500"
-                                        : "bg-slate-300"
+                                        : "bg-surface-3"
                                 }`}
                                 aria-hidden
                               />
@@ -2101,11 +2101,11 @@ export function RealtimeStudio() {
                               align="center"
                               sideOffset={8}
                               collisionPadding={12}
-                              className="z-[24000] w-[220px] rounded-lg border border-zinc-600 bg-zinc-900 px-2.5 py-2 text-left shadow-xl"
+                              className="z-[24000] w-[220px] rounded-lg border border-theme-default bg-surface-2 px-2.5 py-2 text-left shadow-xl"
                             >
-                              <div className="text-[10px] font-semibold tracking-wide text-zinc-300">{step.label}</div>
-                              <div className="mt-1 text-[11px] font-medium text-zinc-100">{step.value}</div>
-                              <div className="mt-1.5 text-[10px] leading-4 text-zinc-500">{step.help}</div>
+                              <div className="text-[10px] font-semibold tracking-wide text-theme-2">{step.label}</div>
+                              <div className="mt-1 text-[11px] font-medium text-theme-1">{step.value}</div>
+                              <div className="mt-1.5 text-[10px] leading-4 text-theme-4">{step.help}</div>
                             </Tooltip.Content>
                           </Tooltip.Portal>
                         </Tooltip.Root>
@@ -2114,8 +2114,8 @@ export function RealtimeStudio() {
                   </Tooltip.Provider>
                 </div>
                 <div className="flex w-full max-w-[min(100%,360px)] shrink-0 flex-col items-center gap-2 sm:ml-auto sm:items-start">
-                  <div className="flex w-full flex-nowrap items-start justify-center gap-6">
-                    <div className="flex w-full flex-col items-center">
+                  <div className="flex w-full flex-nowrap items-start justify-end gap-2 sm:gap-3">
+                    <div className="flex shrink-0 flex-col items-center">
                       <button
                     type="button"
                     title={
@@ -2125,15 +2125,15 @@ export function RealtimeStudio() {
                     }
                     onClick={() => void stageStartCapture()}
                     disabled={!canStartStageCapture}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-red-900/50 bg-red-950/40 text-red-200 transition hover:border-red-800 hover:bg-red-950/60 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-800 sm:h-12 sm:w-12"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-violet-900/50 bg-violet-950/45 text-violet-200 transition hover:border-violet-700/60 hover:bg-violet-950/65 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-700 sm:h-12 sm:w-12"
                         aria-label="开始录音"
                       >
                         <Mic className="h-5 w-5 sm:h-6 sm:w-6" />
                       </button>
-                      <div className="mt-2 text-center text-xs leading-4 text-white/70">开始录音</div>
+                      <div className="mt-2 text-center text-xs leading-4 text-violet-200/85">开始录音</div>
                     </div>
 
-                    <div className="flex w-full flex-col items-center">
+                    <div className="flex shrink-0 flex-col items-center">
                       <button
                     type="button"
                     title={
@@ -2143,35 +2143,35 @@ export function RealtimeStudio() {
                     }
                     onClick={() => void stageStopCapture()}
                     disabled={!canStopStageCapture}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-600 bg-zinc-800/80 text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 sm:h-12 sm:w-12"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-red-900/50 bg-red-950/40 text-red-200 transition hover:border-red-800 hover:bg-red-950/60 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-800 sm:h-12 sm:w-12"
                         aria-label="暂停录音"
                       >
                         <Pause className="h-5 w-5 sm:h-6 sm:w-6" />
                       </button>
-                      <div className="mt-2 text-center text-xs leading-4 text-white/70">暂停录音</div>
+                      <div className="mt-2 text-center text-xs leading-4 text-red-200/85">暂停录音</div>
                     </div>
 
-                    <div className="flex w-full flex-col items-center">
+                    <div className="flex shrink-0 flex-col items-center">
                       <button
                     type="button"
                         title={`${snapshotLabelForSource(selectedInputSource)}（仅重新拉取当前结果）`}
                     onClick={() => (currentSessionId ? snapshotMutation.mutate(currentSessionId) : null)}
                     disabled={!currentSessionId}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-600 bg-zinc-800/80 text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 sm:h-12 sm:w-12"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-theme-default bg-surface-3 text-theme-1 transition hover:border-theme-strong hover:bg-surface-3 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus sm:h-12 sm:w-12"
                         aria-label={snapshotLabelForSource(selectedInputSource)}
                       >
                         <Eye className="h-5 w-5 sm:h-6 sm:w-6" />
                       </button>
-                      <div className="mt-2 text-center text-xs leading-4 text-white/70">{snapshotLabelForSource(selectedInputSource)}</div>
+                      <div className="mt-2 text-center text-xs leading-4 text-theme-3">{snapshotLabelForSource(selectedInputSource)}</div>
                     </div>
 
-                    <div className="flex w-full flex-col items-center">
+                    <div className="flex shrink-0 flex-col items-center">
                       <button
                     type="button"
                         title={`${flushLabelForSource(selectedInputSource)}（强制处理未完成内容）`}
                     onClick={() => (currentSessionId ? flushMutation.mutate(currentSessionId) : null)}
                     disabled={!currentSessionId}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-600 bg-zinc-800/80 text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 sm:h-12 sm:w-12"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-theme-default bg-surface-3 text-theme-1 transition hover:border-theme-strong hover:bg-surface-3 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus sm:h-12 sm:w-12"
                         aria-label={flushLabelForSource(selectedInputSource)}
                       >
                         {selectedInputSource === "system_audio_helper" ? (
@@ -2180,7 +2180,7 @@ export function RealtimeStudio() {
                           <RotateCcw className="h-5 w-5 sm:h-6 sm:w-6" />
                         )}
                       </button>
-                      <div className="mt-2 text-center text-xs leading-4 text-white/70">
+                      <div className="mt-2 text-center text-xs leading-4 text-theme-3">
                         {flushLabelForSource(selectedInputSource)}
                       </div>
                     </div>
@@ -2190,8 +2190,8 @@ export function RealtimeStudio() {
 
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
             <Tabs.Content value="mermaid" className="h-full min-h-0 outline-none">
-              <div className="flex h-full min-h-0 px-4 pb-4">
-                <Card className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2">
+              <div className="flex h-full min-h-0 px-4 py-2">
+                <Card className="flex-1 rounded-xl border border-theme-default bg-surface-muted p-2">
                   <div className="h-full min-h-0 overflow-hidden rounded-lg">
               <MermaidCard
                 title=""
@@ -2216,8 +2216,8 @@ export function RealtimeStudio() {
             </Tabs.Content>
 
             <Tabs.Content value="structure">
-              <div className="flex h-full min-h-0 px-4 pb-4">
-                <Card className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2">
+              <div className="flex h-full min-h-0 px-4 py-2">
+                <Card className="flex-1 rounded-xl border border-theme-default bg-surface-muted p-2">
                   <div className="h-full min-h-0 overflow-hidden rounded-lg">
               <GraphStage
                 embedded
@@ -2235,8 +2235,8 @@ export function RealtimeStudio() {
               <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div className="mb-5 flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-sm font-semibold text-slate-100">更新记录</div>
-                    <p className="mt-1 text-xs leading-6 text-slate-300">只看最近几条，方便判断图有没有按预期变化。</p>
+                    <div className="text-sm font-semibold text-theme-1">更新记录</div>
+                    <p className="mt-1 text-xs leading-6 text-theme-2">只看最近几条，方便判断图有没有按预期变化。</p>
                   </div>
                   <Badge>{events.length} updates</Badge>
                 </div>
@@ -2248,7 +2248,7 @@ export function RealtimeStudio() {
                         className="glass-panel p-4"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-slate-100">
+                          <div className="text-sm font-semibold text-theme-1">
                             Update #{event.update?.update_id} · {event.gate?.action || event.update?.intent_type}
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
@@ -2256,14 +2256,14 @@ export function RealtimeStudio() {
                             <Badge>{(event.planner?.delta_ops || []).length} delta ops</Badge>
                           </div>
                         </div>
-                        <div className="mt-2 text-xs leading-6 text-slate-200">
+                        <div className="mt-2 text-xs leading-6 text-theme-2">
                           {Array.isArray(event.pending_turns) && event.pending_turns.length
                             ? event.pending_turns
                                 .map((turn: Record<string, any>) => `${turn.speaker || "speaker"}: ${turn.content || ""}`)
                                 .join("\n")
                             : event.update?.transcript_text}
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-300">
+                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-theme-2">
                           <span>Gate: {event.gate?.reason || "-"}</span>
                           <span>Planner: {event.planner?.notes || "-"}</span>
                           <span>
@@ -2273,7 +2273,7 @@ export function RealtimeStudio() {
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-[22px] border border-dashed border-slate-300 p-5 text-sm text-slate-300">
+                    <div className="rounded-[22px] border border-dashed border-theme-default p-5 text-sm text-theme-2">
                       还没有增量事件。创建会话后发送 transcript、启动浏览器麦克风，或接入增强模式。
                     </div>
                   )}
@@ -2289,8 +2289,8 @@ export function RealtimeStudio() {
                   ))}
                 </div>
                 <Card>
-                  <div className="mb-4 text-sm font-semibold text-slate-100">效果数据</div>
-                  <pre className="rounded-[24px] bg-slate-950 p-5 text-xs leading-6 text-slate-100">
+                  <div className="mb-4 text-sm font-semibold text-theme-1">效果数据</div>
+                  <pre className="rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
                     {JSON.stringify(snapshot?.evaluation || {}, null, 2)}
                   </pre>
                 </Card>
@@ -2299,8 +2299,8 @@ export function RealtimeStudio() {
 
             <Tabs.Content value="pipeline">
               <Card>
-                <div className="mb-4 text-sm font-semibold text-slate-100">处理步骤摘要</div>
-                <pre className="rounded-[24px] bg-slate-950 p-5 text-xs leading-6 text-slate-100">
+                <div className="mb-4 text-sm font-semibold text-theme-1">处理步骤摘要</div>
+                <pre className="rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
                   {JSON.stringify(snapshot?.pipeline?.summary || {}, null, 2)}
                 </pre>
               </Card>
@@ -2327,7 +2327,7 @@ export function RealtimeStudio() {
                     <Input
                       value={titleDraft}
                       onChange={(event: ChangeEvent<HTMLInputElement>) => setTitleDraft(event.target.value)}
-                      className="h-8 min-w-0 flex-1 rounded-lg border border-zinc-600 bg-zinc-900/80 text-sm text-zinc-100"
+                      className="h-8 min-w-0 flex-1 rounded-lg border border-theme-default bg-surface-2 text-sm text-theme-1"
                       placeholder="输入会话名称"
                     />
                     <Button
@@ -2351,11 +2351,11 @@ export function RealtimeStudio() {
                   </div>
                 ) : (
                   <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                    <div className="flex h-8 min-w-0 flex-1 items-center justify-between gap-2 rounded-lg border border-zinc-600 bg-zinc-900/80 px-2.5 text-sm font-medium text-zinc-100">
+                    <div className="flex h-8 min-w-0 flex-1 items-center justify-between gap-2 rounded-lg border border-theme-default bg-surface-2 px-2.5 text-sm font-medium text-theme-1">
                       <span className="min-w-0 flex-1 truncate pl-0.5">{titleDisplay}</span>
                       <button
                         type="button"
-                        className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-zinc-600 bg-zinc-800 px-2 text-[11px] font-medium text-zinc-300 transition hover:bg-zinc-700"
+                        className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-theme-default bg-surface-3 px-2 text-[11px] font-medium text-theme-2 transition hover:bg-surface-3"
                         onClick={startTitleEdit}
                       >
                         <Pencil className="h-3.5 w-3.5 shrink-0" />
@@ -2408,7 +2408,7 @@ export function RealtimeStudio() {
                 <button
                   type="button"
                   aria-label="关闭侧栏"
-                  className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-[5px] transition-opacity"
+                  className="fixed inset-0 z-[100] bg-surface-muted backdrop-blur-[5px] transition-opacity"
                   onClick={() => setDetailDrawerOpen(false)}
                 />
               ) : null}
@@ -2418,10 +2418,10 @@ export function RealtimeStudio() {
                   detailDrawerOpen ? "translate-x-0 shadow-[0_0_40px_rgba(15,23,42,0.12)]" : "pointer-events-none translate-x-full"
                 }`}
               >
-        <Card className="m-0 flex h-full w-full flex-col overflow-hidden rounded-none border-y-0 border-r-0 border-l border-zinc-800 bg-zinc-950 p-3 shadow-none sm:my-4 sm:mr-4 sm:h-[calc(100vh-2rem)] sm:rounded-2xl sm:border sm:border-zinc-800 sm:shadow-xl">
-          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-2 py-2">
-              <div className="text-sm font-semibold text-zinc-100">历史会话</div>
+        <Card className="m-0 flex h-full w-full flex-col overflow-hidden rounded-none border-y-0 border-r-0 border-l border-theme-default bg-surface-1 p-3 shadow-none sm:my-4 sm:mr-4 sm:h-[calc(100vh-2rem)] sm:rounded-2xl sm:border sm:border-theme-default sm:shadow-xl">
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-surface-1">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-theme-default px-2 py-2">
+              <div className="text-sm font-semibold text-theme-1">历史会话</div>
                   <Button
               type="button"
                     variant="ghost"
@@ -2434,15 +2434,15 @@ export function RealtimeStudio() {
                   </Button>
                 </div>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-2 pb-2 pt-3">
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-3">
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">运行详情</div>
+              <div className="rounded-lg border border-theme-default bg-surface-muted px-3 py-3">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-theme-4">运行详情</div>
                 <div className="flex flex-wrap gap-1.5">
                   {mermaidState?.provider || selectedPlannerProfile?.label ? (
                     <Badge>{mermaidState?.provider || selectedPlannerProfile?.label}</Badge>
             ) : null}
                   {mermaidState?.model || plannerModel ? <Badge>{mermaidState?.model || plannerModel}</Badge> : null}
                   {typeof mermaidState?.latency_ms === "number" ? <Badge>{mermaidState.latency_ms.toFixed(1)} ms</Badge> : null}
-                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-zinc-400">
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
                     出图：
                     {typeof mermaidState?.compile_ok === "boolean"
                       ? mermaidState.compile_ok
@@ -2450,10 +2450,10 @@ export function RealtimeStudio() {
                         : "编译失败"
                       : "等待中"}
                         </Badge>
-                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-zinc-400">
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
                     来源：{getSourceBadgeLabel(activeCaptureSource)}
                   </Badge>
-                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-zinc-400">
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
                     转写：{backendLabel(selectedRecognitionBackend)}
                   </Badge>
                   {snapshot?.evaluation?.realtime_eval_pass === true ? (
@@ -2469,8 +2469,8 @@ export function RealtimeStudio() {
                   type="button"
                   className={`group w-full rounded-lg border px-3 py-3 text-left text-sm transition ${
                     currentSessionId === item.session_id
-                      ? "border-zinc-500 bg-zinc-800"
-                      : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-600 hover:bg-zinc-800/60"
+                      ? "border-theme-strong bg-surface-3"
+                      : "border-theme-default bg-surface-muted hover:border-theme-default hover:bg-surface-muted"
                   }`}
                   onClick={() => {
                     setCurrentSessionId(item.session_id);
@@ -2481,14 +2481,14 @@ export function RealtimeStudio() {
                     setDetailDrawerOpen(false);
                   }}
                 >
-                  <div className={`font-semibold ${currentSessionId === item.session_id ? "text-zinc-100" : "text-zinc-400"}`}>
+                  <div className={`font-semibold ${currentSessionId === item.session_id ? "text-theme-1" : "text-theme-3"}`}>
                     {item.title}
                     </div>
-                  <div className={`mt-1 text-xs ${currentSessionId === item.session_id ? "text-zinc-400" : "text-zinc-500"}`}>
+                  <div className={`mt-1 text-xs ${currentSessionId === item.session_id ? "text-theme-3" : "text-theme-4"}`}>
                     {item.session_id}
                     </div>
                   {item.summary?.input_runtime?.input_source ? (
-                    <div className={`mt-2 text-xs ${currentSessionId === item.session_id ? "text-zinc-400" : "text-zinc-500"}`}>
+                    <div className={`mt-2 text-xs ${currentSessionId === item.session_id ? "text-theme-3" : "text-theme-4"}`}>
                       输入源：{String(item.summary.input_runtime.input_source)}
               </div>
             ) : null}

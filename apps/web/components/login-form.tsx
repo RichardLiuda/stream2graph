@@ -44,12 +44,12 @@ export function LoginForm() {
   return (
     <Card
       variant="dark"
-      className="mx-auto w-full max-w-[460px] border border-zinc-800/90 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.45)] md:p-8"
+      className="mx-auto w-full max-w-[460px] border border-theme-default p-6 shadow-[0_20px_50px_rgba(0,0,0,0.45)] md:p-8"
     >
       <div className="mb-8">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">管理员登录</div>
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-zinc-100">进入正式研究平台</h1>
-        <p className="mt-2 text-sm leading-snug text-zinc-500">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-theme-4">管理员登录</div>
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-theme-1">进入正式研究平台</h1>
+        <p className="mt-2 text-sm leading-snug text-theme-4">
           管理实时实验、样本对照、研究与报告导出。
         </p>
       </div>
@@ -61,7 +61,7 @@ export function LoginForm() {
         onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
       >
         <div className="space-y-2">
-          <label className="text-sm font-medium text-zinc-400">管理员账号</label>
+          <label className="text-sm font-medium text-theme-3">管理员账号</label>
           <Input variant="dark" autoComplete="username" {...form.register("username")} />
           {form.formState.errors.username ? (
             <p className="text-xs text-red-400">{form.formState.errors.username.message}</p>
@@ -69,7 +69,7 @@ export function LoginForm() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-zinc-400">密码</label>
+          <label className="text-sm font-medium text-theme-3">密码</label>
           <div className="relative">
             <Input
               variant="dark"
@@ -81,7 +81,7 @@ export function LoginForm() {
             <button
               type="button"
               aria-label={passwordVisible ? "隐藏密码" : "显示密码"}
-              className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md border border-zinc-700/80 bg-zinc-950/40 text-zinc-300 transition hover:border-zinc-600 hover:bg-zinc-900/60 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+              className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md border border-theme-subtle bg-surface-muted text-theme-2 transition hover:border-theme-default hover:bg-surface-muted hover:text-theme-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus"
               onClick={() => setPasswordVisible((v) => !v)}
             >
               {passwordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

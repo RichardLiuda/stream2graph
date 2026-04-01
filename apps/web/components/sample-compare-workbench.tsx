@@ -3,7 +3,7 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Play } from "lucide-react";
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge, Button, Card, Input, Textarea } from "@stream2graph/ui";
 
@@ -18,9 +18,45 @@ type PredictorDraft = {
 
 /** 与 realtime 页「输入来源」下拉同一套触发器 / 浮层样式 */
 const STUDIO_SELECT_TRIGGER =
-  "flex h-10 w-full items-center justify-between rounded-lg border border-zinc-600 bg-zinc-900/90 px-3.5 pr-3 text-left text-sm font-medium text-zinc-100 outline-none transition hover:border-zinc-500 hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-zinc-500";
+  "flex h-10 w-full items-center justify-between rounded-lg border border-theme-default bg-surface-2 px-3.5 pr-3 text-left text-sm font-medium text-theme-1 outline-none transition hover:border-theme-strong hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-theme-focus";
 const STUDIO_SELECT_MENU =
-  "absolute z-[21000] mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 p-1.5 shadow-xl";
+  "absolute z-[21000] mt-2 w-full rounded-lg border border-theme-subtle bg-surface-1 p-1.5 shadow-xl";
+
+/** 结果区二级面板：默认收起，与 `MermaidCard` 可折叠样式一致 */
+function CollapsibleResultPanel({
+  title,
+  summaryCollapsed,
+  children,
+}: {
+  title: string;
+  summaryCollapsed?: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card className="overflow-hidden p-0">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-3 border-0 border-b border-theme-default bg-transparent px-5 py-4 text-left hover:bg-surface-muted/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--ring-focus)]"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <div className="text-sm font-semibold text-theme-1">{title}</div>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-theme-3 transition-transform ${open ? "rotate-180" : ""}`}
+          aria-hidden
+        />
+      </button>
+      {open ? (
+        <div className="p-4">{children}</div>
+      ) : (
+        <div className="border-b border-theme-default px-5 py-3 text-xs leading-snug text-theme-4">
+          {summaryCollapsed ?? "内容已收起，点击标题栏可展开。"}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 export function SampleCompareWorkbench() {
   const RESULT_TABS: Array<[string, string]> = [
@@ -146,8 +182,8 @@ export function SampleCompareWorkbench() {
       <Card className="soft-enter space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-zinc-200">流程</div>
-            <p className="mt-1 text-xs leading-snug text-zinc-500">选样本 → 配双预测器 → 在结果区看参考与预测。</p>
+            <div className="text-sm font-semibold text-theme-2">流程</div>
+            <p className="mt-1 text-xs leading-snug text-theme-4">选样本 → 配双预测器 → 在结果区看参考与预测。</p>
           </div>
           {run ? <Badge>{run.status}</Badge> : <Badge>未运行</Badge>}
         </div>
@@ -157,10 +193,10 @@ export function SampleCompareWorkbench() {
             ["2", "配置模型", "设置左右预测器，保持对比条件清楚。"],
             ["3", "阅读结果", "在标签页里切换参考样本、对话材料和预测结果。"],
           ].map(([step, titleText, desc]) => (
-            <div key={step} className="rounded-lg border border-zinc-700/80 bg-zinc-900/50 px-3 py-3">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Step {step}</div>
-              <div className="mt-1 text-sm font-medium text-zinc-200">{titleText}</div>
-              <div className="mt-1 text-xs leading-snug text-zinc-500">{desc}</div>
+            <div key={step} className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">Step {step}</div>
+              <div className="mt-1 text-sm font-medium text-theme-2">{titleText}</div>
+              <div className="mt-1 text-xs leading-snug text-theme-4">{desc}</div>
             </div>
           ))}
         </div>
@@ -170,7 +206,7 @@ export function SampleCompareWorkbench() {
         <Card className="soft-enter h-auto space-y-6 self-start">
           <div className="grid gap-5">
             <div className="space-y-3">
-              <label className="text-sm font-semibold text-white/90">数据集版本</label>
+              <label className="text-sm font-semibold text-theme-1">数据集版本</label>
               <div ref={datasetMenuRef} className="relative">
                 <button
                   type="button"
@@ -191,7 +227,7 @@ export function SampleCompareWorkbench() {
                         : "暂无数据集"}
                   </span>
                   <ChevronDown
-                    className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform duration-200 ${datasetMenuOpen ? "rotate-180" : ""}`}
+                    className={`h-4 w-4 shrink-0 text-theme-4 transition-transform duration-200 ${datasetMenuOpen ? "rotate-180" : ""}`}
                   />
                 </button>
                 {datasetMenuOpen && datasets.data?.length ? (
@@ -211,13 +247,13 @@ export function SampleCompareWorkbench() {
                             }}
                             className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition ${
                               active
-                                ? "border-zinc-500 bg-zinc-800 text-zinc-100"
-                                : "border-transparent bg-transparent text-zinc-300 hover:bg-zinc-800/80"
+                                ? "border-theme-strong bg-surface-3 text-theme-1"
+                                : "border-transparent bg-transparent text-theme-2 hover:bg-surface-3"
                             }`}
                           >
                             <span className="flex min-w-0 items-center gap-2">
                               <span
-                                className={`inline-flex h-4 w-4 items-center justify-center ${active ? "text-zinc-200" : "text-zinc-600"}`}
+                                className={`inline-flex h-4 w-4 items-center justify-center ${active ? "text-theme-2" : "text-theme-5"}`}
                               >
                                 {active ? <Check className="h-3.5 w-3.5" strokeWidth={2} /> : null}
                               </span>
@@ -232,7 +268,7 @@ export function SampleCompareWorkbench() {
               </div>
             </div>
             <div className="space-y-3">
-              <label className="text-sm font-semibold text-white/90">Split</label>
+              <label className="text-sm font-semibold text-theme-1">Split</label>
               <div ref={splitMenuRef} className="relative">
                 <button
                   type="button"
@@ -255,7 +291,7 @@ export function SampleCompareWorkbench() {
                           : split}
                   </span>
                   <ChevronDown
-                    className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform duration-200 ${splitMenuOpen ? "rotate-180" : ""}`}
+                    className={`h-4 w-4 shrink-0 text-theme-4 transition-transform duration-200 ${splitMenuOpen ? "rotate-180" : ""}`}
                   />
                 </button>
                 {splitMenuOpen && datasetVersion && splits.data?.length ? (
@@ -275,13 +311,13 @@ export function SampleCompareWorkbench() {
                             }}
                             className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition ${
                               active
-                                ? "border-zinc-500 bg-zinc-800 text-zinc-100"
-                                : "border-transparent bg-transparent text-zinc-300 hover:bg-zinc-800/80"
+                                ? "border-theme-strong bg-surface-3 text-theme-1"
+                                : "border-transparent bg-transparent text-theme-2 hover:bg-surface-3"
                             }`}
                           >
                             <span className="flex min-w-0 items-center gap-2">
                               <span
-                                className={`inline-flex h-4 w-4 items-center justify-center ${active ? "text-zinc-200" : "text-zinc-600"}`}
+                                className={`inline-flex h-4 w-4 items-center justify-center ${active ? "text-theme-2" : "text-theme-5"}`}
                               >
                                 {active ? <Check className="h-3.5 w-3.5" strokeWidth={2} /> : null}
                               </span>
@@ -298,27 +334,27 @@ export function SampleCompareWorkbench() {
               </div>
             </div>
             <div className="space-y-3">
-              <label className="text-sm font-medium text-slate-300">样本检索</label>
+              <label className="text-sm font-medium text-theme-2">样本检索</label>
               <Input
                 value={search}
                 onChange={(event: ChangeEvent<HTMLInputElement>) => setSearch(event.target.value)}
                 placeholder="按 sample id 过滤"
               />
             </div>
-            <div className="max-h-[min(52vh,420px)] overflow-y-auto rounded-lg border border-zinc-700/80 bg-zinc-950/50 p-2 pr-1 [scrollbar-gutter:stable]">
+            <div className="max-h-[min(52vh,420px)] overflow-y-auto rounded-lg border border-theme-subtle bg-surface-muted p-2 pr-1 [scrollbar-gutter:stable]">
               <div className="space-y-2 pb-1">
                 {samples.data?.map((item) => (
                   <button
                     key={item.sample_id}
                     className={`w-full rounded-lg border px-3 py-2.5 text-left text-sm transition ${
                       item.sample_id === sampleId
-                        ? "border-zinc-500 bg-zinc-800"
-                        : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-600 hover:bg-zinc-800/50"
+                        ? "border-theme-strong bg-surface-3"
+                        : "border-theme-default bg-surface-muted hover:border-theme-default hover:bg-surface-3/50"
                     }`}
                     onClick={() => setSampleId(item.sample_id)}
                   >
-                    <div className="font-medium text-zinc-200">{item.sample_id}</div>
-                    <div className="mt-0.5 text-[11px] text-zinc-500">
+                    <div className="font-medium text-theme-2">{item.sample_id}</div>
+                    <div className="mt-0.5 text-[11px] text-theme-4">
                       {item.diagram_type} · {item.dialogue_turns} turns
                     </div>
                   </button>
@@ -332,13 +368,13 @@ export function SampleCompareWorkbench() {
           <Card className="h-auto space-y-4 self-start">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-xl font-semibold tracking-[-0.04em] text-slate-50">{sampleId || "选择一个样本"}</div>
-                <div className="mt-2 text-sm text-slate-500">当前版本：{datasetVersion || "-"}</div>
+                <div className="text-xl font-semibold tracking-[-0.04em] text-theme-1">{sampleId || "选择一个样本"}</div>
+                <div className="mt-2 text-sm text-theme-4">当前版本：{datasetVersion || "-"}</div>
               </div>
               {run ? <Badge>{run.status}</Badge> : null}
             </div>
 
-            <div className="rounded-lg border border-zinc-700/80 bg-zinc-900/40 px-3 py-2.5 text-xs leading-snug text-zinc-400">
+            <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2.5 text-xs leading-snug text-theme-3">
               左侧选样本；此处配置对比并查看结果。默认预测器可直接运行。
             </div>
 
@@ -348,7 +384,7 @@ export function SampleCompareWorkbench() {
                 { label: "右侧预测器", value: rightPredictor, setValue: setRightPredictor },
               ].map((item) => (
                 <div key={item.label} className="glass-panel h-full min-h-[120px] p-3">
-                  <div className="text-sm font-medium text-zinc-200">{item.label}</div>
+                  <div className="text-sm font-medium text-theme-2">{item.label}</div>
                   <div className="mt-2 grid gap-2">
                     <Input
                       className="h-10 rounded-[12px]"
@@ -385,7 +421,7 @@ export function SampleCompareWorkbench() {
               <Button
                 type="button"
                 variant="ghost"
-                className="h-8 rounded-full px-3 text-xs text-white/75 hover:text-white"
+                className="h-8 rounded-full px-3 text-xs text-theme-3 hover:text-theme-1"
                 onClick={() => setShowAdvancedOptions((prev) => !prev)}
               >
                 {showAdvancedOptions ? "收起高级参数" : "显示高级参数"}
@@ -421,12 +457,18 @@ export function SampleCompareWorkbench() {
               </Tabs.List>
 
               <Tabs.Content value="reference">
-                <MermaidCard title="参考 Mermaid" code={sample.data?.code || ""} />
+                <MermaidCard
+                  title="参考 Mermaid"
+                  code={sample.data?.code || ""}
+                  height={252}
+                  collapsible
+                  defaultDiagramExpanded={false}
+                />
               </Tabs.Content>
 
               <Tabs.Content value="results">
                 <Card>
-                  <div className="mb-5 text-sm font-semibold text-slate-100">预测结果</div>
+                  <div className="mb-5 text-sm font-semibold text-theme-1">预测结果</div>
                   {predictions.length ? (
                     <div className="space-y-5">
                       {predictions.map((row: Record<string, any>, index: number) => (
@@ -439,7 +481,7 @@ export function SampleCompareWorkbench() {
                           </div>
                           <div className="mt-4 grid gap-5 xl:grid-cols-2">
                             <MermaidCard title="预测 Mermaid" code={row.generated_code || ""} height={280} />
-                            <pre className="rounded-[24px] bg-slate-950 p-5 text-xs leading-6 text-slate-100">
+                            <pre className="rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
                               {JSON.stringify(row.metrics || {}, null, 2)}
                             </pre>
                           </div>
@@ -447,7 +489,7 @@ export function SampleCompareWorkbench() {
                       ))}
                     </div>
                   ) : (
-                    <div className="rounded-[22px] border border-dashed border-slate-300 p-5 text-sm text-slate-500">
+                    <div className="rounded-[22px] border border-dashed border-theme-default p-5 text-sm text-theme-4">
                       对比运行完成后，这里会展示双模型输出、离线指标和编译状态。
                     </div>
                   )}
@@ -455,32 +497,36 @@ export function SampleCompareWorkbench() {
               </Tabs.Content>
 
               <Tabs.Content value="dialogue">
-                <Card>
-                  <div className="mb-4 text-sm font-semibold text-slate-100">参考对话</div>
+                <CollapsibleResultPanel
+                  title="参考对话"
+                  summaryCollapsed="对话材料已收起，点击标题栏可展开。"
+                >
                   <div className="space-y-4">
                     {sample.data?.dialogue?.map((turn: Record<string, any>) => (
                       <div key={turn.turn_id} className="glass-panel p-3">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">
                           Turn {turn.turn_id} · {turn.role} · {turn.action_type}
                         </div>
-                        <div className="mt-1.5 text-sm leading-snug text-zinc-300">{turn.utterance}</div>
+                        <div className="mt-1.5 text-sm leading-snug text-theme-2">{turn.utterance}</div>
                       </div>
                     ))}
                   </div>
-                </Card>
+                </CollapsibleResultPanel>
               </Tabs.Content>
 
               <Tabs.Content value="metadata">
-                <Card>
-                  <div className="mb-4 text-sm font-semibold text-slate-100">样本元数据</div>
-                  <pre className="rounded-[24px] bg-slate-950 p-5 text-xs leading-6 text-slate-100">
+                <CollapsibleResultPanel
+                  title="样本元数据"
+                  summaryCollapsed="元数据已收起，点击标题栏可展开。"
+                >
+                  <pre className="rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
                     {JSON.stringify(sampleMeta, null, 2)}
                   </pre>
-                </Card>
+                </CollapsibleResultPanel>
               </Tabs.Content>
             </Tabs.Root>
           ) : (
-            <Card className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-xs leading-snug text-zinc-500">
+            <Card className="rounded-lg border border-theme-default bg-surface-muted p-3 text-xs leading-snug text-theme-4">
               运行对比后在此查看参考图、预测、对话与元数据。
             </Card>
           )}

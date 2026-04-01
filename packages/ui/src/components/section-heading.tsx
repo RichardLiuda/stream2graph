@@ -18,8 +18,8 @@ export function SectionHeading({
     tone === "onDark"
       ? "text-indigo-300/90"
       : "text-[var(--accent-strong)]";
-  const titleCls = tone === "onDark" ? "text-white" : "text-slate-950";
-  const descCls = tone === "onDark" ? "text-slate-400" : "text-slate-600";
+  const titleCls = "text-theme-1";
+  const descCls = tone === "onDark" ? "text-theme-3" : "text-theme-5";
 
   return (
     <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">

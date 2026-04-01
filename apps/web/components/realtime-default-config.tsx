@@ -42,16 +42,16 @@ export function RealtimeDefaultConfig(props: RealtimeDefaultConfigProps) {
   return (
     <div className="space-y-4">
       <Card className="soft-enter space-y-3">
-        <div className="text-sm font-semibold text-zinc-200">会话与录音</div>
-        <details className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2">
-          <summary className="cursor-pointer list-none text-xs font-medium uppercase tracking-wider text-zinc-500 marker:content-none [&::-webkit-details-marker]:hidden">
+        <div className="text-sm font-semibold text-theme-2">会话与录音</div>
+        <details className="rounded-lg border border-theme-default bg-surface-muted px-3 py-2">
+          <summary className="cursor-pointer list-none text-xs font-medium uppercase tracking-wider text-theme-4 marker:content-none [&::-webkit-details-marker]:hidden">
             高级选项
           </summary>
           <div className="mt-3 space-y-2">
-            <label className="text-xs font-medium text-zinc-400">数据版本</label>
+            <label className="text-xs font-medium text-theme-3">数据版本</label>
             <div className="relative">
               <select
-                className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-[rgba(245,246,248,0.96)] px-3 pr-9 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                className="select-control appearance-none pr-9"
                 value={datasetVersion}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setDatasetVersion(event.target.value)}
               >
@@ -69,8 +69,8 @@ export function RealtimeDefaultConfig(props: RealtimeDefaultConfigProps) {
       <Card className="soft-enter space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-zinc-200">默认设置（只读）</div>
-            <p className="mt-1 text-xs leading-snug text-zinc-500">
+            <div className="text-sm font-semibold text-theme-2">默认设置（只读）</div>
+            <p className="mt-1 text-xs leading-snug text-theme-4">
               模型与显示方式在「设置」中修改；此处仅展示当前沿用的默认值。
             </p>
           </div>
@@ -102,9 +102,9 @@ export function RealtimeDefaultConfig(props: RealtimeDefaultConfigProps) {
               value: diagramMode === "dual_view" ? "流程图+结构图" : "仅流程图",
             },
           ].map((item) => (
-            <div key={item.label} className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{item.label}</div>
-              <div className="mt-2 text-sm font-medium leading-snug text-zinc-100">{item.value}</div>
+            <div key={item.label} className="rounded-lg border border-theme-default bg-surface-muted px-3 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">{item.label}</div>
+              <div className="mt-2 text-sm font-medium leading-snug text-theme-1">{item.value}</div>
             </div>
           ))}
         </div>

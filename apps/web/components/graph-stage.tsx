@@ -62,9 +62,9 @@ export function GraphStage({
     .filter((group): group is NonNullable<typeof group> => Boolean(group));
 
   const inner = (
-      <div className="bg-zinc-950/35 p-4">
+      <div className="bg-transparent p-4">
         <PanZoomCanvas
-          className="relative flex h-full min-h-[min(380px,52vh)] min-w-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-zinc-800/90 bg-zinc-950/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+          className="relative flex h-full min-h-[min(370px,51vh)] min-w-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-theme-default bg-[var(--mindmap-canvas-bg)] shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
           contentClassName="min-h-0 flex-1"
           minScale={0.55}
           maxScale={2.6}
@@ -72,11 +72,11 @@ export function GraphStage({
           initialOffset={{ x: 0, y: 0 }}
         >
           <div
-            className="pointer-events-none absolute inset-3 rounded-md opacity-[0.45]"
+            className="pointer-events-none absolute inset-3 rounded-md opacity-[var(--mindmap-grid-opacity)]"
             aria-hidden
             style={{
               backgroundImage:
-                "linear-gradient(rgba(63,63,70,0.32) 1px, transparent 1px), linear-gradient(90deg, rgba(63,63,70,0.32) 1px, transparent 1px)",
+                "linear-gradient(var(--mindmap-grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--mindmap-grid-line) 1px, transparent 1px)",
               backgroundSize: "24px 24px",
               backgroundPosition: "10px 10px",
             }}
@@ -89,7 +89,7 @@ export function GraphStage({
           <svg viewBox="-120 -120 1240 760" className="relative z-[1] h-full min-h-0 w-full flex-1">
           <defs>
             <marker id="arrowHead" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
-              <path d="M0,0 L10,5 L0,10 Z" fill="#6d88d7" />
+              <path d="M0,0 L10,5 L0,10 Z" fill="var(--graph-svg-arrow)" />
             </marker>
           </defs>
           {groupBoxes.map((group) => (
@@ -100,12 +100,12 @@ export function GraphStage({
                 width={group.width}
                 height={group.height}
                 rx="24"
-                fill="rgba(124, 58, 237, 0.08)"
-                stroke="rgba(124, 58, 237, 0.38)"
+                fill="var(--graph-svg-group-fill)"
+                stroke="var(--graph-svg-group-stroke)"
                 strokeWidth="2"
                 strokeDasharray="10 8"
               />
-              <text x={group.x + 18} y={group.y + 28} fill="#c4b5fd" fontSize="13" fontWeight="700">
+              <text x={group.x + 18} y={group.y + 28} fill="var(--graph-svg-group-label)" fontSize="13" fontWeight="700">
                 {group.label || group.id}
               </text>
             </g>
@@ -121,7 +121,7 @@ export function GraphStage({
                 y1={from.y}
                 x2={to.x}
                 y2={to.y}
-                stroke="rgba(148, 163, 184, 0.9)"
+                stroke="var(--graph-svg-edge)"
                 strokeWidth="2"
                 markerEnd="url(#arrowHead)"
               />
@@ -129,11 +129,11 @@ export function GraphStage({
           })}
           {nodes.map((node) => (
             <g key={node.id} transform={`translate(${node.x}, ${node.y})`}>
-              <circle r="34" fill="rgba(24, 24, 27, 0.9)" stroke="rgba(148, 163, 184, 0.95)" strokeWidth="2" />
+              <circle r="34" fill="var(--graph-svg-node-fill)" stroke="var(--graph-svg-node-stroke)" strokeWidth="2" />
               <text
                 textAnchor="middle"
                 dominantBaseline="middle"
-                fill="#e4e4e7"
+                fill="var(--graph-svg-node-text)"
                 fontSize="12"
                 fontWeight="600"
               >
@@ -152,8 +152,8 @@ export function GraphStage({
 
   return (
     <Card className="overflow-hidden p-0">
-      <div className="border-b border-white/70 px-6 py-5">
-        <div className="text-sm font-semibold text-slate-900">{title}</div>
+      <div className="border-b border-theme-default px-6 py-5">
+        <div className="text-sm font-semibold text-theme-1">{title}</div>
       </div>
       {inner}
     </Card>

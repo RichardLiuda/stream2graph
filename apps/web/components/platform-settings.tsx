@@ -67,9 +67,7 @@ const ENDPOINT_ROUTE_OPTIONS: Record<
 };
 
 function selectClassName(disabled = false) {
-  return `h-10 w-full rounded-lg border border-slate-300 bg-[rgba(245,246,248,0.96)] px-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 ${
-    disabled ? "cursor-not-allowed opacity-55" : ""
-  }`;
+  return `select-control ${disabled ? "cursor-not-allowed opacity-55" : ""}`;
 }
 
 function blankProfile(prefix: "gate" | "planner" | "stt", index: number): ProfileDraft {
@@ -566,8 +564,8 @@ export function PlatformSettings() {
       <Card className="soft-enter space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-base font-semibold text-zinc-100">服务端模型配置</div>
-            <p className="mt-2 text-sm leading-6 text-zinc-500">
+            <div className="text-base font-semibold text-theme-1">服务端模型配置</div>
+            <p className="mt-2 text-sm leading-6 text-theme-4">
               保存后直接写入服务端。实时工作与样本页都会用这里的 Gate、Planner 和听写服务。
             </p>
           </div>
@@ -586,7 +584,7 @@ export function PlatformSettings() {
         </div>
 
         {authQuery.isLoading ? (
-          <div className="rounded-lg border border-zinc-700/80 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-500">
+          <div className="rounded-lg border border-theme-subtle bg-surface-muted px-4 py-3 text-sm text-theme-4">
             正在确认管理员登录状态…
           </div>
         ) : null}
@@ -595,7 +593,7 @@ export function PlatformSettings() {
             <p>未登录或会话已过期，无法读写服务端模型配置。</p>
             <Link
               href="/login"
-              className="mt-2 inline-flex items-center gap-1 font-medium text-amber-50 underline underline-offset-4 hover:text-white"
+              className="mt-2 inline-flex items-center gap-1 font-medium text-amber-200 underline underline-offset-4 theme-light:text-amber-900 hover:text-theme-1"
             >
               前往管理员登录
               <ArrowRight className="h-3.5 w-3.5" />
@@ -608,7 +606,7 @@ export function PlatformSettings() {
           </div>
         ) : null}
         {!adminReady && authQuery.isSuccess && !authUnauthorized ? (
-          <div className="rounded-lg border border-zinc-700/80 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-500">
+          <div className="rounded-lg border border-theme-subtle bg-surface-muted px-4 py-3 text-sm text-theme-4">
             正在启用服务端配置…
           </div>
         ) : null}
@@ -619,7 +617,7 @@ export function PlatformSettings() {
           </div>
         ) : null}
         {probeFeedback ? (
-          <div className="rounded-lg border border-zinc-700/80 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-300">
+          <div className="rounded-lg border border-theme-subtle bg-surface-muted px-4 py-3 text-sm text-theme-2">
             {probeFeedback}
           </div>
         ) : null}
@@ -630,9 +628,9 @@ export function PlatformSettings() {
             { kind: "planner" as const, title: "Planner 配置", drafts: plannerDrafts },
             { kind: "stt" as const, title: "听写服务配置", drafts: sttDrafts },
           ].map((group) => (
-            <div key={group.kind} className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+            <div key={group.kind} className="space-y-4 rounded-xl border border-theme-default bg-surface-muted p-4">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold text-zinc-200">{group.title}</div>
+                <div className="text-sm font-semibold text-theme-2">{group.title}</div>
                 <Button variant="secondary" onClick={() => addDraft(group.kind)}>
                   <Plus className="h-4 w-4" />
                   添加
@@ -641,7 +639,7 @@ export function PlatformSettings() {
 
               <div className="space-y-4">
                 {group.drafts.map((draft, index) => (
-                  <div key={`${group.kind}-${index}`} className="rounded-xl border border-zinc-800 bg-zinc-950/55 p-4">
+                  <div key={`${group.kind}-${index}`} className="rounded-xl border border-theme-default bg-surface-muted p-4">
                     {(() => {
                       const resolvedEndpoint = resolveEndpoint(group.kind, draft);
                       const draftModelOptions = modelOptionsFromDraft(draft);
@@ -653,7 +651,7 @@ export function PlatformSettings() {
                       return (
                     <>
                     <div className="mb-4 flex items-center justify-between gap-3">
-                      <div className="text-sm font-semibold text-zinc-100">
+                      <div className="text-sm font-semibold text-theme-1">
                         {draft.label || draft.id || `${group.kind.toUpperCase()} Profile ${index + 1}`}
                       </div>
                       <div className="flex items-center gap-2">
@@ -682,8 +680,8 @@ export function PlatformSettings() {
 
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">Profile ID</label>
-                        <Input variant="light"
+                        <label className="text-sm font-medium text-theme-2">Profile ID</label>
+                        <Input variant="dark"
                           value={draft.id}
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateDraft(group.kind, index, { id: event.target.value })
@@ -692,8 +690,8 @@ export function PlatformSettings() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">显示名称</label>
-                        <Input variant="light"
+                        <label className="text-sm font-medium text-theme-2">显示名称</label>
+                        <Input variant="dark"
                           value={draft.label}
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateDraft(group.kind, index, { label: event.target.value })
@@ -704,12 +702,12 @@ export function PlatformSettings() {
                       {isXfyunStt ? (
                         <>
                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">Provider Kind</label>
-                            <Input variant="light" value="xfyun_asr" readOnly />
+                            <label className="text-sm font-medium text-theme-2">Provider Kind</label>
+                            <Input variant="dark" value="xfyun_asr" readOnly />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">App ID</label>
-                            <Input variant="light"
+                            <label className="text-sm font-medium text-theme-2">App ID</label>
+                            <Input variant="dark"
                               value={draft.appId}
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                 updateDraft(group.kind, index, { appId: event.target.value })
@@ -721,20 +719,20 @@ export function PlatformSettings() {
                       ) : (
                         <>
                           <div className="space-y-2 md:col-span-2">
-                            <label className="text-sm font-medium text-slate-700">Endpoint Base</label>
-                            <Input variant="light"
+                            <label className="text-sm font-medium text-theme-2">Endpoint Base</label>
+                            <Input variant="dark"
                               value={draft.endpointBase}
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                 updateDraft(group.kind, index, { endpointBase: event.target.value })
                               }
                               placeholder={DEFAULT_OPENAI_BASE}
                             />
-                            <p className="text-xs leading-6 text-slate-500">
+                            <p className="text-xs leading-6 text-theme-4">
                               默认使用 OpenAI 基座地址，`/v1` 之后的路径由下方选项自动补全。
                             </p>
                           </div>
                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">Provider Kind</label>
+                            <label className="text-sm font-medium text-theme-2">Provider Kind</label>
                             <select
                               className={selectClassName(false)}
                               value={draft.providerKind}
@@ -752,7 +750,7 @@ export function PlatformSettings() {
                             </select>
                           </div>
                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">Endpoint 路径</label>
+                            <label className="text-sm font-medium text-theme-2">Endpoint 路径</label>
                             <select
                               className={selectClassName(false)}
                               value={draft.endpointRouteMode}
@@ -768,7 +766,7 @@ export function PlatformSettings() {
                                 </option>
                               ))}
                             </select>
-                            <p className="text-xs leading-6 text-slate-500">
+                            <p className="text-xs leading-6 text-theme-4">
                               {selectedRoute?.path
                                 ? `当前会自动补全为 ${selectedRoute.path}`
                                 : "当前使用自定义路径。"}
@@ -776,8 +774,8 @@ export function PlatformSettings() {
                           </div>
                           {draft.endpointRouteMode === "custom" ? (
                             <div className="space-y-2 md:col-span-2">
-                              <label className="text-sm font-medium text-slate-700">自定义路径</label>
-                              <Input variant="light"
+                              <label className="text-sm font-medium text-theme-2">自定义路径</label>
+                              <Input variant="dark"
                                 value={draft.customEndpointPath}
                                 onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                   updateDraft(group.kind, index, { customEndpointPath: event.target.value })
@@ -789,12 +787,12 @@ export function PlatformSettings() {
                         </>
                       )}
                       <div className="space-y-2 md:col-span-2">
-                        <label className="text-sm font-medium text-slate-700">最终 Endpoint</label>
-                        <Input variant="light" value={resolvedEndpoint} readOnly />
+                        <label className="text-sm font-medium text-theme-2">最终 Endpoint</label>
+                        <Input variant="dark" value={resolvedEndpoint} readOnly />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">API Key</label>
-                        <Input variant="light"
+                        <label className="text-sm font-medium text-theme-2">API Key</label>
+                        <Input variant="dark"
                           type="password"
                           value={draft.apiKey}
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -804,8 +802,8 @@ export function PlatformSettings() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">API Key Env</label>
-                        <Input variant="light"
+                        <label className="text-sm font-medium text-theme-2">API Key Env</label>
+                        <Input variant="dark"
                           value={draft.apiKeyEnv}
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateDraft(group.kind, index, { apiKeyEnv: event.target.value })
@@ -816,8 +814,8 @@ export function PlatformSettings() {
                       {isXfyunStt ? (
                         <>
                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">API Secret</label>
-                            <Input variant="light"
+                            <label className="text-sm font-medium text-theme-2">API Secret</label>
+                            <Input variant="dark"
                               type="password"
                               value={draft.apiSecret}
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -827,8 +825,8 @@ export function PlatformSettings() {
                             />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">API Secret Env</label>
-                            <Input variant="light"
+                            <label className="text-sm font-medium text-theme-2">API Secret Env</label>
+                            <Input variant="dark"
                               value={draft.apiSecretEnv}
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                 updateDraft(group.kind, index, { apiSecretEnv: event.target.value })
@@ -839,7 +837,7 @@ export function PlatformSettings() {
                         </>
                       ) : null}
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700">
+                        <label className="text-sm font-medium text-theme-2">
                           {isXfyunStt ? "默认识别域" : "Default Model"}
                         </label>
                         <select
@@ -862,10 +860,10 @@ export function PlatformSettings() {
                         </select>
                       </div>
                       <div className="space-y-2 md:col-span-2">
-                        <label className="text-sm font-medium text-slate-700">
+                        <label className="text-sm font-medium text-theme-2">
                           {isXfyunStt ? "识别域列表" : "模型列表"}
                         </label>
-                        <Textarea variant="light"
+                        <Textarea variant="dark"
                           rows={4}
                           value={draft.modelsText}
                           onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
@@ -873,22 +871,22 @@ export function PlatformSettings() {
                           }
                           placeholder="每行一个模型，或用逗号分隔"
                         />
-                        <p className="text-xs leading-6 text-slate-500">
+                        <p className="text-xs leading-6 text-theme-4">
                           {isXfyunStt
                             ? "默认内置讯飞听写识别域，可直接保存，也可以点“填充预设”恢复默认列表。"
                             : "可以手动填写，也可以先填好 Endpoint 和 API Key，再点“探测模型”自动回填。"}
                         </p>
                       </div>
                       {group.kind === "stt" ? (
-                        <div className="space-y-4 md:col-span-2 rounded-[20px] border border-emerald-100 bg-emerald-50/70 p-4">
+                        <div className="space-y-4 md:col-span-2 rounded-[20px] border border-emerald-900/45 bg-emerald-950/20 p-4">
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <div className="text-sm font-semibold text-slate-900">声纹盲认增强</div>
-                              <p className="mt-1 text-xs leading-6 text-slate-500">
+                              <div className="text-sm font-semibold text-theme-1">声纹盲认增强</div>
+                              <p className="mt-1 text-xs leading-6 text-theme-4">
                                 对 STT 音频块额外调用讯飞声纹 1:N 盲认，命中后自动回写 speaker。
                               </p>
                             </div>
-                            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                            <label className="flex items-center gap-2 text-sm font-medium text-theme-2">
                               <input
                                 type="checkbox"
                                 checked={draft.voiceprint.enabled}
@@ -901,7 +899,7 @@ export function PlatformSettings() {
                               启用
                             </label>
                           </div>
-                          <div className="rounded-[18px] border border-emerald-100 bg-white/70 px-4 py-3 text-sm leading-6 text-slate-600">
+                          <div className="rounded-[18px] border border-theme-default bg-surface-muted px-4 py-3 text-sm leading-6 text-theme-3">
                             开启后会自动复用当前 STT Profile 的讯飞凭证，并使用内置默认参数完成多人声纹盲认。
                           </div>
                         </div>
@@ -933,18 +931,18 @@ export function PlatformSettings() {
 
       <Card className="soft-enter soft-enter-delay-2 space-y-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900/50 text-zinc-300">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-theme-subtle bg-surface-muted text-theme-2">
             <Settings2 className="h-5 w-5" />
           </div>
           <div>
-            <div className="text-base font-semibold text-zinc-100">默认运行参数</div>
-            <div className="mt-1 text-sm text-zinc-500">这些默认值会保存在当前浏览器，用于新建实时会话。</div>
+            <div className="text-base font-semibold text-theme-1">默认运行参数</div>
+            <div className="mt-1 text-sm text-theme-4">这些默认值会保存在当前浏览器，用于新建实时会话。</div>
           </div>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-7">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Gate Profile</label>
+            <label className="text-sm font-medium text-theme-2">Gate Profile</label>
             <select
               className={selectClassName(!hasGateProfiles)}
               value={gateProfileId}
@@ -964,7 +962,7 @@ export function PlatformSettings() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Gate Model</label>
+            <label className="text-sm font-medium text-theme-2">Gate Model</label>
             <select
               className={selectClassName(!gateModelOptions.length)}
               value={gateModel}
@@ -984,7 +982,7 @@ export function PlatformSettings() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Planner Profile</label>
+            <label className="text-sm font-medium text-theme-2">Planner Profile</label>
             <select
               className={selectClassName(!hasPlannerProfiles)}
               value={plannerProfileId}
@@ -1004,7 +1002,7 @@ export function PlatformSettings() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Planner Model</label>
+            <label className="text-sm font-medium text-theme-2">Planner Model</label>
             <select
               className={selectClassName(!plannerModelOptions.length)}
               value={plannerModel}
@@ -1024,7 +1022,7 @@ export function PlatformSettings() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">STT Profile</label>
+            <label className="text-sm font-medium text-theme-2">STT Profile</label>
             <select
               className={selectClassName(!hasSttProfiles)}
               value={sttProfileId}
@@ -1044,7 +1042,7 @@ export function PlatformSettings() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">STT Model</label>
+            <label className="text-sm font-medium text-theme-2">STT Model</label>
             <select
               className={selectClassName(!sttModelOptions.length)}
               value={sttModel}
@@ -1064,7 +1062,7 @@ export function PlatformSettings() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">视图模式</label>
+            <label className="text-sm font-medium text-theme-2">视图模式</label>
             <select
               className={selectClassName(false)}
               value={diagramMode}
@@ -1080,9 +1078,9 @@ export function PlatformSettings() {
 
         <div className="grid gap-4 md:grid-cols-3">
           {summary.map((item) => (
-            <div key={item.label} className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-4">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{item.label}</div>
-              <div className="mt-2 text-sm font-semibold leading-snug text-zinc-100">{item.value}</div>
+            <div key={item.label} className="rounded-lg border border-theme-default bg-surface-muted px-4 py-4">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">{item.label}</div>
+              <div className="mt-2 text-sm font-semibold leading-snug text-theme-1">{item.value}</div>
             </div>
           ))}
         </div>
@@ -1091,8 +1089,8 @@ export function PlatformSettings() {
       <Card className="soft-enter soft-enter-delay-2 space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-base font-semibold text-zinc-100">声纹库管理</div>
-            <p className="mt-2 text-sm leading-6 text-zinc-500">
+            <div className="text-base font-semibold text-theme-1">声纹库管理</div>
+            <p className="mt-2 text-sm leading-6 text-theme-4">
               为某个 STT profile 注册多位说话人的声纹特征。实时 API STT 上传后会先转写，再做 1:N 盲认并回写 speaker。
             </p>
           </div>
@@ -1134,59 +1132,59 @@ export function PlatformSettings() {
         ) : null}
 
         {!managedVoiceprintProfile?.voiceprint?.enabled ? (
-          <div className="rounded-lg border border-dashed border-zinc-700 px-4 py-5 text-sm text-zinc-500">
+          <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
             当前选中的 STT profile 还没有启用声纹盲认。先在上方 STT Profile 里打开“声纹盲认增强”，填好讯飞配置并保存。
           </div>
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-4">
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-4">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Group ID</div>
-                <div className="mt-2 text-sm font-semibold text-zinc-100">
+              <div className="rounded-lg border border-theme-default bg-surface-muted px-4 py-4">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">Group ID</div>
+                <div className="mt-2 text-sm font-semibold text-theme-1">
                   {String(managedVoiceprintProfile.voiceprint?.group_id || "-")}
                 </div>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-4">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Threshold</div>
-                <div className="mt-2 text-sm font-semibold text-zinc-100">
+              <div className="rounded-lg border border-theme-default bg-surface-muted px-4 py-4">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">Threshold</div>
+                <div className="mt-2 text-sm font-semibold text-theme-1">
                   {String(managedVoiceprintProfile.voiceprint?.score_threshold ?? 0.75)}
                 </div>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-4">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Top K</div>
-                <div className="mt-2 text-sm font-semibold text-zinc-100">
+              <div className="rounded-lg border border-theme-default bg-surface-muted px-4 py-4">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">Top K</div>
+                <div className="mt-2 text-sm font-semibold text-theme-1">
                   {String(managedVoiceprintProfile.voiceprint?.top_k ?? 3)}
                 </div>
               </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-4">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">已注册特征</div>
-                <div className="mt-2 text-sm font-semibold text-zinc-100">
+              <div className="rounded-lg border border-theme-default bg-surface-muted px-4 py-4">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">已注册特征</div>
+                <div className="mt-2 text-sm font-semibold text-theme-1">
                   {voiceprintFeaturesQuery.data?.length ?? 0}
                 </div>
               </div>
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-              <div className="text-sm font-semibold text-zinc-100">注册新说话人特征</div>
+            <div className="rounded-xl border border-theme-default bg-surface-muted p-4">
+              <div className="text-sm font-semibold text-theme-1">注册新说话人特征</div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-300">Speaker Label</label>
-                  <Input variant="light" value={speakerLabel} onChange={(event: ChangeEvent<HTMLInputElement>) => setSpeakerLabel(event.target.value)} placeholder="例如 张三" />
+                  <label className="text-sm font-medium text-theme-2">Speaker Label</label>
+                  <Input variant="dark" value={speakerLabel} onChange={(event: ChangeEvent<HTMLInputElement>) => setSpeakerLabel(event.target.value)} placeholder="例如 张三" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-300">Feature Info</label>
-                  <Input variant="light" value={featureInfo} onChange={(event: ChangeEvent<HTMLInputElement>) => setFeatureInfo(event.target.value)} placeholder="可选，默认同 speaker label" />
+                  <label className="text-sm font-medium text-theme-2">Feature Info</label>
+                  <Input variant="dark" value={featureInfo} onChange={(event: ChangeEvent<HTMLInputElement>) => setFeatureInfo(event.target.value)} placeholder="可选，默认同 speaker label" />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-medium text-zinc-300">样本音频</label>
-                  <Input variant="light"
+                  <label className="text-sm font-medium text-theme-2">样本音频</label>
+                  <Input variant="dark"
                     type="file"
                     accept="audio/*"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
                       setEnrollmentFile(event.target.files?.[0] || null)
                     }
                   />
-                  <p className="text-xs leading-6 text-zinc-500">浏览器会先把上传音频转成 16k 单声道 PCM，再由后端转成讯飞要求的 mp3 进行注册。</p>
+                  <p className="text-xs leading-6 text-theme-4">浏览器会先把上传音频转成 16k 单声道 PCM，再由后端转成讯飞要求的 mp3 进行注册。</p>
                 </div>
               </div>
               <div className="mt-4 flex justify-end">
@@ -1207,11 +1205,11 @@ export function PlatformSettings() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+            <div className="rounded-xl border border-theme-default bg-surface-muted p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-zinc-100">已注册说话人</div>
-                  <div className="mt-1 text-xs leading-6 text-zinc-500">删除后不会影响普通 STT，只会停止该说话人的声纹命中。</div>
+                  <div className="text-sm font-semibold text-theme-1">已注册说话人</div>
+                  <div className="mt-1 text-xs leading-6 text-theme-4">删除后不会影响普通 STT，只会停止该说话人的声纹命中。</div>
                 </div>
                 <Badge>{voiceprintFeaturesQuery.data?.length ?? 0} features</Badge>
               </div>
@@ -1219,13 +1217,13 @@ export function PlatformSettings() {
               <div className="space-y-3">
                 {(voiceprintFeaturesQuery.data || []).length ? (
                   (voiceprintFeaturesQuery.data || []).map((item) => (
-                    <div key={item.feature_id} className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-slate-200 bg-white px-4 py-3">
+                    <div key={item.feature_id} className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-theme-default bg-surface-1 px-4 py-3">
                       <div>
-                        <div className="text-sm font-semibold text-slate-900">{item.speaker_label}</div>
-                        <div className="mt-1 text-xs leading-6 text-slate-500">
+                        <div className="text-sm font-semibold text-theme-1">{item.speaker_label}</div>
+                        <div className="mt-1 text-xs leading-6 text-theme-4">
                           feature_id: {item.feature_id} · status: {item.status}
                         </div>
-                        <div className="text-xs leading-6 text-slate-500">{item.feature_info || "无额外描述"}</div>
+                        <div className="text-xs leading-6 text-theme-4">{item.feature_info || "无额外描述"}</div>
                       </div>
                       <Button
                         variant="ghost"
@@ -1241,7 +1239,7 @@ export function PlatformSettings() {
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-lg border border-dashed border-zinc-700 px-4 py-5 text-sm text-zinc-500">
+                  <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
                     还没有注册任何声纹特征。先同步远端组，再上传几段说话人样本音频。
                   </div>
                 )}

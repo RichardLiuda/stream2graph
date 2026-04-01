@@ -53,7 +53,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (query.isLoading || shouldHoldRedirect) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500">
+      <div className="flex min-h-[40vh] items-center justify-center text-sm text-theme-4">
         {shouldHoldRedirect ? "正在建立管理员登录态..." : "正在验证管理员身份..."}
       </div>
     );

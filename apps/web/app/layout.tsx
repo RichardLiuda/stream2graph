@@ -23,11 +23,16 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN" data-scroll-behavior="smooth">
+    <html lang="zh-CN" data-scroll-behavior="smooth" suppressHydrationWarning>
       <body
-        className={`${bodyFont.variable} ${displayFont.variable} font-sans text-slate-200 antialiased`}
+        className={`${bodyFont.variable} ${displayFont.variable} font-sans text-theme-2 antialiased`}
         style={{ fontFamily: "var(--font-body), sans-serif" }}
       >
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("s2g-theme-mode");document.documentElement.setAttribute("data-theme",t==="light"?"light":"dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();`,
+          }}
+        />
         <Providers>{children}</Providers>
       </body>
     </html>

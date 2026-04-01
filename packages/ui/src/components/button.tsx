@@ -8,10 +8,10 @@ const variantClasses: Record<ButtonVariant, string> = {
   primary:
     "bg-[var(--accent-strong)] text-white shadow-sm hover:bg-[#50446d] hover:shadow-md active:translate-y-px",
   secondary:
-    "border border-zinc-600/90 bg-zinc-900/70 text-zinc-100 shadow-sm hover:border-zinc-500 hover:bg-zinc-800 active:translate-y-px",
+    "border shadow-sm active:translate-y-px border-[color:var(--ui-btn-secondary-border)] bg-[var(--ui-btn-secondary-bg)] text-[var(--ui-btn-secondary-text)] hover:border-[color:var(--ui-btn-secondary-border-hover)] hover:bg-[var(--ui-btn-secondary-bg-hover)]",
   secondaryLight:
-    "border border-slate-300/90 bg-slate-100 text-slate-900 shadow-sm hover:border-slate-400 hover:bg-white active:translate-y-px",
-  ghost: "border border-zinc-600/80 bg-transparent text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900/60",
+    "border border-[color:var(--ui-btn-secondary-border)] bg-[var(--ui-btn-secondary-bg)] text-[var(--ui-btn-secondary-text)] shadow-sm hover:border-[color:var(--ui-btn-secondary-border-hover)] hover:bg-[var(--ui-btn-secondary-bg-hover)] active:translate-y-px",
+  ghost: "border bg-transparent border-[color:var(--ui-btn-ghost-border)] text-[var(--ui-btn-ghost-text)] hover:border-[color:var(--ui-btn-ghost-border-hover)] hover:bg-[var(--ui-btn-ghost-bg-hover)]",
   danger: "bg-red-700 text-white shadow-sm hover:bg-red-800 active:translate-y-px",
 };
 

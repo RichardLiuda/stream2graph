@@ -4,9 +4,9 @@ import { cn } from "../lib/cn";
 
 const variantClass = {
   dark:
-    "rounded-md border border-zinc-600/80 bg-zinc-900/50 text-[11px] font-medium normal-case tracking-normal text-zinc-300",
+    "rounded-md border text-[11px] font-medium normal-case tracking-normal border-[color:var(--ui-badge-border)] bg-[var(--ui-badge-bg)] text-[var(--ui-badge-text)]",
   light:
-    "rounded-md border border-slate-300/90 bg-slate-100 text-[11px] font-medium normal-case tracking-normal text-slate-700",
+    "rounded-md border border-[color:var(--ui-badge-border)] bg-[var(--ui-badge-bg)] text-[11px] font-medium normal-case tracking-normal text-[var(--ui-badge-text)]",
 };
 
 export function Badge({

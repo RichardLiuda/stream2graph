@@ -1,6 +1,6 @@
 "use client";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { AlertTriangle, CheckCircle2, Clock3 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock3 } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
@@ -65,6 +65,16 @@ const MERMAID_THEME_CSS = `
 .edgeLabel small,
 .cluster-label small {
   font-size: 0.82em;
+}
+
+/* 矢量锐化：高分屏与缩放时文字/线条更清晰 */
+svg {
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+}
+svg .edgePath path.path,
+svg path.flowchart-link {
+  shape-rendering: geometricPrecision;
 }
 `;
 
@@ -493,6 +503,19 @@ async function getMermaid() {
       theme: "base",
       htmlLabels: true,
       themeCSS: MERMAID_THEME_CSS,
+      /** 系统 UI 字体 + 更大字号，减少「小图被放大」时的糊感 */
+      fontFamily:
+        'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", "PingFang SC", "Helvetica Neue", Arial, sans-serif',
+      themeVariables: {
+        fontSize: "18px",
+      },
+      flowchart: {
+        padding: 14,
+        nodeSpacing: 58,
+        rankSpacing: 58,
+        diagramPadding: 14,
+        useMaxWidth: true,
+      },
     });
     mermaidInitialized = true;
   }
@@ -524,7 +547,7 @@ export function MermaidCompileStatusBadge({
     );
   }
   return (
-    <Badge className="normal-case tracking-normal text-zinc-400">
+    <Badge className="normal-case tracking-normal text-theme-3">
       <Clock3 className="mr-1 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
       等待内容
     </Badge>
@@ -544,6 +567,8 @@ function MermaidCardBody({
   updatedAt,
   headerExtra,
   embedded = false,
+  collapsible = false,
+  defaultDiagramExpanded = true,
   graphPayload = null,
   onNodeRelayout,
   relayoutBusy = false,
@@ -562,11 +587,15 @@ function MermaidCardBody({
   headerExtra?: ReactNode;
   /** @description 为 true 时不渲染顶栏与外层 Card，由外层主舞台承载 */
   embedded?: boolean;
+  /** @description 为 true 时标题栏可折叠画布区域（非 embedded 时生效） */
+  collapsible?: boolean;
+  defaultDiagramExpanded?: boolean;
   graphPayload?: MermaidGraphPayload;
   onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
   relayoutBusy?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
+  const [diagramExpanded, setDiagramExpanded] = useState(defaultDiagramExpanded);
   const [svg, setSvg] = useState("");
   const [lastSuccessfulSvg, setLastSuccessfulSvg] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -827,9 +856,13 @@ function MermaidCardBody({
     };
   }, [graphPayload, interactiveRelayoutEnabled, onNodeRelayout, relayoutBusy, svg]);
 
+  const viewportMinCss = `min(${height}px, 51vh)`;
+  const panZoomCanvasStyle = embedded ? { minHeight: 0 } : { minHeight: viewportMinCss };
+  const showDiagram = !collapsible || diagramExpanded;
+
   const body = (
     <div
-      className={`p-4 ${embedded ? "flex h-full min-h-0 flex-col bg-zinc-950/25" : "bg-zinc-950/40"}`}
+      className={`p-4 ${embedded ? "flex h-full min-h-0 flex-col bg-surface-muted" : "bg-surface-muted"}`}
     >
         {error ? (
           <div className="mb-3 rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2.5 text-xs leading-relaxed text-amber-100">
@@ -838,15 +871,16 @@ function MermaidCardBody({
           </div>
         ) : null}
         <div
-          className={`overflow-auto rounded-xl border border-zinc-700/90 bg-zinc-950 p-4 ${
+          className={`overflow-auto rounded-xl border border-theme-subtle bg-surface-1 p-4 ${
             embedded ? "min-h-0 flex-1" : ""
           }`}
-          style={embedded ? undefined : { minHeight: height }}
+          style={embedded ? undefined : { minHeight: viewportMinCss }}
         >
-          <div className="min-h-[min(380px,52vh)]">
+          <div className={embedded ? "flex min-h-0 flex-1 flex-col" : ""}>
             <PanZoomCanvas
-              className="relative flex h-full min-h-[min(380px,52vh)] min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-zinc-800/90 bg-zinc-950/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+              className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-theme-default bg-[var(--mindmap-canvas-bg)] p-3 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
               contentClassName="min-h-0 flex-1"
+              style={panZoomCanvasStyle}
               minScale={0.55}
               maxScale={2.6}
               initialScale={1}
@@ -854,17 +888,17 @@ function MermaidCardBody({
             >
               {/* 空画布也要像画布：细网格 + 提示条 */}
               <div
-                className="pointer-events-none absolute inset-3 rounded-md opacity-[0.45]"
+                className="pointer-events-none absolute inset-3 rounded-md opacity-[var(--mindmap-grid-opacity)]"
                 aria-hidden
                 style={{
                   backgroundImage:
-                    "linear-gradient(rgba(63,63,70,0.32) 1px, transparent 1px), linear-gradient(90deg, rgba(63,63,70,0.32) 1px, transparent 1px)",
+                    "linear-gradient(var(--mindmap-grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--mindmap-grid-line) 1px, transparent 1px)",
                   backgroundSize: "24px 24px",
                   backgroundPosition: "10px 10px",
                 }}
               />
               {interactiveRelayoutEnabled ? (
-                <div className="pointer-events-none absolute bottom-3 left-3 z-[2] rounded-md border border-zinc-700/80 bg-zinc-950/80 px-2.5 py-1.5 text-[11px] text-zinc-300 shadow-lg">
+                <div className="pointer-events-none absolute bottom-3 left-3 z-[2] rounded-md border border-theme-default bg-surface-muted px-2.5 py-1.5 text-[11px] text-theme-3 shadow-lg backdrop-blur-[2px]">
                   {relayoutBusy
                     ? "Planner is reorganizing the diagram..."
                     : "Drag a node to let the current planner reorganize the graph."}
@@ -890,7 +924,7 @@ function MermaidCardBody({
           </div>
         </div>
         {!embedded && (provider || model || updatedAt) ? (
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-200">
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-theme-2">
             {updatedAt ? <span>Updated at: {updatedAt}</span> : null}
             {compileOk === false ? (
               <Tooltip.Provider delayDuration={150}>
@@ -899,9 +933,9 @@ function MermaidCardBody({
                     <span className="cursor-help underline decoration-dotted">compile warning</span>
                   </Tooltip.Trigger>
                   <Tooltip.Portal>
-                    <Tooltip.Content sideOffset={8} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-lg">
+                    <Tooltip.Content sideOffset={8} className="rounded-xl border border-theme-default bg-surface-1 px-3 py-2 text-xs text-theme-3 shadow-lg">
                       服务端已检测到 Mermaid 编译失败，并保留了最近一次可用图。
-                      <Tooltip.Arrow className="fill-white" />
+                      <Tooltip.Arrow className="fill-[var(--surface-1)]" />
                     </Tooltip.Content>
                   </Tooltip.Portal>
                 </Tooltip.Root>
@@ -910,16 +944,16 @@ function MermaidCardBody({
           </div>
         ) : null}
         {embedded && compileOk === false ? (
-          <div className="mt-4 text-xs text-slate-200">
+          <div className="mt-4 text-xs text-theme-2">
             <Tooltip.Provider delayDuration={150}>
               <Tooltip.Root>
                 <Tooltip.Trigger asChild>
                   <span className="cursor-help underline decoration-dotted">compile warning</span>
                 </Tooltip.Trigger>
                 <Tooltip.Portal>
-                  <Tooltip.Content sideOffset={8} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-lg">
+                  <Tooltip.Content sideOffset={8} className="rounded-xl border border-theme-default bg-surface-1 px-3 py-2 text-xs text-theme-3 shadow-lg">
                     服务端已检测到 Mermaid 编译失败，并保留了最近一次可用图。
-                    <Tooltip.Arrow className="fill-white" />
+                    <Tooltip.Arrow className="fill-[var(--surface-1)]" />
                   </Tooltip.Content>
                 </Tooltip.Portal>
               </Tooltip.Root>
@@ -933,21 +967,49 @@ function MermaidCardBody({
     return <div className="h-full min-h-0 overflow-hidden">{body}</div>;
   }
 
+  const headerBadges = (
+    <>
+      {provider ? <Badge>{provider}</Badge> : null}
+      {model ? <Badge>{model}</Badge> : null}
+      {typeof latencyMs === "number" ? <Badge>{latencyMs.toFixed(1)} ms</Badge> : null}
+      <MermaidCompileStatusBadge compileOk={compileOk} updatedAt={updatedAt} />
+      {headerExtra}
+    </>
+  );
+
   return (
     <Card className="overflow-hidden p-0">
-      <div className="border-b border-zinc-800 px-5 py-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-zinc-200">{title}</div>
+      {collapsible ? (
+        <button
+          type="button"
+          className="flex w-full flex-wrap items-center justify-between gap-3 border-0 border-b border-theme-default bg-transparent px-5 py-4 text-left hover:bg-surface-muted/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--ring-focus)]"
+          aria-expanded={diagramExpanded}
+          onClick={() => setDiagramExpanded((open) => !open)}
+        >
+          <div className="text-sm font-semibold text-theme-2">{title}</div>
           <div className="flex max-w-[min(100%,720px)] flex-wrap items-center justify-end gap-1.5">
-            {provider ? <Badge>{provider}</Badge> : null}
-            {model ? <Badge>{model}</Badge> : null}
-            {typeof latencyMs === "number" ? <Badge>{latencyMs.toFixed(1)} ms</Badge> : null}
-            <MermaidCompileStatusBadge compileOk={compileOk} updatedAt={updatedAt} />
-            {headerExtra}
+            {headerBadges}
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-theme-3 transition-transform ${diagramExpanded ? "rotate-180" : ""}`}
+              aria-hidden
+            />
+          </div>
+        </button>
+      ) : (
+        <div className="border-b border-theme-default px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-theme-2">{title}</div>
+            <div className="flex max-w-[min(100%,720px)] flex-wrap items-center justify-end gap-1.5">{headerBadges}</div>
           </div>
         </div>
-      </div>
-      {body}
+      )}
+      {showDiagram ? (
+        body
+      ) : (
+        <div className="border-b border-theme-default px-5 py-3 text-xs leading-snug text-theme-4">
+          图预览已收起，点击标题栏可展开查看（画布内仍可平移与缩放）。
+        </div>
+      )}
     </Card>
   );
 }
@@ -965,6 +1027,8 @@ export function MermaidCard(props: {
   updatedAt?: string | null;
   headerExtra?: ReactNode;
   embedded?: boolean;
+  collapsible?: boolean;
+  defaultDiagramExpanded?: boolean;
   graphPayload?: MermaidGraphPayload;
   onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
   relayoutBusy?: boolean;

@@ -148,17 +148,17 @@ export function ReportsDashboard() {
           <div className="grid gap-6 xl:grid-cols-3">
             <Card>
               <div className="mb-5 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-100">最近运行</div>
+                <div className="text-sm font-semibold text-theme-1">最近运行</div>
                 <Badge>{runs.data?.length ?? 0}</Badge>
               </div>
               <div className="space-y-4">
                 {runs.data?.slice(0, 6).map((item) => (
                   <div key={item.run_id} className="glass-panel p-3">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold text-slate-100">{item.title}</div>
+                      <div className="font-semibold text-theme-1">{item.title}</div>
                       <Badge>{item.status}</Badge>
                     </div>
-                    <div className="mt-1 text-xs text-slate-500">
+                    <div className="mt-1 text-xs text-theme-4">
                       {item.job_type} · {item.dataset_version_slug || "-"}
                     </div>
                   </div>
@@ -167,14 +167,14 @@ export function ReportsDashboard() {
             </Card>
             <Card>
               <div className="mb-5 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-100">研究会话</div>
+                <div className="text-sm font-semibold text-theme-1">研究会话</div>
                 <Badge>{studySessions.data?.length ?? 0}</Badge>
               </div>
               <div className="space-y-4">
                 {studySessions.data?.slice(0, 6).map((item) => (
                   <div key={item.session_id} className="glass-panel p-3">
-                    <div className="font-semibold text-slate-100">{item.participant_code}</div>
-                    <div className="mt-1 text-xs text-slate-500">
+                    <div className="font-semibold text-theme-1">{item.participant_code}</div>
+                    <div className="mt-1 text-xs text-theme-4">
                       {item.study_condition} · {item.task_title}
                     </div>
                   </div>
@@ -183,14 +183,14 @@ export function ReportsDashboard() {
             </Card>
             <Card>
               <div className="mb-5 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-100">报告归档</div>
+                <div className="text-sm font-semibold text-theme-1">报告归档</div>
                 <Badge>{reports.data?.length ?? 0}</Badge>
               </div>
               <div className="space-y-4">
                 {reports.data?.slice(0, 6).map((item) => (
                   <div key={item.report_id} className="glass-panel p-3">
-                    <div className="font-semibold text-slate-100">{item.title}</div>
-                    <div className="mt-1 text-xs text-slate-500">
+                    <div className="font-semibold text-theme-1">{item.title}</div>
+                    <div className="mt-1 text-xs text-theme-4">
                       {item.report_type} · {item.status}
                     </div>
                   </div>
@@ -203,7 +203,7 @@ export function ReportsDashboard() {
         <Tabs.Content value="study">
           <div className="grid gap-6 xl:grid-cols-2">
             <Card className="space-y-5">
-              <div className="flex items-center gap-2 text-lg font-semibold text-slate-50">
+              <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
                 <Plus className="h-5 w-5" />
                 创建研究任务
               </div>
@@ -218,7 +218,7 @@ export function ReportsDashboard() {
                 rows={4}
               />
               <select
-                className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
+                className="select-control"
                 value={taskDataset}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskDataset(event.target.value)}
               >
@@ -230,7 +230,7 @@ export function ReportsDashboard() {
               </select>
               <div className="grid gap-3 md:grid-cols-2">
                 <select
-                  className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
+                  className="select-control"
                   value={taskSplit}
                   onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskSplit(event.target.value)}
                 >
@@ -241,7 +241,7 @@ export function ReportsDashboard() {
                   ))}
                 </select>
                 <select
-                  className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
+                  className="select-control"
                   value={taskSampleId}
                   onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskSampleId(event.target.value)}
                 >
@@ -263,12 +263,12 @@ export function ReportsDashboard() {
             </Card>
 
             <Card className="space-y-5">
-              <div className="flex items-center gap-2 text-lg font-semibold text-slate-50">
+              <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
                 <Users className="h-5 w-5" />
                 发放 Participant Code
               </div>
               <select
-                className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
+                className="select-control"
                 value={selectedTaskId}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setSelectedTaskId(event.target.value)}
               >
@@ -285,7 +285,7 @@ export function ReportsDashboard() {
                 placeholder="participant id"
               />
               <select
-                className="h-10 w-full rounded-lg border border-zinc-600 bg-zinc-900/60 px-3 text-sm text-zinc-100 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-600/40"
+                className="select-control"
                 value={participantCondition}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setParticipantCondition(event.target.value)}
               >
@@ -306,7 +306,7 @@ export function ReportsDashboard() {
                 {studySessions.data?.slice(0, 8).map((item) => (
                   <div key={item.session_id} className="glass-panel p-3">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold text-slate-100">{item.participant_code}</div>
+                      <div className="font-semibold text-theme-1">{item.participant_code}</div>
                       <a
                         className="text-sm font-medium text-[var(--accent-strong)]"
                         href={`/study/${item.participant_code}`}
@@ -315,7 +315,7 @@ export function ReportsDashboard() {
                         打开任务页
                       </a>
                     </div>
-                    <div className="mt-1 text-xs text-slate-500">
+                    <div className="mt-1 text-xs text-theme-4">
                       {item.participant_id} · {item.study_condition}
                     </div>
                   </div>
@@ -333,8 +333,8 @@ export function ReportsDashboard() {
               ["realtime", "实时会话"],
             ].map(([target, label]) => (
               <Card key={target} className="lift-hover space-y-5">
-                <div className="text-lg font-semibold text-slate-50">{label}</div>
-                <p className="text-sm leading-6 text-slate-400">
+                <div className="text-lg font-semibold text-theme-1">{label}</div>
+                <p className="text-sm leading-6 text-theme-3">
                   导出为 JSON、CSV 或 Markdown，支持实验复现、论文整理和归档审计。
                 </p>
                 <div className="flex flex-wrap gap-2">

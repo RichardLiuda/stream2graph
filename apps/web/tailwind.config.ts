@@ -21,7 +21,12 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    function themeVariants({ addVariant }: { addVariant: (name: string, def: string) => void }) {
+      addVariant("theme-dark", '[data-theme="dark"] &');
+      addVariant("theme-light", '[data-theme="light"] &');
+    },
+  ],
 };
 
 export default config;

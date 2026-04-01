@@ -1,7 +1,7 @@
 "use client";
 
 import { Minus, Plus, RotateCcw } from "lucide-react";
-import { type PropsWithChildren, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type PropsWithChildren, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@stream2graph/ui";
 
@@ -14,6 +14,7 @@ type Point = { x: number; y: number };
 export function PanZoomCanvas({
   className = "",
   contentClassName = "",
+  style: styleProp,
   minScale = 0.6,
   maxScale = 2.4,
   initialScale = 1,
@@ -22,6 +23,8 @@ export function PanZoomCanvas({
 }: PropsWithChildren<{
   className?: string;
   contentClassName?: string;
+  /** Merged with internal `touchAction: none`. */
+  style?: CSSProperties;
   minScale?: number;
   maxScale?: number;
   initialScale?: number;
@@ -76,25 +79,13 @@ export function PanZoomCanvas({
     if (!el) return;
 
     const onWheel = (event: WheelEvent) => {
-      // 画布内滚轮：默认缩放；若是横向滚动/按住 Shift，则平移（支持左右移动）
+      // 画布内滚轮：只做缩放，不做任何平移
       event.preventDefault();
-      const { scale: currentScale, offset: currentOffset } = stateRef.current;
-      const absX = Math.abs(event.deltaX);
-      const absY = Math.abs(event.deltaY);
-
-      const preferPan = event.shiftKey || absX > absY;
-      if (preferPan) {
-        // wheel/trackpad pan: deltaX 控制左右，deltaY 控制上下（按需可用）
-        setOffset({
-          x: currentOffset.x - event.deltaX,
-          y: currentOffset.y - event.deltaY,
-        });
-        return;
-      }
-
-      const delta = -event.deltaY;
-      const intensity = 0.0018;
-      const next = currentScale * (1 + delta * intensity);
+      const { scale: currentScale } = stateRef.current;
+      const zoomIntensity = 0.0015;
+      // 指数缩放更稳定，避免大 delta 时突兀跳变
+      const scaleFactor = Math.exp(-event.deltaY * zoomIntensity);
+      const next = currentScale * scaleFactor;
       zoomTo(next, { x: event.clientX, y: event.clientY });
     };
 
@@ -135,10 +126,10 @@ export function PanZoomCanvas({
         dragRef.current = null;
         setDragging(false);
       }}
-      style={{ touchAction: "none" }}
+      style={{ touchAction: "none", ...styleProp }}
     >
       <div
-        className={`absolute right-3 top-3 z-[5] flex items-center gap-1.5 rounded-lg border border-zinc-700/80 bg-zinc-950/70 p-1.5 shadow-lg`}
+        className={`absolute right-3 top-3 z-[5] flex items-center gap-1.5 rounded-lg border border-[color:var(--panzoom-chrome-border)] bg-[var(--panzoom-chrome-bg)] p-1.5 shadow-lg`}
         data-panzoom-controls
       >
         <Button
@@ -150,7 +141,7 @@ export function PanZoomCanvas({
         >
           <Minus className="h-4 w-4" />
         </Button>
-        <div className="min-w-[56px] select-none text-center text-[11px] font-semibold text-zinc-300">
+        <div className="min-w-[56px] select-none text-center text-[11px] font-semibold text-[color:var(--panzoom-chrome-text)]">
           {Math.round(scale * 100)}%
         </div>
         <Button
@@ -162,7 +153,7 @@ export function PanZoomCanvas({
         >
           <Plus className="h-4 w-4" />
         </Button>
-        <div className="mx-1 h-6 w-px bg-zinc-800" aria-hidden />
+        <div className="mx-1 h-6 w-px bg-[var(--panzoom-chrome-divider)]" aria-hidden />
         <Button
           type="button"
           variant="ghost"
