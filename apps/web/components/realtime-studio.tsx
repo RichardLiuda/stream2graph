@@ -1775,7 +1775,7 @@ export function RealtimeStudio() {
 
       <div className="flex h-full flex-col overflow-hidden space-y-4">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2 md:gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 pl-3 md:gap-3 md:pl-6 lg:pl-8">
             <h1 className="page-title">实时工作台</h1>
             <p className="hidden max-w-md text-[11px] leading-snug text-zinc-500 md:block">
               开麦或发送 Transcript 后，主图与结构视图会更新。

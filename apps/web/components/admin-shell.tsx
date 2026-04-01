@@ -136,7 +136,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </Card>
       </aside>
 
-      <div className="soft-enter soft-enter-delay-1 relative z-[1] min-w-0 px-4 py-5 pl-[calc(1rem+2.75rem+1.25rem)] pt-14 md:px-8 md:py-7 md:pl-[calc(1rem+2.75rem+2.25rem)] md:pt-16 lg:px-10 xl:px-12">
+      <div className="soft-enter soft-enter-delay-1 relative z-[1] min-w-0 px-4 py-5 pl-[calc(1rem+2.75rem+1.25rem)] pt-4 md:px-8 md:py-7 md:pl-[calc(1rem+2.75rem+2.25rem)] md:pt-6 lg:px-10 xl:px-12">
         <div className="workspace-content">{children}</div>
       </div>
     </div>
