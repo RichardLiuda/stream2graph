@@ -1961,7 +1961,7 @@ export function RealtimeStudio() {
         </div>
         <div className="flex-1 min-h-0 overflow-hidden pb-0 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(240px,320px)_minmax(0,1fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
         {studioPage === 1 ? (
-          <Card className="soft-enter order-1 flex h-full min-h-0 min-w-0 flex-col space-y-3 overflow-hidden text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none max-h-[calc(100%-46px)]">
+          <Card className="soft-enter order-1 flex min-h-0 min-w-0 flex-col space-y-3 overflow-hidden text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none">
           <div className="shrink-0 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="text-sm font-semibold text-theme-1">输入来源</label>
@@ -2172,7 +2172,7 @@ export function RealtimeStudio() {
         >
           <div className="soft-enter soft-enter-delay-1 flex min-h-0 min-w-0 flex-1 flex-col">
             <Tabs.Root value={stageTab} onValueChange={setStageTab} className="flex min-h-0 flex-1 flex-col">
-            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-surface-1 p-0 shadow-lg max-h-[calc(100%-46px)]">
+            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-surface-1 p-0 shadow-lg">
               <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-2 pt-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <Tabs.List className="workspace-tab-list w-full max-w-[760px] grid-cols-5 self-start">
@@ -2313,8 +2313,8 @@ export function RealtimeStudio() {
                 </div>
               </div>
 
-            <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-            <Tabs.Content value="mermaid" className="flex h-full min-h-0 flex-col outline-none">
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <Tabs.Content value="mermaid" className="absolute inset-0 flex min-h-0 flex-col outline-none">
               <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-3 pt-1 sm:px-3">
                 <MermaidCard
                   title=""
@@ -2336,23 +2336,23 @@ export function RealtimeStudio() {
               </div>
             </Tabs.Content>
 
-            <Tabs.Content value="structure">
-              <div className="flex h-full min-h-0 px-4 py-2">
-                <Card className="flex-1 rounded-xl border border-theme-default bg-surface-muted p-2">
-                  <div className="h-full min-h-0 overflow-hidden rounded-lg">
-              <GraphStage
-                embedded
-                title="结构图"
-                nodes={rendererState.nodes || []}
-                edges={rendererState.edges || []}
-                groups={rendererGroups}
-              />
+            <Tabs.Content value="structure" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+              <div className="flex min-h-0 flex-1 px-4 py-2">
+                <Card className="flex-1 min-h-0 rounded-xl border border-theme-default bg-surface-muted p-2">
+                  <div className="flex-1 min-h-0 overflow-hidden rounded-lg">
+                    <GraphStage
+                      embedded
+                      title="结构图"
+                      nodes={rendererState.nodes || []}
+                      edges={rendererState.edges || []}
+                      groups={rendererGroups}
+                    />
                   </div>
                 </Card>
               </div>
             </Tabs.Content>
 
-            <Tabs.Content value="events" className="h-full min-h-0">
+            <Tabs.Content value="events" className="absolute inset-0 flex min-h-0 flex-col outline-none">
               <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div className="mb-5 flex items-center justify-between gap-4">
                   <div>
@@ -2402,29 +2402,33 @@ export function RealtimeStudio() {
               </Card>
             </Tabs.Content>
 
-            <Tabs.Content value="metrics">
-              <div className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  {summaryCards.map((item) => (
-                    <StatCard key={item.label} label={item.label} value={String(item.value)} />
-                  ))}
+            <Tabs.Content value="metrics" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+              <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-2">
+                <div className="space-y-6">
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    {summaryCards.map((item) => (
+                      <StatCard key={item.label} label={item.label} value={String(item.value)} />
+                    ))}
+                  </div>
+                  <Card>
+                    <div className="mb-4 text-sm font-semibold text-theme-1">效果数据</div>
+                    <pre className="rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
+                      {JSON.stringify(snapshot?.evaluation || {}, null, 2)}
+                    </pre>
+                  </Card>
                 </div>
-                <Card>
-                  <div className="mb-4 text-sm font-semibold text-theme-1">效果数据</div>
-                  <pre className="rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
-                    {JSON.stringify(snapshot?.evaluation || {}, null, 2)}
-                  </pre>
-                </Card>
               </div>
             </Tabs.Content>
 
-            <Tabs.Content value="pipeline">
-              <Card>
-                <div className="mb-4 text-sm font-semibold text-theme-1">处理步骤摘要</div>
-                <pre className="rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
-                  {JSON.stringify(snapshot?.pipeline?.summary || {}, null, 2)}
-                </pre>
-              </Card>
+            <Tabs.Content value="pipeline" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+              <div className="flex min-h-0 flex-1 flex-col">
+                <Card className="flex-1 min-h-0 overflow-hidden">
+                  <div className="mb-4 text-sm font-semibold text-theme-1 px-5 pt-5">处理步骤摘要</div>
+                  <pre className="max-h-full overflow-auto rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
+                    {JSON.stringify(snapshot?.pipeline?.summary || {}, null, 2)}
+                  </pre>
+                </Card>
+              </div>
             </Tabs.Content>
             </div>
             <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 px-4 py-2.5">
