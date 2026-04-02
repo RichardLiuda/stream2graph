@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -32,10 +33,12 @@ from app.services.runtime_sessions import (
     save_snapshot,
 )
 from app.services.voiceprints import blind_recognize_speaker
+from app.services.xfyun_asr import close_rtasr_session_stream
 
 
 router = APIRouter(prefix="/realtime/sessions", tags=["realtime"])
 logger = logging.getLogger(__name__)
+MAX_REALTIME_CHUNK_TIMESTAMP_MS = 2_147_483_647
 
 
 def _log_runtime_event(message: str, payload: dict) -> None:
@@ -49,16 +52,25 @@ def _get_session_or_404(db: Session, session_id: str) -> RealtimeSession:
     return obj
 
 
-def _timestamp_for_chunk(db: Session, session_id: str, requested: int | None) -> int:
+def _normalize_requested_timestamp_ms(obj: RealtimeSession, requested: int) -> int:
+    value = int(requested)
+    if value <= MAX_REALTIME_CHUNK_TIMESTAMP_MS:
+        return max(0, value)
+    session_started_ms = int(obj.created_at.timestamp() * 1000)
+    relative_ms = max(0, value - session_started_ms)
+    return min(relative_ms, MAX_REALTIME_CHUNK_TIMESTAMP_MS)
+
+
+def _timestamp_for_chunk(db: Session, obj: RealtimeSession, requested: int | None) -> int:
     if requested is not None:
-        return requested
+        return _normalize_requested_timestamp_ms(obj, requested)
     last_ts = db.scalar(
         select(RealtimeChunk.timestamp_ms)
-        .where(RealtimeChunk.session_id == session_id)
+        .where(RealtimeChunk.session_id == obj.id)
         .order_by(RealtimeChunk.sequence_no.desc())
         .limit(1)
     )
-    return 0 if last_ts is None else int(last_ts) + 450
+    return 0 if last_ts is None else min(int(last_ts) + 450, MAX_REALTIME_CHUNK_TIMESTAMP_MS)
 
 
 def _rebuild_snapshot(db: Session, obj: RealtimeSession, runtime) -> tuple[dict, dict]:
@@ -118,6 +130,40 @@ def _merge_input_runtime_metadata(obj: RealtimeSession, metadata: dict) -> None:
                 **metadata,
             },
         }
+
+
+def _normalize_segments(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text", "")).strip()
+        if not text:
+            continue
+        rows.append(item)
+    return rows
+
+
+def _role_split_voiceprint_summary(segments: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not segments:
+        return None
+    resolved_by_feature = [item for item in segments if str(item.get("speaker_resolution_source", "")).strip() == "rtasr_feature"]
+    speakers = [str(item.get("speaker", "")).strip() for item in segments if str(item.get("speaker", "")).strip()]
+    return {
+        "matched": bool(resolved_by_feature),
+        "mode": "feature_split" if resolved_by_feature else "blind_split",
+        "role_separated": True,
+        "speaker_count": len(set(speakers)),
+        "segment_count": len(segments),
+        "feature_ids": [
+            str(item.get("feature_id", "")).strip()
+            for item in resolved_by_feature
+            if str(item.get("feature_id", "")).strip()
+        ],
+        "error_message": None,
+    }
 
 
 @router.get("", response_model=list[RealtimeSessionSchema])
@@ -203,7 +249,7 @@ def get_session(session_id: str, db: Session = Depends(get_db)) -> RealtimeSessi
 @router.post("/{session_id}/chunks")
 def add_chunk(session_id: str, payload: RealtimeChunkCreateRequest, db: Session = Depends(get_db)) -> dict:
     obj = _get_session_or_404(db, session_id)
-    timestamp_ms = _timestamp_for_chunk(db, session_id, payload.timestamp_ms)
+    timestamp_ms = _timestamp_for_chunk(db, obj, payload.timestamp_ms)
     _log_runtime_event(
         "Realtime chunk ingest requested",
         {
@@ -252,7 +298,7 @@ def add_chunk_batch(session_id: str, payload: RealtimeChunkBatchCreateRequest, d
     runtime = restore_runtime_if_needed(db, obj)
     last_metadata: dict = {}
     for row in payload.chunks:
-        timestamp_ms = _timestamp_for_chunk(db, session_id, row.timestamp_ms)
+        timestamp_ms = _timestamp_for_chunk(db, obj, row.timestamp_ms)
         _log_runtime_event(
             "Realtime chunk buffered",
             {
@@ -335,6 +381,8 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
                 "pcm_s16le_base64": payload.pcm_s16le_base64,
                 "sample_rate": payload.sample_rate,
                 "channel_count": payload.channel_count,
+                "is_final": payload.is_final,
+                "speaker": payload.speaker,
             },
         )
     except Exception as exc:
@@ -346,41 +394,81 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
         )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    recognized_speaker = payload.speaker
-    voiceprint_result = blind_recognize_speaker(
-        db,
-        stt_profile_id=str((stt_profile or {}).get("id", runtime_options.get("stt_profile_id") or "")),
-        profile=stt_profile,
-        pcm_s16le_base64=payload.pcm_s16le_base64,
-        sample_rate=payload.sample_rate,
-        channel_count=payload.channel_count,
-        fallback_speaker=payload.speaker,
-    )
-    if isinstance(voiceprint_result, dict) and voiceprint_result.get("matched"):
-        recognized_speaker = str(voiceprint_result.get("speaker_label", payload.speaker) or payload.speaker)
-
     pipeline = obj.pipeline_payload if isinstance(obj.pipeline_payload, dict) else {}
     evaluation = obj.evaluation_payload if isinstance(obj.evaluation_payload, dict) else {}
-    if result["text"]:
-        merged_metadata = {
-            **(payload.metadata if isinstance(payload.metadata, dict) else {}),
-            "transcription_backend": "api_stt",
-            "stt_provider": result["provider"],
-            "stt_model": result["model"],
-        }
-        if voiceprint_result is not None:
-            merged_metadata["voiceprint_result"] = voiceprint_result
-        _emitted, pipeline, evaluation = _ingest_transcript_payload(
-            db,
-            obj,
-            timestamp_ms=_timestamp_for_chunk(db, session_id, payload.timestamp_ms),
-            text=result["text"],
-            speaker=recognized_speaker,
-            is_final=payload.is_final,
-            expected_intent=None,
-            metadata=merged_metadata,
-        )
+    recognized_speaker = str(result.get("speaker", payload.speaker) or payload.speaker)
+    normalized_segments = _normalize_segments(result.get("segments"))
+    voiceprint_result: dict[str, Any] | None = None
+    base_metadata = {
+        **(payload.metadata if isinstance(payload.metadata, dict) else {}),
+        "transcription_backend": "api_stt",
+        "stt_provider": result["provider"],
+        "stt_model": result["model"],
+        "role_type": 2,
+    }
+    if str(result.get("sid", "")).strip():
+        base_metadata["rtasr_sid"] = str(result.get("sid", "")).strip()
+
+    if normalized_segments:
+        base_timestamp_ms = _timestamp_for_chunk(db, obj, payload.timestamp_ms)
+        for index, segment in enumerate(normalized_segments):
+            merged_metadata = {
+                **base_metadata,
+                "seg_id": int(segment.get("seg_id", -1) or -1),
+                "rtasr_role_label": str(segment.get("speaker", "")).strip(),
+                "rtasr_role_index": int(segment.get("role_index", 0) or 0),
+                "feature_id": str(segment.get("feature_id", "")).strip(),
+                "speaker_resolution_source": str(segment.get("speaker_resolution_source", "rtasr_role")).strip()
+                or "rtasr_role",
+            }
+            _emitted, pipeline, evaluation = _ingest_transcript_payload(
+                db,
+                obj,
+                timestamp_ms=base_timestamp_ms + index,
+                text=str(segment.get("text", "")).strip(),
+                speaker=str(segment.get("speaker", payload.speaker) or payload.speaker),
+                is_final=payload.is_final,
+                expected_intent=None,
+                metadata=merged_metadata,
+            )
         db.commit()
+        unique_speakers = {
+            str(segment.get("speaker", "")).strip()
+            for segment in normalized_segments
+            if str(segment.get("speaker", "")).strip()
+        }
+        if len(unique_speakers) == 1:
+            recognized_speaker = next(iter(unique_speakers))
+        elif unique_speakers:
+            recognized_speaker = "multi_speaker"
+        voiceprint_result = _role_split_voiceprint_summary(normalized_segments)
+    else:
+        voiceprint_result = blind_recognize_speaker(
+            db,
+            stt_profile_id=str((stt_profile or {}).get("id", runtime_options.get("stt_profile_id") or "")),
+            profile=stt_profile,
+            pcm_s16le_base64=payload.pcm_s16le_base64,
+            sample_rate=payload.sample_rate,
+            channel_count=payload.channel_count,
+            fallback_speaker=payload.speaker,
+        )
+        if isinstance(voiceprint_result, dict) and voiceprint_result.get("matched"):
+            recognized_speaker = str(voiceprint_result.get("speaker_label", payload.speaker) or payload.speaker)
+        if result["text"]:
+            merged_metadata = dict(base_metadata)
+            if voiceprint_result is not None:
+                merged_metadata["voiceprint_result"] = voiceprint_result
+            _emitted, pipeline, evaluation = _ingest_transcript_payload(
+                db,
+                obj,
+                timestamp_ms=_timestamp_for_chunk(db, obj, payload.timestamp_ms),
+                text=result["text"],
+                speaker=recognized_speaker,
+                is_final=payload.is_final,
+                expected_intent=None,
+                metadata=merged_metadata,
+            )
+            db.commit()
     _log_runtime_event(
         "Realtime audio transcription completed",
         {
@@ -390,6 +478,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
             "latency_ms": result.get("latency_ms"),
             "text_chars": len(result.get("text", "") or ""),
             "recognized_speaker": recognized_speaker,
+            "segment_count": len(normalized_segments),
             "voiceprint_matched": bool((voiceprint_result or {}).get("matched")) if isinstance(voiceprint_result, dict) else False,
             "gate_state": pipeline.get("gate_state") if isinstance(pipeline, dict) else None,
             "planner_state": pipeline.get("planner_state") if isinstance(pipeline, dict) else None,
@@ -404,6 +493,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
         provider=result["provider"],
         model=result["model"],
         latency_ms=result["latency_ms"],
+        segments=normalized_segments or None,
         pipeline=pipeline,
         evaluation=evaluation,
     )
@@ -449,6 +539,7 @@ def close_session(session_id: str, db: Session = Depends(get_db)) -> dict[str, b
     obj.closed_at = utc_now()
     obj.updated_at = utc_now()
     db.commit()
+    close_rtasr_session_stream(session_id)
     drop_runtime(session_id)
     return {"ok": True, "session_id": session_id, "closed": True}
 

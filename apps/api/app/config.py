@@ -9,9 +9,26 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-DEFAULT_XFYUN_VOICEPRINT_BASE = "https://api.xf-yun.com"
-DEFAULT_XFYUN_ASR_ENDPOINT = "wss://iat-api.xfyun.cn/v2/iat"
-DEFAULT_XFYUN_ASR_MODELS = ["iat", "xfime-mianqie"]
+DEFAULT_XFYUN_VOICEPRINT_BASE = "https://office-api-personal-dx.iflyaisol.com"
+LEGACY_XFYUN_VOICEPRINT_BASE = "https://api.xf-yun.com"
+DEFAULT_XFYUN_ASR_ENDPOINT = "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1"
+LEGACY_XFYUN_ASR_ENDPOINT = "wss://iat-api.xfyun.cn/v2/iat"
+DEFAULT_XFYUN_ASR_MODELS = ["rtasr_llm"]
+
+
+def _normalize_stt_models(models: Any, default_model: str) -> tuple[list[str], str]:
+    raw_models = models
+    if isinstance(raw_models, str):
+        raw_models = [part.strip() for part in raw_models.split(",") if part.strip()]
+    if not isinstance(raw_models, list):
+        raw_models = []
+    normalized_models = [str(model).strip() for model in raw_models if str(model).strip()]
+    if not normalized_models or any(model in {"iat", "xfime-mianqie"} for model in normalized_models):
+        normalized_models = list(DEFAULT_XFYUN_ASR_MODELS)
+    resolved_default = str(default_model or "").strip()
+    if not resolved_default or resolved_default in {"iat", "xfime-mianqie"} or resolved_default not in normalized_models:
+        resolved_default = normalized_models[0]
+    return normalized_models, resolved_default
 
 
 class Settings(BaseSettings):
@@ -76,10 +93,6 @@ class Settings(BaseSettings):
             if not isinstance(item, dict):
                 continue
             models = item.get("models", [])
-            if isinstance(models, str):
-                models = [part.strip() for part in models.split(",") if part.strip()]
-            if not isinstance(models, list):
-                models = []
             voiceprint = item.get("voiceprint")
             if not isinstance(voiceprint, dict):
                 voiceprint = None
@@ -96,8 +109,8 @@ class Settings(BaseSettings):
                 "api_key": str(item.get("api_key", "")).strip(),
                 "api_key_env": str(item.get("api_key_env", "")).strip(),
                 "api_secret_env": str(item.get("api_secret_env", "")).strip(),
-                "models": [str(model).strip() for model in models if str(model).strip()],
-                "default_model": str(item.get("default_model", "")).strip(),
+                "models": [],
+                "default_model": "",
                 "provider_kind": str(
                     item.get("provider_kind", "xfyun_asr" if kind == "stt" else "openai_compatible")
                 ).strip()
@@ -107,11 +120,13 @@ class Settings(BaseSettings):
             if api_secret:
                 row["api_secret"] = api_secret
             if voiceprint is not None:
+                voiceprint_api_base = str(voiceprint.get("api_base", DEFAULT_XFYUN_VOICEPRINT_BASE)).strip() or DEFAULT_XFYUN_VOICEPRINT_BASE
+                if voiceprint_api_base.rstrip("/") == LEGACY_XFYUN_VOICEPRINT_BASE:
+                    voiceprint_api_base = DEFAULT_XFYUN_VOICEPRINT_BASE
                 row["voiceprint"] = {
                     "enabled": bool(voiceprint.get("enabled", False)),
                     "provider_kind": str(voiceprint.get("provider_kind", "xfyun_isv")).strip() or "xfyun_isv",
-                    "api_base": str(voiceprint.get("api_base", DEFAULT_XFYUN_VOICEPRINT_BASE)).strip()
-                    or DEFAULT_XFYUN_VOICEPRINT_BASE,
+                    "api_base": voiceprint_api_base,
                     "app_id": str(voiceprint.get("app_id", "")).strip(),
                     "api_key": str(voiceprint.get("api_key", "")).strip(),
                     "api_secret": str(voiceprint.get("api_secret", "")).strip(),
@@ -120,10 +135,18 @@ class Settings(BaseSettings):
                     "top_k": int(voiceprint.get("top_k", 3) or 3),
                 }
             if kind == "stt" and row["provider_kind"] == "xfyun_asr":
+                if row["endpoint"].rstrip("/") == LEGACY_XFYUN_ASR_ENDPOINT:
+                    row["endpoint"] = DEFAULT_XFYUN_ASR_ENDPOINT
                 if not row["endpoint"]:
                     row["endpoint"] = DEFAULT_XFYUN_ASR_ENDPOINT
-                if not row["models"]:
-                    row["models"] = list(DEFAULT_XFYUN_ASR_MODELS)
+                row["models"], row["default_model"] = _normalize_stt_models(models, str(item.get("default_model", "")).strip())
+            else:
+                if isinstance(models, str):
+                    models = [part.strip() for part in models.split(",") if part.strip()]
+                if not isinstance(models, list):
+                    models = []
+                row["models"] = [str(model).strip() for model in models if str(model).strip()]
+                row["default_model"] = str(item.get("default_model", "")).strip()
             if row["id"] and row["endpoint"] and row["models"]:
                 if not row["default_model"]:
                     row["default_model"] = row["models"][0]

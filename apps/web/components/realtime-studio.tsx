@@ -239,6 +239,19 @@ function formatLiveTranscript(text: string) {
   return text.trim() || "等待识别结果...";
 }
 
+function formatApiTranscriptSegments(segments: Array<Record<string, any>> | null | undefined) {
+  if (!segments?.length) return "";
+  return segments
+    .map((item) => {
+      const text = String(item?.text || "").trim();
+      if (!text) return "";
+      const speaker = String(item?.speaker || "").trim();
+      return speaker ? `${speaker}: ${text}` : text;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
 function backendLabel(backend: RecognitionBackend) {
   switch (backend) {
     case "browser_speech":
@@ -248,7 +261,7 @@ function backendLabel(backend: RecognitionBackend) {
     case "local_helper":
       return "本机处理";
     case "api_stt":
-      return "讯飞云端";
+      return "讯飞 RTASR";
     default:
       return "手动输入";
   }
@@ -289,7 +302,7 @@ function buildBackendOptions(source: InputSource, helperCapabilities: HelperCapa
   }
   if (source === "microphone_browser") {
     return [
-      { value: "api_stt" as const, label: "讯飞云端听写" },
+      { value: "api_stt" as const, label: "讯飞 RTASR（支持角色分离）" },
       { value: "browser_speech" as const, label: "浏览器听写（不支持多人声纹）" },
     ];
   }
@@ -297,7 +310,7 @@ function buildBackendOptions(source: InputSource, helperCapabilities: HelperCapa
     return [{ value: "browser_display_validation" as const, label: "试共享声音" }];
   }
   const options = [
-    { value: "api_stt" as const, label: "讯飞云端听写" },
+    { value: "api_stt" as const, label: "讯飞 RTASR（支持角色分离）" },
     {
       value: "local_helper" as const,
       label: "本机处理（不支持多人声纹）",
@@ -957,8 +970,11 @@ export function RealtimeStudio() {
         pipeline: response.pipeline,
         evaluation: response.evaluation,
       });
-      if (response.text.trim()) {
-        const labeledText = response.speaker ? `${response.speaker}: ${response.text.trim()}` : response.text.trim();
+      const segmentedPreview = formatApiTranscriptSegments(response.segments);
+      const previewText = segmentedPreview || response.text.trim();
+      if (previewText) {
+        const labeledText =
+          segmentedPreview || (response.speaker ? `${response.speaker}: ${response.text.trim()}` : response.text.trim());
         studioSend({ type: "transcript.preview", text: labeledText });
         studioSend({ type: "stt.success", text: labeledText });
       }
@@ -969,9 +985,20 @@ export function RealtimeStudio() {
         latency_ms: response.latency_ms,
         speaker: response.speaker,
         text: response.text,
+        segments: response.segments ?? null,
         voiceprint: response.voiceprint ?? null,
       });
-      if (response.voiceprint?.matched) {
+      if (response.voiceprint?.mode === "feature_split") {
+        setNotice({
+          tone: "success",
+          text: "RTASR 声纹分离中：角色已优先映射到已注册说话人。",
+        });
+      } else if (response.voiceprint?.mode === "blind_split") {
+        setNotice({
+          tone: "info",
+          text: "RTASR 角色分离中：当前为盲分模式，未命中已注册声纹。",
+        });
+      } else if (response.voiceprint?.matched) {
         setNotice({
           tone: "success",
           text: `声纹盲认命中：本段音频归属于 ${response.speaker}。`,

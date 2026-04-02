@@ -94,6 +94,24 @@ class RuntimeModelProbeResponse(BaseModel):
     models: list[str]
 
 
+class RuntimeConnectionTestRequest(BaseModel):
+    endpoint: str
+    provider_kind: str = "openai_compatible"
+    app_id: str | None = None
+    api_key: str | None = None
+    api_key_env: str | None = None
+    api_secret: str | None = None
+    api_secret_env: str | None = None
+    voiceprint: dict[str, Any] | None = None
+
+
+class RuntimeConnectionTestResponse(BaseModel):
+    ok: bool
+    provider_kind: str
+    summary: str
+    logs: list[str] = Field(default_factory=list)
+
+
 class SampleListItem(BaseModel):
     sample_id: str
     diagram_type: str
@@ -214,6 +232,7 @@ class RealtimeAudioTranscriptionResponse(BaseModel):
     ok: bool
     text: str
     speaker: str
+    segments: list[dict[str, Any]] | None = None
     voiceprint: dict[str, Any] | None = None
     is_final: bool
     provider: str

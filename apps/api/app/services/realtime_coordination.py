@@ -670,6 +670,11 @@ def _build_ssl_context() -> ssl.SSLContext:
     return ssl.create_default_context(cafile=certifi.where())
 
 
+REALTIME_LLM_TIMEOUT_SEC = 12
+REALTIME_LLM_MAX_RETRIES = 1
+REALTIME_LLM_RETRY_BACKOFF_SEC = 0.5
+
+
 def build_chat_client(profile: dict[str, Any], model: str):
     provider_kind = str(profile.get("provider_kind", "openai_compatible") or "openai_compatible").strip()
     api_key, api_key_env = _resolve_api_key(profile)
@@ -678,6 +683,9 @@ def build_chat_client(profile: dict[str, Any], model: str):
         "model": model,
         "api_key": api_key,
         "api_key_env": api_key_env or "OPENAI_API_KEY",
+        "timeout_sec": REALTIME_LLM_TIMEOUT_SEC,
+        "max_retries": REALTIME_LLM_MAX_RETRIES,
+        "retry_backoff_sec": REALTIME_LLM_RETRY_BACKOFF_SEC,
         "temperature": 0.0,
         "omit_temperature": False,
         "extra_body": {},
@@ -827,17 +835,6 @@ class CoordinationRuntimeSession:
             if isinstance(config_snapshot, dict) and isinstance(config_snapshot.get("runtime_options"), dict)
             else {}
         )
-        if not any(
-            str(runtime_options.get(key) or "").strip()
-            for key in ("gate_profile_id", "planner_profile_id")
-        ):
-            return cls(
-                session_id=session_id,
-                diagram_type=str(payload.get("graph_state", {}).get("diagram_type", "flowchart")),
-                read_only=True,
-                stored_pipeline=payload,
-                stored_evaluation=evaluation_payload if isinstance(evaluation_payload, dict) else {},
-            )
 
         graph_state = payload.get("graph_state", {}) if isinstance(payload.get("graph_state"), dict) else {}
         graph_payload = graph_state.get("current_graph_ir")

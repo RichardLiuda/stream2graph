@@ -9,6 +9,8 @@ from app.models import DatasetVersion
 from app.schemas import (
     DatasetSplitSummary,
     DatasetVersionSummary,
+    RuntimeConnectionTestRequest,
+    RuntimeConnectionTestResponse,
     RuntimeOptionProfile,
     RuntimeOptionProfileConfig,
     RuntimeModelProbeRequest,
@@ -25,6 +27,7 @@ from app.services.runtime_options import (
     list_runtime_options,
     probe_runtime_models,
     save_runtime_options,
+    test_runtime_connection,
 )
 
 
@@ -82,6 +85,23 @@ def probe_runtime_models_admin(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return RuntimeModelProbeResponse(ok=True, **result)
+
+
+@router.post("/runtime-options/admin/test-connection", response_model=RuntimeConnectionTestResponse)
+def test_runtime_connection_admin(
+    payload: RuntimeConnectionTestRequest,
+) -> RuntimeConnectionTestResponse:
+    result = test_runtime_connection(
+        endpoint=payload.endpoint,
+        provider_kind=payload.provider_kind,
+        app_id=payload.app_id,
+        api_key=payload.api_key,
+        api_key_env=payload.api_key_env,
+        api_secret=payload.api_secret,
+        api_secret_env=payload.api_secret_env,
+        voiceprint=payload.voiceprint,
+    )
+    return RuntimeConnectionTestResponse(**result)
 
 
 @router.get("/datasets", response_model=list[DatasetVersionSummary])

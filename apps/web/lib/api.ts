@@ -56,6 +56,13 @@ const runtimeModelProbeSchema = z.object({
   models: z.array(z.string()),
 });
 
+const runtimeConnectionTestSchema = z.object({
+  ok: z.boolean(),
+  provider_kind: z.string(),
+  summary: z.string(),
+  logs: z.array(z.string()),
+});
+
 export class ApiError extends Error {
   status: number;
   payload: unknown;
@@ -127,15 +134,30 @@ function messageFromErrorPayload(raw: Record<string, unknown>): string {
   return "请求失败";
 }
 
-const REQUEST_TIMEOUT_MS = 25_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 25_000;
+const REALTIME_AUDIO_TRANSCRIPTION_TIMEOUT_MS = 90_000;
 
+function shouldLogAsInfo(path: string, response: Response, raw: unknown) {
+  return (
+    path === "/api/v1/auth/me" &&
+    response.status === 401 &&
+    typeof raw === "object" &&
+    raw !== null &&
+    "detail" in raw &&
+    (raw as { detail?: unknown }).detail === "not authenticated"
+  );
+}
 async function request<TSchema extends z.ZodTypeAny>(
   path: string,
   schema: TSchema,
   init?: RequestInit,
+  options?: {
+    timeoutMs?: number;
+  },
 ): Promise<z.infer<TSchema>> {
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(apiUrl(path), {
       credentials: "include",
@@ -155,6 +177,7 @@ async function request<TSchema extends z.ZodTypeAny>(
       raw = { detail: text || response.statusText };
     }
     if (!response.ok) {
+      const logLevel = shouldLogAsInfo(path, response, raw) ? "info" : "error";
       logBrowserApiEvent(
         "request failed",
         {
@@ -219,6 +242,11 @@ export const api = {
     }),
   probeRuntimeModels: async (payload: Record<string, unknown>) =>
     request("/api/v1/catalog/runtime-options/admin/probe-models", runtimeModelProbeSchema, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  testRuntimeConnection: async (payload: Record<string, unknown>) =>
+    request("/api/v1/catalog/runtime-options/admin/test-connection", runtimeConnectionTestSchema, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -310,6 +338,9 @@ export const api = {
       {
         method: "POST",
         body: JSON.stringify(payload),
+      },
+      {
+        timeoutMs: REALTIME_AUDIO_TRANSCRIPTION_TIMEOUT_MS,
       },
     ),
   snapshotRealtime: async (sessionId: string) =>

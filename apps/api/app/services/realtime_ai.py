@@ -17,10 +17,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import RealtimeChunk, RealtimeSession
+from app.models import RealtimeChunk, RealtimeSession, VoiceprintFeature
 from app.services.runtime_options import resolve_profile
 from app.services.xfyun_asr import (
     DEFAULT_XFYUN_ASR_ENDPOINT,
+    DEFAULT_XFYUN_ASR_MODELS,
     XFYUN_ASR_PROVIDER_KIND,
     transcribe_pcm_s16le_with_xfyun,
 )
@@ -407,6 +408,13 @@ def _pcm_s16le_to_wav_bytes(raw_pcm: bytes, sample_rate: int, channel_count: int
     return output.getvalue()
 
 
+def _normalize_xfyun_model_name(model: str) -> str:
+    normalized = str(model or "").strip()
+    if normalized in {"", "iat", "xfime-mianqie"}:
+        return DEFAULT_XFYUN_ASR_MODELS[0]
+    return normalized
+
+
 def transcribe_audio_chunk(db: Session, session_obj: RealtimeSession, payload: dict[str, Any]) -> dict[str, Any]:
     runtime_options = _current_runtime_options(session_obj)
     profile = resolve_profile(db, "stt", runtime_options.get("stt_profile_id"))
@@ -414,6 +422,8 @@ def transcribe_audio_chunk(db: Session, session_obj: RealtimeSession, payload: d
     if not profile or not model:
         raise RuntimeError("未配置可用的 STT profile / model。")
     provider_kind = str(profile.get("provider_kind", "openai_compatible")).strip() or "openai_compatible"
+    if provider_kind == XFYUN_ASR_PROVIDER_KIND:
+        model = _normalize_xfyun_model_name(model)
     _log_payload(
         "STT transcription started",
         {
@@ -438,7 +448,26 @@ def transcribe_audio_chunk(db: Session, session_obj: RealtimeSession, payload: d
         missing = [name for name, value in (("app_id", app_id), ("api_key", api_key), ("api_secret", api_secret)) if not value]
         if missing:
             raise RuntimeError(f"讯飞 STT 配置不完整：缺少 {', '.join(missing)}。")
+        voiceprint_config = profile.get("voiceprint", {})
+        voiceprint_enabled = isinstance(voiceprint_config, dict) and bool(voiceprint_config.get("enabled"))
+        feature_rows = (
+            db.scalars(
+                select(VoiceprintFeature).where(
+                    VoiceprintFeature.stt_profile_id == str(profile.get("id", "")),
+                    VoiceprintFeature.status != "deleted",
+                )
+            ).all()
+            if voiceprint_enabled
+            else []
+        )
+        feature_ids = [str(row.feature_id).strip() for row in feature_rows if str(row.feature_id).strip()]
+        feature_label_by_id = {
+            str(row.feature_id).strip(): str(row.speaker_label).strip() or str(row.feature_id).strip()
+            for row in feature_rows
+            if str(row.feature_id).strip()
+        }
         result = transcribe_pcm_s16le_with_xfyun(
+            session_id=session_obj.id,
             endpoint=str(profile.get("endpoint", DEFAULT_XFYUN_ASR_ENDPOINT) or DEFAULT_XFYUN_ASR_ENDPOINT),
             app_id=app_id,
             api_key=api_key,
@@ -446,14 +475,26 @@ def transcribe_audio_chunk(db: Session, session_obj: RealtimeSession, payload: d
             pcm_s16le_base64=str(payload["pcm_s16le_base64"]),
             sample_rate=int(payload["sample_rate"]),
             channel_count=int(payload.get("channel_count", 1)),
+            is_final=bool(payload.get("is_final", True)),
+            fallback_speaker=str(payload.get("speaker", "speaker") or "speaker"),
+            role_type=2,
+            feature_ids=feature_ids,
+            eng_spk_match=1 if feature_ids else None,
+            feature_label_by_id=feature_label_by_id,
             model=model,
         )
         response = {
             "text": str(result.get("text", "")).strip(),
+            "speaker": str(result.get("speaker", payload.get("speaker", "speaker"))).strip()
+            or str(payload.get("speaker", "speaker")),
             "provider": str(profile.get("id", "")),
             "model": model,
             "latency_ms": float(result.get("latency_ms", 0.0) or 0.0),
             "sid": str(result.get("sid", "")).strip(),
+            "segments": result.get("segments", []),
+            "role_separated": bool(result.get("role_separated", False)),
+            "voiceprint_enabled": voiceprint_enabled,
+            "feature_ids": feature_ids,
         }
         _log_payload(
             "STT transcription succeeded",
@@ -465,6 +506,10 @@ def transcribe_audio_chunk(db: Session, session_obj: RealtimeSession, payload: d
                 "latency_ms": response["latency_ms"],
                 "text_chars": len(response["text"]),
                 "sid": response["sid"],
+                "speaker": response["speaker"],
+                "segment_count": len(response["segments"]),
+                "role_separated": response["role_separated"],
+                "feature_count": len(feature_ids),
             },
         )
         return response
