@@ -860,35 +860,56 @@ function MermaidCardBody({
   const panZoomCanvasStyle = embedded ? { minHeight: 0 } : { minHeight: viewportMinCss };
   const showDiagram = !collapsible || diagramExpanded;
 
+  const panZoomChromeClass = embedded
+    ? "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-[var(--mindmap-canvas-bg)] p-2 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
+    : "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-theme-default bg-[var(--mindmap-canvas-bg)] p-3 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]";
+
   const body = (
     <div
-      className={`p-4 ${embedded ? "flex h-full min-h-0 flex-col bg-surface-muted" : "bg-surface-muted"}`}
+      className={
+        embedded ? "flex h-full min-h-0 min-w-0 flex-col bg-transparent" : "bg-surface-muted p-4"
+      }
     >
         {error ? (
-          <div className="mb-3 rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2.5 text-xs leading-relaxed text-amber-100">
+          <div
+            className={`rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2.5 text-xs leading-relaxed text-amber-100 ${
+              embedded ? "mx-1 mb-2 shrink-0 sm:mx-2" : "mb-3"
+            }`}
+          >
             渲染错误：{error}
             {lastSuccessfulSvg ? " 已保留最近一次可用图。" : ""}
           </div>
         ) : null}
         <div
-          className={`overflow-auto rounded-xl border border-theme-subtle bg-surface-1 p-4 ${
-            embedded ? "min-h-0 flex-1" : ""
-          }`}
+          className={
+            embedded
+              ? "min-h-0 min-w-0 flex-1 overflow-hidden"
+              : `overflow-auto rounded-xl border border-theme-subtle bg-surface-1 p-4`
+          }
           style={embedded ? undefined : { minHeight: viewportMinCss }}
         >
-          <div className={embedded ? "flex min-h-0 flex-1 flex-col" : ""}>
+          <div className={embedded ? "flex h-full min-h-0 min-w-0 flex-1 flex-col" : ""}>
             <PanZoomCanvas
-              className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-theme-default bg-[var(--mindmap-canvas-bg)] p-3 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
+              className={panZoomChromeClass}
               contentClassName="min-h-0 flex-1"
               style={panZoomCanvasStyle}
               minScale={0.55}
               maxScale={2.6}
               initialScale={1}
               initialOffset={{ x: 0, y: 0 }}
+              overlay={
+                interactiveRelayoutEnabled ? (
+                  <div className="rounded-md border border-theme-default bg-surface-muted px-2.5 py-1.5 text-[11px] leading-snug text-theme-3 shadow-lg backdrop-blur-[2px]">
+                    {relayoutBusy ? "Planner 正在重新排布图…" : "拖拽节点即可让当前 Planner 重新组织图结构。"}
+                  </div>
+                ) : null
+              }
             >
               {/* 空画布也要像画布：细网格 + 提示条 */}
               <div
-                className="pointer-events-none absolute inset-3 rounded-md opacity-[var(--mindmap-grid-opacity)]"
+                className={`pointer-events-none absolute rounded-md opacity-[var(--mindmap-grid-opacity)] ${
+                  embedded ? "inset-2" : "inset-3"
+                }`}
                 aria-hidden
                 style={{
                   backgroundImage:
@@ -897,15 +918,12 @@ function MermaidCardBody({
                   backgroundPosition: "10px 10px",
                 }}
               />
-              {interactiveRelayoutEnabled ? (
-                <div className="pointer-events-none absolute bottom-3 left-3 z-[2] rounded-md border border-theme-default bg-surface-muted px-2.5 py-1.5 text-[11px] text-theme-3 shadow-lg backdrop-blur-[2px]">
-                  {relayoutBusy
-                    ? "Planner is reorganizing the diagram..."
-                    : "Drag a node to let the current planner reorganize the graph."}
-                </div>
-              ) : null}
               {!svg ? (
-                <div className="absolute left-3 top-3 right-3 z-[2] rounded-lg border border-amber-900/55 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
+                <div
+                  className={`absolute z-[2] rounded-lg border border-amber-900/55 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100 ${
+                    embedded ? "left-2 right-2 top-2" : "left-3 right-3 top-3"
+                  }`}
+                >
                   画布已就绪，但目前没有可渲染的 Mermaid。
                   <span className="text-amber-200/80">
                     {" "}
@@ -944,7 +962,7 @@ function MermaidCardBody({
           </div>
         ) : null}
         {embedded && compileOk === false ? (
-          <div className="mt-4 text-xs text-theme-2">
+          <div className="shrink-0 border-t border-theme-subtle px-3 py-2 text-xs text-theme-2">
             <Tooltip.Provider delayDuration={150}>
               <Tooltip.Root>
                 <Tooltip.Trigger asChild>
@@ -964,7 +982,7 @@ function MermaidCardBody({
   );
 
   if (embedded) {
-    return <div className="h-full min-h-0 overflow-hidden">{body}</div>;
+    return <div className="h-full min-h-0 min-w-0 overflow-hidden">{body}</div>;
   }
 
   const headerBadges = (

@@ -1,7 +1,15 @@
 "use client";
 
 import { Minus, Plus, RotateCcw } from "lucide-react";
-import { type CSSProperties, type PropsWithChildren, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type PropsWithChildren,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Button } from "@stream2graph/ui";
 
@@ -15,6 +23,7 @@ export function PanZoomCanvas({
   className = "",
   contentClassName = "",
   style: styleProp,
+  overlay,
   minScale = 0.6,
   maxScale = 2.4,
   initialScale = 1,
@@ -25,6 +34,8 @@ export function PanZoomCanvas({
   contentClassName?: string;
   /** Merged with internal `touchAction: none`. */
   style?: CSSProperties;
+  /** 固定在画布视口左下角，不参与平移/缩放（例如操作说明）。 */
+  overlay?: ReactNode;
   minScale?: number;
   maxScale?: number;
   initialScale?: number;
@@ -178,6 +189,14 @@ export function PanZoomCanvas({
       >
         {children}
       </div>
+      {overlay ? (
+        <div
+          className="pointer-events-none absolute bottom-3 left-3 z-[6] max-w-[min(calc(100%-1.5rem),18rem)]"
+          data-panzoom-no-pan
+        >
+          {overlay}
+        </div>
+      ) : null}
     </div>
   );
 }

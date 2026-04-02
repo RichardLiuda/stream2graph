@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronRight,
   Eye,
+  Fingerprint,
   Headphones,
   Mic,
   MicOff,
@@ -60,6 +61,43 @@ import { GraphStage } from "@/components/graph-stage";
 import { MermaidCard, type MermaidNodeRelayoutPayload } from "@/components/mermaid-card";
 
 const LOCAL_SESSION_KEY = "s2g:last-realtime-session";
+
+const DEFAULT_VOICEPRINT_BASE = "https://api.xf-yun.com";
+
+type AdminRuntimeOptionsPayload = Awaited<ReturnType<typeof api.getAdminRuntimeOptions>>;
+
+function voiceprintPayloadForSave(
+  profile: AdminRuntimeOptionsPayload["stt_profiles"][number],
+  enabled: boolean,
+) {
+  const raw =
+    profile.voiceprint && typeof profile.voiceprint === "object"
+      ? (profile.voiceprint as Record<string, unknown>)
+      : null;
+  return {
+    enabled,
+    provider_kind: typeof raw?.provider_kind === "string" ? raw.provider_kind : "xfyun_isv",
+    api_base:
+      typeof raw?.api_base === "string" && raw.api_base.trim()
+        ? raw.api_base.trim()
+        : DEFAULT_VOICEPRINT_BASE,
+    group_id:
+      typeof raw?.group_id === "string" && raw.group_id.trim()
+        ? raw.group_id.trim()
+        : `${profile.id}_group`,
+    score_threshold:
+      typeof raw?.score_threshold === "number"
+        ? raw.score_threshold
+        : Number(raw?.score_threshold ?? 0.75) || 0.75,
+    top_k: typeof raw?.top_k === "number" ? raw.top_k : Number(raw?.top_k ?? 3) || 3,
+  };
+}
+
+function readVoiceprintEnabledFromCatalog(profile: { voiceprint?: unknown } | null | undefined) {
+  const v = profile?.voiceprint;
+  if (!v || typeof v !== "object") return false;
+  return Boolean((v as { enabled?: boolean }).enabled);
+}
 
 type TranscriptRow = {
   text: string;
@@ -406,6 +444,12 @@ export function RealtimeStudio() {
   const runtimeOptions = useQuery({
     queryKey: ["runtime-options"],
     queryFn: api.listRuntimeOptions,
+    enabled: authQuery.isSuccess,
+    retry: false,
+  });
+  const adminRuntimeOptions = useQuery({
+    queryKey: ["admin-runtime-options"],
+    queryFn: api.getAdminRuntimeOptions,
     enabled: authQuery.isSuccess,
     retry: false,
   });
@@ -1304,6 +1348,37 @@ export function RealtimeStudio() {
     onError: (err) => setError((err as Error).message),
   });
 
+  const updateSttVoiceprintMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const admin = await api.getAdminRuntimeOptions();
+      if (!admin.stt_profiles.some((p) => p.id === sttProfileId)) {
+        throw new Error("未找到当前 STT Profile。");
+      }
+      const stt_profiles = admin.stt_profiles.map((p) =>
+        p.id === sttProfileId ? { ...p, voiceprint: voiceprintPayloadForSave(p, enabled) } : p,
+      );
+      return api.saveAdminRuntimeOptions({
+        gate_profiles: admin.gate_profiles,
+        planner_profiles: admin.planner_profiles,
+        stt_profiles,
+      });
+    },
+    onSuccess: (data, enabled) => {
+      queryClient.setQueryData(["admin-runtime-options"], data);
+      queryClient.invalidateQueries({ queryKey: ["runtime-options"] });
+      setNotice({
+        tone: "success",
+        text: enabled ? "已开启声纹盲认增强（当前 STT Profile）。" : "已关闭声纹盲认增强。",
+      });
+    },
+    onError: (err) => {
+      setNotice({
+        tone: "warning",
+        text: err instanceof Error ? err.message : "保存声纹设置失败",
+      });
+    },
+  });
+
   async function startRecognition() {
     clearFeedback();
     const sessionId = await ensureSession();
@@ -1948,6 +2023,56 @@ export function RealtimeStudio() {
             <p className="text-[11px] leading-relaxed text-theme-3">
               {selectedOption.description}
             </p>
+            {/* 声纹盲认仅与语音/STT 相关；纯文本 Transcript 输入时不展示 */}
+            {selectedInputSource !== "transcript" ? (
+              <div className="flex min-h-[2rem] items-center justify-between gap-2 rounded-lg border border-theme-subtle bg-surface-muted px-2 py-1">
+                {!hasSttProfiles ? (
+                  <p className="min-w-0 flex-1 truncate text-[11px] leading-tight text-theme-3">
+                    声纹盲认需先配置 STT，{" "}
+                    <Link href="/app/settings" className="text-theme-2 underline underline-offset-2">
+                      平台设置
+                    </Link>
+                  </p>
+                ) : !selectedSttProfile ? (
+                  <p className="min-w-0 flex-1 truncate text-[11px] leading-tight text-theme-3">
+                    声纹盲认：STT 未同步，请刷新或{" "}
+                    <Link href="/app/settings" className="text-theme-2 underline underline-offset-2">
+                      设置
+                    </Link>
+                  </p>
+                ) : (
+                  <>
+                    <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-theme-2">
+                      <Fingerprint className="h-3.5 w-3.5 shrink-0 text-theme-4" strokeWidth={2} aria-hidden />
+                      <span className="truncate" title={`${selectedSttProfile.label} · 讯飞声纹 1:N 盲认`}>
+                        声纹盲认 · {selectedSttProfile.label}
+                      </span>
+                    </span>
+                    <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[11px] font-medium text-theme-2">
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 rounded border-theme-default"
+                        checked={readVoiceprintEnabledFromCatalog(selectedSttProfile)}
+                        disabled={
+                          updateSttVoiceprintMutation.isPending ||
+                          adminRuntimeOptions.isLoading ||
+                          adminRuntimeOptions.isError ||
+                          !sttProfileId
+                        }
+                        title={
+                          adminRuntimeOptions.isError ? "当前账号无法保存，请到平台设置修改" : undefined
+                        }
+                        onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                          if (adminRuntimeOptions.isError) return;
+                          updateSttVoiceprintMutation.mutate(event.target.checked);
+                        }}
+                      />
+                      {updateSttVoiceprintMutation.isPending ? "…" : "启用"}
+                    </label>
+                  </>
+                )}
+              </div>
+            ) : null}
             {!audioContext?.is_desktop ? (
               <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
                 移动端不提供系统声音相关采集入口。
@@ -2189,29 +2314,25 @@ export function RealtimeStudio() {
               </div>
 
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-            <Tabs.Content value="mermaid" className="h-full min-h-0 outline-none">
-              <div className="flex h-full min-h-0 px-4 py-2">
-                <Card className="flex-1 rounded-xl border border-theme-default bg-surface-muted p-2">
-                  <div className="h-full min-h-0 overflow-hidden rounded-lg">
-              <MermaidCard
-                title=""
-                embedded
-                code={mermaidState?.code || mermaidState?.normalized_code || ""}
-                rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
-                repairRawOutputText={
-                  typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
-                }
-                provider={mermaidState?.provider || selectedPlannerProfile?.label || null}
-                model={mermaidState?.model || plannerModel || null}
-                latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
-                compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
-                updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null)}
-                graphPayload={currentGraphPayload}
-                onNodeRelayout={handleMermaidNodeRelayout}
-                relayoutBusy={relayoutMutation.isPending}
-              />
-                  </div>
-                </Card>
+            <Tabs.Content value="mermaid" className="flex h-full min-h-0 flex-col outline-none">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-3 pt-1 sm:px-3">
+                <MermaidCard
+                  title=""
+                  embedded
+                  code={mermaidState?.code || mermaidState?.normalized_code || ""}
+                  rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
+                  repairRawOutputText={
+                    typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
+                  }
+                  provider={mermaidState?.provider || selectedPlannerProfile?.label || null}
+                  model={mermaidState?.model || plannerModel || null}
+                  latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
+                  compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
+                  updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null)}
+                  graphPayload={currentGraphPayload}
+                  onNodeRelayout={handleMermaidNodeRelayout}
+                  relayoutBusy={relayoutMutation.isPending}
+                />
               </div>
             </Tabs.Content>
 

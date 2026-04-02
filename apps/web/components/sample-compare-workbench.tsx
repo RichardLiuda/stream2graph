@@ -22,6 +22,9 @@ const STUDIO_SELECT_TRIGGER =
 const STUDIO_SELECT_MENU =
   "absolute z-[21000] mt-2 w-full rounded-lg border border-theme-subtle bg-surface-1 p-1.5 shadow-xl";
 
+/** 左侧卡片内下拉/输入/列表统一略窄于卡片全宽，避免贴满右缘 */
+const SIDEBAR_CONTROL_MAX = "max-w-[min(100%,21rem)]";
+
 /** 结果区二级面板：默认收起，与 `MermaidCard` 可折叠样式一致 */
 function CollapsibleResultPanel({
   title,
@@ -207,7 +210,7 @@ export function SampleCompareWorkbench() {
           <div className="grid gap-5">
             <div className="space-y-3">
               <label className="text-sm font-semibold text-theme-1">数据集版本</label>
-              <div ref={datasetMenuRef} className="relative">
+              <div ref={datasetMenuRef} className={`relative ${SIDEBAR_CONTROL_MAX}`}>
                 <button
                   type="button"
                   className={STUDIO_SELECT_TRIGGER}
@@ -269,7 +272,7 @@ export function SampleCompareWorkbench() {
             </div>
             <div className="space-y-3">
               <label className="text-sm font-semibold text-theme-1">Split</label>
-              <div ref={splitMenuRef} className="relative">
+              <div ref={splitMenuRef} className={`relative ${SIDEBAR_CONTROL_MAX}`}>
                 <button
                   type="button"
                   className={STUDIO_SELECT_TRIGGER}
@@ -333,7 +336,7 @@ export function SampleCompareWorkbench() {
                 ) : null}
               </div>
             </div>
-            <div className="space-y-3">
+            <div className={`space-y-3 ${SIDEBAR_CONTROL_MAX}`}>
               <label className="text-sm font-medium text-theme-2">样本检索</label>
               <Input
                 value={search}
@@ -341,7 +344,9 @@ export function SampleCompareWorkbench() {
                 placeholder="按 sample id 过滤"
               />
             </div>
-            <div className="max-h-[min(52vh,420px)] overflow-y-auto rounded-lg border border-theme-subtle bg-surface-muted p-2 pr-1 [scrollbar-gutter:stable]">
+            <div
+              className={`max-h-[min(52vh,420px)] overflow-y-auto rounded-lg border border-theme-subtle bg-surface-muted p-2 pr-1 [scrollbar-gutter:stable] ${SIDEBAR_CONTROL_MAX}`}
+            >
               <div className="space-y-2 pb-1">
                 {samples.data?.map((item) => (
                   <button

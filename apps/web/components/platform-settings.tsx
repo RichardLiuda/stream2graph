@@ -551,9 +551,10 @@ export function PlatformSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* pr：与实时页「历史会话」同档，并为固定主题按钮留空 */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pr-12 sm:pr-14">
         <h1 className="page-title">设置</h1>
-        <Link href="/app/realtime">
+        <Link href="/app/realtime" className="shrink-0">
           <Button variant="secondary">
             返回实时工作
             <ArrowRight className="h-4 w-4" />
@@ -902,6 +903,10 @@ export function PlatformSettings() {
                           <div className="rounded-[18px] border border-theme-default bg-surface-muted px-4 py-3 text-sm leading-6 text-theme-3">
                             开启后会自动复用当前 STT Profile 的讯飞凭证，并使用内置默认参数完成多人声纹盲认。
                           </div>
+                          <p className="text-[11px] leading-snug text-theme-4">
+                            与「实时工作台」侧栏<strong className="font-medium text-theme-3">同一条</strong>配置：在实时页把输入来源选成麦克风/系统音等（不要用纯文本
+                            Transcript）时，左侧会显示一行「声纹盲认」勾选，保存后立即生效。
+                          </p>
                         </div>
                       ) : null}
                     </div>
