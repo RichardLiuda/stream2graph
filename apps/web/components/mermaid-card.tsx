@@ -501,7 +501,8 @@ async function getMermaid() {
       securityLevel: "loose",
       suppressErrorRendering: true,
       theme: "base",
-      htmlLabels: true,
+      // Use SVG-native labels to avoid `foreignObject` blur when the canvas is pan/zoomed.
+      htmlLabels: false,
       themeCSS: MERMAID_THEME_CSS,
       /** 系统 UI 字体 + 更大字号，减少「小图被放大」时的糊感 */
       fontFamily:
@@ -598,6 +599,7 @@ function MermaidCardBody({
   const [diagramExpanded, setDiagramExpanded] = useState(defaultDiagramExpanded);
   const [svg, setSvg] = useState("");
   const [lastSuccessfulSvg, setLastSuccessfulSvg] = useState("");
+  const [zoomRebuildNonce, setZoomRebuildNonce] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const lastLoggedRawOutputRef = useRef("");
   const lastLoggedRepairRawOutputRef = useRef("");
@@ -668,7 +670,7 @@ function MermaidCardBody({
     return () => {
       active = false;
     };
-  }, [code, id, compileOk, height, latencyMs, model, provider, title, updatedAt]);
+  }, [code, id, compileOk, height, latencyMs, model, provider, title, updatedAt, zoomRebuildNonce]);
 
   useEffect(() => {
     const host = renderSurfaceRef.current;
@@ -854,7 +856,7 @@ function MermaidCardBody({
         dragState = null;
       }
     };
-  }, [graphPayload, interactiveRelayoutEnabled, onNodeRelayout, relayoutBusy, svg]);
+  }, [graphPayload, interactiveRelayoutEnabled, onNodeRelayout, relayoutBusy, svg, zoomRebuildNonce]);
 
   const viewportMinCss = `min(${height}px, 51vh)`;
   const panZoomCanvasStyle = embedded ? { minHeight: 0 } : { minHeight: viewportMinCss };
@@ -893,6 +895,7 @@ function MermaidCardBody({
               className={panZoomChromeClass}
               contentClassName="min-h-0 flex-1"
               style={panZoomCanvasStyle}
+              onZoomEnd={() => setZoomRebuildNonce((n) => n + 1)}
               minScale={0.55}
               maxScale={2.6}
               initialScale={1}
@@ -933,6 +936,7 @@ function MermaidCardBody({
               ) : null}
               {svg ? (
                 <div
+                  key={zoomRebuildNonce}
                   ref={renderSurfaceRef}
                   className="relative z-[1] min-h-0 flex-1 [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
                   dangerouslySetInnerHTML={{ __html: svg }}

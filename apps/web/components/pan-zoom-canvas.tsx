@@ -24,6 +24,7 @@ export function PanZoomCanvas({
   contentClassName = "",
   style: styleProp,
   overlay,
+  onZoomEnd,
   minScale = 0.6,
   maxScale = 2.4,
   initialScale = 1,
@@ -36,6 +37,8 @@ export function PanZoomCanvas({
   style?: CSSProperties;
   /** 固定在画布视口左下角，不参与平移/缩放（例如操作说明）。 */
   overlay?: ReactNode;
+  /** When pan/zoom interaction settles, notify parent to allow a re-paint/re-mount. */
+  onZoomEnd?: () => void;
   minScale?: number;
   maxScale?: number;
   initialScale?: number;
@@ -46,6 +49,17 @@ export function PanZoomCanvas({
   const [offset, setOffset] = useState<Point>(initialOffset);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{ pointerId: number; start: Point; origin: Point } | null>(null);
+
+  // Quantize translation to device-pixel grid to reduce SVG text/lines blur.
+  // Pan/zoom uses fractional offsets (via zoom math), which can land on non-integer pixels.
+  const devicePixelRatio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+  const quantizeToPixel = (v: number) => Math.round(v * devicePixelRatio) / devicePixelRatio;
+
+  // Scheme 1: toggling `will-change` can force the browser to drop/rebuild the
+  // compositor cache for transform layers, improving blur quality on small viewports.
+  const [willChange, setWillChange] = useState<CSSProperties["willChange"]>("transform");
+  const willChangeRestoreRaf1Ref = useRef<number | null>(null);
+  const willChangeRestoreRaf2Ref = useRef<number | null>(null);
   const stateRef = useRef({
     scale,
     offset,
@@ -53,8 +67,53 @@ export function PanZoomCanvas({
     maxScale,
   });
 
+  const onZoomEndRef = useRef(onZoomEnd);
+  useEffect(() => {
+    onZoomEndRef.current = onZoomEnd;
+  }, [onZoomEnd]);
+
+  // Debounce pan/zoom settle to avoid remounting every single frame.
+  const lastTransformAtRef = useRef(0);
+  const rafIdRef = useRef<number | null>(null);
+  const scheduleZoomEnd = () => {
+    if (!onZoomEndRef.current) return;
+    lastTransformAtRef.current = performance.now();
+    if (rafIdRef.current != null) return;
+
+    const tick = () => {
+      const elapsed = performance.now() - lastTransformAtRef.current;
+      if (elapsed >= 220) {
+        rafIdRef.current = null;
+        // Temporarily disable will-change, then restore next frames.
+        setWillChange(undefined);
+        if (willChangeRestoreRaf1Ref.current != null) cancelAnimationFrame(willChangeRestoreRaf1Ref.current);
+        if (willChangeRestoreRaf2Ref.current != null) cancelAnimationFrame(willChangeRestoreRaf2Ref.current);
+        willChangeRestoreRaf1Ref.current = requestAnimationFrame(() => {
+          willChangeRestoreRaf2Ref.current = requestAnimationFrame(() => setWillChange("transform"));
+        });
+        onZoomEndRef.current?.();
+        return;
+      }
+      rafIdRef.current = requestAnimationFrame(tick);
+    };
+
+    rafIdRef.current = requestAnimationFrame(tick);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+      if (willChangeRestoreRaf1Ref.current != null) cancelAnimationFrame(willChangeRestoreRaf1Ref.current);
+      if (willChangeRestoreRaf2Ref.current != null) cancelAnimationFrame(willChangeRestoreRaf2Ref.current);
+      willChangeRestoreRaf1Ref.current = null;
+      willChangeRestoreRaf2Ref.current = null;
+    };
+  }, []);
+
   const transform = useMemo(
-    () => `translate(${offset.x.toFixed(2)}px, ${offset.y.toFixed(2)}px) scale(${scale.toFixed(3)})`,
+    () =>
+      `translate(${quantizeToPixel(offset.x).toFixed(2)}px, ${quantizeToPixel(offset.y).toFixed(2)}px) scale(${scale.toFixed(3)})`,
     [offset.x, offset.y, scale],
   );
 
@@ -68,6 +127,7 @@ export function PanZoomCanvas({
     const currentScale = stateRef.current.scale;
     if (!el || !anchorClient) {
       setScale(clamped);
+      scheduleZoomEnd();
       return;
     }
 
@@ -83,6 +143,7 @@ export function PanZoomCanvas({
       };
     });
     setScale(clamped);
+    scheduleZoomEnd();
   }
 
   useEffect(() => {
@@ -132,10 +193,12 @@ export function PanZoomCanvas({
         if (dragRef.current?.pointerId !== event.pointerId) return;
         dragRef.current = null;
         setDragging(false);
+        scheduleZoomEnd();
       }}
       onPointerCancel={() => {
         dragRef.current = null;
         setDragging(false);
+        scheduleZoomEnd();
       }}
       style={{ touchAction: "none", ...styleProp }}
     >
@@ -185,7 +248,7 @@ export function PanZoomCanvas({
       />
       <div
         className={`relative z-[1] origin-top-left ${contentClassName}`}
-        style={{ transform, willChange: "transform" }}
+        style={{ transform, willChange }}
       >
         {children}
       </div>
