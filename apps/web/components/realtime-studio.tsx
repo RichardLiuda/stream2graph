@@ -223,7 +223,7 @@ function getBrowserFamilyLabel(context: ClientAudioContext | null) {
 type HelperCapabilities = typeof helperCapabilitiesSchema._type;
 type RuntimeOptions = Awaited<ReturnType<typeof api.listRuntimeOptions>>;
 const HELPER_TARGET_SAMPLE_RATE = 16_000;
-const HELPER_UPLOAD_CHUNK_SECONDS = 4;
+const HELPER_UPLOAD_CHUNK_SECONDS = 2;
 
 function calculateAudioLevel(samples: Float32Array) {
   if (!samples.length) return 0;
@@ -250,6 +250,22 @@ function formatApiTranscriptSegments(segments: Array<Record<string, any>> | null
     })
     .filter(Boolean)
     .join("\n");
+}
+
+function preserveCoordinationSnapshot(
+  nextPipeline: Record<string, any> | null | undefined,
+  previousPipeline: Record<string, any> | null | undefined,
+) {
+  if (!nextPipeline) return previousPipeline ?? null;
+  if (!previousPipeline) return nextPipeline;
+  return {
+    ...nextPipeline,
+    gate_state: previousPipeline.gate_state ?? nextPipeline.gate_state ?? null,
+    planner_state: previousPipeline.planner_state ?? nextPipeline.planner_state ?? null,
+    mermaid_state: previousPipeline.mermaid_state ?? nextPipeline.mermaid_state ?? null,
+    summary: previousPipeline.summary ?? nextPipeline.summary ?? null,
+    coordination_summary: previousPipeline.coordination_summary ?? nextPipeline.coordination_summary ?? null,
+  };
 }
 
 function backendLabel(backend: RecognitionBackend) {
@@ -415,6 +431,9 @@ export function RealtimeStudio() {
   const apiCaptureProcessorNodeRef = useRef<ScriptProcessorNode | null>(null);
   const apiCaptureMuteNodeRef = useRef<GainNode | null>(null);
   const apiCaptureUploadQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const apiCaptureFlushPromiseRef = useRef<Promise<void> | null>(null);
+  const apiCaptureFlushQueuedRef = useRef(false);
+  const apiCaptureFlushTimeoutRef = useRef<number | null>(null);
   const apiCaptureChunkIdRef = useRef(0);
   const apiCapturePendingFramesRef = useRef<Float32Array[]>([]);
   const apiCapturePendingSampleCountRef = useRef(0);
@@ -965,11 +984,14 @@ export function RealtimeStudio() {
         speaker: context.speaker,
         metadata: buildChunkMetadata(context.source, context.captureMode),
       });
-      setSnapshot({
+      const shouldPreserveCoordination = !isFinal;
+      setSnapshot((previous) => ({
         session_id: context.sessionId,
-        pipeline: response.pipeline,
+        pipeline: shouldPreserveCoordination
+          ? preserveCoordinationSnapshot(response.pipeline, previous?.pipeline)
+          : response.pipeline,
         evaluation: response.evaluation,
-      });
+      }));
       const segmentedPreview = formatApiTranscriptSegments(response.segments);
       const previewText = segmentedPreview || response.text.trim();
       if (previewText) {
@@ -1009,8 +1031,13 @@ export function RealtimeStudio() {
           text: `声纹盲认未生效：${response.voiceprint.error_message}`,
         });
       }
-      syncPipelineStatus(response.pipeline);
+      if (isFinal) {
+        syncPipelineStatus(response.pipeline);
+      }
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      if (!isFinal && chunkId % 2 === 1) {
+        requestApiCaptureFlush(context.sessionId);
+      }
       studioSend({ type: "capture.start" });
       setError(null);
     } catch (err) {
@@ -1047,6 +1074,11 @@ export function RealtimeStudio() {
   }
 
   async function teardownApiCaptureGraph({ flush = false }: { flush?: boolean } = {}) {
+    if (apiCaptureFlushTimeoutRef.current !== null) {
+      window.clearTimeout(apiCaptureFlushTimeoutRef.current);
+      apiCaptureFlushTimeoutRef.current = null;
+    }
+    apiCaptureFlushQueuedRef.current = false;
     if (flush) {
       try {
         await flushApiCaptureBuffer(true);
@@ -1086,6 +1118,12 @@ export function RealtimeStudio() {
     apiCaptureContextRef.current = payload;
     resetApiCaptureBuffers();
     apiCaptureUploadQueueRef.current = Promise.resolve();
+    apiCaptureFlushPromiseRef.current = null;
+    apiCaptureFlushQueuedRef.current = false;
+    if (apiCaptureFlushTimeoutRef.current !== null) {
+      window.clearTimeout(apiCaptureFlushTimeoutRef.current);
+      apiCaptureFlushTimeoutRef.current = null;
+    }
 
     const audioContext = new window.AudioContext({ sampleRate: HELPER_TARGET_SAMPLE_RATE });
     const sourceNode = audioContext.createMediaStreamSource(stream);
@@ -1240,6 +1278,50 @@ export function RealtimeStudio() {
     },
     onError: (err) => setError((err as Error).message),
   });
+
+  function requestApiCaptureFlush(sessionId: string, delayMs = 500) {
+    apiCaptureFlushQueuedRef.current = true;
+    if (apiCaptureFlushTimeoutRef.current !== null) {
+      window.clearTimeout(apiCaptureFlushTimeoutRef.current);
+    }
+    apiCaptureFlushTimeoutRef.current = window.setTimeout(() => {
+      apiCaptureFlushTimeoutRef.current = null;
+      void runApiCaptureFlush(sessionId);
+    }, delayMs);
+  }
+
+  async function runApiCaptureFlush(sessionId: string) {
+    if (apiCaptureFlushPromiseRef.current || !apiCaptureFlushQueuedRef.current) return;
+    apiCaptureFlushQueuedRef.current = false;
+    studioSend({ type: "gate.working" });
+    studioSend({ type: "planner.working" });
+    const promise = api
+      .flushRealtime(sessionId)
+      .then((data) => {
+        setSnapshot(data);
+        setError(null);
+        syncPipelineStatus(data.pipeline);
+        queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      })
+      .catch((err) => {
+        logBrowserRuntime(
+          "api_stt flush failed",
+          {
+            session_id: sessionId,
+            error: err instanceof Error ? err.message : "flush failed",
+          },
+          "warn",
+        );
+      })
+      .finally(() => {
+        apiCaptureFlushPromiseRef.current = null;
+        if (apiCaptureFlushQueuedRef.current) {
+          void runApiCaptureFlush(sessionId);
+        }
+      });
+    apiCaptureFlushPromiseRef.current = promise;
+    await promise;
+  }
 
   useEffect(() => {
     if (currentSessionId) {

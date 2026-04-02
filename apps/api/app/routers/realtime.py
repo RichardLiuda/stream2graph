@@ -119,6 +119,44 @@ def _ingest_transcript_payload(
     return emitted, pipeline, evaluation
 
 
+def _buffer_transcript_payload(
+    db: Session,
+    obj: RealtimeSession,
+    *,
+    timestamp_ms: int,
+    text: str,
+    speaker: str,
+    is_final: bool,
+    expected_intent: str | None,
+    metadata: dict,
+) -> tuple[dict, dict]:
+    runtime = restore_runtime_if_needed(db, obj)
+    runtime.buffer_chunk(
+        timestamp_ms=timestamp_ms,
+        text=text,
+        speaker=speaker,
+        is_final=is_final,
+        expected_intent=expected_intent,
+    )
+    persist_chunk(
+        db,
+        obj.id,
+        {
+            "timestamp_ms": timestamp_ms,
+            "text": text,
+            "speaker": speaker,
+            "is_final": is_final,
+            "expected_intent": expected_intent,
+            "metadata": metadata,
+        },
+    )
+    _merge_input_runtime_metadata(obj, metadata)
+    pipeline = runtime.pipeline_payload()
+    evaluation = evaluate_payload(pipeline)
+    save_snapshot(db, obj, pipeline=pipeline, evaluation=evaluation)
+    return pipeline, evaluation
+
+
 def _merge_input_runtime_metadata(obj: RealtimeSession, metadata: dict) -> None:
     if isinstance(metadata, dict) and metadata:
         snapshot = obj.config_snapshot if isinstance(obj.config_snapshot, dict) else {}
@@ -408,6 +446,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
     }
     if str(result.get("sid", "")).strip():
         base_metadata["rtasr_sid"] = str(result.get("sid", "")).strip()
+    should_defer_coordination = not bool(payload.is_final)
 
     if normalized_segments:
         base_timestamp_ms = _timestamp_for_chunk(db, obj, payload.timestamp_ms)
@@ -421,16 +460,28 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
                 "speaker_resolution_source": str(segment.get("speaker_resolution_source", "rtasr_role")).strip()
                 or "rtasr_role",
             }
-            _emitted, pipeline, evaluation = _ingest_transcript_payload(
-                db,
-                obj,
-                timestamp_ms=base_timestamp_ms + index,
-                text=str(segment.get("text", "")).strip(),
-                speaker=str(segment.get("speaker", payload.speaker) or payload.speaker),
-                is_final=payload.is_final,
-                expected_intent=None,
-                metadata=merged_metadata,
-            )
+            if should_defer_coordination:
+                pipeline, evaluation = _buffer_transcript_payload(
+                    db,
+                    obj,
+                    timestamp_ms=base_timestamp_ms + index,
+                    text=str(segment.get("text", "")).strip(),
+                    speaker=str(segment.get("speaker", payload.speaker) or payload.speaker),
+                    is_final=payload.is_final,
+                    expected_intent=None,
+                    metadata=merged_metadata,
+                )
+            else:
+                _emitted, pipeline, evaluation = _ingest_transcript_payload(
+                    db,
+                    obj,
+                    timestamp_ms=base_timestamp_ms + index,
+                    text=str(segment.get("text", "")).strip(),
+                    speaker=str(segment.get("speaker", payload.speaker) or payload.speaker),
+                    is_final=payload.is_final,
+                    expected_intent=None,
+                    metadata=merged_metadata,
+                )
         db.commit()
         unique_speakers = {
             str(segment.get("speaker", "")).strip()
@@ -458,16 +509,28 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
             merged_metadata = dict(base_metadata)
             if voiceprint_result is not None:
                 merged_metadata["voiceprint_result"] = voiceprint_result
-            _emitted, pipeline, evaluation = _ingest_transcript_payload(
-                db,
-                obj,
-                timestamp_ms=_timestamp_for_chunk(db, obj, payload.timestamp_ms),
-                text=result["text"],
-                speaker=recognized_speaker,
-                is_final=payload.is_final,
-                expected_intent=None,
-                metadata=merged_metadata,
-            )
+            if should_defer_coordination:
+                pipeline, evaluation = _buffer_transcript_payload(
+                    db,
+                    obj,
+                    timestamp_ms=_timestamp_for_chunk(db, obj, payload.timestamp_ms),
+                    text=result["text"],
+                    speaker=recognized_speaker,
+                    is_final=payload.is_final,
+                    expected_intent=None,
+                    metadata=merged_metadata,
+                )
+            else:
+                _emitted, pipeline, evaluation = _ingest_transcript_payload(
+                    db,
+                    obj,
+                    timestamp_ms=_timestamp_for_chunk(db, obj, payload.timestamp_ms),
+                    text=result["text"],
+                    speaker=recognized_speaker,
+                    is_final=payload.is_final,
+                    expected_intent=None,
+                    metadata=merged_metadata,
+                )
             db.commit()
     _log_runtime_event(
         "Realtime audio transcription completed",

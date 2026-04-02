@@ -151,7 +151,23 @@ def _transcript_lines(db: Session, session_id: str) -> list[str]:
 def _current_runtime_options(session_obj: RealtimeSession) -> dict[str, Any]:
     snapshot = session_obj.config_snapshot if isinstance(session_obj.config_snapshot, dict) else {}
     options = snapshot.get("runtime_options", {})
-    return options if isinstance(options, dict) else {}
+    base = dict(options) if isinstance(options, dict) else {}
+    input_runtime = snapshot.get("input_runtime", {})
+    if isinstance(input_runtime, dict):
+        for key in (
+            "gate_profile_id",
+            "gate_model",
+            "planner_profile_id",
+            "planner_model",
+            "stt_profile_id",
+            "stt_model",
+            "llm_profile_id",
+            "llm_model",
+        ):
+            value = input_runtime.get(key)
+            if isinstance(value, str) and value.strip():
+                base[key] = value.strip()
+    return base
 
 
 def _previous_mermaid_state(session_obj: RealtimeSession) -> dict[str, Any]:

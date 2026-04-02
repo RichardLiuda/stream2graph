@@ -39,10 +39,18 @@ from tools.incremental_system.schema import DialogueTurn
 
 logger = logging.getLogger(__name__)
 GraphEntityT = TypeVar("GraphEntityT")
+LLM_LOG_TEXT_LIMIT = 4000
 
 
 def _log_coordination_event(message: str, payload: dict[str, Any]) -> None:
     logger.info("%s %s", message, json.dumps(payload, ensure_ascii=False))
+
+
+def _llm_log_text(text: str) -> str:
+    normalized = strip_think_traces(text or "").strip()
+    if len(normalized) <= LLM_LOG_TEXT_LIMIT:
+        return normalized
+    return f"{normalized[:LLM_LOG_TEXT_LIMIT]}...<truncated>"
 
 
 def _stats(values: list[float]) -> dict[str, float]:
@@ -670,7 +678,7 @@ def _build_ssl_context() -> ssl.SSLContext:
     return ssl.create_default_context(cafile=certifi.where())
 
 
-REALTIME_LLM_TIMEOUT_SEC = 12
+REALTIME_LLM_TIMEOUT_SEC = 30
 REALTIME_LLM_MAX_RETRIES = 1
 REALTIME_LLM_RETRY_BACKOFF_SEC = 0.5
 
@@ -1272,6 +1280,7 @@ class CoordinationRuntimeSession:
                 },
             )
             client = build_chat_client(profile, model)
+            last_result_text = ""
             messages = [
                 {"role": "system", "content": LIVE_GATE_SYSTEM_PROMPT},
                 {
@@ -1293,6 +1302,7 @@ class CoordinationRuntimeSession:
                 },
             ]
             result = client.chat(messages)
+            last_result_text = result.text or ""
             payload = _parse_json_object(result.text)
             action = _coerce_gate_action(payload.get("action", "WAIT"))
             if force_emit:
@@ -1338,6 +1348,8 @@ class CoordinationRuntimeSession:
                     "action": decision.action,
                     "confidence": decision.confidence,
                     "latency_ms": result.latency_ms,
+                    "usage": result.usage,
+                    "llm_response_text": _llm_log_text(last_result_text),
                 },
             )
             return decision
@@ -1373,6 +1385,7 @@ class CoordinationRuntimeSession:
                         "provider": str((profile or {}).get("id", "")),
                         "model": model,
                         "error": str(exc),
+                        "llm_response_text": _llm_log_text(locals().get("last_result_text", "")),
                     },
                 )
                 return fallback
@@ -1394,6 +1407,7 @@ class CoordinationRuntimeSession:
                     "provider": str((profile or {}).get("id", "")),
                     "model": model,
                     "error": str(exc),
+                    "llm_response_text": _llm_log_text(locals().get("last_result_text", "")),
                 },
             )
             return GateDecision(action="WAIT", reason=str(exc), confidence=None, metadata={"latency_ms": 0.0})
@@ -1506,11 +1520,24 @@ class CoordinationRuntimeSession:
                         "semantic_attempt": attempt + 1,
                         "delta_ops_count": len(delta_ops),
                         "has_target_graph_ir": target_graph_ir is not None,
+                        "usage": result.usage,
+                        "llm_response_text": _llm_log_text(last_result_text),
                     },
                 )
                 return decision
             except Exception as exc:
                 last_error = exc
+                _log_coordination_event(
+                    "Planner request parse failed",
+                    {
+                        "session_id": self.session_id,
+                        "provider": str(profile.get("id", "")),
+                        "model": model,
+                        "semantic_attempt": attempt + 1,
+                        "error": str(exc),
+                        "llm_response_text": _llm_log_text(last_result_text),
+                    },
+                )
                 if attempt >= 1:
                     preview = strip_think_traces(last_result_text).strip().replace("\n", " ")[:300]
                     raise RuntimeError(f"{exc}; raw_preview={preview}") from exc
@@ -1611,11 +1638,24 @@ class CoordinationRuntimeSession:
                         "model": model,
                         "latency_ms": result.latency_ms,
                         "semantic_attempt": attempt + 1,
+                        "usage": result.usage,
+                        "llm_response_text": _llm_log_text(last_result_text),
                     },
                 )
                 return decision
             except Exception as exc:
                 last_error = exc
+                _log_coordination_event(
+                    "Diagram relayout parse failed",
+                    {
+                        "session_id": self.session_id,
+                        "provider": str(profile.get("id", "")),
+                        "model": model,
+                        "semantic_attempt": attempt + 1,
+                        "error": str(exc),
+                        "llm_response_text": _llm_log_text(last_result_text),
+                    },
+                )
                 if attempt >= 1:
                     preview = strip_think_traces(last_result_text).strip().replace("\n", " ")[:300]
                     raise RuntimeError(f"{exc}; raw_preview={preview}") from exc
@@ -1894,7 +1934,23 @@ class CoordinationRuntimeSession:
 def _current_runtime_options(session_obj: RealtimeSession) -> dict[str, Any]:
     snapshot = session_obj.config_snapshot if isinstance(session_obj.config_snapshot, dict) else {}
     options = snapshot.get("runtime_options", {})
-    return normalize_runtime_options(options if isinstance(options, dict) else {})
+    merged = dict(options) if isinstance(options, dict) else {}
+    input_runtime = snapshot.get("input_runtime", {})
+    if isinstance(input_runtime, dict):
+        for key in (
+            "gate_profile_id",
+            "gate_model",
+            "planner_profile_id",
+            "planner_model",
+            "stt_profile_id",
+            "stt_model",
+            "llm_profile_id",
+            "llm_model",
+        ):
+            value = input_runtime.get(key)
+            if isinstance(value, str) and value.strip():
+                merged[key] = value.strip()
+    return normalize_runtime_options(merged)
 
 
 def _current_input_runtime(session_obj: RealtimeSession) -> dict[str, Any]:
