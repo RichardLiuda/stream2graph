@@ -2455,12 +2455,22 @@ export function RealtimeStudio() {
                       }
                       onClick={() => void stageStartCapture()}
                       disabled={!canStartStageCapture}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-violet-900/50 bg-violet-950/45 text-violet-200 transition hover:border-violet-700/60 hover:bg-violet-950/65 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-700 sm:h-14 sm:w-14"
+                      className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
+                        canStartStageCapture
+                          ? "border-violet-200/90 bg-violet-700/70 text-violet-50 shadow-[0_0_0_1px_rgba(139,92,246,0.32)_inset,0_10px_22px_rgba(109,40,217,0.36)] hover:border-violet-200/95 hover:bg-violet-700/75 focus-visible:ring-violet-200/80"
+                          : "border-violet-900/50 bg-violet-950/45 text-violet-200 focus-visible:ring-violet-700"
+                      }`}
                       aria-label="开始录音"
                     >
                       <Mic className="h-6 w-6 sm:h-7 sm:w-7" />
                     </button>
-                    <div className="mt-2 text-center text-xs leading-4 text-violet-200/85">开始录音</div>
+                    <div
+                      className={`mt-2 text-center text-xs leading-4 ${
+                        canStartStageCapture ? "font-semibold text-violet-50" : "text-violet-200/85"
+                      }`}
+                    >
+                      开始录音
+                    </div>
                   </div>
 
                   <div className="flex shrink-0 flex-col items-center">
@@ -2473,12 +2483,22 @@ export function RealtimeStudio() {
                       }
                       onClick={() => void stageStopCapture()}
                       disabled={!canStopStageCapture}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-red-900/50 bg-red-950/40 text-red-200 transition hover:border-red-800 hover:bg-red-950/60 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-800 sm:h-14 sm:w-14"
+                      className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
+                        canStopStageCapture
+                          ? "border-red-200/90 bg-red-700/70 text-red-50 shadow-[0_0_0_1px_rgba(239,68,68,0.30)_inset,0_10px_22px_rgba(220,38,38,0.32)] hover:border-red-200/95 hover:bg-red-700/75 focus-visible:ring-red-200/80"
+                          : "border-red-900/50 bg-red-950/40 text-red-200 focus-visible:ring-red-800"
+                      }`}
                       aria-label="暂停录音"
                     >
                       <Pause className="h-6 w-6 sm:h-7 sm:w-7" />
                     </button>
-                    <div className="mt-2 text-center text-xs leading-4 text-red-200/85">暂停录音</div>
+                    <div
+                      className={`mt-2 text-center text-xs leading-4 ${
+                        canStopStageCapture ? "font-semibold text-red-50" : "text-red-200/85"
+                      }`}
+                    >
+                      暂停录音
+                    </div>
                   </div>
 
                   <div className="flex shrink-0 flex-col items-center">
