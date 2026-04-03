@@ -131,6 +131,11 @@ class SampleDetail(BaseModel):
     metadata: dict[str, Any]
 
 
+class RealtimeSessionUpdateRequest(BaseModel):
+    """更新会话元数据（当前仅支持标题）。"""
+    title: str = Field(..., min_length=1, max_length=255)
+
+
 class RealtimeSessionCreateRequest(BaseModel):
     title: str = "未命名实时会话"
     dataset_version_slug: str | None = None

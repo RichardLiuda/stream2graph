@@ -99,10 +99,24 @@ export function LoginForm() {
         ) : null}
 
         <Button type="submit" className="w-full justify-center" disabled={mutation.isPending}>
-          {mutation.isPending ? "登录中…" : "进入工作台"}
-          <ArrowRight className="h-4 w-4" />
+          {mutation.isPending ? "登录中…" : "登录并进入"}
+          <ArrowRight className="h-4 w-4" aria-hidden />
         </Button>
       </form>
+
+      <div className="mt-6 border-t border-theme-subtle pt-5">
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full justify-center text-theme-3 hover:text-theme-2"
+          onClick={() => router.replace("/app/realtime")}
+        >
+          跳过登录，先试用
+        </Button>
+        <p className="mt-3 text-center text-[11px] leading-snug text-theme-4">
+          跳过登录可体验实时工作台；样本对照、实验报告与平台设置需管理员账号。
+        </p>
+      </div>
     </Card>
   );
 }

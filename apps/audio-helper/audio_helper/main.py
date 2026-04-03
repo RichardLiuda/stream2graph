@@ -42,6 +42,30 @@ def _split_origins(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+# 与 apps/api/app/config.py 中 _DEFAULT_S2G_CORS_ORIGIN_REGEX 保持语义一致（局域网 / 穿透）
+_DEFAULT_AUDIO_HELPER_CORS_ORIGIN_REGEX = (
+    r"^https?://("
+    r"192\.168\.\d{1,3}\.\d{1,3}|"
+    r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+    r"172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|"
+    r"127\.0\.0\.1"
+    r")(:\d+)?$"
+    r"|^https?://[a-zA-Z0-9-]+\.ngrok-free\.app(?::\d+)?$"
+    r"|^https?://[a-zA-Z0-9-]+\.ngrok\.io(?::\d+)?$"
+    r"|^https?://[a-zA-Z0-9-]+\.trycloudflare\.com(?::\d+)?$"
+)
+
+
+def _helper_cors_origin_regex() -> str | None:
+    explicit = os.getenv("S2G_AUDIO_HELPER_CORS_ORIGIN_REGEX", "").strip()
+    if explicit:
+        return explicit
+    shared = os.getenv("S2G_CORS_ORIGIN_REGEX", "").strip()
+    if shared:
+        return shared
+    return _DEFAULT_AUDIO_HELPER_CORS_ORIGIN_REGEX
+
+
 def _helper_cors_origins() -> list[str]:
     return _split_origins(
         os.getenv(
@@ -324,6 +348,7 @@ app = FastAPI(title="Stream2Graph Audio Helper", version="0.2.0", lifespan=lifes
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_helper_cors_origins(),
+    allow_origin_regex=_helper_cors_origin_regex() or None,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

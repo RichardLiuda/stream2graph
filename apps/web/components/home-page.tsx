@@ -1,11 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BarChart3, BookOpenText, Menu, RadioTower, Rows4, Settings2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Activity,
+  Archive,
+  ArrowRight,
+  BarChart3,
+  BookOpenText,
+  Cpu,
+  Gauge,
+  GitBranch,
+  LayoutGrid,
+  Menu,
+  Mic,
+  RadioTower,
+  Rows4,
+  Settings2,
+  Sparkles,
+} from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge, Button, Card } from "@stream2graph/ui";
 import { BackgroundPathLayer } from "@/components/ui/background-paths";
+import { api } from "@/lib/api";
 
 const navItems = [
   { href: "/app/realtime", label: "实时工作", icon: RadioTower },
@@ -49,7 +68,8 @@ function Reveal({
         setVisible(true);
         observer.disconnect();
       },
-      { root, threshold: 0.18, rootMargin: "0px 0px -10% 0px" },
+      /* 略放宽底部收缩，避免上滑回程时太晚 intersect；不用过大负边距以免首屏误触 */
+      { root, threshold: 0.06, rootMargin: "0px 0px -12% 0px" },
     );
 
     observer.observe(el);
@@ -67,8 +87,10 @@ function Reveal({
     <div
       ref={ref}
       style={style}
-      className={`transform-gpu transition duration-900 ease-out will-change-transform ${
-        visible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"
+      className={`origin-[50%_65%] transform-gpu transition-transform duration-[1100ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:transition-none ${
+        visible
+          ? "translate-y-0 scale-100 opacity-100"
+          : "translate-y-12 scale-[0.96] opacity-0 sm:translate-y-14"
       }`}
     >
       {children}
@@ -76,10 +98,240 @@ function Reveal({
   );
 }
 
+/** 首屏底部：扁折线，略窄于上一版 */
+function ScrollZigzagHint({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 102 36" fill="none" aria-hidden className={className}>
+      <polyline
+        points="15,9 51,16 87,9"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <polyline
+        points="15,23 51,30 87,23"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FlowPipelineOrnament() {
+  const labels = ["输入", "结构", "对照"];
+  return (
+    <div className="mx-auto w-full max-w-[17rem] shrink-0 md:mx-0" aria-hidden>
+      <div className="rounded-2xl border border-theme-default/90 bg-gradient-to-b from-surface-1/95 to-surface-2/40 p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md">
+        <div className="flex items-center gap-1.5">
+          {labels.map((l, i) => (
+            <Fragment key={l}>
+              <span className="grid min-h-[2.35rem] min-w-[2.75rem] place-items-center rounded-xl border border-theme-subtle bg-surface-2/90 px-2 text-center text-[11px] font-semibold uppercase tracking-wider text-theme-2">
+                {l}
+              </span>
+              {i < labels.length - 1 ? (
+                <span className="h-0.5 min-w-[0.75rem] flex-1 rounded-full bg-gradient-to-r from-[color:var(--accent)]/55 to-[color:var(--accent)]/12" />
+              ) : null}
+            </Fragment>
+          ))}
+        </div>
+        <div className="mt-4 flex items-center justify-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-theme-4">
+          <span className="h-1 w-1 shrink-0 rounded-full bg-[color:var(--accent)]/90" />
+          语流 → 图
+          <span className="h-1 w-1 shrink-0 rounded-full bg-[color:var(--accent)]/90" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionHairline() {
+  return (
+    <div className="mx-auto max-w-5xl px-6 md:px-10" aria-hidden>
+      <div className="h-px max-w-4xl bg-gradient-to-r from-transparent via-[color:var(--accent-muted)] to-transparent" />
+    </div>
+  );
+}
+
+function ShowcaseStepCard({
+  n,
+  tag,
+  title,
+  body,
+  icon: Icon,
+  align,
+}: {
+  n: string;
+  tag: string;
+  title: string;
+  body: string;
+  icon: LucideIcon;
+  align: "left" | "right";
+}) {
+  return (
+    <div
+      className={`group relative overflow-hidden rounded-3xl border border-theme-default bg-surface-1/80 p-6 shadow-[0_24px_80px_-32px_rgba(0,0,0,0.45)] backdrop-blur-md transition-[border-color,box-shadow] duration-500 hover:border-theme-strong hover:shadow-[0_28px_90px_-28px_rgba(124,111,154,0.18)] md:p-9 ${
+        align === "right" ? "md:ml-10 md:max-w-[calc(100%-2.5rem)]" : "md:mr-10 md:max-w-[calc(100%-2.5rem)]"
+      }`}
+    >
+      <div
+        className="pointer-events-none absolute -right-2 -top-10 select-none font-display text-[clamp(3.5rem,12vw,7rem)] font-black leading-none tracking-tighter text-theme-1/[0.06] transition-opacity group-hover:text-theme-1/[0.09]"
+        aria-hidden
+      >
+        {n}
+      </div>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_45%_at_0%_0%,rgba(124,111,154,0.14),transparent_60%)] opacity-70 transition-opacity group-hover:opacity-100" />
+      <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[color:var(--accent-muted)] bg-gradient-to-br from-[color:var(--accent)]/22 to-transparent text-[color:var(--accent-strong)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07)]">
+          <Icon className="h-7 w-7" strokeWidth={1.65} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-theme-4">{tag}</div>
+          <h3 className="font-display mt-2 text-2xl font-semibold tracking-tight text-theme-1 md:text-3xl">{title}</h3>
+          <p className="mt-3 text-base leading-relaxed text-theme-3 md:text-lg md:leading-relaxed">{body}</p>
+        </div>
+      </div>
+      <div className="pointer-events-none absolute bottom-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-[color:var(--accent)]/35 to-transparent opacity-80" />
+    </div>
+  );
+}
+
+function FeatureSpotlightCard({
+  mark,
+  kind,
+  title,
+  body,
+  icon: Icon,
+}: {
+  mark: string;
+  kind: string;
+  title: string;
+  body: string;
+  icon: LucideIcon;
+}) {
+  return (
+    <div className="group relative overflow-hidden rounded-3xl border border-theme-default bg-surface-1/75 p-6 shadow-lg backdrop-blur-md transition-[transform,border-color] duration-300 hover:-translate-y-0.5 hover:border-theme-strong md:p-8">
+      <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-[color:var(--accent)]/55 via-[color:var(--accent)]/15 to-transparent opacity-90" aria-hidden />
+      <div
+        className="pointer-events-none absolute bottom-4 right-3 font-display text-5xl font-bold tabular-nums text-theme-1/[0.05] sm:text-6xl"
+        aria-hidden
+      >
+        {mark}
+      </div>
+      <div className="relative flex gap-5">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-theme-subtle bg-surface-2/80 text-[color:var(--accent-strong)] transition-colors group-hover:border-[color:var(--accent-muted)]">
+          <Icon className="h-6 w-6" strokeWidth={1.65} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-theme-4">{kind}</div>
+          <h3 className="font-display mt-2 text-xl font-semibold tracking-tight text-theme-1 md:text-2xl">{title}</h3>
+          <p className="mt-3 text-base leading-relaxed text-theme-3 md:text-lg md:leading-relaxed">{body}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const FLOW_STEPS: Array<{
+  n: string;
+  tag: string;
+  title: string;
+  body: string;
+  icon: LucideIcon;
+  align: "left" | "right";
+}> = [
+  {
+    n: "01",
+    tag: "Step 1",
+    title: "准备输入",
+    body: "语音或 Transcript；也可以用固定样本做对照。",
+    icon: Mic,
+    align: "left",
+  },
+  {
+    n: "02",
+    tag: "Step 2",
+    title: "生成结构",
+    body: "Gate 过滤 → Planner 增量改图 → Mermaid 渲染。",
+    icon: Cpu,
+    align: "right",
+  },
+  {
+    n: "03",
+    tag: "Step 3",
+    title: "追踪与对照",
+    body: "看结构视图、更新记录、运行摘要和评测指标。",
+    icon: Activity,
+    align: "left",
+  },
+];
+
+const FEATURE_SPOTS: Array<{
+  mark: string;
+  kind: string;
+  title: string;
+  body: string;
+  icon: LucideIcon;
+}> = [
+  {
+    mark: "A",
+    kind: "Feature",
+    title: "主图 + 结构视图",
+    body: "同一份输入，同时得到可读流程图与节点结构。",
+    icon: LayoutGrid,
+  },
+  {
+    mark: "B",
+    kind: "Feature",
+    title: "增量可追踪",
+    body: "更新记录 + 运行摘要，解释每次图结构变化。",
+    icon: GitBranch,
+  },
+  {
+    mark: "C",
+    kind: "Method",
+    title: "对照评测",
+    body: "延迟、准确率、抖动、好懂度，用数据对比配置。",
+    icon: Gauge,
+  },
+  {
+    mark: "D",
+    kind: "Method",
+    title: "复现与归档",
+    body: "固定样本与配置，保存报告，便于追溯与回归。",
+    icon: Archive,
+  },
+];
+
 /** @description 首页：深底 + 侧滑导航，与 /app 壳层视觉一致 */
 export function HomePage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const nextSectionRef = useRef<HTMLElement | null>(null);
+  const [scrollHintVisible, setScrollHintVisible] = useState(true);
+
+  const authMeQuery = useQuery({
+    queryKey: ["auth", "me"],
+    queryFn: api.me,
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const startHref = authMeQuery.isSuccess ? "/app/realtime" : "/login";
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const onScroll = () => {
+      const y = root.scrollTop || 0;
+      setScrollHintVisible(y < 80);
+    };
+    onScroll();
+    root.addEventListener("scroll", onScroll, { passive: true });
+    return () => root.removeEventListener("scroll", onScroll);
+  }, []);
 
   return (
     <main className="relative min-h-[100dvh] overflow-hidden bg-[var(--page-bg)]">
@@ -136,13 +388,17 @@ export function HomePage() {
                       key={item.href}
                       href={item.href}
                       onClick={() => setDrawerOpen(false)}
-                      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                        active ? "bg-surface-3 text-theme-1" : "text-theme-3 hover:bg-surface-muted hover:text-theme-2"
+                      className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-medium transition-[background-color,color,border-color,box-shadow] duration-200 ease-out ${
+                        active
+                          ? "border-[color:var(--shell-nav-active-border)] bg-[var(--shell-nav-active-bg)] text-[var(--shell-nav-active-fg)] shadow-[var(--shell-nav-active-shadow)]"
+                          : "border-transparent text-theme-3 hover:bg-[var(--shell-nav-hover-bg)] hover:text-theme-2"
                       }`}
                     >
                       <span
-                        className={`flex h-8 w-8 items-center justify-center rounded-md border ${
-                          active ? "border-theme-default bg-surface-1 text-theme-2" : "border-theme-subtle bg-surface-muted text-theme-4"
+                        className={`flex h-8 w-8 items-center justify-center rounded-md border transition-[background-color,border-color,color] duration-200 ease-out ${
+                          active
+                            ? "border-[color:var(--shell-nav-active-icon-border)] bg-[var(--shell-nav-active-icon-bg)] text-[var(--shell-nav-active-icon-fg)]"
+                            : "border-theme-subtle bg-surface-muted text-theme-4"
                         }`}
                       >
                         <Icon className="h-4 w-4" strokeWidth={2} />
@@ -176,156 +432,197 @@ export function HomePage() {
             </h1>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <Link href="/app/realtime">
-                <Button variant="primary" className="h-10 rounded-lg px-6 text-sm font-semibold">
-                  进入实时工作台
-                  <ArrowRight className="ml-1.5 h-4 w-4" />
+              {authMeQuery.isLoading ? (
+                <Button variant="primary" className="h-10 rounded-lg px-6 text-sm font-semibold" disabled aria-busy>
+                  正在检测登录…
                 </Button>
-              </Link>
-              <Link
-                href="/login"
-                className="inline-flex h-10 items-center rounded-lg border border-theme-default bg-surface-2 px-4 text-sm font-medium text-theme-2 transition hover:border-theme-strong hover:bg-surface-3"
-              >
-                管理员登录
-              </Link>
+              ) : (
+                <Link href={startHref}>
+                  <Button variant="primary" className="h-10 rounded-lg px-6 text-sm font-semibold">
+                    开始使用
+                    <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden />
+                  </Button>
+                </Link>
+              )}
               <div className="inline-flex items-center gap-1.5 rounded-md border border-theme-subtle bg-surface-muted px-2.5 py-1 text-[11px] text-theme-4">
                 <span className="inline-block h-1.5 w-1.5 rounded-sm bg-emerald-600" aria-hidden />
                 实时管线就绪
               </div>
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => nextSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            className={`absolute bottom-8 left-1/2 z-[2] -translate-x-1/2 text-theme-3 transition hover:text-theme-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--shell-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--page-bg)] ${
+              scrollHintVisible ? "opacity-90" : "pointer-events-none opacity-0"
+            }`}
+            aria-label="向下滚动查看更多"
+          >
+            <ScrollZigzagHint className="home-scroll-hint-motion h-9 w-[5.125rem] text-theme-3 sm:h-10 sm:w-[6.625rem]" />
+          </button>
         </section>
 
-        <section className="relative mx-auto w-full max-w-5xl px-6 pt-12 text-theme-2 md:px-10">
-          <div className="mb-6">
-            <div className="text-3xl font-semibold tracking-tight text-theme-1 sm:text-4xl md:text-5xl">流程</div>
-            <p className="mt-2 max-w-3xl text-sm leading-7 text-theme-4 md:text-base">
-              选择样本 → 配置模型 → 在线生成任务与图谱。向下滚动时，卡片会逐个浮现，方便按步骤理解。
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-theme-default bg-surface-1/70 p-6 shadow-lg backdrop-blur md:p-10">
-            <div className="grid gap-3 lg:grid-cols-3">
-              <Reveal rootRef={scrollRef} delayMs={0}>
-                <div className="rounded-xl border border-theme-default bg-surface-2/60 p-5">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-theme-4">Step 1</div>
-                  <div className="mt-2 text-lg font-semibold text-theme-1">选择样本</div>
-                  <div className="mt-1 text-sm leading-7 text-theme-3">
-                    左侧选择数据集版本、split 和 sample，准备对照与复现。
-                  </div>
+        <section
+          ref={nextSectionRef}
+          className="relative mx-auto w-full max-w-5xl px-6 py-16 text-theme-2 md:px-10 md:py-20"
+        >
+          <Reveal rootRef={scrollRef} delayMs={0}>
+            <div className="grid gap-10 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-14 lg:gap-20">
+              <div className="relative min-w-0">
+                <div
+                  className="absolute -left-4 top-1 hidden h-[4.5rem] w-1 rounded-full bg-gradient-to-b from-[color:var(--accent)]/80 via-[color:var(--accent)]/25 to-transparent md:block"
+                  aria-hidden
+                />
+                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[color:var(--accent-strong)]">Pipeline</p>
+                <h2 className="font-display mt-3 text-4xl font-semibold tracking-tight text-theme-1 sm:text-5xl md:text-6xl">
+                  从语流到结构图
+                </h2>
+                <p className="mt-5 max-w-2xl text-lg leading-relaxed text-theme-3 md:text-xl md:leading-relaxed">
+                  选择输入 → 生成与调整 → 对照与追踪。三步跑通实时管线，把口述内容落成可读的图与可追踪的变更。
+                </p>
+                <div className="mt-7 flex flex-wrap gap-2">
+                  {["实时语流", "增量 Planner", "报告归档"].map((t) => (
+                    <span
+                      key={t}
+                      className="rounded-full border border-theme-subtle bg-surface-2/70 px-3.5 py-1.5 text-xs font-medium text-theme-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
+                    >
+                      {t}
+                    </span>
+                  ))}
                 </div>
-              </Reveal>
-              <Reveal rootRef={scrollRef} delayMs={120}>
-                <div className="rounded-xl border border-theme-default bg-surface-2/60 p-5">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-theme-4">Step 2</div>
-                  <div className="mt-2 text-lg font-semibold text-theme-1">配置模型</div>
-                  <div className="mt-1 text-sm leading-7 text-theme-3">
-                    设置 Gate / Planner / STT 组合，保持对比条件清晰。
-                  </div>
-                </div>
-              </Reveal>
-              <Reveal rootRef={scrollRef} delayMs={240}>
-                <div className="rounded-xl border border-theme-default bg-surface-2/60 p-5">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-theme-4">Step 3</div>
-                  <div className="mt-2 text-lg font-semibold text-theme-1">阅读结构</div>
-                  <div className="mt-1 text-sm leading-7 text-theme-3">
-                    查看主图与结构视图，结合更新记录与运行摘要理解增量结果。
-                  </div>
-                </div>
-              </Reveal>
-            </div>
-          </div>
-        </section>
-
-        <section className="relative mx-auto w-full max-w-5xl px-6 pb-24 pt-10 text-theme-2 md:px-10">
-          <div className="mb-6">
-            <div className="text-3xl font-semibold tracking-tight text-theme-1 sm:text-4xl md:text-5xl">从输入到结果</div>
-            <p className="mt-2 max-w-3xl text-sm leading-7 text-theme-4 md:text-base">
-              下面是能力概览与示例输入。向下滚动时，每张卡片会依次浮上来。
-            </p>
-          </div>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            <div className="rounded-2xl border border-theme-default bg-surface-1/70 p-6 shadow-lg backdrop-blur md:p-10">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Reveal rootRef={scrollRef} delayMs={0}>
-                  <div className="rounded-xl border border-theme-default bg-surface-2/60 p-5">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-theme-4">Generate</div>
-                    <div className="mt-2 text-base font-semibold text-theme-1">生成主图与结构视图</div>
-                    <p className="mt-1 text-sm leading-7 text-theme-3">把 Transcript/语音输入转换为可读的图与节点结构。</p>
-                  </div>
-                </Reveal>
-                <Reveal rootRef={scrollRef} delayMs={120}>
-                  <div className="rounded-xl border border-theme-default bg-surface-2/60 p-5">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-theme-4">Trace</div>
-                    <div className="mt-2 text-base font-semibold text-theme-1">追踪增量更新</div>
-                    <p className="mt-1 text-sm leading-7 text-theme-3">查看更新记录与运行摘要，定位每一次变化的原因。</p>
-                  </div>
-                </Reveal>
-                <Reveal rootRef={scrollRef} delayMs={240}>
-                  <div className="rounded-xl border border-theme-default bg-surface-2/60 p-5">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-theme-4">Evaluate</div>
-                    <div className="mt-2 text-base font-semibold text-theme-1">评测与对照</div>
-                    <p className="mt-1 text-sm leading-7 text-theme-3">用延迟、准确率、抖动与好懂度指标辅助对比模型配置。</p>
-                  </div>
-                </Reveal>
-                <Reveal rootRef={scrollRef} delayMs={360}>
-                  <div className="rounded-xl border border-theme-default bg-surface-2/60 p-5">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-theme-4">Reproduce</div>
-                    <div className="mt-2 text-base font-semibold text-theme-1">复现与归档</div>
-                    <p className="mt-1 text-sm leading-7 text-theme-3">保持同样的样本与配置，复现输出并保存报告用于追溯。</p>
-                  </div>
-                </Reveal>
               </div>
+              <FlowPipelineOrnament />
             </div>
+          </Reveal>
+        </section>
 
-            <div className="rounded-2xl border border-theme-default bg-surface-1/70 p-6 shadow-lg backdrop-blur md:p-10">
-              <div className="space-y-3">
-                <Reveal rootRef={scrollRef} delayMs={0}>
-                  <div className="rounded-xl border border-theme-default bg-surface-2/60 p-5">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-theme-4">Example 1</div>
-                    <div className="mt-2 text-base font-semibold text-theme-1">平台架构梳理</div>
-                    <pre className="mt-2 whitespace-pre-wrap text-xs leading-6 text-theme-2">
-expert|We need a platform map from web console to backend services.|structural
-expert|Connect admin console to API gateway and session manager.|sequential
-expert|Show PostgreSQL storage and worker report generation.|structural
-                    </pre>
-                  </div>
-                </Reveal>
-                <Reveal rootRef={scrollRef} delayMs={120}>
-                  <div className="rounded-xl border border-theme-default bg-surface-2/60 p-5">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-theme-4">Example 2</div>
-                    <div className="mt-2 text-base font-semibold text-theme-1">故障响应流程</div>
-                    <pre className="mt-2 whitespace-pre-wrap text-xs leading-6 text-theme-2">
-operator|We need an incident response flow for a production outage.|sequential
-lead|Add a decision: is customer traffic impacted?|conditional
-lead|If yes, branch to mitigation, status update, exec notification.|parallel
-                    </pre>
-                  </div>
-                </Reveal>
-                <Reveal rootRef={scrollRef} delayMs={240}>
-                  <div className="rounded-xl border border-theme-default bg-surface-2/60 p-5">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-theme-4">Example 3</div>
-                    <div className="mt-2 text-base font-semibold text-theme-1">用户研究闭环</div>
-                    <pre className="mt-2 whitespace-pre-wrap text-xs leading-6 text-theme-2">
-researcher|Describe study workflow from task creation to report export.|sequential
-expert|Participants enter, run session, autosave drafts, then submit.|sequential
-expert|After submit, run evaluation and generate aggregate report.|sequential
-                    </pre>
-                  </div>
-                </Reveal>
+        <SectionHairline />
 
-                <Reveal rootRef={scrollRef} delayMs={360}>
-                  <div className="rounded-xl border border-theme-subtle bg-surface-muted p-5 text-sm leading-7 text-theme-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-theme-4">Note</div>
-                    <div className="mt-2 text-sm text-theme-2">
-                      这是实验平台：输出受输入内容、模型配置与实时状态影响。建议用固定样本做对照，结合更新记录与运行摘要定位差异来源。
+        {FLOW_STEPS.map((step) => (
+          <section
+            key={step.n}
+            className="relative mx-auto w-full max-w-5xl px-6 py-12 text-theme-2 md:px-10 md:py-14"
+          >
+            <Reveal rootRef={scrollRef} delayMs={0}>
+              <ShowcaseStepCard {...step} />
+            </Reveal>
+          </section>
+        ))}
+
+        <div className="py-6 md:py-8">
+          <SectionHairline />
+        </div>
+
+        <section className="relative mx-auto w-full max-w-5xl px-6 py-14 text-theme-2 md:px-10 md:py-16">
+          <Reveal rootRef={scrollRef} delayMs={0}>
+            <div className="relative overflow-hidden rounded-[2rem] border border-theme-default bg-gradient-to-br from-surface-1/90 via-surface-2/30 to-surface-1/80 p-7 shadow-[0_28px_100px_-40px_rgba(124,111,154,0.35)] backdrop-blur-md md:p-10">
+              <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-[color:var(--accent)]/12 blur-3xl" aria-hidden />
+              <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                <div className="min-w-0 max-w-2xl lg:max-w-none lg:flex-1 lg:pr-8">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-theme-subtle bg-surface-muted/60 px-3 py-1 text-xs font-medium text-theme-3">
+                    <Sparkles className="h-3.5 w-3.5 text-[color:var(--accent-strong)]" aria-hidden />
+                    能力与原理
+                  </div>
+                  <h2 className="font-display mt-4 text-balance break-keep text-4xl font-semibold tracking-tight text-theme-1 sm:text-5xl md:text-6xl">
+                    语流成图，为什么从这里开始
+                  </h2>
+                  <p className="mt-4 max-w-2xl text-lg leading-relaxed text-theme-3 md:text-xl">
+                    把复杂管线拆成你能点得到、看得懂的模块：视图、追踪、评测、归档，一整条链路都在工作台里。
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
+                  {[
+                    { t: "双视图", d: "主图 & 结构" },
+                    { t: "可观测", d: "摘要与记录" },
+                    { t: "可量化", d: "指标对照" },
+                  ].map((x) => (
+                    <div
+                      key={x.t}
+                      className="min-w-[5.5rem] rounded-xl border border-theme-subtle bg-surface-2/70 px-3 py-2 text-center shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
+                    >
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">{x.t}</div>
+                      <div className="mt-0.5 text-xs font-medium text-theme-2">{x.d}</div>
                     </div>
-                  </div>
-                </Reveal>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          </Reveal>
+        </section>
+
+        {FEATURE_SPOTS.map((f) => (
+          <section key={f.mark} className="relative mx-auto w-full max-w-5xl px-6 py-8 text-theme-2 md:px-10 md:py-10">
+            <Reveal rootRef={scrollRef} delayMs={0}>
+              <FeatureSpotlightCard {...f} />
+            </Reveal>
+          </section>
+        ))}
+
+        <section className="relative mx-auto w-full max-w-5xl px-6 py-10 text-theme-2 md:px-10 md:py-12">
+          <Reveal rootRef={scrollRef} delayMs={0}>
+            <div className="relative overflow-hidden rounded-3xl border border-theme-default bg-surface-1/75 p-7 shadow-lg backdrop-blur-md md:p-9">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-theme-4">How to</div>
+              <h3 className="font-display mt-2 text-2xl font-semibold tracking-tight text-theme-1 md:text-3xl">三分钟上手路径</h3>
+              <ol className="mt-6 space-y-5">
+                {[
+                  "在实时工作台开麦或粘贴 Transcript",
+                  "对照主图 / 结构视图，确认节点关系",
+                  "用更新记录与运行摘要锁定每一次改动",
+                ].map((text, i) => (
+                  <li key={text} className="flex gap-4">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:var(--accent-muted)] bg-[color:var(--accent)]/12 text-sm font-bold tabular-nums text-[color:var(--accent-strong)]">
+                      {i + 1}
+                    </span>
+                    <span className="pt-1.5 text-base leading-relaxed text-theme-3 md:text-lg">{text}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </Reveal>
+        </section>
+
+        <section className="relative mx-auto w-full max-w-5xl px-6 py-6 text-theme-2 md:px-10 md:py-8">
+          <Reveal rootRef={scrollRef} delayMs={0}>
+            <div className="rounded-3xl border border-theme-default bg-surface-1/70 p-7 shadow-lg backdrop-blur-md md:p-9">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-theme-4">Principle</div>
+              <h3 className="font-display mt-2 text-2xl font-semibold tracking-tight text-theme-1 md:text-3xl">三条骨架</h3>
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                {[
+                  { k: "Gate", v: "过滤与归类输入片段" },
+                  { k: "Planner", v: "增量修改图结构" },
+                  { k: "Renderer", v: "Mermaid + 结构节点" },
+                ].map((row) => (
+                  <div
+                    key={row.k}
+                    className="rounded-2xl border border-theme-subtle bg-surface-2/55 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
+                  >
+                    <div className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[color:var(--accent-strong)]">
+                      {row.k}
+                    </div>
+                    <div className="mt-1.5 text-sm leading-relaxed text-theme-2 md:text-base">{row.v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Reveal>
+        </section>
+
+        <section className="relative mx-auto w-full max-w-5xl px-6 pb-24 pt-6 text-theme-2 md:px-10 md:pb-28 md:pt-8">
+          <Reveal rootRef={scrollRef} delayMs={0}>
+            <div className="relative overflow-hidden rounded-3xl border border-[color:var(--accent-muted)] bg-gradient-to-br from-[color:var(--accent)]/10 via-surface-muted to-surface-1/80 p-8 md:p-10">
+              <span
+                className="pointer-events-none absolute left-2 top-0 translate-y-2 font-display text-[6.5rem] leading-none text-[color:var(--accent)] opacity-20"
+                aria-hidden
+              >
+                &ldquo;
+              </span>
+              <div className="relative text-xs font-semibold uppercase tracking-[0.2em] text-theme-4">Tip</div>
+              <p className="font-display relative mt-4 pl-6 text-lg font-medium leading-relaxed text-theme-2 md:pl-8 md:text-xl">
+                想严谨对照：用固定样本与配置跑两次，再用评测指标对比差异——偏差会自己说话。
+              </p>
+            </div>
+          </Reveal>
         </section>
       </div>
     </main>

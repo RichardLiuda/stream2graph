@@ -23,7 +23,7 @@ Start-ManagedService `
   -LogFile (Join-Path $script:LogDir "api.log") `
   -ReadinessKind "http" `
   -ReadinessTarget "http://127.0.0.1:8000/api/health" `
-  -CommandLine "set PYTHONPATH=apps/api&& `"$($script:VenvUvicorn)`" app.main:app --app-dir apps/api --host 127.0.0.1 --port 8000"
+  -CommandLine "set PYTHONPATH=apps/api&& `"$($script:VenvUvicorn)`" app.main:app --app-dir apps/api --host 0.0.0.0 --port 8000"
 
 if (Get-S2GFlag -Name "S2G_START_WORKER" -Default "1") {
   Start-ManagedService `
@@ -43,7 +43,7 @@ Start-ManagedService `
   -LogFile (Join-Path $script:LogDir "web.log") `
   -ReadinessKind "http" `
   -ReadinessTarget "http://127.0.0.1:3000" `
-  -CommandLine "pnpm --dir apps/web exec next dev --hostname 127.0.0.1 --port 3000"
+  -CommandLine "pnpm --dir apps/web exec next dev --hostname 0.0.0.0 --port 3000"
 
 if (Get-S2GFlag -Name "S2G_START_AUDIO_HELPER" -Default "1") {
   Start-ManagedService `
@@ -52,14 +52,14 @@ if (Get-S2GFlag -Name "S2G_START_AUDIO_HELPER" -Default "1") {
     -LogFile (Join-Path $script:LogDir "audio-helper.log") `
     -ReadinessKind "http" `
     -ReadinessTarget "http://127.0.0.1:8765/health" `
-    -CommandLine "set PYTHONPATH=apps/audio-helper&& `"$($script:VenvUvicorn)`" audio_helper.main:app --app-dir apps/audio-helper --host 127.0.0.1 --port 8765"
+    -CommandLine "set PYTHONPATH=apps/audio-helper&& `"$($script:VenvUvicorn)`" audio_helper.main:app --app-dir apps/audio-helper --host 0.0.0.0 --port 8765"
 } else {
   Write-Host "Skipping audio-helper because S2G_START_AUDIO_HELPER=0"
 }
 
 Write-Host ""
-Write-Host "Development platform is up:"
-Write-Host "  Web:    http://127.0.0.1:3000"
+Write-Host "Development platform is up (listening on 0.0.0.0 — reachable from LAN):"
+Write-Host "  Web:    http://127.0.0.1:3000  (same host: use your LAN IP for phones/tablets)"
 Write-Host "  API:    http://127.0.0.1:8000"
 Write-Host "  Health: http://127.0.0.1:8000/api/health"
 if (Get-S2GFlag -Name "S2G_START_AUDIO_HELPER" -Default "1") {

@@ -596,7 +596,7 @@ export function PlatformSettings() {
     <div className="space-y-6">
       {/* pr：与实时页「历史会话」同档，并为固定主题按钮留空 */}
       <div className="flex flex-wrap items-center justify-between gap-3 pr-12 sm:pr-14">
-        <h1 className="page-title">设置</h1>
+        <h1 className="page-title page-title--menu-clearance">设置</h1>
         <Link href="/app/realtime" className="shrink-0">
           <Button variant="secondary">
             返回实时工作

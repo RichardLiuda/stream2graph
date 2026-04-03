@@ -5,11 +5,25 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 DEFAULT_XFYUN_VOICEPRINT_BASE = "https://office-api-personal-dx.iflyaisol.com"
+
+# 与 FastAPI CORSMiddleware.allow_origin_regex 配合 allow_credentials=True。
+# 覆盖 RFC1918 局域网、127.0.0.1 及常见内网穿透前端域名；生产可改为显式 S2G_CORS_ORIGINS 或收窄本正则。
+_DEFAULT_S2G_CORS_ORIGIN_REGEX = (
+    r"^https?://("
+    r"192\.168\.\d{1,3}\.\d{1,3}|"
+    r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+    r"172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|"
+    r"127\.0\.0\.1"
+    r")(:\d+)?$"
+    r"|^https?://[a-zA-Z0-9-]+\.ngrok-free\.app(?::\d+)?$"
+    r"|^https?://[a-zA-Z0-9-]+\.ngrok\.io(?::\d+)?$"
+    r"|^https?://[a-zA-Z0-9-]+\.trycloudflare\.com(?::\d+)?$"
+)
 LEGACY_XFYUN_VOICEPRINT_BASE = "https://api.xf-yun.com"
 DEFAULT_XFYUN_ASR_ENDPOINT = "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1"
 LEGACY_XFYUN_ASR_ENDPOINT = "wss://iat-api.xfyun.cn/v2/iat"
@@ -46,7 +60,7 @@ class Settings(BaseSettings):
     admin_password: str = Field("admin123456", alias="S2G_ADMIN_PASSWORD")
     admin_display_name: str = Field("Stream2Graph Admin", alias="S2G_ADMIN_DISPLAY_NAME")
     cors_origins_raw: str = Field("http://127.0.0.1:3000,http://localhost:3000", alias="S2G_CORS_ORIGINS")
-    cors_origin_regex: str = Field("", alias="S2G_CORS_ORIGIN_REGEX")
+    cors_origin_regex: str = Field(_DEFAULT_S2G_CORS_ORIGIN_REGEX, alias="S2G_CORS_ORIGIN_REGEX")
     cookie_secure: bool = Field(False, alias="S2G_COOKIE_SECURE")
     cookie_samesite: str = Field("lax", alias="S2G_COOKIE_SAMESITE")
     cookie_domain: str | None = Field(None, alias="S2G_COOKIE_DOMAIN")
@@ -75,6 +89,16 @@ class Settings(BaseSettings):
     @property
     def artifact_root(self) -> Path:
         return self.repo_root / "var" / "artifacts"
+
+    @field_validator("cors_origin_regex", mode="before")
+    @classmethod
+    def cors_origin_regex_blank_uses_lan_default(cls, value: object) -> object:
+        """环境变量留空或全空白时沿用内置局域网/穿透规则，避免 .env 中写 `S2G_CORS_ORIGIN_REGEX=` 误关闭。"""
+        if value is None:
+            return _DEFAULT_S2G_CORS_ORIGIN_REGEX
+        if isinstance(value, str) and not value.strip():
+            return _DEFAULT_S2G_CORS_ORIGIN_REGEX
+        return value
 
     @property
     def cors_origins(self) -> list[str]:

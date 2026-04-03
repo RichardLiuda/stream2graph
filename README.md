@@ -40,16 +40,14 @@ pnpm api:test
 - `pnpm dev:up` 会自动补 `.env`、尝试拉起 PostgreSQL、执行迁移，并后台启动 API / Web / worker
 - `pnpm dev:up:win` / `dev:status:win` / `dev:down:win` / `dev:restart:win` 为 Windows PowerShell 对应脚本，默认也会管理 API / Web / worker / audio-helper
 - `pnpm audio-helper:dev` 会启动本地系统声音辅助层，默认监听 `127.0.0.1:8765`
-- `pnpm dev:web:lan` / `pnpm api:dev:lan` / `pnpm audio-helper:dev:lan` 会监听 `0.0.0.0`，用于局域网访问
+- `pnpm dev:web` / `pnpm api:dev` / `pnpm audio-helper:dev` 默认监听 **`0.0.0.0`**（内网可访问）；`:lan` 后缀脚本与上述相同，仅为别名
 - 启动 helper 前，先在虚拟环境里安装：`./.venv-platform/bin/pip install -e "apps/audio-helper"`
 - 进程日志默认写到 `var/log/`，PID 写到 `var/run/`
 - `pnpm api:*` 系列命令默认在已经激活 `.venv-platform` 的 shell 中执行
 
 局域网访问（同一 Wi-Fi / 交换机）快速步骤：
 
-1. 机器 A（部署机）设置 `.env`：
-   - `NEXT_PUBLIC_API_BASE_URL=http://<机器A内网IP>:8000`
-   - `S2G_CORS_ORIGIN_REGEX=^https?://(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$`
+1. 机器 A（部署机）：Web 默认通过 **Next 同源转发**（`apps/web/next.config.ts` 将 `/api/*` 转到本机 API），手机浏览器只访问 `:3000` 即可，**不依赖**浏览器直连 `:8000`，也避免跨域与 Cookie 问题。API 仍须监听 `0.0.0.0:8000`（`pnpm api:dev` 已默认）。Audio helper 仍直连 `:8765`，局域网需单独放行。若需恢复浏览器直连 API，可设 `NEXT_PUBLIC_API_BROWSER_PROXY=0`。
 2. 启动：
    - `pnpm api:dev:lan`
    - `pnpm dev:web:lan`

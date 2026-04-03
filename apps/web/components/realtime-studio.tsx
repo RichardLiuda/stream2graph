@@ -10,7 +10,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Eye,
   Fingerprint,
   Headphones,
   Mic,
@@ -18,7 +17,6 @@ import {
   Pause,
   PanelRight,
   Pencil,
-  RotateCcw,
   Save,
   Send,
   StopCircle,
@@ -30,6 +28,7 @@ import { createPortal } from "react-dom";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
 import { Badge, Button, Card, Input, StatCard, Textarea } from "@stream2graph/ui";
+import type { RealtimeSession } from "@stream2graph/contracts";
 
 import { ApiError, api } from "@/lib/api";
 import { encodeFloat32ToBase64Pcm16 } from "@/lib/audio";
@@ -349,16 +348,6 @@ function capabilityBadgeTone(status: string) {
   return "";
 }
 
-/** @description 快捷操作「拉取快照」按钮：随输入来源略变 */
-function snapshotLabelForSource(_source: InputSource): string {
-  return "查看结果";
-}
-
-/** @description 快捷操作「冲刷」按钮：随输入来源略变 */
-function flushLabelForSource(source: InputSource): string {
-  return source === "system_audio_helper" ? "强制清空" : "强制重算";
-}
-
 const STAGE_TABS: ReadonlyArray<readonly [string, string]> = [
   ["mermaid", "主图"],
   ["structure", "结构视图"],
@@ -381,6 +370,8 @@ export function RealtimeStudio() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
+  /** @description 历史侧栏内删除会话前的确认（替代原生 confirm） */
+  const [deleteSessionConfirmId, setDeleteSessionConfirmId] = useState<string | null>(null);
   const [inputSourceMenuOpen, setInputSourceMenuOpen] = useState(false);
   useEffect(() => {
     if (!notice) return;
@@ -467,28 +458,36 @@ export function RealtimeStudio() {
     queryFn: api.me,
     retry: false,
   });
+  const isAdmin = authQuery.isSuccess;
+  const isUnauthorizedGuest =
+    authQuery.isFetched &&
+    authQuery.isError &&
+    authQuery.error instanceof ApiError &&
+    authQuery.error.status === 401;
+  const workbenchDataReady = authQuery.isFetched && (isAdmin || isUnauthorizedGuest);
+
   const datasets = useQuery({
     queryKey: ["datasets"],
     queryFn: api.listDatasets,
-    enabled: authQuery.isSuccess,
+    enabled: workbenchDataReady,
     retry: false,
   });
   const runtimeOptions = useQuery({
     queryKey: ["runtime-options"],
     queryFn: api.listRuntimeOptions,
-    enabled: authQuery.isSuccess,
+    enabled: workbenchDataReady,
     retry: false,
   });
   const adminRuntimeOptions = useQuery({
     queryKey: ["admin-runtime-options"],
     queryFn: api.getAdminRuntimeOptions,
-    enabled: authQuery.isSuccess,
+    enabled: isAdmin,
     retry: false,
   });
   const sessions = useQuery({
     queryKey: ["realtime-sessions"],
     queryFn: api.listRealtimeSessions,
-    enabled: authQuery.isSuccess,
+    enabled: workbenchDataReady,
     retry: false,
   });
   const helperCapabilitiesQuery = useQuery({
@@ -511,11 +510,22 @@ export function RealtimeStudio() {
   useEffect(() => {
     if (!detailDrawerOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDetailDrawerOpen(false);
+      if (e.key !== "Escape") return;
+      if (deleteSessionConfirmId) return;
+      setDetailDrawerOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [detailDrawerOpen]);
+  }, [detailDrawerOpen, deleteSessionConfirmId]);
+
+  useEffect(() => {
+    if (!deleteSessionConfirmId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDeleteSessionConfirmId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [deleteSessionConfirmId]);
 
   useEffect(() => {
     if (!datasetVersion && datasets.data?.length) {
@@ -1264,6 +1274,21 @@ export function RealtimeStudio() {
     onError: (err) => setError((err as Error).message),
   });
 
+  const renameSessionMutation = useMutation({
+    mutationFn: ({ sessionId, title: nextTitle }: { sessionId: string; title: string }) =>
+      api.patchRealtimeSession(sessionId, { title: nextTitle }),
+    onSuccess: (data) => {
+      queryClient.setQueryData<RealtimeSession[]>(["realtime-sessions"], (old) => {
+        if (!old) return old;
+        return old.map((row) =>
+          row.session_id === data.session_id ? { ...row, title: data.title, updated_at: data.updated_at } : row,
+        );
+      });
+      void queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+    },
+    onError: (err) => setError((err as Error).message),
+  });
+
   const snapshotMutation = useMutation({
     mutationFn: (sessionId: string) => {
       studioSend({ type: "gate.working" });
@@ -1450,6 +1475,43 @@ export function RealtimeStudio() {
     },
     onError: (err) => setError((err as Error).message),
   });
+
+  const deleteSessionMutation = useMutation({
+    mutationFn: (sessionId: string) => api.deleteRealtimeSession(sessionId),
+    onSuccess: (_data, deletedId) => {
+      queryClient.setQueryData<RealtimeSession[]>(["realtime-sessions"], (old) =>
+        old ? old.filter((row) => row.session_id !== deletedId) : old,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+    },
+    onError: (err) => setError((err as Error).message),
+  });
+
+  const handleDeleteHistorySession = (e: React.MouseEvent, sessionId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeleteSessionConfirmId(sessionId);
+  };
+
+  const confirmDeleteHistorySession = async () => {
+    if (!deleteSessionConfirmId) return;
+    const sessionId = deleteSessionConfirmId;
+    try {
+      await deleteSessionMutation.mutateAsync(sessionId);
+      if (currentSessionId === sessionId) {
+        window.localStorage.removeItem(LOCAL_SESSION_KEY);
+        setCurrentSessionId(null);
+        setSnapshot(null);
+        studioSend({ type: "capture.stop" });
+        setTitle("研究演示会话");
+        setTitleDraft("研究演示会话");
+      }
+      setNotice({ tone: "success", text: "已删除该会话。" });
+      setDeleteSessionConfirmId(null);
+    } catch {
+      /* deleteSessionMutation onError */
+    }
+  };
 
   const saveReportMutation = useMutation({
     mutationFn: (sessionId: string) => api.saveRealtimeReport(sessionId),
@@ -1857,6 +1919,8 @@ export function RealtimeStudio() {
     relayoutMutation.isPending,
   ]);
 
+  const pipelineAllIdle = useMemo(() => pipelineStages.every((step) => step.tone === "idle"), [pipelineStages]);
+
   const systemAudioExperimentalVisible = supportsSystemAudioExperimentalUi(audioContext);
   const canStartCapture =
     selectedRecognitionBackend === "browser_speech"
@@ -1921,14 +1985,26 @@ export function RealtimeStudio() {
     setIsTitleEditing(true);
   }
 
-  function commitTitleEdit() {
+  async function commitTitleEdit() {
     const nextTitle = titleDraft.trim();
     if (!nextTitle) return;
+    if (currentSessionId) {
+      try {
+        await renameSessionMutation.mutateAsync({ sessionId: currentSessionId, title: nextTitle });
+        setTitle(nextTitle);
+        setIsTitleEditing(false);
+        await queryClient.refetchQueries({ queryKey: ["realtime-sessions"] });
+        setNotice({ tone: "success", text: "会话名称已保存，历史列表将同步更新。" });
+      } catch {
+        /* setError 已由 mutation.onError 处理 */
+      }
+      return;
+    }
     setTitle(nextTitle);
     setIsTitleEditing(false);
     setNotice({
       tone: "success",
-      text: currentSessionId ? "已更新会话名称展示。" : "会话名称已保存，创建会话时会使用该名称。",
+      text: "会话名称已保存，创建会话时会使用该名称。",
     });
   }
 
@@ -1940,33 +2016,23 @@ export function RealtimeStudio() {
   if (authQuery.isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center px-4 text-sm text-theme-4">
-        正在验证管理员身份…
+        正在加载工作台…
       </div>
     );
   }
 
   if (authQuery.isError) {
     const err = authQuery.error;
-    if (err instanceof ApiError && err.status === 401) {
+    if (!(err instanceof ApiError && err.status === 401)) {
       return (
-        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4 text-center">
-          <p className="max-w-md text-sm leading-relaxed text-theme-3">
-            未登录或会话已过期。请先登录管理员账号，再加载会话、模型与数据集。
-          </p>
-          <Link href="/login">
-            <Button>前往登录</Button>
-          </Link>
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-4 text-center">
+          <p className="max-w-md text-sm text-red-400 theme-light:text-red-700">{(err as Error).message}</p>
+          <Button type="button" variant="secondary" onClick={() => void authQuery.refetch()}>
+            重试
+          </Button>
         </div>
       );
     }
-    return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-4 text-center">
-        <p className="max-w-md text-sm text-red-400 theme-light:text-red-700">{(err as Error).message}</p>
-        <Button type="button" variant="secondary" onClick={() => void authQuery.refetch()}>
-          重试
-        </Button>
-      </div>
-    );
   }
 
   return (
@@ -1988,6 +2054,11 @@ export function RealtimeStudio() {
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2 pl-3 md:gap-3 md:pl-6 lg:pl-8">
             <h1 className="page-title">实时工作台</h1>
+            {isUnauthorizedGuest ? (
+              <Badge className="border-amber-800/50 bg-amber-950/35 text-[10px] font-medium normal-case tracking-normal text-amber-100 theme-light:border-amber-200/60 theme-light:bg-amber-50 theme-light:text-amber-900">
+                访客体验 · 平台设置与声纹持久化需登录
+              </Badge>
+            ) : null}
             <p className="hidden max-w-md text-[11px] leading-snug text-theme-4 md:block">
               开麦或发送 Transcript 后，主图与结构视图会更新。
             </p>
@@ -2057,21 +2128,16 @@ export function RealtimeStudio() {
                 </div>
               </div>
             </div>
-            <Button
-              type="button"
-              variant="secondary"
-              className="shrink-0 gap-2 text-sm"
-              onClick={() => setDetailDrawerOpen(true)}
-            >
-              <PanelRight className="h-4 w-4" />
-              历史会话
-            </Button>
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-hidden pb-0 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(240px,320px)_minmax(0,1fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
+        <div className="flex-1 min-h-0 overflow-hidden pb-0 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(280px,3fr)_minmax(0,7fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
         {studioPage === 1 ? (
-          <Card className="soft-enter order-1 flex min-h-0 min-w-0 flex-col space-y-3 overflow-hidden text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none">
-          <div className="shrink-0 space-y-2">
+          <Card className="soft-enter relative order-1 flex min-h-0 min-w-0 flex-col space-y-3 text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none">
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[3px] bg-gradient-to-r from-[color:var(--accent)]/0 via-[color:var(--accent)]/45 to-[color:var(--accent)]/0"
+            aria-hidden
+          />
+          <div className={`relative shrink-0 space-y-2 ${inputSourceMenuOpen ? "z-[100]" : "z-[2]"}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="text-sm font-semibold text-theme-1">输入来源</label>
               <Badge className="shrink-0 text-[10px]">{audioContext ? `${audioContext.platform} / ${getBrowserFamilyLabel(audioContext)}` : "检测中"}</Badge>
@@ -2092,7 +2158,7 @@ export function RealtimeStudio() {
                 />
               </button>
               {inputSourceMenuOpen ? (
-                <div className="absolute z-[21000] mt-2 w-full rounded-lg border border-theme-subtle bg-surface-1 p-1.5 shadow-xl">
+                <div className="absolute z-10 mt-2 w-full rounded-lg border border-theme-subtle bg-surface-1 p-1.5 shadow-xl">
                   <div className="space-y-0.5" role="listbox" aria-label="输入来源">
                     {inputOptions.map((option) => {
                       const active = option.source === selectedInputSource;
@@ -2135,17 +2201,25 @@ export function RealtimeStudio() {
             {/* 声纹盲认仅与语音/STT 相关；纯文本 Transcript 输入时不展示 */}
             {selectedInputSource !== "transcript" ? (
               <div className="flex min-h-[2rem] items-center justify-between gap-2 rounded-lg border border-theme-subtle bg-surface-muted px-2 py-1">
-                {!hasSttProfiles ? (
+                {!isAdmin ? (
+                  <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-theme-3">
+                    声纹盲认与服务端 Profile 微调需{" "}
+                    <Link href="/login" className="link-accent">
+                      管理员登录
+                    </Link>
+                    后在平台设置中配置。
+                  </p>
+                ) : !hasSttProfiles ? (
                   <p className="min-w-0 flex-1 truncate text-[11px] leading-tight text-theme-3">
                     声纹盲认需先配置 STT，{" "}
-                    <Link href="/app/settings" className="text-theme-2 underline underline-offset-2">
+                    <Link href="/app/settings" className="link-accent">
                       平台设置
                     </Link>
                   </p>
                 ) : !selectedSttProfile ? (
                   <p className="min-w-0 flex-1 truncate text-[11px] leading-tight text-theme-3">
                     声纹盲认：STT 未同步，请刷新或{" "}
-                    <Link href="/app/settings" className="text-theme-2 underline underline-offset-2">
+                    <Link href="/app/settings" className="link-accent">
                       设置
                     </Link>
                   </p>
@@ -2193,7 +2267,13 @@ export function RealtimeStudio() {
             ) : null}
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-theme-subtle bg-surface-muted px-2.5 py-2">
+          <div
+            className={`relative z-[2] flex min-h-0 flex-1 flex-col rounded-lg border px-2.5 py-2 transition-[border-color,box-shadow,background] ${
+              activeCaptureSource
+                ? "border-[color:var(--accent)]/55 bg-surface-muted ring-1 ring-[color:var(--accent)]/20"
+                : "border-theme-subtle bg-gradient-to-b from-[color:var(--accent)]/[0.06] to-surface-muted"
+            }`}
+          >
             <div className="flex shrink-0 items-center justify-between gap-2">
               <div className="text-sm font-semibold text-theme-1">实时转写</div>
               <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
@@ -2222,11 +2302,18 @@ export function RealtimeStudio() {
                 </Button>
               </div>
             ) : (
-              <div className="mt-1.5 min-h-[4rem] flex-1 overflow-auto whitespace-pre-wrap rounded-lg border border-theme-subtle bg-surface-muted px-2 py-2 text-[12px] leading-relaxed text-theme-2">
+              <div className="mt-1.5 min-h-[4rem] flex-1 overflow-auto whitespace-pre-wrap rounded-lg border border-theme-subtle bg-surface-muted/90 px-2 py-2 text-[12px] leading-relaxed text-theme-2">
                 {activeCaptureSource ? (
                   formatLiveTranscript(liveTranscript)
                 ) : (
-                  <div className="text-theme-4">尚未开始录音。点击右侧「开始录音」后显示转写。</div>
+                  <div className="flex flex-col gap-2 rounded-lg border border-dashed border-[color:var(--accent)]/30 bg-[color:var(--accent)]/[0.04] px-3 py-3">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--accent-strong)]/90">
+                      建议流程
+                    </div>
+                    <p className="text-[12px] leading-relaxed text-theme-3">
+                      确认左侧输入来源后，点主舞台右上角「开始录音」；转写会出现在这里。
+                    </p>
+                  </div>
                 )}
               </div>
             )}
@@ -2237,7 +2324,11 @@ export function RealtimeStudio() {
             </p>
           </div>
 
-          <div className="shrink-0 rounded-lg border border-theme-subtle bg-surface-muted px-2.5 py-2">
+          <div
+            className={`relative z-[2] shrink-0 rounded-lg bg-surface-muted px-2.5 py-2 ${
+              activeCaptureSource ? "border border-theme-subtle" : "border border-dashed border-[color:var(--accent)]/22"
+            }`}
+          >
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-semibold text-theme-1">输入音量</div>
               <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
@@ -2247,21 +2338,19 @@ export function RealtimeStudio() {
                 const level = Math.max(0, Math.min(1, inputLevel));
                 const threshold = (index + 1) / 16;
                 const isActive = level >= threshold;
+                const showActive = Boolean(activeCaptureSource) && isActive;
                 return (
                   <span
                     key={index}
                     className={`h-3 flex-1 rounded-sm border transition-colors duration-150 ${
-                      isActive
-                        ? "border-emerald-800/80 bg-emerald-700/90"
+                      showActive
+                        ? "border-violet-800/70 bg-violet-700/80"
                         : "border-theme-subtle bg-surface-muted"
                     }`}
                   />
                 );
               })}
             </div>
-            <p className="mt-1.5 text-[9px] leading-snug text-theme-4">
-              {activeCaptureSource ? "采集中刷新。" : "开始采集后显示音量。"}
-            </p>
           </div>
         </Card>
                 ) : null}
@@ -2282,6 +2371,10 @@ export function RealtimeStudio() {
           <div className="soft-enter soft-enter-delay-1 flex min-h-0 min-w-0 flex-1 flex-col">
             <Tabs.Root value={stageTab} onValueChange={setStageTab} className="flex min-h-0 flex-1 flex-col">
             <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-surface-1 p-0 shadow-lg">
+              <div
+                className="pointer-events-none h-px w-full shrink-0 bg-gradient-to-r from-transparent via-[color:var(--accent)]/30 to-transparent"
+                aria-hidden
+              />
               <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-2 pt-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <Tabs.List className="workspace-tab-list w-full max-w-[760px] grid-cols-5 self-start">
@@ -2311,13 +2404,17 @@ export function RealtimeStudio() {
                           <Tooltip.Trigger asChild>
                             <button
                               type="button"
-                              className="inline-flex items-center gap-1.5 rounded-md border border-theme-default bg-surface-2 px-2 py-1 text-[11px] font-medium text-theme-2"
+                              className={`inline-flex items-center gap-1.5 rounded-md border bg-surface-2 px-2 py-1 text-[11px] font-medium text-theme-2 transition-[box-shadow,border-color] ${
+                                pipelineAllIdle && step.abbr === "CAP"
+                                  ? "border-[color:var(--accent)]/40 ring-1 ring-[color:var(--accent)]/25"
+                                  : "border-theme-default"
+                              }`}
                               aria-label={`${step.label}：${step.value}`}
                             >
                               <span
                                 className={`h-2 w-2 shrink-0 rounded-full ${
                                   step.tone === "working"
-                                    ? "bg-amber-500"
+                                    ? "bg-[color:var(--accent)]"
                                     : step.tone === "success"
                                       ? "bg-emerald-500"
                                       : step.tone === "error"
@@ -2347,77 +2444,54 @@ export function RealtimeStudio() {
                     </div>
                   </Tooltip.Provider>
                 </div>
-                <div className="flex w-full max-w-[min(100%,360px)] shrink-0 flex-col items-center gap-2 sm:ml-auto sm:items-start">
-                  <div className="flex w-full flex-nowrap items-start justify-end gap-2 sm:gap-3">
-                    <div className="flex shrink-0 flex-col items-center">
-                      <button
-                    type="button"
-                    title={
-                      selectedInputSource === "transcript"
-                        ? "请先在左侧栏选择麦克风或系统音输入"
-                        : "开始录音"
-                    }
-                    onClick={() => void stageStartCapture()}
-                    disabled={!canStartStageCapture}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-violet-900/50 bg-violet-950/45 text-violet-200 transition hover:border-violet-700/60 hover:bg-violet-950/65 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-700 sm:h-12 sm:w-12"
-                        aria-label="开始录音"
-                      >
-                        <Mic className="h-5 w-5 sm:h-6 sm:w-6" />
-                      </button>
-                      <div className="mt-2 text-center text-xs leading-4 text-violet-200/85">开始录音</div>
-                    </div>
+                <div className="flex w-full min-w-0 shrink-0 flex-nowrap items-start justify-end gap-4 sm:ml-auto sm:max-w-md sm:gap-6 sm:pr-1">
+                  <div className="flex shrink-0 flex-col items-center">
+                    <button
+                      type="button"
+                      title={
+                        selectedInputSource === "transcript"
+                          ? "请先在左侧栏选择麦克风或系统音输入"
+                          : "开始录音"
+                      }
+                      onClick={() => void stageStartCapture()}
+                      disabled={!canStartStageCapture}
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-violet-900/50 bg-violet-950/45 text-violet-200 transition hover:border-violet-700/60 hover:bg-violet-950/65 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-700 sm:h-14 sm:w-14"
+                      aria-label="开始录音"
+                    >
+                      <Mic className="h-6 w-6 sm:h-7 sm:w-7" />
+                    </button>
+                    <div className="mt-2 text-center text-xs leading-4 text-violet-200/85">开始录音</div>
+                  </div>
 
-                    <div className="flex shrink-0 flex-col items-center">
-                      <button
-                    type="button"
-                    title={
-                      selectedInputSource === "transcript"
-                        ? "请先在左侧栏选择麦克风或系统音输入"
-                        : "暂停录音（停止当前采集）"
-                    }
-                    onClick={() => void stageStopCapture()}
-                    disabled={!canStopStageCapture}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-red-900/50 bg-red-950/40 text-red-200 transition hover:border-red-800 hover:bg-red-950/60 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-800 sm:h-12 sm:w-12"
-                        aria-label="暂停录音"
-                      >
-                        <Pause className="h-5 w-5 sm:h-6 sm:w-6" />
-                      </button>
-                      <div className="mt-2 text-center text-xs leading-4 text-red-200/85">暂停录音</div>
-                    </div>
+                  <div className="flex shrink-0 flex-col items-center">
+                    <button
+                      type="button"
+                      title={
+                        selectedInputSource === "transcript"
+                          ? "请先在左侧栏选择麦克风或系统音输入"
+                          : "暂停录音（停止当前采集）"
+                      }
+                      onClick={() => void stageStopCapture()}
+                      disabled={!canStopStageCapture}
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-red-900/50 bg-red-950/40 text-red-200 transition hover:border-red-800 hover:bg-red-950/60 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-800 sm:h-14 sm:w-14"
+                      aria-label="暂停录音"
+                    >
+                      <Pause className="h-6 w-6 sm:h-7 sm:w-7" />
+                    </button>
+                    <div className="mt-2 text-center text-xs leading-4 text-red-200/85">暂停录音</div>
+                  </div>
 
-                    <div className="flex shrink-0 flex-col items-center">
-                      <button
-                    type="button"
-                        title={`${snapshotLabelForSource(selectedInputSource)}（仅重新拉取当前结果）`}
-                    onClick={() => (currentSessionId ? snapshotMutation.mutate(currentSessionId) : null)}
-                    disabled={!currentSessionId}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-theme-default bg-surface-3 text-theme-1 transition hover:border-theme-strong hover:bg-surface-3 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus sm:h-12 sm:w-12"
-                        aria-label={snapshotLabelForSource(selectedInputSource)}
-                      >
-                        <Eye className="h-5 w-5 sm:h-6 sm:w-6" />
-                      </button>
-                      <div className="mt-2 text-center text-xs leading-4 text-theme-3">{snapshotLabelForSource(selectedInputSource)}</div>
-                    </div>
-
-                    <div className="flex shrink-0 flex-col items-center">
-                      <button
-                    type="button"
-                        title={`${flushLabelForSource(selectedInputSource)}（强制处理未完成内容）`}
-                    onClick={() => (currentSessionId ? flushMutation.mutate(currentSessionId) : null)}
-                    disabled={!currentSessionId}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-theme-default bg-surface-3 text-theme-1 transition hover:border-theme-strong hover:bg-surface-3 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus sm:h-12 sm:w-12"
-                        aria-label={flushLabelForSource(selectedInputSource)}
-                      >
-                        {selectedInputSource === "system_audio_helper" ? (
-                          <Trash2 className="h-5 w-5 sm:h-6 sm:w-6" />
-                        ) : (
-                          <RotateCcw className="h-5 w-5 sm:h-6 sm:w-6" />
-                        )}
-                      </button>
-                      <div className="mt-2 text-center text-xs leading-4 text-theme-3">
-                        {flushLabelForSource(selectedInputSource)}
-                      </div>
-                    </div>
+                  <div className="flex shrink-0 flex-col items-center">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="inline-flex h-12 shrink-0 gap-2 rounded-xl px-3 text-xs shadow-sm sm:h-14 sm:px-3.5 sm:text-sm"
+                      onClick={() => setDetailDrawerOpen(true)}
+                    >
+                      <PanelRight className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+                      历史会话
+                    </Button>
+                    <div className="mt-2 flex h-4 w-full items-center justify-center" aria-hidden />
                   </div>
                 </div>
               </div>
@@ -2568,8 +2642,8 @@ export function RealtimeStudio() {
                       type="button"
                       variant="secondary"
                       className="h-8 shrink-0 gap-1 px-2 text-xs font-semibold"
-                      onClick={commitTitleEdit}
-                      disabled={!titleDraft.trim()}
+                      onClick={() => void commitTitleEdit()}
+                      disabled={!titleDraft.trim() || renameSessionMutation.isPending}
                     >
                       <Check className="h-3.5 w-3.5 shrink-0" />
                       保存
@@ -2697,43 +2771,134 @@ export function RealtimeStudio() {
                   ) : null}
                       </div>
                       </div>
-              {sessions.data?.map((item) => (
-                <button
-                  key={item.session_id}
-                  type="button"
-                  className={`group w-full rounded-lg border px-3 py-3 text-left text-sm transition ${
-                    currentSessionId === item.session_id
-                      ? "border-theme-strong bg-surface-3"
-                      : "border-theme-default bg-surface-muted hover:border-theme-default hover:bg-surface-muted"
-                  }`}
-                  onClick={() => {
-                    setCurrentSessionId(item.session_id);
-                    setTitle(item.title || "研究演示会话");
-                    setTitleDraft(item.title || "研究演示会话");
-                    setIsTitleEditing(false);
-                    window.localStorage.setItem(LOCAL_SESSION_KEY, item.session_id);
-                    setDetailDrawerOpen(false);
-                  }}
-                >
-                  <div className={`font-semibold ${currentSessionId === item.session_id ? "text-theme-1" : "text-theme-3"}`}>
-                    {item.title}
-                    </div>
-                  <div className={`mt-1 text-xs ${currentSessionId === item.session_id ? "text-theme-3" : "text-theme-4"}`}>
-                    {item.session_id}
-                    </div>
-                  {item.summary?.input_runtime?.input_source ? (
-                    <div className={`mt-2 text-xs ${currentSessionId === item.session_id ? "text-theme-3" : "text-theme-4"}`}>
-                      输入源：{String(item.summary.input_runtime.input_source)}
-              </div>
-            ) : null}
-                </button>
-              ))}
+              {sessions.data?.map((item) => {
+                const sessionSelected = currentSessionId === item.session_id;
+                return (
+                  <div
+                    key={item.session_id}
+                    className={`group flex w-full items-stretch gap-0 overflow-hidden rounded-lg border text-sm transition duration-200 ease-out ${
+                      sessionSelected
+                        ? "border-[color:var(--shell-nav-active-border)] bg-[var(--shell-nav-active-bg)] shadow-[var(--shell-nav-active-shadow)]"
+                        : "border-theme-default bg-surface-muted hover:border-theme-default hover:bg-surface-muted"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      className={`min-w-0 flex-1 px-3 py-3 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[color:var(--shell-nav-active-icon-border)] focus-visible:ring-offset-2 ${
+                        sessionSelected
+                          ? "focus-visible:ring-offset-[var(--shell-nav-active-bg)]"
+                          : "focus-visible:ring-offset-surface-muted"
+                      }`}
+                      onClick={() => {
+                        setCurrentSessionId(item.session_id);
+                        setTitle(item.title || "研究演示会话");
+                        setTitleDraft(item.title || "研究演示会话");
+                        setIsTitleEditing(false);
+                        window.localStorage.setItem(LOCAL_SESSION_KEY, item.session_id);
+                        setDetailDrawerOpen(false);
+                      }}
+                    >
+                      <div
+                        className={`font-semibold ${
+                          sessionSelected ? "text-[color:var(--shell-nav-active-fg)]" : "text-theme-3"
+                        }`}
+                      >
+                        {item.title}
+                      </div>
+                      <div className={`mt-1 text-xs ${sessionSelected ? "text-white/80" : "text-theme-4"}`}>
+                        {item.session_id}
+                      </div>
+                      {item.summary?.input_runtime?.input_source ? (
+                        <div className={`mt-2 text-xs ${sessionSelected ? "text-white/70" : "text-theme-4"}`}>
+                          输入源：{String(item.summary.input_runtime.input_source)}
+                        </div>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      className={`shrink-0 border-l px-2 transition disabled:pointer-events-none disabled:opacity-40 ${
+                        sessionSelected
+                          ? "border-white/25 text-red-200 hover:bg-red-950/40 hover:text-red-100"
+                          : "border-theme-default text-red-500 hover:bg-red-500/10 hover:text-red-400"
+                      }`}
+                      aria-label="删除该会话"
+                      disabled={deleteSessionMutation.isPending}
+                      onClick={(e) => handleDeleteHistorySession(e, item.session_id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </Card>
               </aside>
             </>,
             document.body
+          )
+        : null}
+
+      {detailDrawerPortalReady && deleteSessionConfirmId
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[120] flex items-center justify-center p-4"
+              role="presentation"
+            >
+              <button
+                type="button"
+                className="absolute inset-0 bg-[var(--shell-backdrop)] backdrop-blur-[2px] transition-opacity"
+                aria-label="取消删除"
+                onClick={() => setDeleteSessionConfirmId(null)}
+              />
+              <div
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="delete-session-dialog-title"
+                aria-describedby="delete-session-dialog-desc"
+                className="relative z-[1] w-full max-w-[min(400px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-theme-default bg-surface-1 text-left shadow-[var(--shadow-lift)]"
+              >
+                <div className="border-b border-theme-default bg-surface-muted/80 px-6 pb-6 pt-6 theme-dark:bg-surface-2/90 theme-light:bg-surface-2/70">
+                  <div className="flex gap-3.5">
+                    <div
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-red-500/25 theme-dark:bg-red-950/45 theme-dark:text-red-300 theme-light:bg-red-50 theme-light:text-red-600"
+                      aria-hidden
+                    >
+                      <Trash2 className="h-6 w-6" strokeWidth={2} />
+                    </div>
+                    <div className="min-w-0 flex-1 pt-0.5">
+                      <h2 id="delete-session-dialog-title" className="text-lg font-semibold tracking-tight text-theme-1">
+                        删除会话
+                      </h2>
+                      <p id="delete-session-dialog-desc" className="mt-3 text-base leading-relaxed text-theme-3">
+                        确定删除该会话？此操作不可恢复。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col-reverse gap-1.5 px-5 py-2.5 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-8 min-h-0 w-full px-3 py-1 text-xs font-semibold sm:w-auto"
+                    disabled={deleteSessionMutation.isPending}
+                    onClick={() => setDeleteSessionConfirmId(null)}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    className="h-8 min-h-0 w-full px-3 py-1 text-xs font-semibold sm:w-auto"
+                    disabled={deleteSessionMutation.isPending}
+                    onClick={() => void confirmDeleteHistorySession()}
+                  >
+                    {deleteSessionMutation.isPending ? "删除中…" : "删除会话"}
+                  </Button>
+                </div>
+              </div>
+            </div>,
+            document.body,
           )
         : null}
     </div>

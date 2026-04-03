@@ -107,7 +107,7 @@ export function ReportsDashboard() {
 
   return (
     <div className="space-y-5">
-      <h1 className="page-title">实验、用户研究与报告</h1>
+      <h1 className="page-title page-title--menu-clearance">实验、用户研究与报告</h1>
 
       {creationError ? (
         <div className="rounded-lg border border-red-900/50 bg-red-950/40 px-3 py-2.5 text-sm text-red-200">{creationError}</div>

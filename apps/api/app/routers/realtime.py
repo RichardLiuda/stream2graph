@@ -19,6 +19,7 @@ from app.schemas import (
     RealtimeDiagramRelayoutRequest,
     RealtimeSession as RealtimeSessionSchema,
     RealtimeSessionCreateRequest,
+    RealtimeSessionUpdateRequest,
     RealtimeSnapshot,
 )
 from app.services.realtime_ai import transcribe_audio_chunk
@@ -282,6 +283,57 @@ def get_session(session_id: str, db: Session = Depends(get_db)) -> RealtimeSessi
         updated_at=obj.updated_at,
         summary=obj.summary_json,
     )
+
+
+def _apply_session_title_update(db: Session, session_id: str, payload: RealtimeSessionUpdateRequest) -> RealtimeSessionSchema:
+    obj = _get_session_or_404(db, session_id)
+    obj.title = payload.title.strip()
+    obj.updated_at = utc_now()
+    db.commit()
+    db.refresh(obj)
+    _log_runtime_event(
+        "Realtime session title updated",
+        {"session_id": obj.id, "title": obj.title},
+    )
+    return RealtimeSessionSchema(
+        session_id=obj.id,
+        title=obj.title,
+        status=obj.status,
+        dataset_version_slug=obj.dataset_version_slug,
+        created_at=obj.created_at,
+        updated_at=obj.updated_at,
+        summary=obj.summary_json,
+    )
+
+
+@router.patch("/{session_id}", response_model=RealtimeSessionSchema)
+def patch_session(
+    session_id: str,
+    payload: RealtimeSessionUpdateRequest,
+    db: Session = Depends(get_db),
+) -> RealtimeSessionSchema:
+    return _apply_session_title_update(db, session_id, payload)
+
+
+@router.put("/{session_id}", response_model=RealtimeSessionSchema)
+def put_session(
+    session_id: str,
+    payload: RealtimeSessionUpdateRequest,
+    db: Session = Depends(get_db),
+) -> RealtimeSessionSchema:
+    """与 PATCH 相同；部分代理/网关对 PATCH 支持不佳时可改用 PUT。"""
+    return _apply_session_title_update(db, session_id, payload)
+
+
+@router.delete("/{session_id}")
+def delete_session(session_id: str, db: Session = Depends(get_db)) -> dict[str, bool | str]:
+    obj = _get_session_or_404(db, session_id)
+    close_rtasr_session_stream(session_id)
+    drop_runtime(session_id)
+    db.delete(obj)
+    db.commit()
+    _log_runtime_event("Realtime session deleted", {"session_id": session_id})
+    return {"ok": True, "session_id": session_id}
 
 
 @router.post("/{session_id}/chunks")

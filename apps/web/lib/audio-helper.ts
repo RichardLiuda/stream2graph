@@ -2,6 +2,8 @@
 
 import { z } from "zod";
 
+import { isPrivateLanIPv4Hostname } from "@/lib/hostname";
+
 const CONFIGURED_HELPER_BASE_URL =
   process.env.NEXT_PUBLIC_AUDIO_HELPER_BASE_URL?.replace(/\/$/, "") || "http://127.0.0.1:8765";
 
@@ -18,7 +20,7 @@ function resolveHelperBaseUrl() {
   const isLocalhost =
     hostname === "127.0.0.1" || hostname === "localhost" || hostname.endsWith(".local");
 
-  if (isLocalhost) {
+  if (isLocalhost || isPrivateLanIPv4Hostname(hostname)) {
     return resolveLocalHelperBaseUrl(hostname);
   }
 

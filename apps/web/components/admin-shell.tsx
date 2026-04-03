@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -15,17 +16,31 @@ import { useEffect, useState } from "react";
 
 import { Button, Card } from "@stream2graph/ui";
 
-const navItems = [
-  { href: "/app/realtime", label: "实时工作", icon: RadioTower },
-  { href: "/app/samples", label: "样本对照", icon: Rows4 },
-  { href: "/app/reports", label: "实验报告", icon: BarChart3 },
-  { href: "/app/settings", label: "设置", icon: Settings2 },
-  { href: "/", label: "首页", icon: BookOpenText },
-];
+import { ApiError, api } from "@/lib/api";
+
+const allNavItems = [
+  { href: "/app/realtime", label: "实时工作", icon: RadioTower, guest: true },
+  { href: "/app/samples", label: "样本对照", icon: Rows4, guest: false },
+  { href: "/app/reports", label: "实验报告", icon: BarChart3, guest: false },
+  { href: "/app/settings", label: "设置", icon: Settings2, guest: false },
+  { href: "/", label: "首页", icon: BookOpenText, guest: true },
+] as const;
 
 /** @description /app 区：统一内容宽度 + 侧滑导航（浮层保留轻微 blur） */
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const authQuery = useQuery({
+    queryKey: ["auth", "me"],
+    queryFn: api.me,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const isGuest =
+    authQuery.isFetched &&
+    authQuery.isError &&
+    authQuery.error instanceof ApiError &&
+    authQuery.error.status === 401;
+  const navItems = isGuest ? allNavItems.filter((item) => item.guest) : [...allNavItems];
   const currentItem = navItems.find((item) => pathname === item.href);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -105,16 +120,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                       key={item.href}
                       href={item.href}
                       onClick={() => setDrawerOpen(false)}
-                      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                      className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-medium transition-[background-color,color,border-color,box-shadow] duration-200 ease-out ${
                         active
-                          ? "bg-surface-3 text-theme-1"
-                          : "text-theme-3 hover:bg-surface-muted hover:text-theme-2"
+                          ? "border-[color:var(--shell-nav-active-border)] bg-[var(--shell-nav-active-bg)] text-[var(--shell-nav-active-fg)] shadow-[var(--shell-nav-active-shadow)]"
+                          : "border-transparent text-theme-3 hover:bg-[var(--shell-nav-hover-bg)] hover:text-theme-2"
                       }`}
                     >
                       <span
-                        className={`flex h-8 w-8 items-center justify-center rounded-md border ${
+                        className={`flex h-8 w-8 items-center justify-center rounded-md border transition-[background-color,border-color,color] duration-200 ease-out ${
                           active
-                            ? "border-theme-default bg-surface-1 text-theme-2"
+                            ? "border-[color:var(--shell-nav-active-icon-border)] bg-[var(--shell-nav-active-icon-bg)] text-[var(--shell-nav-active-icon-fg)]"
                             : "border-theme-subtle bg-surface-muted text-theme-4"
                         }`}
                       >
@@ -127,10 +142,22 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               </div>
             </nav>
             <p className="mt-4 px-1 text-[11px] leading-relaxed text-theme-5">
-              浏览与试用可匿名访问。
-              <Link href="/login" className="ml-1 text-theme-3 underline underline-offset-2 hover:text-theme-2">
-                管理员登录
-              </Link>
+              {isGuest ? (
+                <>
+                  访客模式仅开放实时工作台；样本、报告与平台设置需
+                  <Link href="/login" className="link-accent mx-1 font-medium">
+                    管理员登录
+                  </Link>
+                  。
+                </>
+              ) : (
+                <>
+                  已登录管理员，可使用全部工作区功能。
+                  <Link href="/" className="link-accent ml-1 font-medium">
+                    返回首页
+                  </Link>
+                </>
+              )}
             </p>
           </div>
         </Card>

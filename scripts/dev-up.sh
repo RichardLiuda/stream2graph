@@ -267,8 +267,8 @@ run_migrations() {
 
 print_summary() {
   echo
-  echo "Development platform is up:"
-  echo "  Web:    http://127.0.0.1:3000"
+  echo "Development platform is up (listening on 0.0.0.0 — reachable from LAN):"
+  echo "  Web:    http://127.0.0.1:3000  (same host: use your LAN IP for phones/tablets)"
   echo "  API:    http://127.0.0.1:8000"
   echo "  Health: http://127.0.0.1:8000/api/health"
   if [[ "$START_AUDIO_HELPER" != "0" ]]; then
@@ -316,7 +316,7 @@ main() {
     "$LOG_DIR/api.log" \
     "http" \
     "http://127.0.0.1:8000/api/health" \
-    env PYTHONPATH=apps/api "$VENV_UVICORN" app.main:app --app-dir apps/api --host 127.0.0.1 --port 8000
+    env PYTHONPATH=apps/api "$VENV_UVICORN" app.main:app --app-dir apps/api --host 0.0.0.0 --port 8000
 
   if [[ "$START_WORKER" != "0" ]]; then
     start_service \
@@ -336,7 +336,7 @@ main() {
     "$LOG_DIR/web.log" \
     "http" \
     "http://127.0.0.1:3000" \
-    pnpm --dir apps/web exec next dev --hostname 127.0.0.1 --port 3000
+    pnpm --dir apps/web exec next dev --hostname 0.0.0.0 --port 3000
 
   if [[ "$START_AUDIO_HELPER" != "0" ]]; then
     start_service \
@@ -345,7 +345,7 @@ main() {
       "$LOG_DIR/audio-helper.log" \
       "http" \
       "http://127.0.0.1:8765/health" \
-      env PYTHONPATH=apps/audio-helper "$VENV_UVICORN" audio_helper.main:app --app-dir apps/audio-helper --host 127.0.0.1 --port 8765
+      env PYTHONPATH=apps/audio-helper "$VENV_UVICORN" audio_helper.main:app --app-dir apps/audio-helper --host 0.0.0.0 --port 8765
   else
     echo "Skipping audio-helper because S2G_START_AUDIO_HELPER=0"
   fi
