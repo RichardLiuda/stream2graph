@@ -28,9 +28,9 @@ import { createPortal } from "react-dom";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
 import { Badge, Button, Card, Input, StatCard, Textarea } from "@stream2graph/ui";
-import type { RealtimeSession } from "@stream2graph/contracts";
+import type { RealtimeSession, RealtimeTranscriptTurn } from "@stream2graph/contracts";
 
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, apiUrl } from "@/lib/api";
 import { encodeFloat32ToBase64Pcm16 } from "@/lib/audio";
 import {
   audioHelper,
@@ -115,6 +115,27 @@ type BackendOption = {
   value: RecognitionBackend;
   label: string;
   disabled?: boolean;
+};
+
+type TranscriptStateView = {
+  latestFinalTurn: RealtimeTranscriptTurn | null;
+  currentTurn: RealtimeTranscriptTurn | null;
+  archivedRecentTurns: RealtimeTranscriptTurn[];
+  recentTurns: RealtimeTranscriptTurn[];
+  turnCount: number;
+  speakerCount: number;
+  chunkCount: number;
+};
+
+type TranscriptHistoryItem = RealtimeTranscriptTurn & {
+  key: string;
+  origin: "server" | "event" | "local";
+  observedAt: number;
+};
+
+type TranscriptDisplayState = {
+  activeTurn: TranscriptHistoryItem | null;
+  archivedTurns: TranscriptHistoryItem[];
 };
 
 type NoticeTone = "info" | "success" | "warning";
@@ -222,7 +243,117 @@ function getBrowserFamilyLabel(context: ClientAudioContext | null) {
 type HelperCapabilities = typeof helperCapabilitiesSchema._type;
 type RuntimeOptions = Awaited<ReturnType<typeof api.listRuntimeOptions>>;
 const HELPER_TARGET_SAMPLE_RATE = 16_000;
-const HELPER_UPLOAD_CHUNK_SECONDS = 2;
+const AUDIO_SEGMENT_MAX_MS = 6_000;
+const AUDIO_SEGMENT_END_SILENCE_MS = 520;
+const AUDIO_SEGMENT_MIN_SPEECH_MS = 320;
+const AUDIO_SEGMENT_PREROLL_MS = 180;
+const AUDIO_LEVEL_START_THRESHOLD = 0.08;
+const AUDIO_LEVEL_CONTINUE_THRESHOLD = 0.045;
+
+type AudioSegmentState = {
+  activeFrames: Float32Array[];
+  activeSampleCount: number;
+  speechSampleCount: number;
+  silenceSampleCount: number;
+  preRollFrames: Float32Array[];
+  preRollSampleCount: number;
+  hasSpeech: boolean;
+};
+
+function createAudioSegmentState(): AudioSegmentState {
+  return {
+    activeFrames: [],
+    activeSampleCount: 0,
+    speechSampleCount: 0,
+    silenceSampleCount: 0,
+    preRollFrames: [],
+    preRollSampleCount: 0,
+    hasSpeech: false,
+  };
+}
+
+function appendSegmentFrame(target: Float32Array[], frame: Float32Array) {
+  target.push(frame);
+}
+
+function trimSegmentFrames(frames: Float32Array[], sampleLimit: number) {
+  if (sampleLimit <= 0) return { frames: [] as Float32Array[], sampleCount: 0 };
+  let retained = 0;
+  const kept: Float32Array[] = [];
+  for (let index = frames.length - 1; index >= 0; index -= 1) {
+    const frame = frames[index];
+    kept.unshift(frame);
+    retained += frame.length;
+    if (retained >= sampleLimit) break;
+  }
+  return { frames: kept, sampleCount: retained };
+}
+
+function mergeSegmentFrames(frames: Float32Array[], sampleCount: number) {
+  const merged = new Float32Array(sampleCount);
+  let offset = 0;
+  for (const frame of frames) {
+    merged.set(frame, offset);
+    offset += frame.length;
+  }
+  return merged;
+}
+
+function pushAudioSegmentFrame(
+  state: AudioSegmentState,
+  frame: Float32Array,
+  level: number,
+  sampleRate: number,
+): "none" | "soft_flush" | "final_flush" {
+  const startThreshold = AUDIO_LEVEL_START_THRESHOLD;
+  const continueThreshold = state.hasSpeech ? AUDIO_LEVEL_CONTINUE_THRESHOLD : AUDIO_LEVEL_START_THRESHOLD;
+  const maxChunkSamples = Math.round((sampleRate * AUDIO_SEGMENT_MAX_MS) / 1000);
+  const endSilenceSamples = Math.round((sampleRate * AUDIO_SEGMENT_END_SILENCE_MS) / 1000);
+  const minSpeechSamples = Math.round((sampleRate * AUDIO_SEGMENT_MIN_SPEECH_MS) / 1000);
+  const preRollSamples = Math.round((sampleRate * AUDIO_SEGMENT_PREROLL_MS) / 1000);
+  const isSpeechFrame = level >= continueThreshold;
+
+  if (!state.hasSpeech) {
+    appendSegmentFrame(state.preRollFrames, frame);
+    state.preRollSampleCount += frame.length;
+    if (state.preRollSampleCount > preRollSamples) {
+      const trimmed = trimSegmentFrames(state.preRollFrames, preRollSamples);
+      state.preRollFrames = trimmed.frames;
+      state.preRollSampleCount = trimmed.sampleCount;
+    }
+    if (level >= startThreshold) {
+      state.hasSpeech = true;
+      state.activeFrames = [...state.preRollFrames];
+      state.activeSampleCount = state.preRollSampleCount;
+      state.speechSampleCount = 0;
+      state.silenceSampleCount = 0;
+      state.preRollFrames = [];
+      state.preRollSampleCount = 0;
+    } else {
+      return "none";
+    }
+  }
+
+  if (state.activeFrames[state.activeFrames.length - 1] !== frame) {
+    appendSegmentFrame(state.activeFrames, frame);
+    state.activeSampleCount += frame.length;
+  }
+
+  if (isSpeechFrame) {
+    state.speechSampleCount += frame.length;
+    state.silenceSampleCount = 0;
+  } else {
+    state.silenceSampleCount += frame.length;
+  }
+
+  if (state.activeSampleCount >= maxChunkSamples) {
+    return state.speechSampleCount >= minSpeechSamples ? "soft_flush" : "none";
+  }
+  if (state.silenceSampleCount >= endSilenceSamples && state.speechSampleCount >= minSpeechSamples) {
+    return "final_flush";
+  }
+  return "none";
+}
 
 function calculateAudioLevel(samples: Float32Array) {
   if (!samples.length) return 0;
@@ -236,6 +367,205 @@ function calculateAudioLevel(samples: Float32Array) {
 
 function formatLiveTranscript(text: string) {
   return text.trim() || "等待识别结果...";
+}
+
+function normalizeTranscriptTurn(value: unknown): RealtimeTranscriptTurn | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  if (
+    typeof row.speaker !== "string" ||
+    typeof row.text !== "string" ||
+    typeof row.start_ms !== "number" ||
+    typeof row.end_ms !== "number" ||
+    typeof row.is_final !== "boolean" ||
+    typeof row.source !== "string"
+  ) {
+    return null;
+  }
+  return {
+    speaker: row.speaker,
+    text: row.text,
+    start_ms: row.start_ms,
+    end_ms: row.end_ms,
+    is_final: row.is_final,
+    source: row.source,
+    capture_mode: typeof row.capture_mode === "string" ? row.capture_mode : "",
+  };
+}
+
+function readTranscriptState(pipeline: Record<string, any> | null | undefined): TranscriptStateView {
+  const payload =
+    pipeline?.transcript_state && typeof pipeline.transcript_state === "object"
+      ? (pipeline.transcript_state as Record<string, unknown>)
+      : null;
+  const archivedRecentTurns = Array.isArray(payload?.archived_recent_turns)
+    ? payload?.archived_recent_turns
+        .map(normalizeTranscriptTurn)
+        .filter((row): row is RealtimeTranscriptTurn => Boolean(row))
+    : [];
+  const recentTurns = Array.isArray(payload?.recent_turns)
+    ? payload?.recent_turns.map(normalizeTranscriptTurn).filter((row): row is RealtimeTranscriptTurn => Boolean(row))
+    : [];
+  return {
+    latestFinalTurn: normalizeTranscriptTurn(payload?.latest_final_turn ?? null),
+    currentTurn: normalizeTranscriptTurn(payload?.current_turn ?? null),
+    archivedRecentTurns,
+    recentTurns,
+    turnCount: typeof payload?.turn_count === "number" ? payload.turn_count : 0,
+    speakerCount: typeof payload?.speaker_count === "number" ? payload.speaker_count : 0,
+    chunkCount: typeof payload?.chunk_count === "number" ? payload.chunk_count : 0,
+  };
+}
+
+function formatRelativeTranscriptTime(ms: number) {
+  const totalMs = Math.max(0, Math.floor(ms || 0));
+  const minutes = Math.floor(totalMs / 60_000);
+  const seconds = Math.floor((totalMs % 60_000) / 1_000);
+  const millis = totalMs % 1_000;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
+}
+
+function makeTranscriptHistoryItem(
+  turn: RealtimeTranscriptTurn,
+  origin: TranscriptHistoryItem["origin"],
+  keySeed: string,
+  observedAt?: number,
+): TranscriptHistoryItem {
+  const stableObservedAt =
+    typeof observedAt === "number" && Number.isFinite(observedAt)
+      ? observedAt
+      : Math.max(turn.end_ms || 0, turn.start_ms || 0, Date.now());
+  return {
+    ...turn,
+    key: [
+      origin,
+      keySeed,
+      turn.speaker,
+      turn.text,
+      turn.start_ms,
+      turn.end_ms,
+      turn.source,
+      turn.capture_mode,
+    ].join("|"),
+    origin,
+    observedAt: stableObservedAt,
+  };
+}
+
+function deriveTranscriptTurnsFromEvents(events: Array<Record<string, any>> | null | undefined): TranscriptHistoryItem[] {
+  if (!Array.isArray(events) || !events.length) return [];
+  const rows: TranscriptHistoryItem[] = [];
+  events
+    .slice(-10)
+    .reverse()
+    .forEach((event, eventIndex) => {
+      const pendingTurns = Array.isArray(event?.pending_turns) ? event.pending_turns : [];
+      if (pendingTurns.length) {
+        pendingTurns.forEach((turn: Record<string, unknown>, turnIndex: number) => {
+          const speaker = typeof turn.speaker === "string" ? turn.speaker : "speaker";
+          const text = typeof turn.content === "string" ? turn.content.trim() : "";
+          if (!text) return;
+          const startMs = typeof turn.timestamp_ms === "number" ? turn.timestamp_ms : Number(event?.update?.start_ms ?? 0);
+          const endMs = typeof turn.timestamp_ms === "number" ? turn.timestamp_ms : Number(event?.update?.end_ms ?? startMs);
+          rows.push(
+            makeTranscriptHistoryItem(
+              {
+                speaker,
+                text,
+                start_ms: Number.isFinite(startMs) ? startMs : 0,
+                end_ms: Number.isFinite(endMs) ? endMs : 0,
+                is_final: true,
+                source: "event_fallback",
+                capture_mode: `event_${eventIndex}_${turnIndex}`,
+              },
+              "event",
+              `${eventIndex}_${turnIndex}`,
+              Number.isFinite(endMs) ? endMs : Number.isFinite(startMs) ? startMs : undefined,
+            ),
+          );
+        });
+        return;
+      }
+
+      const transcriptText = typeof event?.update?.transcript_text === "string" ? event.update.transcript_text.trim() : "";
+      if (!transcriptText) {
+        return;
+      }
+      const startMs = Number(event?.update?.start_ms ?? 0) || 0;
+      const endMs = Number(event?.update?.end_ms ?? event?.update?.start_ms ?? 0) || 0;
+      rows.push(
+        makeTranscriptHistoryItem(
+          {
+            speaker: "speaker",
+            text: transcriptText,
+            start_ms: startMs,
+            end_ms: endMs,
+            is_final: true,
+            source: "event_fallback",
+            capture_mode: `event_${eventIndex}`,
+          },
+          "event",
+          `${eventIndex}`,
+          endMs || startMs || undefined,
+        ),
+      );
+    });
+  return rows.slice(0, 10);
+}
+
+function buildTranscriptHistoryFeed(params: {
+  serverTurns: RealtimeTranscriptTurn[];
+  eventTurns: TranscriptHistoryItem[];
+  localTurns: TranscriptHistoryItem[];
+}): TranscriptHistoryItem[] {
+  const serverTurns = params.serverTurns.map((turn, index) =>
+    makeTranscriptHistoryItem(turn, "server", `${index}`, turn.end_ms || turn.start_ms || undefined),
+  );
+  const merged = [...serverTurns, ...params.eventTurns, ...params.localTurns];
+  const seen = new Set<string>();
+  return merged
+    .sort((left, right) => {
+      if (right.observedAt !== left.observedAt) return right.observedAt - left.observedAt;
+      if (right.end_ms !== left.end_ms) return right.end_ms - left.end_ms;
+      return right.start_ms - left.start_ms;
+    })
+    .filter((item) => {
+      const dedupeKey = [item.speaker, item.text, item.start_ms, item.end_ms].join("|");
+      if (seen.has(dedupeKey)) return false;
+      seen.add(dedupeKey);
+      return true;
+    })
+    .slice(0, 10);
+}
+
+function buildTranscriptDisplayState(params: {
+  liveTranscript: string;
+  serverCurrentTurn: RealtimeTranscriptTurn | null;
+  serverArchivedTurns: RealtimeTranscriptTurn[];
+  fallbackTurns: TranscriptHistoryItem[];
+  localTurns: TranscriptHistoryItem[];
+}): TranscriptDisplayState {
+  const hasLivePreview = Boolean(params.liveTranscript.trim());
+  const stableTurns = buildTranscriptHistoryFeed({
+    serverTurns: params.serverCurrentTurn
+      ? [params.serverCurrentTurn, ...params.serverArchivedTurns]
+      : params.serverArchivedTurns,
+    eventTurns: params.fallbackTurns,
+    localTurns: params.localTurns,
+  });
+  const activeTurn = hasLivePreview ? null : stableTurns[0] ?? null;
+
+  return {
+    activeTurn,
+    archivedTurns: hasLivePreview ? stableTurns.slice(0, 10) : stableTurns.slice(1, 11),
+  };
+}
+
+function buildTranscriptDownloadUrls(sessionId: string) {
+  return {
+    txt_url: apiUrl(`/api/v1/realtime/sessions/${sessionId}/transcript/download?fmt=txt`),
+    markdown_url: apiUrl(`/api/v1/realtime/sessions/${sessionId}/transcript/download?fmt=markdown`),
+  };
 }
 
 function formatApiTranscriptSegments(segments: Array<Record<string, any>> | null | undefined) {
@@ -367,6 +697,12 @@ export function RealtimeStudio() {
   const [transcriptText, setTranscriptText] = useState("");
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Record<string, any> | null>(null);
+  const [localCommittedTranscriptTurns, setLocalCommittedTranscriptTurns] = useState<TranscriptHistoryItem[]>([]);
+  const [closedSessionMeta, setClosedSessionMeta] = useState<{
+    sessionId: string;
+    downloads: { txt_url: string; markdown_url: string };
+    transcriptSummary: Record<string, unknown>;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
@@ -414,8 +750,7 @@ export function RealtimeStudio() {
   const helperUploadQueueRef = useRef<Promise<void>>(Promise.resolve());
   const helperSessionIdRef = useRef<string | null>(null);
   const helperChunkIdRef = useRef(0);
-  const helperPendingFramesRef = useRef<Float32Array[]>([]);
-  const helperPendingSampleCountRef = useRef(0);
+  const helperSegmentStateRef = useRef<AudioSegmentState>(createAudioSegmentState());
   const apiCaptureStreamRef = useRef<MediaStream | null>(null);
   const apiCaptureAudioContextRef = useRef<AudioContext | null>(null);
   const apiCaptureSourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -426,8 +761,7 @@ export function RealtimeStudio() {
   const apiCaptureFlushQueuedRef = useRef(false);
   const apiCaptureFlushTimeoutRef = useRef<number | null>(null);
   const apiCaptureChunkIdRef = useRef(0);
-  const apiCapturePendingFramesRef = useRef<Float32Array[]>([]);
-  const apiCapturePendingSampleCountRef = useRef(0);
+  const apiCaptureSegmentStateRef = useRef<AudioSegmentState>(createAudioSegmentState());
   const apiCaptureContextRef = useRef<{
     sessionId: string;
     source: InputSource;
@@ -435,6 +769,7 @@ export function RealtimeStudio() {
     speaker: string;
   } | null>(null);
   const inputSourceMenuRef = useRef<HTMLDivElement | null>(null);
+  const historyFeedKeysRef = useRef<string[]>([]);
 
   const selectedInputSource = studioState.context.selectedInputSource;
   const selectedRecognitionBackend = studioState.context.recognitionBackend;
@@ -561,6 +896,12 @@ export function RealtimeStudio() {
     runtimeOptions.data?.planner_profiles.find((item) => item.id === plannerProfileId) ?? null;
   const selectedSttProfile = runtimeOptions.data?.stt_profiles.find((item) => item.id === sttProfileId) ?? null;
   const effectiveError = error ?? machineError;
+  const currentSession = useMemo(
+    () => sessions.data?.find((item) => item.session_id === currentSessionId) ?? null,
+    [currentSessionId, sessions.data],
+  );
+  const currentSessionClosed =
+    currentSession?.status === "closed" || closedSessionMeta?.sessionId === currentSessionId;
 
   useEffect(() => {
     if (!effectiveError) return;
@@ -749,8 +1090,7 @@ export function RealtimeStudio() {
   }
 
   function resetHelperAudioBuffers() {
-    helperPendingFramesRef.current = [];
-    helperPendingSampleCountRef.current = 0;
+    helperSegmentStateRef.current = createAudioSegmentState();
     helperChunkIdRef.current = 0;
   }
 
@@ -866,15 +1206,10 @@ export function RealtimeStudio() {
   }
 
   async function flushHelperAudioBuffer(isFinal = true) {
-    if (!helperPendingSampleCountRef.current) return;
-
-    const merged = new Float32Array(helperPendingSampleCountRef.current);
-    let offset = 0;
-    for (const frame of helperPendingFramesRef.current) {
-      merged.set(frame, offset);
-      offset += frame.length;
-    }
-    resetHelperAudioBuffers();
+    const state = helperSegmentStateRef.current;
+    if (!state.activeSampleCount) return;
+    const merged = mergeSegmentFrames(state.activeFrames, state.activeSampleCount);
+    helperSegmentStateRef.current = createAudioSegmentState();
     await uploadHelperAudioFrame(merged, isFinal);
   }
 
@@ -931,10 +1266,10 @@ export function RealtimeStudio() {
 
       const level = calculateAudioLevel(merged);
       studioSend({ type: "audio.level", level });
-
-      helperPendingFramesRef.current.push(merged);
-      helperPendingSampleCountRef.current += merged.length;
-      if (helperPendingSampleCountRef.current >= HELPER_TARGET_SAMPLE_RATE * HELPER_UPLOAD_CHUNK_SECONDS) {
+      const action = pushAudioSegmentFrame(helperSegmentStateRef.current, merged, level, HELPER_TARGET_SAMPLE_RATE);
+      if (action === "soft_flush") {
+        void flushHelperAudioBuffer(false);
+      } else if (action === "final_flush") {
         void flushHelperAudioBuffer(true);
       }
     };
@@ -960,8 +1295,7 @@ export function RealtimeStudio() {
   }
 
   function resetApiCaptureBuffers() {
-    apiCapturePendingFramesRef.current = [];
-    apiCapturePendingSampleCountRef.current = 0;
+    apiCaptureSegmentStateRef.current = createAudioSegmentState();
     apiCaptureChunkIdRef.current = 0;
   }
 
@@ -1009,6 +1343,41 @@ export function RealtimeStudio() {
           segmentedPreview || (response.speaker ? `${response.speaker}: ${response.text.trim()}` : response.text.trim());
         studioSend({ type: "transcript.preview", text: labeledText });
         studioSend({ type: "stt.success", text: labeledText });
+      }
+      if (isFinal) {
+        const segmentTurns =
+          Array.isArray(response.segments) && response.segments.length
+            ? response.segments
+                .map((segment) => {
+                  const text = String(segment?.text || "").trim();
+                  if (!text) return null;
+                  return {
+                    speaker: String(segment?.speaker || response.speaker || context.speaker || "speaker"),
+                    text,
+                    start_ms: Number(segment?.start_ms ?? 0) || 0,
+                    end_ms: Number(segment?.end_ms ?? segment?.start_ms ?? 0) || 0,
+                    is_final: true,
+                    source: context.source,
+                    capture_mode: context.captureMode,
+                  } as RealtimeTranscriptTurn | null;
+                })
+                .filter((row): row is RealtimeTranscriptTurn => Boolean(row))
+            : [];
+        if (segmentTurns.length) {
+          pushLocalCommittedTurns(segmentTurns.reverse());
+        } else if (response.text.trim()) {
+          pushLocalCommittedTurns([
+            {
+              speaker: response.speaker || context.speaker || "speaker",
+              text: response.text.trim(),
+              start_ms: 0,
+              end_ms: 0,
+              is_final: true,
+              source: context.source,
+              capture_mode: context.captureMode,
+            },
+          ]);
+        }
       }
       logBrowserRuntime("api_stt upload completed", {
         session_id: context.sessionId,
@@ -1070,15 +1439,10 @@ export function RealtimeStudio() {
   }
 
   async function flushApiCaptureBuffer(isFinal = true) {
-    if (!apiCapturePendingSampleCountRef.current) return;
-
-    const merged = new Float32Array(apiCapturePendingSampleCountRef.current);
-    let offset = 0;
-    for (const frame of apiCapturePendingFramesRef.current) {
-      merged.set(frame, offset);
-      offset += frame.length;
-    }
-    resetApiCaptureBuffers();
+    const state = apiCaptureSegmentStateRef.current;
+    if (!state.activeSampleCount) return;
+    const merged = mergeSegmentFrames(state.activeFrames, state.activeSampleCount);
+    apiCaptureSegmentStateRef.current = createAudioSegmentState();
     apiCaptureUploadQueueRef.current = apiCaptureUploadQueueRef.current.then(() => uploadApiAudioFrame(merged, isFinal));
     await apiCaptureUploadQueueRef.current;
   }
@@ -1154,11 +1518,13 @@ export function RealtimeStudio() {
         merged[frame] = total / channelCount;
       }
 
-      studioSend({ type: "audio.level", level: calculateAudioLevel(merged) });
-      apiCapturePendingFramesRef.current.push(merged);
-      apiCapturePendingSampleCountRef.current += merged.length;
-      if (apiCapturePendingSampleCountRef.current >= HELPER_TARGET_SAMPLE_RATE * HELPER_UPLOAD_CHUNK_SECONDS) {
+      const level = calculateAudioLevel(merged);
+      studioSend({ type: "audio.level", level });
+      const action = pushAudioSegmentFrame(apiCaptureSegmentStateRef.current, merged, level, HELPER_TARGET_SAMPLE_RATE);
+      if (action === "soft_flush") {
         void flushApiCaptureBuffer(false);
+      } else if (action === "final_flush") {
+        void flushApiCaptureBuffer(true);
       }
     };
 
@@ -1268,6 +1634,7 @@ export function RealtimeStudio() {
       }),
     onSuccess: (data) => {
       setCurrentSessionId(data.session_id);
+      setClosedSessionMeta(null);
       window.localStorage.setItem(LOCAL_SESSION_KEY, data.session_id);
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
     },
@@ -1356,8 +1723,40 @@ export function RealtimeStudio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSessionId]);
 
+  useEffect(() => {
+    setLocalCommittedTranscriptTurns([]);
+  }, [currentSessionId]);
+
+  useEffect(() => {
+    historyFeedKeysRef.current = [];
+  }, [currentSessionId]);
+
+  function pushLocalCommittedTurns(turns: RealtimeTranscriptTurn[]) {
+    if (!turns.length) return;
+    setLocalCommittedTranscriptTurns((previous) => {
+      const next = [
+        ...turns.map((turn, index) =>
+          makeTranscriptHistoryItem(turn, "local", `${currentSessionId || "draft"}_${Date.now()}_${index}`, Date.now()),
+        ),
+        ...previous,
+      ];
+      const seen = new Set<string>();
+      return next
+        .filter((turn) => {
+          const key = [turn.speaker, turn.text, turn.start_ms, turn.end_ms, turn.source, turn.capture_mode].join("|");
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 10);
+    });
+  }
+
   async function ensureSession() {
-    if (currentSessionId) return currentSessionId;
+    if (currentSessionId && !currentSessionClosed) return currentSessionId;
+    if (currentSessionId && currentSessionClosed) {
+      throw new Error("当前会话已结束，请点击“重建会话”后继续。");
+    }
     const created = await createSession.mutateAsync();
     return created.session_id;
   }
@@ -1379,6 +1778,19 @@ export function RealtimeStudio() {
       is_final: isFinal,
       metadata: buildChunkMetadata(source, captureMode),
     });
+    if (isFinal && text.trim()) {
+      pushLocalCommittedTurns([
+        {
+          speaker: source === "system_audio_helper" ? "system_audio" : "speaker",
+          text: text.trim(),
+          start_ms: 0,
+          end_ms: 0,
+          is_final: true,
+          source,
+          capture_mode: captureMode,
+        },
+      ]);
+    }
     setSnapshot({ session_id: data.session_id, pipeline: data.pipeline, evaluation: data.evaluation });
     logBrowserRuntime("text chunk ingest completed", {
       session_id: data.session_id,
@@ -1415,6 +1827,20 @@ export function RealtimeStudio() {
       });
     },
     onSuccess: (data) => {
+      const rows = parseTranscriptInput(transcriptText);
+      pushLocalCommittedTurns(
+        rows
+          .map((row, index) => ({
+            speaker: row.speaker,
+            text: row.text.trim(),
+            start_ms: index * 450,
+            end_ms: index * 450,
+            is_final: true,
+            source: "transcript",
+            capture_mode: "manual_text",
+          }))
+          .filter((row) => row.text),
+      );
       if (data) setSnapshot({ session_id: data.session_id, pipeline: data.pipeline, evaluation: data.evaluation });
       setError(null);
       logBrowserRuntime("transcript send completed", {
@@ -1466,11 +1892,17 @@ export function RealtimeStudio() {
 
   const closeMutation = useMutation({
     mutationFn: (sessionId: string) => api.closeRealtime(sessionId),
-    onSuccess: () => {
-      if (currentSessionId) window.localStorage.removeItem(LOCAL_SESSION_KEY);
-      setCurrentSessionId(null);
-      setSnapshot(null);
+    onSuccess: (data) => {
+      setClosedSessionMeta({
+        sessionId: data.session_id,
+        downloads: {
+          txt_url: apiUrl(data.downloads.txt_url),
+          markdown_url: apiUrl(data.downloads.markdown_url),
+        },
+        transcriptSummary: data.transcript_summary,
+      });
       studioSend({ type: "capture.stop" });
+      setNotice({ tone: "success", text: "会话已结束，转写文本可直接下载。" });
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
     },
     onError: (err) => setError((err as Error).message),
@@ -1502,6 +1934,7 @@ export function RealtimeStudio() {
         window.localStorage.removeItem(LOCAL_SESSION_KEY);
         setCurrentSessionId(null);
         setSnapshot(null);
+        setClosedSessionMeta(null);
         studioSend({ type: "capture.stop" });
         setTitle("研究演示会话");
         setTitleDraft("研究演示会话");
@@ -1581,6 +2014,17 @@ export function RealtimeStudio() {
             is_final: true,
             metadata: buildChunkMetadata("microphone_browser", "browser_speech"),
           });
+          pushLocalCommittedTurns([
+            {
+              speaker: "speaker",
+              text,
+              start_ms: 0,
+              end_ms: 0,
+              is_final: true,
+              source: "microphone_browser",
+              capture_mode: "browser_speech",
+            },
+          ]);
           setSnapshot({ session_id: data.session_id, pipeline: data.pipeline, evaluation: data.evaluation });
           studioSend({ type: "stt.success", text });
           syncPipelineStatus(data.pipeline);
@@ -1777,11 +2221,74 @@ export function RealtimeStudio() {
   }
 
   const rendererState = snapshot?.pipeline?.renderer_state || {};
-  const events = snapshot?.pipeline?.events || [];
+  const events = useMemo<Array<Record<string, any>>>(() => {
+    return Array.isArray(snapshot?.pipeline?.events) ? snapshot.pipeline.events : [];
+  }, [snapshot?.pipeline?.events]);
   const mermaidState = snapshot?.pipeline?.mermaid_state ?? null;
   const rendererGroups =
     rendererState.groups || snapshot?.pipeline?.graph_state?.current_graph_ir?.groups || [];
   const currentGraphPayload = snapshot?.pipeline?.graph_state?.current_graph_ir ?? null;
+  const transcriptState = useMemo(() => readTranscriptState(snapshot?.pipeline), [snapshot?.pipeline]);
+  const transcriptDownloads = useMemo(() => {
+    if (!currentSessionId) return null;
+    if (closedSessionMeta?.sessionId === currentSessionId) {
+      return closedSessionMeta.downloads;
+    }
+    if (currentSessionClosed) {
+      return buildTranscriptDownloadUrls(currentSessionId);
+    }
+    return null;
+  }, [closedSessionMeta, currentSessionClosed, currentSessionId]);
+  const eventFallbackTurns = useMemo(() => deriveTranscriptTurnsFromEvents(events), [events]);
+  const transcriptDisplayState = useMemo(
+    () =>
+      buildTranscriptDisplayState({
+        liveTranscript,
+        serverCurrentTurn: transcriptState.currentTurn,
+        serverArchivedTurns: transcriptState.archivedRecentTurns,
+        fallbackTurns: eventFallbackTurns,
+        localTurns: localCommittedTranscriptTurns,
+      }),
+    [
+      eventFallbackTurns,
+      liveTranscript,
+      localCommittedTranscriptTurns,
+      transcriptState.archivedRecentTurns,
+      transcriptState.currentTurn,
+    ],
+  );
+  const activeTranscriptTurn = transcriptDisplayState.activeTurn;
+  const archivedTranscriptTurns = transcriptDisplayState.archivedTurns;
+  const currentSubtitleText = useMemo(() => {
+    const live = liveTranscript.trim();
+    if (live) return live;
+    return activeTranscriptTurn?.text?.trim() || transcriptState.latestFinalTurn?.text?.trim() || "等待识别结果...";
+  }, [activeTranscriptTurn, liveTranscript, transcriptState.latestFinalTurn]);
+
+  useEffect(() => {
+    const previousKeys = new Set(historyFeedKeysRef.current);
+    const currentKeys = archivedTranscriptTurns.map((item) => item.key);
+    const newlyVisibleItems = archivedTranscriptTurns.filter((item) => !previousKeys.has(item.key));
+
+    if (newlyVisibleItems.length) {
+      newlyVisibleItems.forEach((item, index) => {
+        logBrowserRuntime("transcript entered archive", {
+          session_id: currentSessionId,
+          index,
+          origin: item.origin,
+          speaker: item.speaker,
+          source: item.source,
+          capture_mode: item.capture_mode,
+          start_ms: item.start_ms,
+          end_ms: item.end_ms,
+          text: item.text,
+          archive_size: archivedTranscriptTurns.length,
+        });
+      });
+    }
+
+    historyFeedKeysRef.current = currentKeys;
+  }, [archivedTranscriptTurns, currentSessionId]);
 
   function handleMermaidNodeRelayout(payload: MermaidNodeRelayoutPayload) {
     if (!currentSessionId || relayoutMutation.isPending) return;
@@ -1923,28 +2430,36 @@ export function RealtimeStudio() {
 
   const systemAudioExperimentalVisible = supportsSystemAudioExperimentalUi(audioContext);
   const canStartCapture =
-    selectedRecognitionBackend === "browser_speech"
-      ? !listening
-      : selectedRecognitionBackend === "browser_display_validation"
-        ? activeCaptureSource !== "system_audio_browser_experimental"
-        : selectedRecognitionBackend === "local_helper"
-          ? activeCaptureSource !== "system_audio_helper"
-          : selectedRecognitionBackend === "api_stt"
-            ? captureStatus === "idle"
-            : false;
+    currentSessionClosed
+      ? false
+      : selectedRecognitionBackend === "browser_speech"
+        ? !listening
+        : selectedRecognitionBackend === "browser_display_validation"
+          ? activeCaptureSource !== "system_audio_browser_experimental"
+          : selectedRecognitionBackend === "local_helper"
+            ? activeCaptureSource !== "system_audio_helper"
+            : selectedRecognitionBackend === "api_stt"
+              ? captureStatus === "idle"
+              : false;
   const canStopCapture =
-    selectedRecognitionBackend === "browser_speech"
-      ? listening
-      : selectedRecognitionBackend === "browser_display_validation"
-        ? activeCaptureSource === "system_audio_browser_experimental"
-        : selectedRecognitionBackend === "local_helper"
-          ? activeCaptureSource === "system_audio_helper"
-          : selectedRecognitionBackend === "api_stt"
-            ? captureStatus !== "idle"
-            : false;
+    currentSessionClosed
+      ? false
+      : selectedRecognitionBackend === "browser_speech"
+        ? listening
+        : selectedRecognitionBackend === "browser_display_validation"
+          ? activeCaptureSource === "system_audio_browser_experimental"
+          : selectedRecognitionBackend === "local_helper"
+            ? activeCaptureSource === "system_audio_helper"
+            : selectedRecognitionBackend === "api_stt"
+              ? captureStatus !== "idle"
+              : false;
 
   /** @description 主舞台顶栏：与抽屉内相同的开始/暂停（停止）采集逻辑 */
   async function stageStartCapture() {
+    if (currentSessionClosed) {
+      setNotice({ tone: "warning", text: "当前会话已结束，请重建会话后继续采集。" });
+      return;
+    }
     if (selectedInputSource === "transcript") return;
     if (selectedInputSource === "microphone_browser") {
       if (selectedRecognitionBackend === "browser_speech") return startRecognition();
@@ -1961,6 +2476,7 @@ export function RealtimeStudio() {
   }
 
   function stageStopCapture() {
+    if (currentSessionClosed) return;
     if (selectedInputSource === "transcript") return;
     if (selectedInputSource === "microphone_browser") {
       if (selectedRecognitionBackend === "browser_speech") return void stopRecognition();
@@ -2276,51 +2792,121 @@ export function RealtimeStudio() {
           >
             <div className="flex shrink-0 items-center justify-between gap-2">
               <div className="text-sm font-semibold text-theme-1">实时转写</div>
-              <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
+              <div className="flex items-center gap-1.5">
+                {currentSessionClosed ? <Badge className="text-[9px]">已结束</Badge> : null}
+                <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
+              </div>
             </div>
-            {selectedInputSource === "transcript" ? (
-              <div className="mt-1.5 flex min-h-[4rem] flex-1 flex-col gap-1.5">
-                <Textarea
-                  className="min-h-[7rem] flex-1 resize-y text-[12px] leading-relaxed"
-                  rows={8}
-                  value={transcriptText}
-                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
-                    const next = event.target.value;
-                    setTranscriptText(next);
-                    studioSend({ type: "transcript.preview", text: next });
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="shrink-0 border-violet-900/50 bg-violet-950/45 py-2 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
-                  onClick={() => sendTranscript.mutate()}
-                  disabled={sendTranscript.isPending || !transcriptText.trim()}
-                >
-                  <Send className="h-3.5 w-3.5" />
-                  发送文本
-                </Button>
+            <div className="mt-1.5 flex shrink-0 flex-wrap gap-1.5">
+              <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
+                轮次：{transcriptState.turnCount}
+              </Badge>
+              <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
+                说话人：{transcriptState.speakerCount}
+              </Badge>
+              <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
+                Chunk：{transcriptState.chunkCount}
+              </Badge>
+            </div>
+            <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2">
+              <div className="rounded-xl border border-[color:var(--accent)]/25 bg-[color:var(--accent)]/[0.05] px-3 py-3">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--accent-strong)]/90">
+                  当前字幕
+                </div>
+                <div className="min-h-[6.5rem] whitespace-pre-wrap text-[15px] leading-7 text-theme-1 sm:min-h-[7.5rem] sm:text-[16px]">
+                  {currentSubtitleText}
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-theme-4">
+                  <span>
+                    {liveTranscript.trim()
+                      ? "优先显示本地实时预览"
+                      : currentSessionClosed
+                        ? "当前会话已结束，可查看历史字幕与下载全文"
+                        : "最新一条稳定转写会先停留在这里，下一条到来后再转入历史区"}
+                  </span>
+                  {activeTranscriptTurn?.speaker ? (
+                    <span className="truncate">当前发言：{activeTranscriptTurn.speaker}</span>
+                  ) : null}
+                </div>
               </div>
-            ) : (
-              <div className="mt-1.5 min-h-[4rem] flex-1 overflow-auto whitespace-pre-wrap rounded-lg border border-theme-subtle bg-surface-muted/90 px-2 py-2 text-[12px] leading-relaxed text-theme-2">
-                {activeCaptureSource ? (
-                  formatLiveTranscript(liveTranscript)
-                ) : (
-                  <div className="flex flex-col gap-2 rounded-lg border border-dashed border-[color:var(--accent)]/30 bg-[color:var(--accent)]/[0.04] px-3 py-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--accent-strong)]/90">
-                      建议流程
-                    </div>
-                    <p className="text-[12px] leading-relaxed text-theme-3">
-                      确认左侧输入来源后，点主舞台右上角「开始录音」；转写会出现在这里。
-                    </p>
+
+              <div className="flex min-h-[10rem] flex-1 flex-col overflow-hidden rounded-xl border border-theme-subtle bg-surface-muted/88">
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-theme-subtle px-3 py-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-theme-4">历史转写</div>
+                  <div className="text-[10px] text-theme-4">
+                    {archivedTranscriptTurns.length ? `${archivedTranscriptTurns.length} / 10` : "等待归档"}
                   </div>
-                )}
+                </div>
+                <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
+                  {archivedTranscriptTurns.length ? (
+                    <div className="space-y-2.5">
+                      {archivedTranscriptTurns.map((turn, index) => (
+                        <div
+                          key={turn.key || `${turn.speaker}-${turn.start_ms}-${index}`}
+                          className="rounded-lg border border-theme-subtle bg-surface-1/70 px-3 py-2"
+                        >
+                          <div className="flex items-center justify-between gap-2 text-[10px] text-theme-4">
+                            <span className="truncate font-semibold text-theme-2">{turn.speaker || "speaker"}</span>
+                            <span className="shrink-0">
+                              {formatRelativeTranscriptTime(turn.start_ms)} - {formatRelativeTranscriptTime(turn.end_ms)}
+                            </span>
+                          </div>
+                          <div className="mt-1 whitespace-pre-wrap text-[12px] leading-6 text-theme-2">{turn.text}</div>
+                          <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-theme-4">
+                            <span>
+                              {turn.origin === "server"
+                                ? "server transcript"
+                                : turn.origin === "event"
+                                  ? "event fallback"
+                                  : "local instant"}
+                            </span>
+                            <span>{turn.is_final ? "final" : "pending"}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex h-full min-h-[8rem] items-center justify-center rounded-lg border border-dashed border-[color:var(--accent)]/30 bg-[color:var(--accent)]/[0.04] px-3 py-3 text-center text-[12px] leading-relaxed text-theme-3">
+                      {currentSessionClosed
+                        ? "当前会话没有可回看的历史转写。"
+                        : "当前字幕会先显示在上方；当下一条出现或上方被实时预览替换后，它才会转入这里。"}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+
+              {selectedInputSource === "transcript" ? (
+                <div className="flex shrink-0 flex-col gap-1.5">
+                  <Textarea
+                    className="min-h-[6.5rem] flex-1 resize-y text-[12px] leading-relaxed"
+                    rows={6}
+                    value={transcriptText}
+                    disabled={currentSessionClosed}
+                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
+                      const next = event.target.value;
+                      setTranscriptText(next);
+                      studioSend({ type: "transcript.preview", text: next });
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="shrink-0 border-violet-900/50 bg-violet-950/45 py-2 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
+                    onClick={() => sendTranscript.mutate()}
+                    disabled={sendTranscript.isPending || !transcriptText.trim() || currentSessionClosed}
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    {currentSessionClosed ? "会话已结束" : "发送文本"}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
             <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-theme-4">
-              {selectedInputSource === "transcript"
-                ? "与侧栏同一输入；发送后写入会话。"
-                : "浏览器听写多为临时内容；本机助手 / 云端听写会写回这里。"}
+              {currentSessionClosed
+                ? "会话结束后保留只读字幕和下载入口；如需继续，请重建会话。"
+                : selectedInputSource === "transcript"
+                  ? "当前字幕显示输入预览，发送后会沉淀到下方转接记录。"
+                  : "本地预览用于当前字幕，服务端聚合后的最近轮次会保留在下方历史区。"}
             </p>
           </div>
 
@@ -2635,7 +3221,7 @@ export function RealtimeStudio() {
             </Tabs.Content>
             </div>
             <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 px-4 py-2.5">
-              <div className="flex w-full max-w-[min(100%,28rem)] items-center gap-2">
+              <div className="flex w-full max-w-[min(100%,30rem)] flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   variant={currentSessionId ? "secondary" : "primary"}
@@ -2663,7 +3249,7 @@ export function RealtimeStudio() {
                       variant="secondary"
                       className="h-8 shrink-0 gap-1 px-2 text-xs font-semibold"
                       onClick={() => void commitTitleEdit()}
-                      disabled={!titleDraft.trim() || renameSessionMutation.isPending}
+                      disabled={!titleDraft.trim() || renameSessionMutation.isPending || currentSessionClosed}
                     >
                       <Check className="h-3.5 w-3.5 shrink-0" />
                       保存
@@ -2685,6 +3271,7 @@ export function RealtimeStudio() {
                         type="button"
                         className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-theme-default bg-surface-3 px-2 text-[11px] font-medium text-theme-2 transition hover:bg-surface-3"
                         onClick={startTitleEdit}
+                        disabled={currentSessionClosed}
                       >
                         <Pencil className="h-3.5 w-3.5 shrink-0" />
                         重命名
@@ -2692,6 +3279,22 @@ export function RealtimeStudio() {
                     </div>
                   </div>
                 )}
+                {currentSessionClosed && transcriptDownloads ? (
+                  <div className="flex w-full flex-wrap gap-2 text-xs">
+                    <a
+                      href={transcriptDownloads.txt_url}
+                      className="inline-flex h-8 items-center justify-center rounded-lg border border-theme-default bg-surface-2 px-3 font-semibold text-theme-2 transition hover:border-theme-strong hover:bg-surface-3"
+                    >
+                      下载 TXT
+                    </a>
+                    <a
+                      href={transcriptDownloads.markdown_url}
+                      className="inline-flex h-8 items-center justify-center rounded-lg border border-theme-default bg-surface-2 px-3 font-semibold text-theme-2 transition hover:border-theme-strong hover:bg-surface-3"
+                    >
+                      下载 Markdown
+                    </a>
+                  </div>
+                ) : null}
               </div>
               <div className="grid w-[min(100%,14rem)] grid-cols-2 gap-2">
                 <Button
@@ -2711,10 +3314,10 @@ export function RealtimeStudio() {
                   title="关闭会话"
                   className="h-8 min-w-0 gap-1 px-2 text-xs font-semibold"
                   onClick={() => (currentSessionId ? closeMutation.mutate(currentSessionId) : null)}
-                  disabled={!currentSessionId}
+                  disabled={!currentSessionId || currentSessionClosed}
                 >
                   <StopCircle className="h-3 w-3 shrink-0" />
-                  <span className="truncate">关闭</span>
+                  <span className="truncate">{currentSessionClosed ? "已结束" : "关闭"}</span>
                 </Button>
               </div>
             </div>
@@ -2827,6 +3430,9 @@ export function RealtimeStudio() {
                       </div>
                       <div className={`mt-1 text-xs ${sessionSelected ? "text-white/80" : "text-theme-4"}`}>
                         {item.session_id}
+                      </div>
+                      <div className={`mt-1 text-xs ${sessionSelected ? "text-white/70" : "text-theme-4"}`}>
+                        状态：{item.status === "closed" ? "closed" : "active"}
                       </div>
                       {item.summary?.input_runtime?.input_source ? (
                         <div className={`mt-2 text-xs ${sessionSelected ? "text-white/70" : "text-theme-4"}`}>

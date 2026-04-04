@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,7 @@ from app.schemas import (
     RealtimeChunkBatchCreateRequest,
     RealtimeChunkCreateRequest,
     RealtimeDiagramRelayoutRequest,
+    RealtimeSessionCloseResponse,
     RealtimeSession as RealtimeSessionSchema,
     RealtimeSessionCreateRequest,
     RealtimeSessionUpdateRequest,
@@ -32,6 +33,15 @@ from app.services.runtime_sessions import (
     replace_events,
     restore_runtime_if_needed,
     save_snapshot,
+)
+from app.services.realtime_transcript import (
+    attach_transcript_state,
+    build_transcript_download_urls,
+    build_transcript_turns,
+    list_session_chunks,
+    render_transcript_markdown,
+    render_transcript_txt,
+    session_transcript_summary,
 )
 from app.services.voiceprints import blind_recognize_speaker
 from app.services.xfyun_asr import close_rtasr_session_stream
@@ -75,7 +85,7 @@ def _timestamp_for_chunk(db: Session, obj: RealtimeSession, requested: int | Non
 
 
 def _rebuild_snapshot(db: Session, obj: RealtimeSession, runtime) -> tuple[dict, dict]:
-    pipeline = runtime.pipeline_payload()
+    pipeline = attach_transcript_state(db, obj.id, runtime.pipeline_payload())
     evaluation = evaluate_payload(pipeline)
     replace_events(db, obj.id, pipeline["events"])
     save_snapshot(db, obj, pipeline=pipeline, evaluation=evaluation)
@@ -152,7 +162,7 @@ def _buffer_transcript_payload(
         },
     )
     _merge_input_runtime_metadata(obj, metadata)
-    pipeline = runtime.pipeline_payload()
+    pipeline = attach_transcript_state(db, obj.id, runtime.pipeline_payload())
     evaluation = evaluate_payload(pipeline)
     save_snapshot(db, obj, pipeline=pipeline, evaluation=evaluation)
     return pipeline, evaluation
@@ -484,7 +494,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
         )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    pipeline = obj.pipeline_payload if isinstance(obj.pipeline_payload, dict) else {}
+    pipeline = attach_transcript_state(db, obj.id, obj.pipeline_payload if isinstance(obj.pipeline_payload, dict) else {})
     evaluation = obj.evaluation_payload if isinstance(obj.evaluation_payload, dict) else {}
     recognized_speaker = str(result.get("speaker", payload.speaker) or payload.speaker)
     normalized_segments = _normalize_segments(result.get("segments"))
@@ -647,8 +657,32 @@ def diagram_relayout(
     return RealtimeSnapshot(session_id=session_id, pipeline=pipeline, evaluation=evaluation)
 
 
-@router.post("/{session_id}/close")
-def close_session(session_id: str, db: Session = Depends(get_db)) -> dict[str, bool | str]:
+@router.get("/{session_id}/transcript/download")
+def download_transcript(
+    session_id: str,
+    fmt: str = Query(..., pattern="^(txt|markdown)$"),
+    db: Session = Depends(get_db),
+) -> Response:
+    obj = _get_session_or_404(db, session_id)
+    turns = build_transcript_turns(list_session_chunks(db, session_id))
+    summary = session_transcript_summary(db, session_id)
+    if fmt == "txt":
+        content = render_transcript_txt(obj, turns)
+        media_type = "text/plain; charset=utf-8"
+        filename = f"{session_id}_transcript.txt"
+    else:
+        content = render_transcript_markdown(obj, turns, summary)
+        media_type = "text/markdown; charset=utf-8"
+        filename = f"{session_id}_transcript.md"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/{session_id}/close", response_model=RealtimeSessionCloseResponse)
+def close_session(session_id: str, db: Session = Depends(get_db)) -> RealtimeSessionCloseResponse:
     obj = _get_session_or_404(db, session_id)
     obj.status = "closed"
     obj.closed_at = utc_now()
@@ -656,7 +690,13 @@ def close_session(session_id: str, db: Session = Depends(get_db)) -> dict[str, b
     db.commit()
     close_rtasr_session_stream(session_id)
     drop_runtime(session_id)
-    return {"ok": True, "session_id": session_id, "closed": True}
+    return RealtimeSessionCloseResponse(
+        ok=True,
+        session_id=session_id,
+        closed=True,
+        downloads=build_transcript_download_urls(session_id),
+        transcript_summary=session_transcript_summary(db, session_id),
+    )
 
 
 @router.post("/{session_id}/report")

@@ -10,6 +10,7 @@ import {
   reportDetailSchema,
   reportSummarySchema,
   realtimeAudioTranscriptionSchema,
+  realtimeSessionCloseSchema,
   realtimeSessionSchema,
   realtimeSnapshotSchema,
   runtimeOptionsSchema,
@@ -386,7 +387,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   closeRealtime: async (sessionId: string) =>
-    request(`/api/v1/realtime/sessions/${sessionId}/close`, z.object({ ok: z.boolean(), session_id: z.string(), closed: z.boolean() }), {
+    request(`/api/v1/realtime/sessions/${sessionId}/close`, realtimeSessionCloseSchema, {
       method: "POST",
     }),
   saveRealtimeReport: async (sessionId: string) =>

@@ -178,10 +178,18 @@ def test_realtime_chunk_batch_runs_single_coordination_cycle(
     assert payload["pipeline"]["graph_state"]["update_index"] == 1
     assert payload["pipeline"]["planner_state"]["provider"] == "test-planner"
     assert len(payload["emitted_events"]) == 1
+    assert payload["pipeline"]["transcript_state"]["turn_count"] == 2
+    assert payload["pipeline"]["transcript_state"]["current_turn"]["text"] == "Add Manager."
+    assert [row["text"] for row in payload["pipeline"]["transcript_state"]["archived_recent_turns"]] == ["Add Gateway."]
+    assert [row["text"] for row in payload["pipeline"]["transcript_state"]["recent_turns"]] == [
+        "Add Manager.",
+        "Add Gateway.",
+    ]
 
     flushed = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/flush")
     assert flushed.status_code == 200
     assert "evaluation" in flushed.json()
+    assert flushed.json()["pipeline"]["transcript_state"]["turn_count"] == 2
 
     report = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/report")
     assert report.status_code == 200
@@ -204,6 +212,78 @@ def test_realtime_chunk_batch_runs_single_coordination_cycle(
     closed = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/close")
     assert closed.status_code == 200
     assert closed.json()["closed"] is True
+    assert closed.json()["downloads"]["txt_url"].endswith(f"/api/v1/realtime/sessions/{session_id}/transcript/download?fmt=txt")
+    assert closed.json()["downloads"]["markdown_url"].endswith(
+        f"/api/v1/realtime/sessions/{session_id}/transcript/download?fmt=markdown"
+    )
+    assert closed.json()["transcript_summary"]["turn_count"] == 2
+
+    txt_download = admin_client.get(f"/api/v1/realtime/sessions/{session_id}/transcript/download", params={"fmt": "txt"})
+    assert txt_download.status_code == 200
+    assert "attachment;" in txt_download.headers["content-disposition"]
+    assert "[00:00.000 - 00:00.000] expert: Add Gateway." in txt_download.text
+    assert "[00:00.450 - 00:00.450] expert: Add Manager." in txt_download.text
+
+    md_download = admin_client.get(
+        f"/api/v1/realtime/sessions/{session_id}/transcript/download",
+        params={"fmt": "markdown"},
+    )
+    assert md_download.status_code == 200
+    assert md_download.text.startswith("# batch session")
+    assert "## Transcript" in md_download.text
+    assert "### [00:00.450 - 00:00.450] expert" in md_download.text
+
+
+def test_realtime_transcript_state_merges_stt_chunks_by_speaker_and_gap(
+    admin_client: TestClient,
+) -> None:
+    created = admin_client.post(
+        "/api/v1/realtime/sessions",
+        json={
+            "title": "stt merge session",
+            "client_context": {
+                "input_source": "microphone_browser",
+                "capture_mode": "browser_speech",
+            },
+        },
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    rows = [
+        (0, "speaker_a", "Hello", False),
+        (600, "speaker_a", "world", True),
+        (1_100, "speaker_b", "Reply", True),
+        (4_300, "speaker_b", "Later", True),
+    ]
+    for timestamp_ms, speaker, text, is_final in rows:
+        response = admin_client.post(
+            f"/api/v1/realtime/sessions/{session_id}/chunks",
+            json={
+                "timestamp_ms": timestamp_ms,
+                "text": text,
+                "speaker": speaker,
+                "is_final": is_final,
+                "metadata": {
+                    "input_source": "microphone_browser",
+                    "capture_mode": "browser_speech",
+                },
+            },
+        )
+        assert response.status_code == 200
+
+    snapshot = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/snapshot")
+    assert snapshot.status_code == 200
+    transcript_state = snapshot.json()["pipeline"]["transcript_state"]
+    assert transcript_state["turn_count"] == 3
+    assert transcript_state["speaker_count"] == 2
+    assert transcript_state["current_turn"]["text"] == "Later"
+    assert [row["text"] for row in transcript_state["archived_recent_turns"]] == ["Reply", "Hello world"]
+    recent_turns = transcript_state["recent_turns"]
+    assert [row["text"] for row in recent_turns] == ["Later", "Reply", "Hello world"]
+    assert recent_turns[-1]["speaker"] == "speaker_a"
+    assert recent_turns[-1]["start_ms"] == 0
+    assert recent_turns[-1]["end_ms"] == 600
 
 
 def test_runtime_options_and_audio_transcription_endpoint(

@@ -191,6 +191,29 @@ class RealtimeSnapshot(BaseModel):
     evaluation: dict[str, Any] | None = None
 
 
+class RealtimeTranscriptTurn(BaseModel):
+    speaker: str
+    text: str
+    start_ms: int
+    end_ms: int
+    is_final: bool = True
+    source: str = ""
+    capture_mode: str = ""
+
+
+class RealtimeSessionCloseDownloads(BaseModel):
+    txt_url: str
+    markdown_url: str
+
+
+class RealtimeSessionCloseResponse(BaseModel):
+    ok: bool
+    session_id: str
+    closed: bool
+    downloads: RealtimeSessionCloseDownloads
+    transcript_summary: dict[str, Any]
+
+
 class RealtimeDiagramPoint(BaseModel):
     x: float
     y: float
