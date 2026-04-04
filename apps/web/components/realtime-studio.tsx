@@ -3030,76 +3030,91 @@ export function RealtimeStudio() {
                     </div>
                   </Tooltip.Provider>
                 </div>
-                <div className="flex w-full min-w-0 shrink-0 flex-nowrap items-start justify-end gap-4 sm:ml-auto sm:max-w-md sm:gap-6 sm:pr-1">
-                  <div className="flex shrink-0 flex-col items-center">
-                    <button
-                      type="button"
-                      title={
-                        selectedInputSource === "transcript"
-                          ? "请先在左侧栏选择麦克风或系统音输入"
-                          : "开始录音"
-                      }
-                      onClick={() => void stageStartCapture()}
-                      disabled={!canStartStageCapture}
-                      className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
-                        canStartStageCapture
-                          ? "border-violet-200/90 bg-violet-700/70 text-violet-50 shadow-[0_0_0_1px_rgba(139,92,246,0.32)_inset,0_10px_22px_rgba(109,40,217,0.36)] hover:border-violet-200/95 hover:bg-violet-700/75 focus-visible:ring-violet-200/80"
-                          : "border-violet-900/50 bg-violet-950/45 text-violet-200 focus-visible:ring-violet-700"
-                      }`}
-                      aria-label="开始录音"
-                    >
-                      <Mic className="h-6 w-6 sm:h-7 sm:w-7" />
-                    </button>
-                    <div
-                      className={`mt-2 text-center text-xs leading-4 ${
-                        canStartStageCapture ? "font-semibold text-violet-50" : "text-violet-200/85"
-                      }`}
-                    >
-                      开始录音
+                <Tooltip.Provider delayDuration={200}>
+                  <div className="flex w-full min-w-0 shrink-0 flex-nowrap items-start justify-end gap-4 sm:ml-auto sm:max-w-md sm:gap-6 sm:pr-1">
+                    <div className="flex shrink-0 flex-col items-center">
+                      <Tooltip.Root>
+                        <Tooltip.Trigger asChild>
+                          <span className="inline-flex">
+                            <button
+                              type="button"
+                              onClick={() => void stageStartCapture()}
+                              disabled={!canStartStageCapture}
+                              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
+                                canStartStageCapture
+                                  ? "border-violet-200/90 bg-violet-700/70 text-violet-50 shadow-[0_0_0_1px_rgba(139,92,246,0.32)_inset,0_10px_22px_rgba(109,40,217,0.36)] hover:border-violet-200/95 hover:bg-violet-700/75 focus-visible:ring-violet-200/80"
+                                  : "border-violet-900/50 bg-violet-950/45 text-violet-200 focus-visible:ring-violet-700"
+                              }`}
+                              aria-label="开始录音"
+                            >
+                              <Mic className="h-6 w-6 sm:h-7 sm:w-7" />
+                            </button>
+                          </span>
+                        </Tooltip.Trigger>
+                        <Tooltip.Portal>
+                          <Tooltip.Content
+                            side="bottom"
+                            align="center"
+                            sideOffset={8}
+                            collisionPadding={12}
+                            className="z-[24000] max-w-[240px] rounded-lg border border-theme-default bg-surface-2 px-2.5 py-1.5 text-center text-xs font-medium text-theme-1 shadow-xl"
+                          >
+                            {selectedInputSource === "transcript"
+                              ? "请先在左侧栏选择麦克风或系统音输入"
+                              : "开始录音"}
+                          </Tooltip.Content>
+                        </Tooltip.Portal>
+                      </Tooltip.Root>
+                    </div>
+
+                    <div className="flex shrink-0 flex-col items-center">
+                      <Tooltip.Root>
+                        <Tooltip.Trigger asChild>
+                          <span className="inline-flex">
+                            <button
+                              type="button"
+                              onClick={() => void stageStopCapture()}
+                              disabled={!canStopStageCapture}
+                              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
+                                canStopStageCapture
+                                  ? "border-red-200/90 bg-red-700/70 text-red-50 shadow-[0_0_0_1px_rgba(239,68,68,0.30)_inset,0_10px_22px_rgba(220,38,38,0.32)] hover:border-red-200/95 hover:bg-red-700/75 focus-visible:ring-red-200/80"
+                                  : "border-red-900/50 bg-red-950/40 text-red-200 focus-visible:ring-red-800"
+                              }`}
+                              aria-label="停止录音"
+                            >
+                              <Pause className="h-6 w-6 sm:h-7 sm:w-7" />
+                            </button>
+                          </span>
+                        </Tooltip.Trigger>
+                        <Tooltip.Portal>
+                          <Tooltip.Content
+                            side="bottom"
+                            align="center"
+                            sideOffset={8}
+                            collisionPadding={12}
+                            className="z-[24000] max-w-[240px] rounded-lg border border-theme-default bg-surface-2 px-2.5 py-1.5 text-center text-xs font-medium text-theme-1 shadow-xl"
+                          >
+                            {selectedInputSource === "transcript"
+                              ? "请先在左侧栏选择麦克风或系统音输入"
+                              : "停止录音"}
+                          </Tooltip.Content>
+                        </Tooltip.Portal>
+                      </Tooltip.Root>
+                    </div>
+
+                    <div className="flex shrink-0 flex-col items-center">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="inline-flex h-12 shrink-0 gap-2 rounded-xl px-3 text-xs shadow-sm sm:h-14 sm:px-3.5 sm:text-sm"
+                        onClick={() => setDetailDrawerOpen(true)}
+                      >
+                        <PanelRight className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+                        历史会话
+                      </Button>
                     </div>
                   </div>
-
-                  <div className="flex shrink-0 flex-col items-center">
-                    <button
-                      type="button"
-                      title={
-                        selectedInputSource === "transcript"
-                          ? "请先在左侧栏选择麦克风或系统音输入"
-                          : "暂停录音（停止当前采集）"
-                      }
-                      onClick={() => void stageStopCapture()}
-                      disabled={!canStopStageCapture}
-                      className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
-                        canStopStageCapture
-                          ? "border-red-200/90 bg-red-700/70 text-red-50 shadow-[0_0_0_1px_rgba(239,68,68,0.30)_inset,0_10px_22px_rgba(220,38,38,0.32)] hover:border-red-200/95 hover:bg-red-700/75 focus-visible:ring-red-200/80"
-                          : "border-red-900/50 bg-red-950/40 text-red-200 focus-visible:ring-red-800"
-                      }`}
-                      aria-label="暂停录音"
-                    >
-                      <Pause className="h-6 w-6 sm:h-7 sm:w-7" />
-                    </button>
-                    <div
-                      className={`mt-2 text-center text-xs leading-4 ${
-                        canStopStageCapture ? "font-semibold text-red-50" : "text-red-200/85"
-                      }`}
-                    >
-                      暂停录音
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 flex-col items-center">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="inline-flex h-12 shrink-0 gap-2 rounded-xl px-3 text-xs shadow-sm sm:h-14 sm:px-3.5 sm:text-sm"
-                      onClick={() => setDetailDrawerOpen(true)}
-                    >
-                      <PanelRight className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
-                      历史会话
-                    </Button>
-                    <div className="mt-2 flex h-4 w-full items-center justify-center" aria-hidden />
-                  </div>
-                </div>
+                </Tooltip.Provider>
               </div>
 
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
