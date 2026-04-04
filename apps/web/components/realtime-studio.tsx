@@ -223,53 +223,45 @@ const TRANSCRIPT_PRESETS: TranscriptPreset[] = [
   },
 ];
 
-const DEFAULT_DEMO_PRESET_ID = "dual_canvas_public_library_week";
+const DEFAULT_DEMO_PRESET_ID = "mindmap_public_culture_service";
 
 const CURATED_DEMO_PRESETS: OfficialDemoPreset[] = [
   {
-    id: "dual_canvas_public_library_week",
-    label: "演示自动切换画布",
-    description: "基于重庆市合川区图书馆公共图书馆服务宣传周活动指南，先生成线下活动图，再自动切换到线上活动图。",
-    diagramHint: "双画布",
-    sourceTitle: "合川区图书馆2024年“公共图书馆服务宣传周”系列活动指南",
-    sourceUrl: "https://www.hc.gov.cn/bmxx/hmxx/202404/t20240424_13154753.html",
+    id: "mindmap_public_culture_service",
+    label: "演示思维导图",
+    description: "基于北京市“提升公共文化服务效能”直播访谈文字实录，生成单画布思维导图，梳理公共文化服务的主要工作板块。",
+    diagramHint: "思维导图",
+    sourceTitle: "“市民对话一把手”：市文化和旅游局谈“提升公共文化服务效能”",
+    sourceUrl: "https://www.beijing.gov.cn/shipin/Interviewlive/120.html",
     value: [
-      "馆员甲|我们先把合川区图书馆2024年公共图书馆服务宣传周的线下活动整理成总览图。|structural",
-      "馆员甲|线下活动先归成两组，一组是全民阅读图书展和打卡一路书香，另一组是你读书我买单和少儿阅读活动。|hierarchical",
-      "馆员乙|全民阅读图书展在绿港财富广场，打卡一路书香设在总馆和直属分馆。|structural",
-      "馆员乙|你读书我买单在合川新华书店，少儿阅读活动放在一楼儿童阅览区。|structural",
-      "馆员甲|下面切换到第二张图，只整理线上活动，不再混在线下总览里。|structural",
-      "馆员甲|线上活动包括春光中读诗词里的中国和声动云端有声阅读大赛。|hierarchical",
-      "馆员乙|另一组线上活动包括穿越时空遇见宋潮、看图猜成语和423书菜云集市。|structural",
+      "主持人|我们今天围绕提升公共文化服务效能做一张思维导图，先把文旅融合和公共文化服务的主干梳理出来。|structural",
+      "嘉宾|先放中心主题“提升公共文化服务效能”，第一层分成融合发展、夜间文旅、漫步北京、基层公共文化、京郊文化旅游和春节文化活动六个分支。|hierarchical",
+      "主持人|融合发展这条分支可以写清原则和路径，我刚才问过“融什么、怎么融”。|structural",
+      "嘉宾|融合发展的原则是宜融则融、能融尽融，路径包括资源利用、空间布局、产品业态、公共服务、市场管理、对外交流和保障措施。|hierarchical",
+      "嘉宾|夜间文旅分支下再挂三项：延长公共文化机构晚间开放、丰富夜间演出、建设24小时城市书房和阅读空间。|hierarchical",
+      "嘉宾|漫步北京分支重点围绕古都文化、红色文化、京味文化和创新文化来设计精品线路。|hierarchical",
+      "嘉宾|基层公共文化这条分支重点写设施网络、15分钟公共文化服务圈、重点文化设施和回天地区资源输送。|hierarchical",
+      "嘉宾|京郊文化旅游分支写畅游京郊计划、四季主题线路、乡村民宿升级和相关政策保障。|hierarchical",
+      "嘉宾|四季主题线路下面是春季踏青赏花、夏季消夏避暑、秋季金秋采摘、冬季温泉滑雪。|hierarchical",
+      "主持人|春节文化活动分支可以包括文化三下乡、图书馆里过大年、文化馆里过大年、戏韵动京城和北京冰雪旅游节。|hierarchical",
     ].join("\n"),
-    scriptBatches: [
-      [
-        "馆员甲|我们先把合川区图书馆2024年公共图书馆服务宣传周的线下活动整理成总览图。|structural",
-        "馆员甲|线下活动先归成两组，一组是全民阅读图书展和打卡一路书香，另一组是你读书我买单和少儿阅读活动。|hierarchical",
-        "馆员乙|全民阅读图书展在绿港财富广场，打卡一路书香设在总馆和直属分馆。|structural",
-        "馆员乙|你读书我买单在合川新华书店，少儿阅读活动放在一楼儿童阅览区。|structural",
-      ].join("\n"),
-      [
-        "馆员甲|下面单独切到第二张图，整理这次服务宣传周的线上活动，不再混在线下总览里。|structural",
-        "馆员甲|线上活动包括春光中读诗词里的中国和声动云端有声阅读大赛。|hierarchical",
-        "馆员乙|另一组线上活动包括穿越时空遇见宋潮、看图猜成语和423书菜云集市。|structural",
-      ].join("\n"),
-    ],
   },
   {
     id: "manual_relayout_reading_festival",
-    label: "演示拖拽重构",
-    description: "基于河南工业职业技术学院第十四届读书节活动通知生成脑暴图，并通过节点拖拽触发明显重构。",
-    diagramHint: "头脑风暴",
+    label: "演示实体关系图",
+    description: "基于河南工业职业技术学院第十四届读书节活动通知，梳理活动报名、作品提交、评审和奖项之间的实体关系。",
+    diagramHint: "实体关系图",
     sourceTitle: "关于开展学校“第十四届读书节系列活动”的通知",
     sourceUrl: "https://www.hnpi.edu.cn/tsg/2025/0414/c815a105177/page.htm",
     value: [
-      "工作坊主持|我们把河南工业职业技术学院第十四届读书节的活动项目先整理成一张脑暴图，后面我要手动拖动节点重组结构。|structural",
-      "工作坊主持|中心主题是第十四届读书节。|structural",
-      "成员甲|一组是线下体验活动，包括墨香雅集创意阅读市集、最美图书馆摄影、阅读越有趣桌游和新华书店进校园。|hierarchical",
-      "成员乙|一组是主题展示与评选，包括抗战主题书展和阅读之星评选。|hierarchical",
-      "成员丙|一组是传播与参与活动，包括主题诵读大赛、我的悦读时光视频征集和搜书达人互动。|hierarchical",
-      "工作坊主持|先把创意阅读市集、阅读之星和搜书达人这些节点保留下来，等会我会拖动它们看结构怎么变化。|structural",
+      "活动策划|我们按河南工业职业技术学院第十四届读书节通知，整理一张实体关系图，重点看活动、参与者、作品、评审和奖项之间的关系。|structural",
+      "数据同学|先放实体“读书节活动”，一届读书节下面会包含多个具体活动项目。|structural",
+      "活动策划|具体活动项目可以包括创意阅读市集、最美图书馆摄影、主题诵读大赛、我的悦读时光视频征集和阅读之星评选。|hierarchical",
+      "数据同学|参与者实体和活动项目之间是报名关系，一个参与者可以报名多个活动，一个活动也会对应多位参与者。|structural",
+      "活动策划|需要提交内容的活动，再增加“作品”实体，作品归属于某条报名记录，也归属于一个参与者。|structural",
+      "数据同学|主题诵读大赛、摄影和视频征集都可以挂作品；阅读之星评选则更像直接从参与者或阅读记录里产生候选人。|structural",
+      "活动策划|评审老师是另一类实体，评审老师对作品形成评分记录，评分记录同时关联评委、作品和活动项目。|structural",
+      "数据同学|最后增加“奖项”实体，一个活动项目可以产生多个奖项，奖项最终关联到参与者或作品。|structural",
     ].join("\n"),
   },
   {
@@ -488,6 +480,25 @@ function logBrowserRuntime(label: string, payload: Record<string, unknown>, leve
   if (typeof window === "undefined") return;
   const method = level === "error" ? console.error : level === "warn" ? console.warn : console.info;
   method(`[S2G][Realtime] ${label}`, payload);
+}
+
+function friendlyRelayoutErrorMessage(err: unknown) {
+  if (err instanceof ApiError) {
+    const message = (err.message || "").trim();
+    if (message.includes("The read operation timed out") || message.includes("请求超时")) {
+      return "拖拽重构这次等待模型返回超时了，当前图已保留。可以稍后重试，或先减少一次拖动想表达的结构变化范围。";
+    }
+    if (message) {
+      return `拖拽重构失败：${message}`;
+    }
+  }
+  if (err instanceof Error && err.message.trim()) {
+    if (err.message.includes("The read operation timed out")) {
+      return "拖拽重构这次等待模型返回超时了，当前图已保留。可以稍后重试，或先减少一次拖动想表达的结构变化范围。";
+    }
+    return `拖拽重构失败：${err.message}`;
+  }
+  return "拖拽重构失败，当前图已保留。请稍后重试。";
 }
 
 function buildBackendOptions(source: InputSource, helperCapabilities: HelperCapabilities | null): BackendOption[] {
@@ -1744,8 +1755,10 @@ export function RealtimeStudio() {
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
     },
     onError: (err) => {
-      logBrowserRuntime("diagram relayout failed", { error: (err as Error).message }, "error");
-      setError((err as Error).message);
+      const message = friendlyRelayoutErrorMessage(err);
+      logBrowserRuntime("diagram relayout failed", { error: err instanceof Error ? err.message : String(err || "") }, "warn");
+      setError(message);
+      setNotice({ tone: "warning", text: message });
     },
   });
 
@@ -2954,12 +2967,12 @@ export function RealtimeStudio() {
                       }
                       onClick={() => void stageStartCapture()}
                       disabled={!canStartStageCapture}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-violet-900/60 bg-violet-950/55 text-violet-100 shadow-[0_10px_24px_rgba(76,29,149,0.22)] transition hover:border-violet-700/70 hover:bg-violet-950/70 active:scale-[0.98] disabled:cursor-not-allowed disabled:border-violet-900/55 disabled:bg-violet-950/50 disabled:text-violet-100 disabled:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-700 sm:h-14 sm:w-14"
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#3D7695] bg-[#3D7695] text-white shadow-[0_10px_24px_rgba(61,118,149,0.24)] transition hover:border-[#356A86] hover:bg-[#356A86] active:scale-[0.98] disabled:cursor-not-allowed disabled:border-[#3D7695]/85 disabled:bg-[#3D7695]/85 disabled:text-white disabled:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3D7695] sm:h-14 sm:w-14"
                       aria-label="开始录音"
                     >
                       <Mic className="h-6 w-6 sm:h-7 sm:w-7" />
                     </button>
-                    <div className="mt-2 text-center text-xs leading-4 text-violet-600">开始录音</div>
+                    <div className="mt-2 text-center text-xs leading-4 text-[#5C8DA8]">开始录音</div>
                   </div>
 
                   <div className="flex shrink-0 flex-col items-center">
@@ -2972,12 +2985,12 @@ export function RealtimeStudio() {
                       }
                       onClick={() => void stageStopCapture()}
                       disabled={!canStopStageCapture}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-red-900/60 bg-red-950/50 text-red-100 shadow-[0_10px_24px_rgba(127,29,29,0.2)] transition hover:border-red-800/75 hover:bg-red-950/62 active:scale-[0.98] disabled:cursor-not-allowed disabled:border-red-900/55 disabled:bg-red-950/45 disabled:text-red-100 disabled:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-800 sm:h-14 sm:w-14"
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#DDB355] bg-[#DDB355] text-white shadow-[0_10px_24px_rgba(221,179,85,0.22)] transition hover:border-[#CAA44D] hover:bg-[#CAA44D] active:scale-[0.98] disabled:cursor-not-allowed disabled:border-[#DDB355]/85 disabled:bg-[#DDB355]/85 disabled:text-white disabled:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#DDB355] sm:h-14 sm:w-14"
                       aria-label="暂停录音"
                     >
                       <Pause className="h-6 w-6 sm:h-7 sm:w-7" />
                     </button>
-                    <div className="mt-2 text-center text-xs leading-4 text-red-600">暂停录音</div>
+                    <div className="mt-2 text-center text-xs leading-4 text-[#E3BE72]">暂停录音</div>
                   </div>
 
                   <div className="flex shrink-0 flex-col items-center">

@@ -825,11 +825,12 @@ def _build_ssl_context() -> ssl.SSLContext:
 
 
 REALTIME_LLM_TIMEOUT_SEC = 180
+REALTIME_RELAYOUT_LLM_TIMEOUT_SEC = 300
 REALTIME_LLM_MAX_RETRIES = 1
 REALTIME_LLM_RETRY_BACKOFF_SEC = 0.5
 
 
-def build_chat_client(profile: dict[str, Any], model: str):
+def build_chat_client(profile: dict[str, Any], model: str, *, timeout_sec: int = REALTIME_LLM_TIMEOUT_SEC):
     provider_kind = str(profile.get("provider_kind", "openai_compatible") or "openai_compatible").strip()
     api_key, api_key_env = _resolve_api_key(profile)
     common_kwargs = {
@@ -837,7 +838,7 @@ def build_chat_client(profile: dict[str, Any], model: str):
         "model": model,
         "api_key": api_key,
         "api_key_env": api_key_env or "OPENAI_API_KEY",
-        "timeout_sec": REALTIME_LLM_TIMEOUT_SEC,
+        "timeout_sec": timeout_sec,
         "max_retries": REALTIME_LLM_MAX_RETRIES,
         "retry_backoff_sec": REALTIME_LLM_RETRY_BACKOFF_SEC,
         "temperature": 0.0,
@@ -1917,7 +1918,7 @@ class CoordinationRuntimeSession:
                 "pending_turn_ids": [turn.turn_id for turn in pending_turns],
             },
         )
-        client = build_chat_client(profile, model)
+        client = build_chat_client(profile, model, timeout_sec=REALTIME_RELAYOUT_LLM_TIMEOUT_SEC)
         sample_hint = SimpleNamespace(sample_id=self.session_id, diagram_type=self.diagram_type)
         state_hint = SimpleNamespace(current_graph_ir=self.current_graph_ir)
         base_messages = [
