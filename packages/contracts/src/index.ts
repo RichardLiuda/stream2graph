@@ -72,6 +72,7 @@ export const realtimeAudioTranscriptionSchema = z.object({
   ok: z.boolean(),
   text: z.string(),
   speaker: z.string(),
+  segments: z.array(z.record(z.any())).nullable().optional(),
   voiceprint: z.record(z.any()).nullable().optional(),
   is_final: z.boolean(),
   provider: z.string(),

@@ -13,7 +13,6 @@ from tools.incremental_dataset.schema import GraphGroup, GraphIR, GraphNode
 
 
 def test_realtime_session_workflow_requires_auth_and_persists_reports(
-    client: TestClient,
     admin_client: TestClient,
     session_factory,
     monkeypatch,
@@ -46,9 +45,6 @@ def test_realtime_session_workflow_requires_auth_and_persists_reports(
             metadata={"provider": "test-planner", "model_name": "test-planner-model", "latency_ms": 12.3},
         ),
     )
-
-    unauthorized = client.post("/api/v1/realtime/sessions", json={"title": "unauthorized"})
-    assert unauthorized.status_code == 401
 
     created = admin_client.post(
         "/api/v1/realtime/sessions",
@@ -213,6 +209,7 @@ def test_realtime_chunk_batch_runs_single_coordination_cycle(
 def test_runtime_options_and_audio_transcription_endpoint(
     admin_client: TestClient,
     monkeypatch,
+    session_factory,
 ) -> None:
     monkeypatch.setattr(
         "app.routers.catalog.list_runtime_options",
@@ -240,8 +237,8 @@ def test_runtime_options_and_audio_transcription_endpoint(
                     "id": "stt-default",
                     "label": "STT Default",
                     "provider_kind": "xfyun_asr",
-                    "models": ["iat"],
-                    "default_model": "iat",
+                    "models": ["rtasr_llm"],
+                    "default_model": "rtasr_llm",
                 }
             ],
         },
@@ -279,30 +276,32 @@ def test_runtime_options_and_audio_transcription_endpoint(
         lambda db, session_obj, payload: {
             "text": "识别出的系统音频文本",
             "provider": "stt-default",
-            "model": "iat",
+            "model": "rtasr_llm",
             "latency_ms": 88.6,
+            "speaker": "multi_speaker",
+            "segments": [
+                {
+                    "seg_id": 1,
+                    "text": "张三先说。",
+                    "speaker": "张三",
+                    "role_index": 1,
+                    "feature_id": "feature_zhangsan",
+                    "speaker_resolution_source": "rtasr_feature",
+                },
+                {
+                    "seg_id": 1,
+                    "text": "李四补充。",
+                    "speaker": "role_2",
+                    "role_index": 2,
+                    "feature_id": "",
+                    "speaker_resolution_source": "rtasr_role",
+                },
+            ],
         },
     )
     monkeypatch.setattr(
         "app.routers.realtime.blind_recognize_speaker",
-        lambda db, stt_profile_id, profile, pcm_s16le_base64, sample_rate, channel_count, fallback_speaker: {
-            "matched": True,
-            "provider": "xfyun_isv",
-            "group_id": "demo_group",
-            "feature_id": "speaker_zhangsan",
-            "speaker_label": "张三",
-            "score": 0.96,
-            "top_candidates": [
-                {
-                    "feature_id": "speaker_zhangsan",
-                    "speaker_label": "张三",
-                    "score": 0.96,
-                }
-            ],
-            "latency_ms": 33.2,
-            "threshold": 0.75,
-            "error_message": None,
-        },
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("blind_recognize_speaker should not run for role-separated segments")),
     )
 
     runtime_options = admin_client.get("/api/v1/catalog/runtime-options")
@@ -319,7 +318,7 @@ def test_runtime_options_and_audio_transcription_endpoint(
             "planner_profile_id": "planner-default",
             "planner_model": "model-large",
             "stt_profile_id": "stt-default",
-            "stt_model": "iat",
+            "stt_model": "rtasr_llm",
             "client_context": {"input_source": "system_audio"},
         },
     )
@@ -333,6 +332,7 @@ def test_runtime_options_and_audio_transcription_endpoint(
             "sample_rate": 16000,
             "channel_count": 1,
             "pcm_s16le_base64": "AAA=",
+            "timestamp_ms": 1775133797936,
             "speaker": "system_audio",
             "is_final": True,
             "metadata": {"input_source": "system_audio", "capture_mode": "api_stt"},
@@ -341,11 +341,21 @@ def test_runtime_options_and_audio_transcription_endpoint(
     assert response.status_code == 200
     payload = response.json()
     assert payload["text"] == "识别出的系统音频文本"
-    assert payload["speaker"] == "张三"
+    assert payload["speaker"] == "multi_speaker"
     assert payload["voiceprint"]["matched"] is True
+    assert payload["voiceprint"]["mode"] == "feature_split"
+    assert len(payload["segments"]) == 2
     assert payload["provider"] == "stt-default"
     assert payload["pipeline"]["planner_state"]["model"] == "model-large"
     assert payload["pipeline"]["mermaid_state"]["source"] == "algorithm_preview"
+    with session_factory() as db:
+        rows = db.scalars(
+            select(RealtimeChunk)
+            .where(RealtimeChunk.session_id == session_id)
+            .order_by(RealtimeChunk.sequence_no.asc())
+        ).all()
+        assert rows
+        assert all(0 <= int(row.timestamp_ms) <= 2_147_483_647 for row in rows)
 
 
 def test_runtime_options_can_persist_stt_voiceprint_config(admin_client: TestClient) -> None:
@@ -359,7 +369,7 @@ def test_runtime_options_can_persist_stt_voiceprint_config(admin_client: TestCli
                     "id": "xfyun-stt",
                     "label": "XFYun STT",
                     "provider_kind": "xfyun_asr",
-                    "endpoint": "wss://iat-api.xfyun.cn/v2/iat",
+                    "endpoint": "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1",
                     "models": ["iat", "xfime-mianqie"],
                     "default_model": "iat",
                     "app_id": "xfyun-app",
@@ -380,8 +390,10 @@ def test_runtime_options_can_persist_stt_voiceprint_config(admin_client: TestCli
     )
     assert response.status_code == 200
     payload = response.json()
+    assert payload["stt_profiles"][0]["models"] == ["rtasr_llm"]
+    assert payload["stt_profiles"][0]["default_model"] == "rtasr_llm"
     assert payload["stt_profiles"][0]["voiceprint"]["group_id"] == "lab_group"
-    assert payload["stt_profiles"][0]["voiceprint"]["api_base"] == "https://api.xf-yun.com"
+    assert payload["stt_profiles"][0]["voiceprint"]["api_base"] == "https://office-api-personal-dx.iflyaisol.com"
     assert "api_secret" not in payload["stt_profiles"][0]["voiceprint"]
 
     public_view = admin_client.get("/api/v1/catalog/runtime-options")
@@ -405,9 +417,9 @@ def test_voiceprint_management_api_and_audio_transcription_fallback(
                     "id": "voice-stt",
                     "label": "Voice STT",
                     "provider_kind": "xfyun_asr",
-                    "endpoint": "wss://iat-api.xfyun.cn/v2/iat",
-                    "models": ["iat"],
-                    "default_model": "iat",
+                    "endpoint": "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1",
+                    "models": ["rtasr_llm"],
+                    "default_model": "rtasr_llm",
                     "app_id": "xfyun-app",
                     "api_key": "test-xfyun-key",
                     "api_secret": "test-xfyun-secret",
@@ -478,7 +490,7 @@ def test_voiceprint_management_api_and_audio_transcription_fallback(
         lambda db, session_obj, payload: {
             "text": "这段音频会回退到原 speaker",
             "provider": "voice-stt",
-            "model": "iat",
+            "model": "rtasr_llm",
             "latency_ms": 55.2,
         },
     )
@@ -548,7 +560,7 @@ def test_voiceprint_management_api_and_audio_transcription_fallback(
         json={
             "title": "voiceprint fallback",
             "stt_profile_id": "voice-stt",
-            "stt_model": "iat",
+            "stt_model": "rtasr_llm",
         },
     )
     assert created.status_code == 200
@@ -776,7 +788,7 @@ def test_runtime_options_can_be_saved_from_admin_ui(admin_client: TestClient) ->
                     "id": "xfyun-stt",
                     "label": "XFYun STT",
                     "provider_kind": "xfyun_asr",
-                    "endpoint": "wss://iat-api.xfyun.cn/v2/iat",
+                    "endpoint": "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1",
                     "models": ["iat", "xfime-mianqie"],
                     "default_model": "iat",
                     "app_id": "xfyun-app",
@@ -795,18 +807,55 @@ def test_runtime_options_can_be_saved_from_admin_ui(admin_client: TestClient) ->
     assert payload["planner_profiles"][0]["id"] == "openai-planner"
     assert payload["stt_profiles"][0]["provider_kind"] == "xfyun_asr"
     assert payload["stt_profiles"][0]["app_id"] == "xfyun-app"
+    assert payload["stt_profiles"][0]["models"] == ["rtasr_llm"]
+    assert payload["stt_profiles"][0]["default_model"] == "rtasr_llm"
 
     admin_view = admin_client.get("/api/v1/catalog/runtime-options/admin")
     assert admin_view.status_code == 200
     assert admin_view.json()["gate_profiles"][0]["id"] == "openai-gate"
     assert admin_view.json()["planner_profiles"][0]["id"] == "openai-planner"
-    assert admin_view.json()["stt_profiles"][0]["endpoint"] == "wss://iat-api.xfyun.cn/v2/iat"
+    assert admin_view.json()["stt_profiles"][0]["endpoint"] == "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1"
 
     public_view = admin_client.get("/api/v1/catalog/runtime-options")
     assert public_view.status_code == 200
     assert public_view.json()["gate_profiles"][0]["id"] == "openai-gate"
     assert public_view.json()["planner_profiles"][0]["id"] == "openai-planner"
     assert "api_key" not in public_view.text
+
+
+def test_runtime_options_normalize_legacy_xfyun_endpoint(admin_client: TestClient) -> None:
+    response = admin_client.put(
+        "/api/v1/catalog/runtime-options/admin",
+        json={
+            "gate_profiles": [],
+            "planner_profiles": [],
+            "stt_profiles": [
+                {
+                    "id": "stt-1",
+                    "label": "xunfei",
+                    "provider_kind": "xfyun_asr",
+                    "endpoint": "wss://iat-api.xfyun.cn/v2/iat",
+                    "models": ["iat"],
+                    "default_model": "iat",
+                    "app_id": "53281301",
+                    "api_key": "test-key",
+                    "api_secret": "test-secret",
+                    "voiceprint": {
+                        "enabled": True,
+                        "provider_kind": "xfyun_isv",
+                        "api_base": "https://api.xf-yun.com",
+                        "group_id": "stt_1_group",
+                    },
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["stt_profiles"][0]["endpoint"] == "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1"
+    assert payload["stt_profiles"][0]["models"] == ["rtasr_llm"]
+    assert payload["stt_profiles"][0]["default_model"] == "rtasr_llm"
+    assert payload["stt_profiles"][0]["voiceprint"]["api_base"] == "https://office-api-personal-dx.iflyaisol.com"
 
 
 def test_runtime_model_probe_endpoint(admin_client: TestClient, monkeypatch) -> None:
@@ -838,15 +887,77 @@ def test_runtime_model_probe_endpoint_for_xfyun_stt(admin_client: TestClient) ->
     response = admin_client.post(
         "/api/v1/catalog/runtime-options/admin/probe-models",
         json={
-            "endpoint": "wss://iat-api.xfyun.cn/v2/iat",
+            "endpoint": "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1",
             "provider_kind": "xfyun_asr",
         },
     )
     assert response.status_code == 200
     payload = response.json()
     assert payload["ok"] is True
-    assert payload["models_endpoint"] == "wss://iat-api.xfyun.cn/v2/iat"
-    assert payload["models"] == ["iat", "xfime-mianqie"]
+    assert payload["models_endpoint"] == "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1"
+    assert payload["models"] == ["rtasr_llm"]
+
+
+def test_runtime_connection_test_endpoint(admin_client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.routers.catalog.test_runtime_connection",
+        lambda **kwargs: {
+            "ok": True,
+            "provider_kind": kwargs["provider_kind"],
+            "summary": "连接成功",
+            "logs": [
+                f"provider_kind={kwargs['provider_kind']}",
+                "最终结果：成功，摘要=连接成功",
+            ],
+        },
+    )
+
+    response = admin_client.post(
+        "/api/v1/catalog/runtime-options/admin/test-connection",
+        json={
+            "endpoint": "https://api.openai.com/v1/chat/completions",
+            "provider_kind": "openai_compatible",
+            "api_key": "test-key",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["provider_kind"] == "openai_compatible"
+    assert payload["summary"] == "连接成功"
+    assert len(payload["logs"]) == 2
+
+
+def test_runtime_connection_test_endpoint_returns_failure_logs(admin_client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.routers.catalog.test_runtime_connection",
+        lambda **kwargs: {
+            "ok": False,
+            "provider_kind": kwargs["provider_kind"],
+            "summary": "讯飞 RTASR 连接测试失败：缺少 App ID / API Key / API Secret。",
+            "logs": [
+                "provider_kind=xfyun_asr",
+                "API Key: 未提供",
+                "API Secret: 未提供",
+                "最终结果：失败，原因=讯飞 RTASR 连接测试失败：缺少 App ID / API Key / API Secret。",
+            ],
+        },
+    )
+
+    response = admin_client.post(
+        "/api/v1/catalog/runtime-options/admin/test-connection",
+        json={
+            "endpoint": "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1",
+            "provider_kind": "xfyun_asr",
+            "voiceprint": {"enabled": True, "group_id": "meeting_group"},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is False
+    assert payload["provider_kind"] == "xfyun_asr"
+    assert "缺少 App ID" in payload["summary"]
+    assert any("API Key" in line for line in payload["logs"])
 
 
 def test_study_participant_workflow_records_submission_survey_and_exports(

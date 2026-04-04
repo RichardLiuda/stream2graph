@@ -23,7 +23,7 @@ export function Button({ className, variant = "primary", children, ...props }: B
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--page-bg)] disabled:cursor-not-allowed disabled:opacity-50",
         variantClasses[variant],
         className,
       )}

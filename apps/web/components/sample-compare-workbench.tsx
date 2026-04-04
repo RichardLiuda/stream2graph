@@ -176,7 +176,7 @@ export function SampleCompareWorkbench() {
 
   return (
     <div className="space-y-5">
-      <h1 className="page-title">静态样本浏览与对比</h1>
+      <h1 className="page-title page-title--menu-clearance">静态样本浏览与对比</h1>
 
       {runError ? (
         <div className="rounded-lg border border-red-900/50 bg-red-950/40 px-3 py-2.5 text-sm text-red-200">{runError}</div>

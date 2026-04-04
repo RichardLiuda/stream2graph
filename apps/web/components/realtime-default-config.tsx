@@ -55,11 +55,13 @@ export function RealtimeDefaultConfig(props: RealtimeDefaultConfigProps) {
                 value={datasetVersion}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setDatasetVersion(event.target.value)}
               >
-                {datasetVersions.map((item) => (
+                {datasetVersions.length ? datasetVersions.map((item) => (
                   <option key={item.slug} value={item.slug}>
                     {item.slug}
                   </option>
-                ))}
+                )) : (
+                  <option value="">跟随会话默认</option>
+                )}
               </select>
             </div>
           </div>

@@ -4,9 +4,9 @@ import { cn } from "../lib/cn";
 
 const surfaceClass = {
   dark:
-    "border-[color:var(--ui-input-border)] bg-[var(--ui-input-bg)] text-[var(--ui-input-text)] placeholder:text-[var(--ui-input-placeholder)] focus:border-[color:var(--ui-input-focus-border)] focus:ring-[var(--ui-input-focus-ring)]",
+    "border-[color:var(--ui-input-border)] bg-[var(--ui-input-bg)] text-[var(--ui-input-text)] placeholder:text-[var(--ui-input-placeholder)] focus-visible:border-[color:var(--ui-input-focus-border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--page-bg)]",
   light:
-    "border-[color:var(--ui-input-border)] bg-[var(--ui-input-bg)] text-[var(--ui-input-text)] placeholder:text-[var(--ui-input-placeholder)] focus:border-[color:var(--ui-input-focus-border)] focus:ring-[var(--ui-input-focus-ring)]",
+    "border-[color:var(--ui-input-border)] bg-[var(--ui-input-bg)] text-[var(--ui-input-text)] placeholder:text-[var(--ui-input-placeholder)] focus-visible:border-[color:var(--ui-input-focus-border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--page-bg)]",
 };
 
 export function Textarea({
@@ -17,7 +17,7 @@ export function Textarea({
   return (
     <textarea
       className={cn(
-        "min-h-[120px] w-full rounded-xl border px-3.5 py-3 text-sm outline-none transition focus:ring-2",
+        "min-h-[120px] w-full rounded-xl border px-3.5 py-3 text-sm transition",
         surfaceClass[variant],
         className,
       )}

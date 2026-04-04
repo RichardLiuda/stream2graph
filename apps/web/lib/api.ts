@@ -2,6 +2,8 @@
 
 import { z } from "zod";
 
+import { isPrivateLanIPv4Hostname } from "@/lib/hostname";
+
 import {
   datasetSplitSummarySchema,
   datasetVersionSummarySchema,
@@ -56,6 +58,13 @@ const runtimeModelProbeSchema = z.object({
   models: z.array(z.string()),
 });
 
+const runtimeConnectionTestSchema = z.object({
+  ok: z.boolean(),
+  provider_kind: z.string(),
+  summary: z.string(),
+  logs: z.array(z.string()),
+});
+
 export class ApiError extends Error {
   status: number;
   payload: unknown;
@@ -68,28 +77,42 @@ export class ApiError extends Error {
   }
 }
 
-function resolveApiBaseUrl() {
+/**
+ * 默认走 Next `rewrites` 同源代理（见 `next.config.ts`），浏览器请求 `/api/*` 即可，无需直连 :8000。
+ * 设置 `NEXT_PUBLIC_API_BROWSER_PROXY=0` 时改回直连（需后端 CORS、与页面同协议等）。
+ */
+function resolveApiBaseUrl(): string {
   if (typeof window === "undefined") {
     return CONFIGURED_API_BASE_URL;
   }
 
-  const { hostname, protocol } = window.location;
-  const isLocalhost =
-    hostname === "127.0.0.1" || hostname === "localhost" || hostname.endsWith(".local");
+  if (process.env.NEXT_PUBLIC_API_BROWSER_PROXY === "0") {
+    const { hostname, protocol } = window.location;
+    const isLocalhost =
+      hostname === "127.0.0.1" || hostname === "localhost" || hostname.endsWith(".local");
 
-  if (isLocalhost) {
-    return resolveLocalApiBaseUrl(hostname);
+    if (isLocalhost || isPrivateLanIPv4Hostname(hostname)) {
+      return resolveLocalApiBaseUrl(hostname);
+    }
+
+    if (protocol === "http:" && CONFIGURED_API_BASE_URL.startsWith("https://")) {
+      return resolveLocalApiBaseUrl(hostname);
+    }
+
+    return CONFIGURED_API_BASE_URL;
   }
 
-  if (protocol === "http:" && CONFIGURED_API_BASE_URL.startsWith("https://")) {
-    return resolveLocalApiBaseUrl(hostname);
-  }
-
-  return CONFIGURED_API_BASE_URL;
+  return "";
 }
 
-export function apiUrl(path: string) {
-  return `${resolveApiBaseUrl()}${path}`;
+export function apiUrl(path: string): string {
+  const base = resolveApiBaseUrl();
+  if (!base) {
+    return path.startsWith("/") ? path : `/${path}`;
+  }
+  const clean = base.replace(/\/$/, "");
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${clean}${p}`;
 }
 
 function logBrowserApiEvent(label: string, payload: Record<string, unknown>, level: "info" | "error" = "info") {
@@ -127,15 +150,30 @@ function messageFromErrorPayload(raw: Record<string, unknown>): string {
   return "请求失败";
 }
 
-const REQUEST_TIMEOUT_MS = 25_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 25_000;
+const REALTIME_AUDIO_TRANSCRIPTION_TIMEOUT_MS = 90_000;
 
+function shouldLogAsInfo(path: string, response: Response, raw: unknown) {
+  return (
+    path === "/api/v1/auth/me" &&
+    response.status === 401 &&
+    typeof raw === "object" &&
+    raw !== null &&
+    "detail" in raw &&
+    (raw as { detail?: unknown }).detail === "not authenticated"
+  );
+}
 async function request<TSchema extends z.ZodTypeAny>(
   path: string,
   schema: TSchema,
   init?: RequestInit,
+  options?: {
+    timeoutMs?: number;
+  },
 ): Promise<z.infer<TSchema>> {
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(apiUrl(path), {
       credentials: "include",
@@ -155,6 +193,7 @@ async function request<TSchema extends z.ZodTypeAny>(
       raw = { detail: text || response.statusText };
     }
     if (!response.ok) {
+      const logLevel = shouldLogAsInfo(path, response, raw) ? "info" : "error";
       logBrowserApiEvent(
         "request failed",
         {
@@ -179,9 +218,10 @@ async function request<TSchema extends z.ZodTypeAny>(
       );
     }
     if (e instanceof TypeError) {
+      const tried = apiUrl(path);
       throw new ApiError(
         0,
-        "无法连接 API。请检查服务是否已启动；若用局域网 IP 打开本页，请在 API 的 S2G_CORS_ORIGINS 中加入该前端地址（如 http://192.168.x.x:3000）。",
+        `无法连接 API（请求：${tried}）。请确认：① API 已在运行；② 若使用「直连模式」（NEXT_PUBLIC_API_BROWSER_PROXY=0），同一台机须监听 0.0.0.0:8000 且防火墙放行；③ 默认「同源代理」时，Next 会将 /api/* 转到 API_PROXY_TARGET / NEXT_PUBLIC_API_BASE_URL（见 apps/web/next.config.ts），请保证该地址在运行 Next 的机器上可访问。`,
         {},
       );
     }
@@ -219,6 +259,11 @@ export const api = {
     }),
   probeRuntimeModels: async (payload: Record<string, unknown>) =>
     request("/api/v1/catalog/runtime-options/admin/probe-models", runtimeModelProbeSchema, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  testRuntimeConnection: async (payload: Record<string, unknown>) =>
+    request("/api/v1/catalog/runtime-options/admin/test-connection", runtimeConnectionTestSchema, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -273,6 +318,18 @@ export const api = {
     }),
   getRealtimeSession: async (sessionId: string) =>
     request(`/api/v1/realtime/sessions/${sessionId}`, realtimeSessionSchema),
+  /** 更新会话标题（后端提供 PUT，与 PATCH 等价；统一用 PUT 避免部分环境对 PATCH 支持异常） */
+  patchRealtimeSession: async (sessionId: string, payload: { title: string }) =>
+    request(`/api/v1/realtime/sessions/${sessionId}`, realtimeSessionSchema, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  deleteRealtimeSession: async (sessionId: string) =>
+    request(
+      `/api/v1/realtime/sessions/${sessionId}`,
+      z.object({ ok: z.boolean(), session_id: z.string() }),
+      { method: "DELETE" },
+    ),
   addRealtimeChunk: async (sessionId: string, payload: Record<string, unknown>) =>
     request(
       `/api/v1/realtime/sessions/${sessionId}/chunks`,
@@ -310,6 +367,9 @@ export const api = {
       {
         method: "POST",
         body: JSON.stringify(payload),
+      },
+      {
+        timeoutMs: REALTIME_AUDIO_TRANSCRIPTION_TIMEOUT_MS,
       },
     ),
   snapshotRealtime: async (sessionId: string) =>

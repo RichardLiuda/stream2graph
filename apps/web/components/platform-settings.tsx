@@ -13,6 +13,7 @@ import { loadRuntimePreferences, resolveRuntimePreferences, saveRuntimePreferenc
 import { RealtimeDefaultConfig } from "@/components/realtime-default-config";
 
 type AdminRuntimeOptions = Awaited<ReturnType<typeof api.getAdminRuntimeOptions>>;
+type RuntimeConnectionTestResult = Awaited<ReturnType<typeof api.testRuntimeConnection>>;
 type ProviderKind = "openai_compatible" | "xfyun_asr";
 type VoiceprintProviderKind = "xfyun_isv";
 type EndpointRouteMode = "chat_completions" | "custom";
@@ -42,13 +43,13 @@ type ProfileDraft = {
 };
 
 const DEFAULT_OPENAI_BASE = "https://api.openai.com";
-const DEFAULT_XFYUN_ASR_ENDPOINT = "wss://iat-api.xfyun.cn/v2/iat";
-const DEFAULT_XFYUN_ASR_MODELS = ["iat", "xfime-mianqie"];
+const DEFAULT_XFYUN_ASR_ENDPOINT = "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1";
+const DEFAULT_XFYUN_ASR_MODELS = ["rtasr_llm"];
 const MODEL_PROVIDER_KIND_OPTIONS: Array<{ value: ProviderKind; label: string }> = [
   { value: "openai_compatible", label: "OpenAI Compatible" },
-  { value: "xfyun_asr", label: "讯飞语音听写" },
+  { value: "xfyun_asr", label: "讯飞 RTASR LLM" },
 ];
-const DEFAULT_VOICEPRINT_BASE = "https://api.xf-yun.com";
+const DEFAULT_VOICEPRINT_BASE = "https://office-api-personal-dx.iflyaisol.com";
 const ENDPOINT_ROUTE_OPTIONS: Record<
   "gate" | "planner" | "stt",
   Array<{ value: EndpointRouteMode; label: string; path: string }>
@@ -278,6 +279,7 @@ export function PlatformSettings() {
   const [plannerDrafts, setPlannerDrafts] = useState<ProfileDraft[]>([]);
   const [sttDrafts, setSttDrafts] = useState<ProfileDraft[]>([]);
   const [probeFeedback, setProbeFeedback] = useState<string | null>(null);
+  const [connectionResults, setConnectionResults] = useState<Record<string, RuntimeConnectionTestResult>>({});
   const [voiceprintProfileId, setVoiceprintProfileId] = useState("");
   const [voiceprintFeedback, setVoiceprintFeedback] = useState<string | null>(null);
   const [speakerLabel, setSpeakerLabel] = useState("");
@@ -341,7 +343,8 @@ export function PlatformSettings() {
   const hasPlannerProfiles = Boolean(runtimeOptions.data?.planner_profiles.length);
   const hasSttProfiles = Boolean(runtimeOptions.data?.stt_profiles.length);
   const adminReady = authQuery.isSuccess && authQuery.isFetchedAfterMount;
-  const authUnauthorized = authQuery.error instanceof ApiError && authQuery.error.status === 401;
+  const authError = authQuery.error instanceof ApiError ? authQuery.error : null;
+  const adminLoggedOut = authError?.status === 401;
 
   useEffect(() => {
     if (!selectedGateProfile) return;
@@ -455,6 +458,46 @@ export function PlatformSettings() {
     },
   });
 
+  const testConnectionMutation = useMutation({
+    mutationFn: async (payload: { kind: "gate" | "planner" | "stt"; index: number; draft: ProfileDraft }) => {
+      const result = await api.testRuntimeConnection({
+        endpoint: resolveEndpoint(payload.kind, payload.draft),
+        provider_kind: payload.draft.providerKind,
+        app_id: payload.draft.appId.trim() || null,
+        api_key: payload.draft.apiKey.trim() || null,
+        api_key_env: payload.draft.apiKeyEnv.trim() || null,
+        api_secret: payload.draft.apiSecret.trim() || null,
+        api_secret_env: payload.draft.apiSecretEnv.trim() || null,
+        voiceprint:
+          payload.kind === "stt"
+            ? {
+                enabled: payload.draft.voiceprint.enabled,
+                provider_kind: payload.draft.voiceprint.providerKind,
+                api_base: payload.draft.voiceprint.apiBase.trim() || DEFAULT_VOICEPRINT_BASE,
+                group_id: payload.draft.voiceprint.groupId.trim() || `${payload.draft.id.trim() || "stt"}_group`,
+                score_threshold: Number(payload.draft.voiceprint.scoreThreshold || 0.75),
+                top_k: Number(payload.draft.voiceprint.topK || 3),
+              }
+            : null,
+      });
+      return { ...payload, result };
+    },
+    onSuccess: ({ kind, index, result }) => {
+      setConnectionResults((current) => ({ ...current, [`${kind}-${index}`]: result }));
+    },
+    onError: (error, variables) => {
+      setConnectionResults((current) => ({
+        ...current,
+        [`${variables.kind}-${variables.index}`]: {
+          ok: false,
+          provider_kind: variables.draft.providerKind,
+          summary: (error as Error).message,
+          logs: [(error as Error).message],
+        },
+      }));
+    },
+  });
+
   const voiceprintFeaturesQuery = useQuery({
     queryKey: ["voiceprint-features", voiceprintProfileId],
     queryFn: () => api.listVoiceprintFeatures(voiceprintProfileId),
@@ -553,7 +596,7 @@ export function PlatformSettings() {
     <div className="space-y-6">
       {/* pr：与实时页「历史会话」同档，并为固定主题按钮留空 */}
       <div className="flex flex-wrap items-center justify-between gap-3 pr-12 sm:pr-14">
-        <h1 className="page-title">设置</h1>
+        <h1 className="page-title page-title--menu-clearance">设置</h1>
         <Link href="/app/realtime" className="shrink-0">
           <Button variant="secondary">
             返回实时工作
@@ -589,9 +632,9 @@ export function PlatformSettings() {
             正在确认管理员登录状态…
           </div>
         ) : null}
-        {authUnauthorized ? (
+        {adminLoggedOut ? (
           <div className="rounded-lg border border-amber-800/60 bg-amber-950/35 px-4 py-3 text-sm leading-relaxed text-amber-100">
-            <p>未登录或会话已过期，无法读写服务端模型配置。</p>
+            <p>当前还没有管理员登录，无法读写服务端模型配置。</p>
             <Link
               href="/login"
               className="mt-2 inline-flex items-center gap-1 font-medium text-amber-200 underline underline-offset-4 theme-light:text-amber-900 hover:text-theme-1"
@@ -601,12 +644,12 @@ export function PlatformSettings() {
             </Link>
           </div>
         ) : null}
-        {!adminReady && authQuery.isError && !authUnauthorized ? (
+        {!adminReady && authQuery.isError && !adminLoggedOut ? (
           <div className="rounded-lg border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm text-red-200">
             {(authQuery.error as Error).message}
           </div>
         ) : null}
-        {!adminReady && authQuery.isSuccess && !authUnauthorized ? (
+        {!adminReady && authQuery.isSuccess && !adminLoggedOut ? (
           <div className="rounded-lg border border-theme-subtle bg-surface-muted px-4 py-3 text-sm text-theme-4">
             正在启用服务端配置…
           </div>
@@ -648,6 +691,12 @@ export function PlatformSettings() {
                       const selectedRoute = ENDPOINT_ROUTE_OPTIONS[group.kind].find(
                         (option) => option.value === draft.endpointRouteMode,
                       );
+                      const connectionKey = `${group.kind}-${index}`;
+                      const connectionResult = connectionResults[connectionKey];
+                      const isTestingConnection =
+                        testConnectionMutation.isPending &&
+                        testConnectionMutation.variables?.kind === group.kind &&
+                        testConnectionMutation.variables?.index === index;
 
                       return (
                     <>
@@ -672,12 +721,60 @@ export function PlatformSettings() {
                           <RefreshCcw className="h-4 w-4" />
                           {probeModelsMutation.isPending ? "处理中..." : isXfyunStt ? "填充预设" : "探测模型"}
                         </Button>
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            testConnectionMutation.mutate({ kind: group.kind, index, draft });
+                          }}
+                          disabled={
+                            !adminReady ||
+                            isTestingConnection ||
+                            !resolvedEndpoint.trim() ||
+                            (isXfyunStt
+                              ? !draft.appId.trim() ||
+                                (!draft.apiKey.trim() && !draft.apiKeyEnv.trim()) ||
+                                (!draft.apiSecret.trim() && !draft.apiSecretEnv.trim())
+                              : !draft.apiKey.trim() && !draft.apiKeyEnv.trim())
+                          }
+                        >
+                          <RefreshCcw className="h-4 w-4" />
+                          {isTestingConnection ? "测试中..." : "测试连接"}
+                        </Button>
                         <Button variant="ghost" onClick={() => removeDraft(group.kind, index)}>
                           <Trash2 className="h-4 w-4" />
                           删除
                         </Button>
                       </div>
                     </div>
+
+                    {connectionResult ? (
+                      <div
+                        className={`mb-4 rounded-xl border px-4 py-3 ${
+                          connectionResult.ok
+                            ? "border-emerald-800/60 bg-emerald-950/30"
+                            : "border-red-900/50 bg-red-950/35"
+                        }`}
+                      >
+                        <div
+                          className={`text-sm font-medium ${
+                            connectionResult.ok ? "text-emerald-100" : "text-red-100"
+                          }`}
+                        >
+                          {connectionResult.ok ? "连接测试成功" : "连接测试失败"}
+                        </div>
+                        <div className="mt-1 text-sm leading-6 text-zinc-200">{connectionResult.summary}</div>
+                        {connectionResult.logs.length ? (
+                          <div className="mt-3 rounded-lg border border-zinc-800/80 bg-zinc-950/80 p-3">
+                            <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
+                              详细日志
+                            </div>
+                            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-6 text-zinc-300">
+                              {connectionResult.logs.join("\n")}
+                            </pre>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
@@ -882,9 +979,9 @@ export function PlatformSettings() {
                         <div className="space-y-4 md:col-span-2 rounded-[20px] border border-emerald-900/45 bg-emerald-950/20 p-4">
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <div className="text-sm font-semibold text-theme-1">声纹盲认增强</div>
+                              <div className="text-sm font-semibold text-theme-1">角色分离 / 声纹增强</div>
                               <p className="mt-1 text-xs leading-6 text-theme-4">
-                                对 STT 音频块额外调用讯飞声纹 1:N 盲认，命中后自动回写 speaker。
+                                RTASR 会优先开启角色分离；若已注册声纹特征，会自动写入 `feature_ids` 做声纹分离。
                               </p>
                             </div>
                             <label className="flex items-center gap-2 text-sm font-medium text-theme-2">
@@ -901,11 +998,11 @@ export function PlatformSettings() {
                             </label>
                           </div>
                           <div className="rounded-[18px] border border-theme-default bg-surface-muted px-4 py-3 text-sm leading-6 text-theme-3">
-                            开启后会自动复用当前 STT Profile 的讯飞凭证，并使用内置默认参数完成多人声纹盲认。
+                            开启后会自动复用当前 STT Profile 的讯飞凭证；若声纹库已有特征，实时转写会自动带上 `feature_ids`。
                           </div>
                           <p className="text-[11px] leading-snug text-theme-4">
                             与「实时工作台」侧栏<strong className="font-medium text-theme-3">同一条</strong>配置：在实时页把输入来源选成麦克风/系统音等（不要用纯文本
-                            Transcript）时，左侧会显示一行「声纹盲认」勾选，保存后立即生效。
+                            Transcript）时，左侧会显示一行「声纹分离 / 盲分模式」相关状态，保存后立即生效。
                           </p>
                         </div>
                       ) : null}
@@ -1096,7 +1193,7 @@ export function PlatformSettings() {
           <div>
             <div className="text-base font-semibold text-theme-1">声纹库管理</div>
             <p className="mt-2 text-sm leading-6 text-theme-4">
-              为某个 STT profile 注册多位说话人的声纹特征。实时 API STT 上传后会先转写，再做 1:N 盲认并回写 speaker。
+              为某个 STT profile 注册多位说话人的声纹特征。实时 API STT 上传时，RTASR 会优先做角色分离，并尽量把角色映射到已注册声纹。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1138,7 +1235,7 @@ export function PlatformSettings() {
 
         {!managedVoiceprintProfile?.voiceprint?.enabled ? (
           <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
-            当前选中的 STT profile 还没有启用声纹盲认。先在上方 STT Profile 里打开“声纹盲认增强”，填好讯飞配置并保存。
+            当前选中的 STT profile 还没有启用声纹增强。先在上方 STT Profile 里打开“角色分离 / 声纹增强”，填好讯飞配置并保存。
           </div>
         ) : (
           <>
