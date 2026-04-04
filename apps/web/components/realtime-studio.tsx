@@ -2439,7 +2439,7 @@ export function RealtimeStudio() {
                   className={
                     currentSessionId
                       ? "h-8 shrink-0 gap-1 px-3 text-xs font-semibold"
-                      : "h-8 shrink-0 gap-1 px-3 text-xs font-semibold bg-[linear-gradient(135deg,#4d7cff,#a78bfa)] text-white"
+                      : "s2g-cta-create-session h-8 shrink-0 gap-1 px-3 text-xs font-semibold shadow-none"
                   }
                   onClick={() => createSession.mutate()}
                   disabled={createSession.isPending}
