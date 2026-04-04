@@ -8,6 +8,7 @@ from app.services.realtime_coordination import (
     GateDecision,
     PlannerDecision,
     _coerce_gate_action,
+    _coerce_style_entries,
 )
 from app.models import RealtimeSession
 
@@ -158,3 +159,16 @@ def test_runtime_session_switches_canvas_and_restores() -> None:
     restored_payload = restored.pipeline_payload()
     assert restored_payload["canvas_state"]["canvas_count"] == 2
     assert restored_payload["canvas_state"]["active_canvas_index"] == 1
+
+
+def test_style_entries_normalize_class_targets() -> None:
+    styles = _coerce_style_entries(
+        [
+            {"line": "class node_a node_b primary"},
+            {"line": "class node_c, node_d secondary"},
+        ]
+    )
+    assert styles == [
+        {"line": "class node_a,node_b primary"},
+        {"line": "class node_c,node_d secondary"},
+    ]

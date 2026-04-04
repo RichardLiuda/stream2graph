@@ -235,26 +235,24 @@ const CURATED_DEMO_PRESETS: OfficialDemoPreset[] = [
     sourceUrl: "https://www.hc.gov.cn/bmxx/hmxx/202404/t20240424_13154753.html",
     value: [
       "馆员甲|我们先把合川区图书馆2024年公共图书馆服务宣传周的线下活动整理成总览图。|structural",
-      "馆员甲|第一块是全民阅读图书展，地点在绿港财富广场，里面有免费阅读、图书展销、图书角共建和阅读券兑换。|hierarchical",
-      "馆员乙|第二块是打卡一路书香，在总馆和直属分馆设置阅读打卡点，做打卡有礼。|structural",
-      "馆员乙|第三块是你读书我买单，读者可以去合川新华书店免费选书借书，读完归还图书馆。|structural",
-      "馆员甲|第四块是少儿科普讲座和金图图绘本故事分享，地点都在一楼儿童阅览区。|structural",
+      "馆员甲|线下活动先归成两组，一组是全民阅读图书展和打卡一路书香，另一组是你读书我买单和少儿阅读活动。|hierarchical",
+      "馆员乙|全民阅读图书展在绿港财富广场，打卡一路书香设在总馆和直属分馆。|structural",
+      "馆员乙|你读书我买单在合川新华书店，少儿阅读活动放在一楼儿童阅览区。|structural",
+      "馆员甲|下面切换到第二张图，只整理线上活动，不再混在线下总览里。|structural",
+      "馆员甲|线上活动包括春光中读诗词里的中国和声动云端有声阅读大赛。|hierarchical",
+      "馆员乙|另一组线上活动包括穿越时空遇见宋潮、看图猜成语和423书菜云集市。|structural",
     ].join("\n"),
     scriptBatches: [
       [
         "馆员甲|我们先把合川区图书馆2024年公共图书馆服务宣传周的线下活动整理成总览图。|structural",
-        "馆员甲|第一块是全民阅读图书展，地点在绿港财富广场，里面有免费阅读、图书展销、图书角共建和阅读券兑换。|hierarchical",
-        "馆员乙|第二块是打卡一路书香，在总馆和直属分馆设置阅读打卡点，做打卡有礼。|structural",
-        "馆员乙|第三块是你读书我买单，读者可以去合川新华书店免费选书借书，读完归还图书馆。|structural",
-        "馆员甲|第四块是少儿科普讲座和金图图绘本故事分享，地点都在一楼儿童阅览区。|structural",
+        "馆员甲|线下活动先归成两组，一组是全民阅读图书展和打卡一路书香，另一组是你读书我买单和少儿阅读活动。|hierarchical",
+        "馆员乙|全民阅读图书展在绿港财富广场，打卡一路书香设在总馆和直属分馆。|structural",
+        "馆员乙|你读书我买单在合川新华书店，少儿阅读活动放在一楼儿童阅览区。|structural",
       ].join("\n"),
       [
         "馆员甲|下面单独切到第二张图，整理这次服务宣传周的线上活动，不再混在线下总览里。|structural",
-        "馆员甲|第一项是春光中读诗词里的中国，通过微信公众号参与。|structural",
-        "馆员乙|第二项是声动云端书香四溢有声阅读大赛，读者可以选经典段落录制朗诵，也可以先去云图有声平台收听再回来分享感想。|hierarchical",
-        "馆员乙|第三项是穿越时空遇见宋潮的趣味闯关，一共设计了8个关卡和8道题。|structural",
-        "馆员甲|第四项是看图猜成语线上答题活动。|structural",
-        "馆员甲|第五项是423书菜云集市，用书和蔬菜结合的方式做阅读推广。|structural",
+        "馆员甲|线上活动包括春光中读诗词里的中国和声动云端有声阅读大赛。|hierarchical",
+        "馆员乙|另一组线上活动包括穿越时空遇见宋潮、看图猜成语和423书菜云集市。|structural",
       ].join("\n"),
     ],
   },
@@ -308,23 +306,6 @@ const CURATED_DEMO_PRESETS: OfficialDemoPreset[] = [
       "教务老师|已立项项目后续会进入中期检查。|sequential",
       "教务老师|中期检查通过后可以进入结题申请与结题验收。|sequential",
       "教务老师|结题验收经学校复核通过后转为已结题；未通过则退回补充材料或归档为未通过。|conditional",
-    ].join("\n"),
-  },
-  {
-    id: "product_manager_mindmap",
-    label: "演示思维导图",
-    description: "基于软件开发流程，将各个阶段和关键活动组织成辐射状思维导图。",
-    diagramHint: "flowchart",
-    sourceTitle: "软件开发流程体系",
-    sourceUrl: "",
-    value: [
-      "讲师：我们把软件开发项目的完整流程整理成一张思维导图，方便新人培训。",
-      "讲师：中心主题是软件开发全流程。",
-      "学员甲：第一个大分支是需求阶段，包括需求调研、需求分析、需求评审和需求确认。",
-      "学员乙：第二个大分支是设计阶段，包括架构设计、模块划分、接口定义和详细设计。",
-      "学员甲：第三个大分支是开发阶段，包括编码实现、代码审查、单元测试和集成测试。",
-      "学员乙：第四个大分支是测试阶段，包括测试计划、用例设计、缺陷管理和回归测试。",
-      "学员丙：第五个大分支是上线交付，包括部署发布、版本管理、运维监控和故障响应。",
     ].join("\n"),
   },
 ];
@@ -642,6 +623,8 @@ export function RealtimeStudio() {
   const demoSeedAutoSentRef = useRef<string | null>(null);
   const demoSequenceRunIdRef = useRef(0);
   const previousActiveCanvasIdRef = useRef<string | null>(null);
+  const helperCaptureActiveRef = useRef(false);
+  const snapshotPollInFlightRef = useRef(false);
 
   const selectedInputSource = studioState.context.selectedInputSource;
   const selectedRecognitionBackend = studioState.context.recognitionBackend;
@@ -704,7 +687,7 @@ export function RealtimeStudio() {
     retry: false,
     staleTime: 10_000,
     refetchInterval: 15_000,
-    enabled: supportsHelperSystemAudioUi(audioContext),
+    enabled: selectedInputSource === "system_audio_helper" && supportsHelperSystemAudioUi(audioContext),
   });
 
   useEffect(() => {
@@ -907,7 +890,10 @@ export function RealtimeStudio() {
       helperEventSourceRef.current?.close();
       void teardownHelperAudioGraph();
       void teardownApiCaptureGraph();
-      void audioHelper.stopCapture().catch(() => undefined);
+      if (helperCaptureActiveRef.current) {
+        helperCaptureActiveRef.current = false;
+        void audioHelper.stopCapture().catch(() => undefined);
+      }
     };
     // Cleanup only on unmount; teardown helpers are intentionally not dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -937,7 +923,10 @@ export function RealtimeStudio() {
       helperEventSourceRef.current?.close();
       helperEventSourceRef.current = null;
       void teardownHelperAudioGraph();
-      void audioHelper.stopCapture().catch(() => undefined);
+      if (helperCaptureActiveRef.current) {
+        helperCaptureActiveRef.current = false;
+        void audioHelper.stopCapture().catch(() => undefined);
+      }
       studioSend({ type: "capture.stop" });
     }
     if (
@@ -2012,6 +2001,7 @@ export function RealtimeStudio() {
           setNotice({ tone: "success", text: "增强模式已启动，等待本地辅助层推送识别结果。" });
         }
         if (payload.status === "stopped") {
+          helperCaptureActiveRef.current = false;
           studioSend({ type: "capture.stop" });
           setNotice({ tone: "info", text: "增强模式已停止。" });
         }
@@ -2029,6 +2019,7 @@ export function RealtimeStudio() {
         }
       },
       () => {
+        helperCaptureActiveRef.current = false;
         void teardownHelperAudioGraph();
         studioSend({ type: "capture.stop" });
         studioSend({ type: "stt.error", message: "audio helper 事件流已断开。请检查本机辅助层服务。" });
@@ -2046,6 +2037,7 @@ export function RealtimeStudio() {
         setError(result.message);
         return;
       }
+      helperCaptureActiveRef.current = true;
       studioSend({ type: "transcript.preview", text: "" });
       await startHelperAudioBridge(stream, sessionId);
       studioSend({ type: "capture.start" });
@@ -2054,7 +2046,10 @@ export function RealtimeStudio() {
       stream.getTracks().forEach((track) => track.stop());
       helperEventSourceRef.current?.close();
       helperEventSourceRef.current = null;
-      await audioHelper.stopCapture().catch(() => undefined);
+      if (helperCaptureActiveRef.current) {
+        helperCaptureActiveRef.current = false;
+        await audioHelper.stopCapture().catch(() => undefined);
+      }
       studioSend({ type: "stt.error", message: err instanceof Error ? err.message : "增强模式启动失败" });
       setError(err instanceof Error ? err.message : "增强模式启动失败");
     }
@@ -2065,7 +2060,10 @@ export function RealtimeStudio() {
     helperEventSourceRef.current = null;
     await teardownHelperAudioGraph({ flush: true });
     try {
-      await audioHelper.stopCapture();
+      if (helperCaptureActiveRef.current) {
+        helperCaptureActiveRef.current = false;
+        await audioHelper.stopCapture();
+      }
     } catch {
       // ignore local helper shutdown errors
     }
@@ -2221,6 +2219,38 @@ export function RealtimeStudio() {
     transcriptText,
     workbenchDataReady,
   ]);
+
+  const shouldPollRealtimeSnapshot =
+    Boolean(currentSessionId) &&
+    (sendTranscript.isPending || flushMutation.isPending || relayoutMutation.isPending || demoSequenceRunning);
+
+  useEffect(() => {
+    if (!currentSessionId || !shouldPollRealtimeSnapshot) return;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled || snapshotPollInFlightRef.current) return;
+      snapshotPollInFlightRef.current = true;
+      try {
+        const data = await api.snapshotRealtime(currentSessionId);
+        if (cancelled) return;
+        setSnapshot(data);
+        setError(null);
+        syncPipelineStatus(data.pipeline);
+      } catch {
+        /* keep the current optimistic view while background polling retries */
+      } finally {
+        snapshotPollInFlightRef.current = false;
+      }
+    };
+    void tick();
+    const intervalId = window.setInterval(() => {
+      void tick();
+    }, 4_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [currentSessionId, shouldPollRealtimeSnapshot]);
 
   const summaryCards = useMemo(() => {
     const metrics = snapshot?.evaluation?.metrics ?? {};
@@ -2966,7 +2996,7 @@ export function RealtimeStudio() {
               </div>
 
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <Tabs.Content value="mermaid" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+            <Tabs.Content value="mermaid" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
               <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-3 pt-1 sm:px-3">
                 <div className="mb-2 flex shrink-0 items-center justify-between gap-2 px-1">
                   <div className="min-w-0 text-[11px] text-theme-3">
@@ -3050,7 +3080,7 @@ export function RealtimeStudio() {
               </div>
             </Tabs.Content>
 
-            <Tabs.Content value="structure" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+            <Tabs.Content value="structure" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
               <div className="flex min-h-0 flex-1 px-4 py-2">
                 <Card className="flex min-h-0 flex-1 flex-col rounded-xl border border-theme-default bg-surface-muted p-2">
                   <div className="mb-2 flex shrink-0 items-center justify-between gap-2 px-1">
@@ -3110,7 +3140,7 @@ export function RealtimeStudio() {
               </div>
             </Tabs.Content>
 
-            <Tabs.Content value="events" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+            <Tabs.Content value="events" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
               <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div className="mb-5 flex items-center justify-between gap-4">
                   <div>
@@ -3160,7 +3190,7 @@ export function RealtimeStudio() {
               </Card>
             </Tabs.Content>
 
-            <Tabs.Content value="metrics" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+            <Tabs.Content value="metrics" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
               <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-2">
                 <div className="space-y-6">
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -3178,7 +3208,7 @@ export function RealtimeStudio() {
               </div>
             </Tabs.Content>
 
-            <Tabs.Content value="pipeline" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+            <Tabs.Content value="pipeline" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
               <div className="flex min-h-0 flex-1 flex-col">
                 <Card className="flex-1 min-h-0 overflow-hidden">
                   <div className="mb-4 text-sm font-semibold text-theme-1 px-5 pt-5">处理步骤摘要</div>

@@ -99,6 +99,24 @@ def _graph_payload_signature(graph_ir: GraphIR) -> str:
     return json.dumps(graph_ir.to_payload(), ensure_ascii=False, sort_keys=True)
 
 
+def _normalize_style_line(line: str) -> str:
+    compact = " ".join(str(line or "").strip().split())
+    if not compact:
+        return ""
+    lower = compact.lower()
+    if lower.startswith("class ") and not lower.startswith("classdef "):
+        tokens = compact.split()
+        if len(tokens) >= 3:
+            class_name = tokens[-1]
+            target_tokens = tokens[1:-1]
+            targets: list[str] = []
+            for token in target_tokens:
+                targets.extend(part.strip() for part in token.split(",") if part.strip())
+            if targets:
+                return f"class {','.join(targets)} {class_name}"
+    return compact
+
+
 def _coerce_style_entries(raw_styles: object) -> list[dict[str, Any]]:
     if not isinstance(raw_styles, list):
         return []
@@ -107,11 +125,11 @@ def _coerce_style_entries(raw_styles: object) -> list[dict[str, Any]]:
     for item in raw_styles:
         normalized: dict[str, Any] | None = None
         if isinstance(item, str):
-            line = item.strip()
+            line = _normalize_style_line(item)
             if line:
                 normalized = {"line": line}
         elif isinstance(item, dict):
-            line = str(item.get("line") or item.get("statement") or item.get("raw") or "").strip()
+            line = _normalize_style_line(item.get("line") or item.get("statement") or item.get("raw") or "")
             if line:
                 normalized = {"line": line}
             else:

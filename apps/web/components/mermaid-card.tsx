@@ -633,7 +633,7 @@ function MermaidCardBody({
       if (!candidate) {
         setSvg("");
         setError("暂无 Mermaid 内容");
-        console.warn("[MermaidCard] skipped: empty Mermaid content");
+        console.info("[MermaidCard] skipped: empty Mermaid content");
         console.groupEnd();
         return;
       }
