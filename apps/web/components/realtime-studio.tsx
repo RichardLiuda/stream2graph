@@ -2784,7 +2784,7 @@ export function RealtimeStudio() {
           </div>
 
           <div
-            className={`relative z-[2] flex min-h-0 flex-1 flex-col rounded-lg border px-2.5 py-2 transition-[border-color,box-shadow,background] ${
+            className={`relative z-[2] flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border px-2.5 py-2 transition-[border-color,box-shadow,background] ${
               activeCaptureSource
                 ? "border-[color:var(--accent)]/55 bg-surface-muted ring-1 ring-[color:var(--accent)]/20"
                 : "border-theme-subtle bg-gradient-to-b from-[color:var(--accent)]/[0.06] to-surface-muted"
@@ -2808,12 +2808,19 @@ export function RealtimeStudio() {
                 Chunk：{transcriptState.chunkCount}
               </Badge>
             </div>
-            <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2">
-              <div className="rounded-xl border border-[color:var(--accent)]/25 bg-[color:var(--accent)]/[0.05] px-3 py-3">
+            <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-theme-4">
+              {currentSessionClosed
+                ? "会话结束后保留只读字幕和下载入口；如需继续，请重建会话。"
+                : selectedInputSource === "transcript"
+                  ? "当前字幕显示输入预览，发送后会沉淀到下方转接记录。"
+                  : "本地预览用于当前字幕，服务端聚合后的最近轮次会保留在下方历史区。"}
+            </p>
+            <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+              <div className="shrink-0 rounded-xl border border-[color:var(--accent)]/25 bg-[color:var(--accent)]/[0.05] px-3 py-3">
                 <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--accent-strong)]/90">
                   当前字幕
                 </div>
-                <div className="min-h-[6.5rem] whitespace-pre-wrap text-[15px] leading-7 text-theme-1 sm:min-h-[7.5rem] sm:text-[16px]">
+                <div className="max-h-[min(12rem,38vh)] min-h-[4.5rem] overflow-y-auto whitespace-pre-wrap text-[15px] leading-7 text-theme-1 sm:max-h-[min(18rem,42vh)] sm:min-h-[6.5rem] sm:text-[16px] md:max-h-none md:overflow-visible md:min-h-[7.5rem]">
                   {currentSubtitleText}
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-theme-4">
@@ -2830,7 +2837,7 @@ export function RealtimeStudio() {
                 </div>
               </div>
 
-              <div className="flex min-h-[10rem] flex-1 flex-col overflow-hidden rounded-xl border border-theme-subtle bg-surface-muted/88">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-subtle bg-surface-muted/88">
                 <div className="flex shrink-0 items-center justify-between gap-2 border-b border-theme-subtle px-3 py-2">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-theme-4">历史转写</div>
                   <div className="text-[10px] text-theme-4">
@@ -2901,41 +2908,34 @@ export function RealtimeStudio() {
                 </div>
               ) : null}
             </div>
-            <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-theme-4">
-              {currentSessionClosed
-                ? "会话结束后保留只读字幕和下载入口；如需继续，请重建会话。"
-                : selectedInputSource === "transcript"
-                  ? "当前字幕显示输入预览，发送后会沉淀到下方转接记录。"
-                  : "本地预览用于当前字幕，服务端聚合后的最近轮次会保留在下方历史区。"}
-            </p>
-          </div>
 
-          <div
-            className={`relative z-[2] shrink-0 rounded-lg bg-surface-muted px-2.5 py-2 ${
-              activeCaptureSource ? "border border-theme-subtle" : "border border-dashed border-[color:var(--accent)]/22"
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-theme-1">输入音量</div>
-              <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
-            </div>
-            <div className="mt-2 flex h-5 items-center gap-1.5">
-              {Array.from({ length: 16 }).map((_, index) => {
-                const level = Math.max(0, Math.min(1, inputLevel));
-                const threshold = (index + 1) / 16;
-                const isActive = level >= threshold;
-                const showActive = Boolean(activeCaptureSource) && isActive;
-                return (
-                  <span
-                    key={index}
-                    className={`h-3 flex-1 rounded-sm border transition-colors duration-150 ${
-                      showActive
-                        ? "border-violet-800/70 bg-violet-700/80"
-                        : "border-theme-subtle bg-surface-muted"
-                    }`}
-                  />
-                );
-              })}
+            <div
+              className={`mt-2 shrink-0 border-t pt-2.5 ${
+                activeCaptureSource ? "border-theme-subtle" : "border-dashed border-[color:var(--accent)]/22"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-theme-1">输入音量</div>
+                <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
+              </div>
+              <div className="mt-2 flex h-5 items-center gap-1.5">
+                {Array.from({ length: 16 }).map((_, index) => {
+                  const level = Math.max(0, Math.min(1, inputLevel));
+                  const threshold = (index + 1) / 16;
+                  const isActive = level >= threshold;
+                  const showActive = Boolean(activeCaptureSource) && isActive;
+                  return (
+                    <span
+                      key={index}
+                      className={`h-3 flex-1 rounded-sm border transition-colors duration-150 ${
+                        showActive
+                          ? "border-violet-800/70 bg-violet-700/80"
+                          : "border-theme-subtle bg-surface-muted"
+                      }`}
+                    />
+                  );
+                })}
+              </div>
             </div>
           </div>
         </Card>
