@@ -2,8 +2,6 @@
 
 import { z } from "zod";
 
-import { isPrivateLanIPv4Hostname } from "@/lib/hostname";
-
 import {
   datasetSplitSummarySchema,
   datasetVersionSummarySchema,
@@ -24,30 +22,17 @@ import {
   voiceprintGroupSyncSchema,
 } from "@stream2graph/contracts";
 
-const CONFIGURED_API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000";
+const CONFIGURED_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "";
 
-function resolveLocalApiBaseUrl(hostname: string) {
-  return `http://${hostname}:8000`;
+function resolveFallbackApiBaseUrl() {
+  if (typeof window === "undefined") {
+    return "http://127.0.0.1:8000";
+  }
+  return `${window.location.protocol}//${window.location.hostname}:8000`;
 }
 
 function resolveDirectApiBaseUrl(): string {
-  if (typeof window === "undefined") {
-    return CONFIGURED_API_BASE_URL;
-  }
-
-  const { hostname, protocol } = window.location;
-  const isLocalhost = hostname === "127.0.0.1" || hostname === "localhost" || hostname.endsWith(".local");
-
-  if (isLocalhost || isPrivateLanIPv4Hostname(hostname)) {
-    return resolveLocalApiBaseUrl(hostname);
-  }
-
-  if (protocol === "http:" && CONFIGURED_API_BASE_URL.startsWith("https://")) {
-    return resolveLocalApiBaseUrl(hostname);
-  }
-
-  return CONFIGURED_API_BASE_URL;
+  return CONFIGURED_API_BASE_URL || resolveFallbackApiBaseUrl();
 }
 
 const runtimeOptionProfileConfigSchema = z.object({
@@ -57,6 +42,7 @@ const runtimeOptionProfileConfigSchema = z.object({
   endpoint: z.string(),
   models: z.array(z.string()),
   default_model: z.string(),
+  extra_body_json: z.string().nullable().optional(),
   app_id: z.string().nullable().optional(),
   api_key_env: z.string().nullable().optional(),
   api_key: z.string().nullable().optional(),
@@ -103,23 +89,11 @@ export class ApiError extends Error {
  */
 function resolveApiBaseUrl(): string {
   if (typeof window === "undefined") {
-    return CONFIGURED_API_BASE_URL;
+    return CONFIGURED_API_BASE_URL || "http://127.0.0.1:8000";
   }
 
   if (process.env.NEXT_PUBLIC_API_BROWSER_PROXY === "0") {
-    const { hostname, protocol } = window.location;
-    const isLocalhost =
-      hostname === "127.0.0.1" || hostname === "localhost" || hostname.endsWith(".local");
-
-    if (isLocalhost || isPrivateLanIPv4Hostname(hostname)) {
-      return resolveLocalApiBaseUrl(hostname);
-    }
-
-    if (protocol === "http:" && CONFIGURED_API_BASE_URL.startsWith("https://")) {
-      return resolveLocalApiBaseUrl(hostname);
-    }
-
-    return CONFIGURED_API_BASE_URL;
+    return resolveDirectApiBaseUrl();
   }
 
   return "";
@@ -491,6 +465,10 @@ export const api = {
     }),
   saveRealtimeReport: async (sessionId: string) =>
     request(`/api/v1/realtime/sessions/${sessionId}/report`, z.object({ ok: z.boolean(), report_id: z.string() }), {
+      method: "POST",
+    }),
+  saveRealtimeGraph: async (sessionId: string) =>
+    request(`/api/v1/realtime/sessions/${sessionId}/graph`, z.object({ ok: z.boolean(), report_id: z.string() }), {
       method: "POST",
     }),
   listRuns: async () => request("/api/v1/runs", z.array(runJobSchema)),

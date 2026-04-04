@@ -85,6 +85,7 @@ def _normalize_profile(row: dict[str, Any], *, kind: str, include_secrets: bool 
         endpoint = DEFAULT_XFYUN_ASR_ENDPOINT
     label = str(row.get("label", profile_id)).strip() or profile_id
     default_model = str(row.get("default_model", "")).strip()
+    extra_body_json = str(row.get("extra_body_json", "") or "").strip()
     app_id = str(row.get("app_id", "")).strip()
     api_key_env = str(row.get("api_key_env", "")).strip()
     api_key = str(row.get("api_key", "")).strip()
@@ -111,6 +112,7 @@ def _normalize_profile(row: dict[str, Any], *, kind: str, include_secrets: bool 
         "endpoint": endpoint,
         "models": normalized_models,
         "default_model": default_model,
+        "extra_body_json": extra_body_json,
         "app_id": app_id,
         "api_key_env": api_key_env,
         "api_secret_env": api_secret_env,
@@ -128,12 +130,14 @@ def _profile_summary(row: dict[str, Any], *, kind: str) -> dict[str, Any]:
     default_model = str(row.get("default_model", ""))
     if kind == "stt" and str(row.get("provider_kind", "")) == XFYUN_ASR_PROVIDER_KIND:
         models, default_model = _normalize_stt_models(models, default_model)
+    extra_body_json = str(row.get("extra_body_json", "") or "").strip()
     payload = {
         "id": str(row.get("id", "")),
         "label": str(row.get("label", row.get("id", ""))),
         "provider_kind": str(row.get("provider_kind", XFYUN_ASR_PROVIDER_KIND if kind == "stt" else "openai_compatible")),
         "models": models,
         "default_model": default_model,
+        "extra_body_json": extra_body_json,
     }
     voiceprint = _normalize_voiceprint(
         row.get("voiceprint"),

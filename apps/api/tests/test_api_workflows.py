@@ -195,12 +195,22 @@ def test_realtime_chunk_batch_runs_single_coordination_cycle(
     assert report.status_code == 200
     report_id = report.json()["report_id"]
 
+    graph_report = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/graph")
+    assert graph_report.status_code == 200
+    graph_report_id = graph_report.json()["report_id"]
+
     report_detail = admin_client.get(f"/api/v1/reports/{report_id}")
     assert report_detail.status_code == 200
     detail_payload = report_detail.json()
     assert detail_payload["report_type"] == "realtime_session"
     assert Path(detail_payload["json_path"]).exists()
     assert Path(detail_payload["markdown_path"]).exists()
+
+    graph_detail = admin_client.get(f"/api/v1/reports/{graph_report_id}")
+    assert graph_detail.status_code == 200
+    graph_payload = graph_detail.json()
+    assert graph_payload["report_type"] == "realtime_graph"
+    assert graph_payload["payload"]["graph_state"]["current_graph_ir"]["nodes"]
 
     export_response = admin_client.get(
         "/api/v1/reports/exports/download",
@@ -835,6 +845,15 @@ def test_realtime_session_uses_requested_diagram_type_and_preserves_groups(
     assert pipeline["renderer_state"]["groups"][0]["id"] == "actors"
 
 
+def test_runtime_options_admin_view_includes_runtime_defaults(admin_client: TestClient) -> None:
+    response = admin_client.get("/api/v1/catalog/runtime-options/admin")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["gate_profiles"][0]["id"] == "gate-default"
+    assert payload["planner_profiles"][0]["id"] == "planner-default"
+    assert payload["stt_profiles"][0]["id"] == "stt-default"
+
+
 def test_runtime_options_can_be_saved_from_admin_ui(admin_client: TestClient) -> None:
     response = admin_client.put(
         "/api/v1/catalog/runtime-options/admin",
@@ -859,6 +878,7 @@ def test_runtime_options_can_be_saved_from_admin_ui(admin_client: TestClient) ->
                     "endpoint": "https://api.openai.com/v1/chat/completions",
                     "models": ["gpt-4.1-mini", "gpt-4.1"],
                     "default_model": "gpt-4.1-mini",
+                    "extra_body_json": '{"enable_thinking": false}',
                     "api_key": "test-openai-key",
                     "api_key_env": "",
                 }
@@ -885,6 +905,7 @@ def test_runtime_options_can_be_saved_from_admin_ui(admin_client: TestClient) ->
     assert payload["gate_profiles"][0]["endpoint"] == "https://api.openai.com/v1/chat/completions"
     assert payload["gate_profiles"][0]["api_key"] == "test-openai-key"
     assert payload["planner_profiles"][0]["id"] == "openai-planner"
+    assert payload["planner_profiles"][0]["extra_body_json"] == '{"enable_thinking": false}'
     assert payload["stt_profiles"][0]["provider_kind"] == "xfyun_asr"
     assert payload["stt_profiles"][0]["app_id"] == "xfyun-app"
     assert payload["stt_profiles"][0]["models"] == ["rtasr_llm"]
@@ -894,6 +915,7 @@ def test_runtime_options_can_be_saved_from_admin_ui(admin_client: TestClient) ->
     assert admin_view.status_code == 200
     assert admin_view.json()["gate_profiles"][0]["id"] == "openai-gate"
     assert admin_view.json()["planner_profiles"][0]["id"] == "openai-planner"
+    assert admin_view.json()["planner_profiles"][0]["extra_body_json"] == '{"enable_thinking": false}'
     assert admin_view.json()["stt_profiles"][0]["endpoint"] == "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1"
 
     public_view = admin_client.get("/api/v1/catalog/runtime-options")

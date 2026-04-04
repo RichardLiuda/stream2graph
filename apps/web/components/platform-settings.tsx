@@ -31,6 +31,7 @@ type ProfileDraft = {
   endpointBase: string;
   endpointRouteMode: EndpointRouteMode;
   customEndpointPath: string;
+  disableThinking: boolean;
   appId: string;
   apiKey: string;
   apiKeyEnv: string;
@@ -72,12 +73,14 @@ function selectClassName(disabled = false) {
 }
 
 function blankProfile(prefix: "gate" | "planner" | "stt", index: number): ProfileDraft {
+  const disableThinking = prefix === "planner";
   return {
     id: `${prefix}-${index}`,
     label: "",
     endpointBase: prefix === "stt" ? DEFAULT_XFYUN_ASR_ENDPOINT : DEFAULT_OPENAI_BASE,
     endpointRouteMode: prefix === "stt" ? "custom" : "chat_completions",
     customEndpointPath: "",
+    disableThinking,
     appId: "",
     apiKey: "",
     apiKeyEnv: "",
@@ -95,6 +98,26 @@ function blankProfile(prefix: "gate" | "planner" | "stt", index: number): Profil
       topK: "3",
     },
   };
+}
+
+function shouldDisableThinking(kind: "gate" | "planner" | "stt", extraBodyJson: string | null | undefined) {
+  if (kind === "stt") return false;
+  const raw = String(extraBodyJson || "").trim();
+  if (!raw) {
+    return kind === "planner";
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return kind === "planner";
+    }
+    const extra = parsed as Record<string, unknown>;
+    if (extra.enable_thinking === false) return true;
+    const reasoning = extra.reasoning;
+    return Boolean(reasoning && typeof reasoning === "object" && !Array.isArray(reasoning) && (reasoning as Record<string, unknown>).exclude === true);
+  } catch {
+    return kind === "planner";
+  }
 }
 
 function normalizeEndpointBase(value: string) {
@@ -169,6 +192,7 @@ function profileToDraft(
     endpointBase: kind === "stt" ? DEFAULT_XFYUN_ASR_ENDPOINT : endpointDraft.endpointBase,
     endpointRouteMode: kind === "stt" ? "custom" : endpointDraft.endpointRouteMode,
     customEndpointPath: kind === "stt" ? "" : endpointDraft.customEndpointPath,
+    disableThinking: shouldDisableThinking(kind, profile.extra_body_json),
     appId: typeof profile.app_id === "string" ? profile.app_id : "",
     apiKey: profile.api_key || "",
     apiKeyEnv: profile.api_key_env || "",
@@ -201,6 +225,7 @@ function draftsToPayload(kind: "gate" | "planner" | "stt", drafts: ProfileDraft[
       id: item.id.trim(),
       label: item.label.trim() || item.id.trim(),
       endpoint: resolveEndpoint(kind, item),
+      extra_body_json: kind === "stt" ? "" : item.disableThinking ? '{"enable_thinking": false}' : "",
       app_id: item.appId.trim(),
       api_key: item.apiKey.trim(),
       api_key_env: item.apiKeyEnv.trim(),
@@ -417,21 +442,6 @@ export function PlatformSettings() {
     onSuccess: (payload) => {
       queryClient.setQueryData(["admin-runtime-options"], payload);
       queryClient.invalidateQueries({ queryKey: ["runtime-options"] });
-      setGateDrafts(
-        payload.gate_profiles.length
-          ? payload.gate_profiles.map((profile) => profileToDraft("gate", profile))
-          : [blankProfile("gate", 1)],
-      );
-      setPlannerDrafts(
-        payload.planner_profiles.length
-          ? payload.planner_profiles.map((profile) => profileToDraft("planner", profile))
-          : [blankProfile("planner", 1)],
-      );
-      setSttDrafts(
-        payload.stt_profiles.length
-          ? payload.stt_profiles.map((profile) => profileToDraft("stt", profile))
-          : [blankProfile("stt", 1)],
-      );
     },
   });
 
@@ -888,6 +898,24 @@ export function PlatformSettings() {
                         <label className="text-sm font-medium text-theme-2">最终 Endpoint</label>
                         <Input variant="dark" value={resolvedEndpoint} readOnly />
                       </div>
+                      {!isXfyunStt ? (
+                        <div className="space-y-2 md:col-span-2">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <label className="text-sm font-medium text-theme-2">No Thinking</label>
+                            <label className="inline-flex items-center gap-2 text-sm text-theme-3">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-theme-default bg-transparent"
+                                checked={draft.disableThinking}
+                                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                                  updateDraft(group.kind, index, { disableThinking: event.target.checked })
+                                }
+                              />
+                              <span>更快返回</span>
+                            </label>
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-theme-2">API Key</label>
                         <Input variant="dark"

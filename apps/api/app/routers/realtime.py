@@ -716,3 +716,32 @@ def save_realtime_report(session_id: str, db: Session = Depends(get_db)) -> dict
     )
     db.commit()
     return {"ok": True, "report_id": report.id}
+
+
+@router.post("/{session_id}/graph")
+def save_realtime_graph(session_id: str, db: Session = Depends(get_db)) -> dict:
+    obj = _get_session_or_404(db, session_id)
+    pipeline = obj.pipeline_payload if isinstance(obj.pipeline_payload, dict) else {}
+    graph_state = pipeline.get("graph_state", {}) if isinstance(pipeline.get("graph_state"), dict) else {}
+    mermaid_state = pipeline.get("mermaid_state", {}) if isinstance(pipeline.get("mermaid_state"), dict) else {}
+    current_graph_ir = graph_state.get("current_graph_ir", {}) if isinstance(graph_state.get("current_graph_ir"), dict) else {}
+    report = create_report(
+        db,
+        report_type="realtime_graph",
+        title=f"graph_{session_id}",
+        summary={
+            "diagram_type": str(graph_state.get("diagram_type", "") or ""),
+            "node_count": len(current_graph_ir.get("nodes", []) or []),
+            "edge_count": len(current_graph_ir.get("edges", []) or []),
+            "group_count": len(current_graph_ir.get("groups", []) or []),
+        },
+        payload={
+            "session_id": session_id,
+            "title": obj.title,
+            "graph_state": graph_state,
+            "mermaid_state": mermaid_state,
+        },
+        related_session_id=session_id,
+    )
+    db.commit()
+    return {"ok": True, "report_id": report.id}
