@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import math
+import re
 from collections import Counter, defaultdict, deque
 
-from tools.incremental_dataset.schema import GraphIR, StageState
+from tools.incremental_dataset.schema import GraphGroup, GraphIR, StageState
 
 
 STAGE_NAMES = {
@@ -14,45 +15,173 @@ STAGE_NAMES = {
     5: "Finalize Surface Details",
 }
 
+MERMAID_STYLE_RE = re.compile(r"^\s*(classDef|class|style|linkStyle)\b", flags=re.IGNORECASE)
+MERMAID_INIT_RE = re.compile(r"^\s*%%\s*\{init:", flags=re.IGNORECASE)
+
 
 def _escape_label(label: str) -> str:
     return (label or "").replace('"', "'")
 
 
+def _has_cycle_to_root(group_id: str, groups_by_id: dict[str, GraphGroup], visited: set[str]) -> bool:
+    """Check if following parent chain from group_id creates a cycle back to any visited node."""
+    if group_id in visited:
+        return True  # Found a cycle back to an ancestor
+    visited.add(group_id)
+    group = groups_by_id.get(group_id)
+    if group and group.parent:
+        return _has_cycle_to_root(group.parent, groups_by_id, visited)
+    return False
+
+
+def _fix_group_parent_cycles(graph_ir: GraphIR) -> GraphIR:
+    """Fix cyclic group parent references by breaking self-referencing and circular chains."""
+    if not graph_ir.groups:
+        return graph_ir
+
+    groups_by_id = {group.id: group for group in graph_ir.groups}
+
+    # Find groups with invalid parent references (self-reference or circular chains)
+    fixed_groups: list[GraphGroup] = []
+
+    for group in graph_ir.groups:
+        parent = group.parent
+        if parent is not None:
+            # Check for self-reference
+            if parent == group.id:
+                parent = None
+            # Check if parent exists
+            elif parent not in groups_by_id:
+                parent = None
+            # Check for cycles in parent chain (e.g., g1->g2->g1)
+            else:
+                visited: set[str] = set()
+                if _has_cycle_to_root(parent, groups_by_id, visited):
+                    parent = None
+
+        fixed_groups.append(
+            GraphGroup(
+                id=group.id,
+                label=group.label,
+                parent=parent,
+                member_ids=list(group.member_ids),
+                source_index=group.source_index,
+                metadata=dict(group.metadata),
+            )
+        )
+
+    return GraphIR(
+        graph_id=graph_ir.graph_id,
+        diagram_type=graph_ir.diagram_type,
+        nodes=list(graph_ir.nodes),
+        edges=list(graph_ir.edges),
+        groups=fixed_groups,
+        styles=list(graph_ir.styles),
+        metadata=dict(graph_ir.metadata),
+    )
+
+
+def _style_line_from_entry(entry: object) -> tuple[str, str] | None:
+    raw_line = ""
+    if isinstance(entry, str):
+        raw_line = entry.strip()
+    elif isinstance(entry, dict):
+        raw_line = str(entry.get("line") or entry.get("statement") or entry.get("raw") or "").strip()
+        if not raw_line:
+            kind = str(entry.get("kind") or "").strip().lower()
+            if kind == "style":
+                target = str(entry.get("target") or "").strip()
+                attrs = str(entry.get("attributes") or entry.get("css") or entry.get("value") or "").strip()
+                if target and attrs:
+                    raw_line = f"style {target} {attrs}"
+            elif kind == "classdef":
+                name = str(entry.get("name") or entry.get("class_name") or "").strip()
+                attrs = str(entry.get("attributes") or entry.get("css") or entry.get("value") or "").strip()
+                if name and attrs:
+                    raw_line = f"classDef {name} {attrs}"
+            elif kind == "class":
+                targets = entry.get("targets")
+                if isinstance(targets, list):
+                    target_text = ",".join(str(item).strip() for item in targets if str(item).strip())
+                else:
+                    target_text = str(entry.get("target") or "").strip()
+                class_name = str(entry.get("name") or entry.get("class_name") or entry.get("value") or "").strip()
+                if target_text and class_name:
+                    raw_line = f"class {target_text} {class_name}"
+            elif kind == "linkstyle":
+                index = str(entry.get("index") or entry.get("target") or "").strip()
+                attrs = str(entry.get("attributes") or entry.get("css") or entry.get("value") or "").strip()
+                if index and attrs:
+                    raw_line = f"linkStyle {index} {attrs}"
+    if not raw_line:
+        return None
+    if MERMAID_INIT_RE.match(raw_line):
+        return ("init", raw_line)
+    if MERMAID_STYLE_RE.match(raw_line):
+        return ("style", raw_line)
+    return None
+
+
+def _extract_mermaid_style_lines(graph_ir: GraphIR) -> tuple[list[str], list[str]]:
+    init_lines: list[str] = []
+    style_lines: list[str] = []
+    seen_init: set[str] = set()
+    seen_style: set[str] = set()
+    for entry in graph_ir.styles:
+        parsed = _style_line_from_entry(entry)
+        if parsed is None:
+            continue
+        bucket, line = parsed
+        if bucket == "init":
+            if line not in seen_init:
+                seen_init.add(line)
+                init_lines.append(line)
+            continue
+        if line not in seen_style:
+            seen_style.add(line)
+            style_lines.append(line)
+    return init_lines, style_lines
+
+
 def render_preview_mermaid(graph_ir: GraphIR) -> str:
     diagram_type = (graph_ir.diagram_type or "flowchart").strip()
     normalized_type = diagram_type.lower()
+    init_lines, style_lines = _extract_mermaid_style_lines(graph_ir)
 
     if normalized_type in {"sequence", "sequencediagram"}:
-        lines = ["sequenceDiagram"]
+        lines = [*init_lines, "sequenceDiagram"]
         for node in sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)):
             label = _escape_label(node.label or node.id)
             lines.append(f"    participant {node.id} as {label}")
         for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
             edge_label = _escape_label(edge.label or edge.id or "relates")
             lines.append(f"    {edge.source}->>{edge.target}: {edge_label}")
+        lines.extend(f"    {line}" for line in style_lines)
         return "\n".join(lines)
 
     if normalized_type in {"class", "classdiagram"}:
-        lines = ["classDiagram"]
+        lines = [*init_lines, "classDiagram"]
         for node in sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)):
             lines.append(f"    class {node.id}")
         for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
             edge_label = f" : {_escape_label(edge.label)}" if edge.label else ""
             lines.append(f"    {edge.source} --> {edge.target}{edge_label}")
+        lines.extend(f"    {line}" for line in style_lines)
         return "\n".join(lines)
 
     if normalized_type in {"state", "statediagram", "statediagram-v2"}:
-        lines = ["stateDiagram-v2"]
+        lines = [*init_lines, "stateDiagram-v2"]
         for node in sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)):
             label = _escape_label(node.label or node.id)
             lines.append(f'    state "{label}" as {node.id}')
         for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
             edge_label = f" : {_escape_label(edge.label)}" if edge.label else ""
             lines.append(f"    {edge.source} --> {edge.target}{edge_label}")
+        lines.extend(f"    {line}" for line in style_lines)
         return "\n".join(lines)
 
-    lines = ["graph TD"]
+    lines = [*init_lines, "graph TD"]
+    graph_ir = _fix_group_parent_cycles(graph_ir)
     groups_by_id = {group.id: group for group in graph_ir.groups}
     child_groups: dict[str | None, list] = defaultdict(list)
     for group in sorted(graph_ir.groups, key=lambda item: (item.source_index, item.id)):
@@ -80,6 +209,7 @@ def render_preview_mermaid(graph_ir: GraphIR) -> str:
     for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
         edge_label = f"|{_escape_label(edge.label)}|" if edge.label else ""
         lines.append(f"    {edge.source} -->{edge_label} {edge.target}")
+    lines.extend(f"    {line}" for line in style_lines)
     return "\n".join(lines)
 
 

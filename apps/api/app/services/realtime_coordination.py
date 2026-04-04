@@ -18,6 +18,7 @@ from app.models import RealtimeSession
 from app.services.runtime_options import resolve_profile
 from incremental_renderer import NodeState, RenderFrame
 from tools.eval.common import strip_think_traces
+from tools.eval.metrics import canonical_diagram_type
 from tools.incremental_dataset.schema import GraphEdge, GraphGroup, GraphIR, GraphNode
 from tools.incremental_dataset.staging import render_preview_mermaid
 from tools.incremental_system.chat_clients import LocalHFChatClient, OpenAICompatibleChatClient
@@ -87,6 +88,7 @@ def _graph_metrics(graph_ir: GraphIR) -> dict[str, Any]:
         "node_count": len(graph_ir.nodes),
         "edge_count": len(graph_ir.edges),
         "group_count": len(graph_ir.groups),
+        "style_count": len(graph_ir.styles),
         "node_ids": [node.id for node in graph_ir.nodes[:12]],
         "edge_ids": [edge.id for edge in graph_ir.edges[:12]],
         "group_ids": [group.id for group in graph_ir.groups[:12]],
@@ -95,6 +97,130 @@ def _graph_metrics(graph_ir: GraphIR) -> dict[str, Any]:
 
 def _graph_payload_signature(graph_ir: GraphIR) -> str:
     return json.dumps(graph_ir.to_payload(), ensure_ascii=False, sort_keys=True)
+
+
+def _coerce_style_entries(raw_styles: object) -> list[dict[str, Any]]:
+    if not isinstance(raw_styles, list):
+        return []
+    cleaned: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in raw_styles:
+        normalized: dict[str, Any] | None = None
+        if isinstance(item, str):
+            line = item.strip()
+            if line:
+                normalized = {"line": line}
+        elif isinstance(item, dict):
+            line = str(item.get("line") or item.get("statement") or item.get("raw") or "").strip()
+            if line:
+                normalized = {"line": line}
+            else:
+                kind = str(item.get("kind") or "").strip()
+                payload: dict[str, Any] = {}
+                if kind:
+                    payload["kind"] = kind
+                for key in ("target", "targets", "name", "class_name", "attributes", "css", "value", "index"):
+                    value = item.get(key)
+                    if value is not None and value != "":
+                        payload[key] = value
+                if payload:
+                    normalized = payload
+        if normalized is None:
+            continue
+        signature = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+        if signature in seen:
+            continue
+        seen.add(signature)
+        cleaned.append(normalized)
+    return cleaned
+
+
+def _default_graph_styles(graph_ir: GraphIR) -> list[dict[str, Any]]:
+    if not graph_ir.nodes and not graph_ir.groups:
+        return []
+
+    incoming: Counter[str] = Counter()
+    outgoing: Counter[str] = Counter()
+    ordered_edges = sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id))
+    for edge in ordered_edges:
+        outgoing[edge.source] += 1
+        incoming[edge.target] += 1
+
+    root_ids: list[str] = []
+    detail_ids: list[str] = []
+    decision_ids: list[str] = []
+    terminal_ids: list[str] = []
+
+    decision_tokens = ("如果", "是否", "审批", "审核", "分支", "条件", "风险", "退回", "未通过", "decision", "branch")
+    terminal_tokens = ("完成", "结束", "归档", "通过", "立项", "结题", "上线", "发布", "已", "done", "final")
+
+    for node in sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)):
+        label = str(node.label or "")
+        kind = str(node.kind or "").lower()
+        is_root = node.id == "root" or (incoming[node.id] == 0 and (outgoing[node.id] > 0 or node.parent is None))
+        is_decision = any(token in label for token in decision_tokens) or any(token in kind for token in ("decision", "conditional", "branch", "warning"))
+        is_terminal = outgoing[node.id] == 0 and any(token in label for token in terminal_tokens)
+        if is_root:
+            root_ids.append(node.id)
+            continue
+        if is_decision:
+            decision_ids.append(node.id)
+            continue
+        if is_terminal:
+            terminal_ids.append(node.id)
+            continue
+        if outgoing[node.id] == 0:
+            detail_ids.append(node.id)
+
+    styles: list[dict[str, Any]] = [
+        {"line": "classDef primary fill:#ede9fe,stroke:#7c3aed,color:#4c1d95,font-weight:bold,font-size:16px"},
+        {"line": "classDef detail fill:#f8fafc,stroke:#94a3b8,color:#334155,font-size:13px"},
+        {"line": "classDef decision fill:#fff7ed,stroke:#ea580c,color:#9a3412,font-weight:bold"},
+        {"line": "classDef terminal fill:#ecfeff,stroke:#0891b2,color:#155e75,font-weight:bold"},
+    ]
+
+    if root_ids:
+        styles.append({"line": f"class {','.join(root_ids[:8])} primary"})
+    if detail_ids:
+        styles.append({"line": f"class {','.join(detail_ids[:16])} detail"})
+    if decision_ids:
+        styles.append({"line": f"class {','.join(decision_ids[:12])} decision"})
+    if terminal_ids:
+        styles.append({"line": f"class {','.join(terminal_ids[:12])} terminal"})
+
+    group_palette = [
+        ("#f5f3ff", "#8b5cf6", "#4c1d95"),
+        ("#eff6ff", "#3b82f6", "#1d4ed8"),
+        ("#f0fdf4", "#22c55e", "#166534"),
+        ("#fff7ed", "#f97316", "#9a3412"),
+    ]
+    for index, group in enumerate(sorted(graph_ir.groups, key=lambda item: (item.source_index, item.id))[:6]):
+        fill, stroke, color = group_palette[index % len(group_palette)]
+        styles.append(
+            {
+                "line": f"style {group.id} fill:{fill},stroke:{stroke},stroke-width:1.5px,color:{color}",
+            }
+        )
+
+    for index, edge in enumerate(ordered_edges):
+        label = str(edge.label or "")
+        kind = str(edge.kind or "").lower()
+        if any(token in label for token in decision_tokens) or any(token in kind for token in ("conditional", "warning", "branch")):
+            styles.append(
+                {
+                    "line": f"linkStyle {index} stroke:#d97706,stroke-width:2.5px,color:#92400e",
+                }
+            )
+
+    return _coerce_style_entries(styles)
+
+
+def _ensure_graph_styles(graph_ir: GraphIR) -> GraphIR:
+    if graph_ir.styles or (not graph_ir.nodes and not graph_ir.groups):
+        return graph_ir
+    clone = _clone_graph_ir(graph_ir)
+    clone.styles = _default_graph_styles(clone)
+    return clone
 
 
 def _clone_graph_ir(graph_ir: GraphIR) -> GraphIR:
@@ -146,9 +272,11 @@ def build_empty_graph(graph_id: str, diagram_type: str = "flowchart") -> GraphIR
 
 def _coerce_gate_action(raw_action: object) -> str:
     value = str(raw_action or "").strip().upper()
-    if value in {"WAIT", "EMIT_UPDATE"}:
+    if value in {"WAIT", "EMIT_UPDATE", "SWITCH_CANVAS"}:
         return value
     compact = value.replace("-", "_").replace(" ", "_")
+    if any(token in compact for token in ("SWITCH_CANVAS", "NEW_CANVAS", "NEXT_CANVAS", "SPLIT_CANVAS")):
+        return "SWITCH_CANVAS"
     if any(token in compact for token in ("EMIT", "UPDATE", "ACKNOWLEDGE", "ADD", "PROCEED", "CONTINUE")):
         return "EMIT_UPDATE"
     if any(token in compact for token in ("WAIT", "HOLD", "DEFER", "NOOP", "NO_UPDATE", "SKIP")):
@@ -678,7 +806,7 @@ def _build_ssl_context() -> ssl.SSLContext:
     return ssl.create_default_context(cafile=certifi.where())
 
 
-REALTIME_LLM_TIMEOUT_SEC = 30
+REALTIME_LLM_TIMEOUT_SEC = 180
 REALTIME_LLM_MAX_RETRIES = 1
 REALTIME_LLM_RETRY_BACKOFF_SEC = 0.5
 
@@ -711,12 +839,15 @@ def build_chat_client(profile: dict[str, Any], model: str):
 
 LIVE_GATE_SYSTEM_PROMPT = (
     "You are the small gate model for a collaborative realtime diagram system. "
-    "Decide whether the current pending dialogue should WAIT or EMIT_UPDATE. "
+    "Decide whether the current pending dialogue should WAIT, EMIT_UPDATE, or SWITCH_CANVAS. "
     "Judge sufficiency of the buffered turns, not whether the graph already contains the information. "
     "If pending turns introduce concrete nodes, components, actors, modules, steps, or explicit relations, prefer EMIT_UPDATE. "
+    "If pending turns request concrete visual emphasis, grouping, highlighting, or Mermaid styling for existing structure, also prefer EMIT_UPDATE instead of WAIT. "
+    "Use SWITCH_CANVAS when the pending turns begin a clearly new subtopic, stage, subsystem, or workflow that should continue on a fresh canvas, and the current canvas already has meaningful structure. "
+    "Prefer SWITCH_CANVAS only when continuing on the current canvas would make the diagram confusing or overly crowded. "
     "Use WAIT only when the buffer is still generic, meta, or too incomplete to add stable structure. "
     "Return strict JSON only with keys: action, reason, confidence. "
-    "Allowed action values: WAIT, EMIT_UPDATE."
+    "Allowed action values: WAIT, EMIT_UPDATE, SWITCH_CANVAS."
 )
 
 
@@ -724,12 +855,21 @@ LIVE_PLANNER_SYSTEM_PROMPT = (
     "You are the large planner model for a collaborative realtime diagram system. "
     "Extend the current graph monotonically using only the observed dialogue and the current GraphIR. "
     "Return one JSON object only. No markdown, no explanations, no prose before or after JSON. "
-    "Preferred top-level keys: delta_ops, notes. Optional top-level key: target_graph_ir. "
+    "Preferred top-level keys: delta_ops, notes. Optional top-level keys: target_graph_ir, styles, diagram_type. "
     "Use these operation names only: add_group, add_node, add_edge. "
     "Never remove, rename, or rewrite existing ids. Never switch to an unrelated domain. "
     "Reuse literal identifiers from the dialogue whenever possible. "
-    "If you are unsure about a full graph snapshot, omit target_graph_ir and return delta_ops only. "
-    "If target_graph_ir is provided, it must include all previously existing items and all new additions."
+    "Whenever the dialogue implies visual grouping, emphasis, warning states, decision nodes, or branch hierarchy, add a compact Mermaid styles list for readability. "
+    "Represent Mermaid styling as raw directive lines such as classDef, class, style, or linkStyle, for example {\"line\":\"classDef primary fill:#ede9fe,stroke:#7c3aed,color:#3b0764,font-weight:bold\"}. "
+    "Prefer CSS-like attributes that Mermaid accepts, such as fill, stroke, color, stroke-width, font-size, font-style, font-weight, and text-decoration. "
+    "Prefer 2 to 8 style lines total, and keep them valid Mermaid syntax. "
+    "If you are unsure about a full graph snapshot, you may omit target_graph_ir and return delta_ops only, but if you need to add or change styles you should include either top-level styles or target_graph_ir.styles. "
+    "If target_graph_ir is provided, it must include all previously existing items and all new additions. "
+    "DIAGRAM TYPE SELECTION: If the dialogue clearly implies a specific diagram type, you may suggest changing diagram_type. "
+    "Valid diagram_type values: flowchart (default, for processes/workflows), sequence (for actor interactions over time), "
+    "statediagram (for state machines/state transitions), class (for OOP class relationships), er (for database entity relationships), "
+    "requirement (for requirements traceability). "
+    "Only suggest a diagram_type change if the dialogue strongly implies a different type than the current one."
 )
 
 
@@ -740,6 +880,7 @@ LIVE_RELAYOUT_SYSTEM_PROMPT = (
     "Top-level keys: notes, target_graph_ir. "
     "Preserve every existing node id and group id. Do not create or delete nodes or groups. "
     "You may reorder source_index, rewire edges, change edge labels, change node parent, and update group member_ids to reflect the new meaning of the drag. "
+    "Preserve existing Mermaid styles unless the new organization clearly calls for updated highlighting or grouping, and when you change styles use Mermaid-compatible attributes such as fill, stroke, color, stroke-width, font-size, font-style, font-weight, and text-decoration. "
     "Prefer the smallest coherent graph edit that explains the new spatial arrangement. "
     "If the drag does not imply a real structural change, return the current graph unchanged with a short note."
 )
@@ -767,6 +908,7 @@ class PlannerDecision:
     target_graph_ir: GraphIR | None = None
     notes: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    diagram_type: str | None = None
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -774,7 +916,130 @@ class PlannerDecision:
             "target_graph_ir": self.target_graph_ir.to_payload() if self.target_graph_ir else None,
             "notes": self.notes,
             "metadata": dict(self.metadata),
+            "diagram_type": self.diagram_type,
         }
+
+
+@dataclass
+class RuntimeCanvas:
+    canvas_id: str
+    title: str
+    diagram_type: str = "flowchart"
+    graph_ir: GraphIR = field(default_factory=lambda: build_empty_graph("canvas"))
+    rendered_mermaid: str = "graph TD"
+    renderer: IncrementalGraphRenderer = field(default_factory=IncrementalGraphRenderer)
+    created_turn_id: int = 0
+    last_turn_id: int = 0
+    switch_reason: str | None = None
+    switch_trigger_turn_id: int | None = None
+    updated_at: int = field(default_factory=lambda: int(time.time() * 1000))
+
+    def to_payload(self, *, is_active: bool, planner_state: dict[str, Any] | None = None) -> dict[str, Any]:
+        planner_meta = planner_state if isinstance(planner_state, dict) else {}
+        return {
+            "canvas_id": self.canvas_id,
+            "title": self.title,
+            "diagram_type": self.diagram_type,
+            "created_turn_id": self.created_turn_id,
+            "last_turn_id": self.last_turn_id,
+            "switch_reason": self.switch_reason,
+            "switch_trigger_turn_id": self.switch_trigger_turn_id,
+            "updated_at": self.updated_at,
+            "is_active": is_active,
+            "graph_ir": self.graph_ir.to_payload(),
+            "graph_metrics": _graph_metrics(self.graph_ir),
+            "preview_mermaid": self.rendered_mermaid,
+            "mermaid_state": {
+                "code": self.rendered_mermaid,
+                "normalized_code": self.rendered_mermaid,
+                "source": "algorithm_preview",
+                "provider": str(planner_meta.get("provider") or "deterministic_algorithm_layer"),
+                "model": planner_meta.get("model"),
+                "latency_ms": planner_meta.get("latency_ms"),
+                "compile_ok": True,
+                "render_ok": True,
+                "error_message": None,
+                "updated_at": self.updated_at,
+            },
+            "renderer_state": {
+                **self.renderer.export_state(),
+                "groups": [group.to_payload() for group in self.graph_ir.groups],
+            },
+        }
+
+
+def _runtime_canvas_id(session_id: str, index: int) -> str:
+    return f"{session_id}::canvas_{index}"
+
+
+def _runtime_canvas_title(index: int) -> str:
+    return f"Canvas {index}"
+
+
+def _create_runtime_canvas(
+    session_id: str,
+    index: int,
+    *,
+    diagram_type: str,
+    created_turn_id: int = 0,
+    last_turn_id: int = 0,
+    switch_reason: str | None = None,
+    switch_trigger_turn_id: int | None = None,
+) -> RuntimeCanvas:
+    canvas_id = _runtime_canvas_id(session_id, index)
+    graph_ir = _ensure_graph_styles(build_empty_graph(canvas_id, diagram_type))
+    return RuntimeCanvas(
+        canvas_id=canvas_id,
+        title=_runtime_canvas_title(index),
+        diagram_type=diagram_type,
+        graph_ir=graph_ir,
+        rendered_mermaid=render_preview_mermaid(graph_ir),
+        renderer=IncrementalGraphRenderer(),
+        created_turn_id=created_turn_id,
+        last_turn_id=last_turn_id,
+        switch_reason=switch_reason,
+        switch_trigger_turn_id=switch_trigger_turn_id,
+    )
+
+
+def _restore_runtime_canvas(
+    payload: dict[str, Any],
+    *,
+    fallback_canvas_id: str,
+    fallback_diagram_type: str,
+) -> RuntimeCanvas:
+    graph_payload = payload.get("graph_ir")
+    if not isinstance(graph_payload, dict):
+        graph_payload = {
+            "graph_id": fallback_canvas_id,
+            "diagram_type": str(payload.get("diagram_type", fallback_diagram_type) or fallback_diagram_type),
+            "nodes": [],
+            "edges": [],
+            "groups": [],
+            "styles": [],
+            "metadata": {},
+        }
+    graph_ir = _ensure_graph_styles(_graph_ir_from_payload(graph_payload))
+    renderer_payload = {"renderer_state": payload.get("renderer_state")}
+    mermaid_state = payload.get("mermaid_state") if isinstance(payload.get("mermaid_state"), dict) else {}
+    rendered_mermaid = render_preview_mermaid(graph_ir)
+    return RuntimeCanvas(
+        canvas_id=str(payload.get("canvas_id") or graph_ir.graph_id or fallback_canvas_id),
+        title=str(payload.get("title") or _runtime_canvas_title(1)),
+        diagram_type=graph_ir.diagram_type or fallback_diagram_type,
+        graph_ir=graph_ir,
+        rendered_mermaid=rendered_mermaid,
+        renderer=_restore_renderer(renderer_payload, graph_ir),
+        created_turn_id=int(payload.get("created_turn_id", 0) or 0),
+        last_turn_id=int(payload.get("last_turn_id", 0) or 0),
+        switch_reason=str(payload.get("switch_reason") or "").strip() or None,
+        switch_trigger_turn_id=(
+            int(payload.get("switch_trigger_turn_id", 0) or 0)
+            if payload.get("switch_trigger_turn_id") is not None
+            else None
+        ),
+        updated_at=int(payload.get("updated_at", 0) or int(time.time() * 1000)),
+    )
 
 
 @dataclass
@@ -787,6 +1052,8 @@ class CoordinationRuntimeSession:
     current_graph_ir: GraphIR = field(default_factory=lambda: build_empty_graph("session"))
     rendered_mermaid: str = "graph TD"
     renderer: IncrementalGraphRenderer = field(default_factory=IncrementalGraphRenderer)
+    canvases: list[RuntimeCanvas] = field(default_factory=list)
+    active_canvas_index: int = 0
     events: list[dict[str, Any]] = field(default_factory=list)
     gate_state: dict[str, Any] = field(default_factory=dict)
     planner_state: dict[str, Any] = field(default_factory=dict)
@@ -807,12 +1074,15 @@ class CoordinationRuntimeSession:
 
     @classmethod
     def create(cls, session_id: str, *, diagram_type: str = "flowchart") -> CoordinationRuntimeSession:
-        graph_ir = build_empty_graph(session_id, diagram_type)
+        initial_canvas = _create_runtime_canvas(session_id, 1, diagram_type=diagram_type)
         return cls(
             session_id=session_id,
             diagram_type=diagram_type,
-            current_graph_ir=graph_ir,
-            rendered_mermaid=render_preview_mermaid(graph_ir),
+            current_graph_ir=initial_canvas.graph_ir,
+            rendered_mermaid=initial_canvas.rendered_mermaid,
+            renderer=initial_canvas.renderer,
+            canvases=[initial_canvas],
+            active_canvas_index=0,
             gate_state={
                 "status": "idle",
                 "last_action": "WAIT",
@@ -856,15 +1126,10 @@ class CoordinationRuntimeSession:
                 "styles": [],
                 "metadata": {},
             }
-        graph_ir = _graph_ir_from_payload(graph_payload)
+        graph_ir = _ensure_graph_styles(_graph_ir_from_payload(graph_payload))
         runtime = cls.create(session_id, diagram_type=graph_ir.diagram_type)
         runtime.current_graph_ir = graph_ir
-        runtime.rendered_mermaid = str(
-            (payload.get("mermaid_state") or {}).get("normalized_code")
-            or (payload.get("mermaid_state") or {}).get("code")
-            or graph_state.get("preview_mermaid")
-            or render_preview_mermaid(graph_ir)
-        )
+        runtime.rendered_mermaid = render_preview_mermaid(graph_ir)
         runtime.renderer = _restore_renderer(payload, graph_ir)
         runtime.events = payload.get("events", []) if isinstance(payload.get("events"), list) else []
         runtime.gate_state = payload.get("gate_state", {}) if isinstance(payload.get("gate_state"), dict) else {}
@@ -929,6 +1194,49 @@ class CoordinationRuntimeSession:
             runtime.pending_turn_ids = [
                 turn.turn_id for turn in runtime.turns if int(turn.turn_id) > int(runtime.last_consumed_turn_id)
             ]
+        canvas_state = payload.get("canvas_state") if isinstance(payload.get("canvas_state"), dict) else {}
+        canvas_rows = canvas_state.get("canvases") if isinstance(canvas_state.get("canvases"), list) else []
+        if canvas_rows:
+            runtime.canvases = [
+                _restore_runtime_canvas(
+                    item,
+                    fallback_canvas_id=_runtime_canvas_id(session_id, index),
+                    fallback_diagram_type=graph_ir.diagram_type,
+                )
+                for index, item in enumerate(canvas_rows, start=1)
+                if isinstance(item, dict)
+            ]
+            active_canvas_id = str(canvas_state.get("active_canvas_id") or "").strip()
+            if active_canvas_id:
+                runtime.active_canvas_index = next(
+                    (
+                        index
+                        for index, canvas in enumerate(runtime.canvases)
+                        if canvas.canvas_id == active_canvas_id
+                    ),
+                    0,
+                )
+            else:
+                runtime.active_canvas_index = min(
+                    max(int(canvas_state.get("active_canvas_index", 0) or 0), 0),
+                    max(len(runtime.canvases) - 1, 0),
+                )
+        else:
+            runtime.canvases = [
+                RuntimeCanvas(
+                    canvas_id=graph_ir.graph_id or _runtime_canvas_id(session_id, 1),
+                    title=_runtime_canvas_title(1),
+                    diagram_type=graph_ir.diagram_type,
+                    graph_ir=_ensure_graph_styles(_clone_graph_ir(graph_ir)),
+                    rendered_mermaid=runtime.rendered_mermaid,
+                    renderer=runtime.renderer,
+                    created_turn_id=1 if runtime.turns else 0,
+                    last_turn_id=runtime.last_consumed_turn_id,
+                    updated_at=int((payload.get("mermaid_state") or {}).get("updated_at") or int(time.time() * 1000)),
+                )
+            ]
+            runtime.active_canvas_index = 0
+        runtime._sync_runtime_from_active_canvas()
         runtime.stored_evaluation = evaluation_payload if isinstance(evaluation_payload, dict) else {}
         return runtime
 
@@ -938,6 +1246,112 @@ class CoordinationRuntimeSession:
     def pending_turns(self) -> list[DialogueTurn]:
         pending = set(self.pending_turn_ids)
         return [turn for turn in self.turns if turn.turn_id in pending]
+
+    def active_canvas(self) -> RuntimeCanvas:
+        if not self.canvases:
+            self.canvases = [_create_runtime_canvas(self.session_id, 1, diagram_type=self.diagram_type)]
+            self.active_canvas_index = 0
+        self.active_canvas_index = min(max(self.active_canvas_index, 0), len(self.canvases) - 1)
+        return self.canvases[self.active_canvas_index]
+
+    def _sync_runtime_from_active_canvas(self) -> None:
+        canvas = self.active_canvas()
+        self.diagram_type = canvas.diagram_type or self.diagram_type
+        self.current_graph_ir = _clone_graph_ir(canvas.graph_ir)
+        self.rendered_mermaid = str(canvas.rendered_mermaid or render_preview_mermaid(canvas.graph_ir))
+        self.renderer = canvas.renderer
+
+    def _sync_active_canvas_from_runtime(
+        self,
+        *,
+        last_turn_id: int | None = None,
+        updated_at: int | None = None,
+    ) -> None:
+        canvas = self.active_canvas()
+        canvas.diagram_type = self.diagram_type or canvas.diagram_type
+        canvas.graph_ir = _clone_graph_ir(self.current_graph_ir)
+        canvas.rendered_mermaid = str(self.rendered_mermaid or render_preview_mermaid(self.current_graph_ir))
+        canvas.renderer = self.renderer
+        if last_turn_id is not None:
+            canvas.last_turn_id = int(last_turn_id)
+        if updated_at is not None:
+            canvas.updated_at = int(updated_at)
+
+    def _canvas_prompt_summary(self) -> dict[str, Any]:
+        self._sync_active_canvas_from_runtime(last_turn_id=self.last_consumed_turn_id)
+        active_canvas = self.active_canvas()
+        return {
+            "active_canvas_id": active_canvas.canvas_id,
+            "active_canvas_index": self.active_canvas_index,
+            "canvas_count": len(self.canvases),
+            "canvases": [
+                {
+                    "canvas_id": canvas.canvas_id,
+                    "title": canvas.title,
+                    "diagram_type": canvas.diagram_type,
+                    "created_turn_id": canvas.created_turn_id,
+                    "last_turn_id": canvas.last_turn_id,
+                    "switch_reason": canvas.switch_reason,
+                    "switch_trigger_turn_id": canvas.switch_trigger_turn_id,
+                    "graph_metrics": _graph_metrics(canvas.graph_ir),
+                    "is_active": canvas.canvas_id == active_canvas.canvas_id,
+                }
+                for canvas in self.canvases
+            ],
+        }
+
+    def _should_shortcut_manual_transcript_gate(self) -> bool:
+        if len(self.canvases) > 1:
+            return False
+        if self.update_index > 0 or self.events:
+            return False
+        return not (
+            self.current_graph_ir.nodes
+            or self.current_graph_ir.edges
+            or self.current_graph_ir.groups
+        )
+
+    def _switch_to_new_canvas(
+        self,
+        pending_turns: list[DialogueTurn],
+        gate_decision: GateDecision,
+    ) -> dict[str, Any]:
+        previous_canvas = self.active_canvas()
+        previous_canvas_index = self.active_canvas_index
+        self._sync_active_canvas_from_runtime(last_turn_id=self.last_consumed_turn_id)
+        next_index = len(self.canvases) + 1
+        next_canvas = _create_runtime_canvas(
+            self.session_id,
+            next_index,
+            diagram_type=self.diagram_type,
+            created_turn_id=pending_turns[0].turn_id if pending_turns else 0,
+            last_turn_id=self.last_consumed_turn_id,
+            switch_reason=gate_decision.reason,
+            switch_trigger_turn_id=pending_turns[0].turn_id if pending_turns else None,
+        )
+        self.canvases.append(next_canvas)
+        self.active_canvas_index = len(self.canvases) - 1
+        self._sync_runtime_from_active_canvas()
+        _log_coordination_event(
+            "Canvas switch applied",
+            {
+                "session_id": self.session_id,
+                "previous_canvas_id": previous_canvas.canvas_id,
+                "next_canvas_id": next_canvas.canvas_id,
+                "canvas_count": len(self.canvases),
+                "trigger_turn_ids": [turn.turn_id for turn in pending_turns],
+                "reason": gate_decision.reason,
+            },
+        )
+        return {
+            "previous_canvas_id": previous_canvas.canvas_id,
+            "previous_canvas_index": previous_canvas_index,
+            "active_canvas_id": next_canvas.canvas_id,
+            "active_canvas_index": self.active_canvas_index,
+            "canvas_count": len(self.canvases),
+            "switch_reason": gate_decision.reason,
+            "switch_trigger_turn_id": pending_turns[0].turn_id if pending_turns else None,
+        }
 
     def ingest_chunk(
         self,
@@ -1054,8 +1468,11 @@ class CoordinationRuntimeSession:
                 "metadata": gate_decision.metadata,
             },
         )
-        if gate_decision.action != "EMIT_UPDATE":
+        if gate_decision.action == "WAIT":
             return []
+        canvas_transition = None
+        if gate_decision.action == "SWITCH_CANVAS":
+            canvas_transition = self._switch_to_new_canvas(pending_turns, gate_decision)
 
         try:
             planner_decision = self._plan_update(db, session_obj, pending_turns)
@@ -1085,6 +1502,17 @@ class CoordinationRuntimeSession:
         pending_turn_ids = [turn.turn_id for turn in pending_turns]
         self.last_consumed_turn_id = pending_turn_ids[-1]
         self.pending_turn_ids = [turn_id for turn_id in self.pending_turn_ids if turn_id not in pending_turn_ids]
+        # Apply diagram_type suggestion from planner if provided
+        if planner_decision.diagram_type:
+            self.diagram_type = planner_decision.diagram_type
+            _log_coordination_event(
+                "Diagram type updated by planner",
+                {
+                    "session_id": self.session_id,
+                    "new_diagram_type": self.diagram_type,
+                    "suggested_by_planner": True,
+                },
+            )
 
         if not graph_changed:
             self.planner_noop_count += 1
@@ -1097,6 +1525,10 @@ class CoordinationRuntimeSession:
                 "updated_at": int(time.time() * 1000),
                 "error_message": None,
             }
+            self._sync_active_canvas_from_runtime(
+                last_turn_id=self.last_consumed_turn_id,
+                updated_at=int(time.time() * 1000),
+            )
             _log_coordination_event(
                 "Planner produced no graph change",
                 {
@@ -1113,19 +1545,28 @@ class CoordinationRuntimeSession:
         frame = self.renderer.apply_update(self.update_index, render_ops, "emit_update")
         render_ms = round((time.time() - render_t0) * 1000.0, 4)
         self.render_latency_ms.append(render_ms)
+        next_graph = _ensure_graph_styles(next_graph)
         self.current_graph_ir = next_graph
         self.rendered_mermaid = render_preview_mermaid(next_graph)
+        now_ms = int(time.time() * 1000)
+        self._sync_active_canvas_from_runtime(
+            last_turn_id=self.last_consumed_turn_id,
+            updated_at=now_ms,
+        )
 
         planner_latency = float(planner_decision.metadata.get("latency_ms") or 0.0)
         gate_latency = float(gate_decision.metadata.get("latency_ms") or 0.0)
         e2e_ms = round(gate_latency + planner_latency + render_ms, 4)
         self.e2e_latency_ms.append(e2e_ms)
+        active_canvas = self.active_canvas()
 
         event = {
             "update": {
                 "update_id": self.update_index,
                 "intent_type": "emit_update",
                 "semantic_action": "emit_update",
+                "canvas_id": active_canvas.canvas_id,
+                "canvas_index": self.active_canvas_index,
                 "operations": render_ops,
                 "focus_entities": list(_extract_identifier_candidates(pending_turns).values())[:12],
                 "annotations": [planner_decision.notes] if planner_decision.notes else [],
@@ -1145,12 +1586,16 @@ class CoordinationRuntimeSession:
             "render_latency_ms": render_ms,
             "e2e_latency_ms": e2e_ms,
         }
+        if canvas_transition:
+            event["canvas_transition"] = canvas_transition
         self.events.append(event)
         _log_coordination_event(
             "Coordination update emitted",
             {
                 "session_id": self.session_id,
                 "update_index": self.update_index,
+                "active_canvas_id": active_canvas.canvas_id,
+                "canvas_count": len(self.canvases),
                 "pending_turn_ids": pending_turn_ids,
                 "gate_latency_ms": gate_latency,
                 "planner_latency_ms": planner_latency,
@@ -1192,10 +1637,28 @@ class CoordinationRuntimeSession:
         input_runtime = _current_input_runtime(session_obj)
         input_source = str(input_runtime.get("input_source") or "").strip()
         capture_mode = str(input_runtime.get("capture_mode") or "").strip()
-        if input_source == "transcript" and capture_mode == "manual_text" and pending_turns:
+        if (
+            input_source == "transcript"
+            and capture_mode == "manual_text"
+            and pending_turns
+            and self._should_shortcut_manual_transcript_gate()
+        ):
+            # Check if the pending turns suggest switching to a new canvas
+            switch_keywords = (
+                "切换", "新画布", "新图", "分开", "单独", "另一张",
+                "第二个", "第二个图", "下一张", "另外", "另一个",
+                "切换到", "新canvas", "新 canvas",
+            )
+            combined_text = " ".join(turn.content.lower() for turn in pending_turns)
+            should_switch = any(kw in combined_text for kw in switch_keywords)
+            action = "SWITCH_CANVAS" if should_switch else "EMIT_UPDATE"
+            reason = (
+                "对话内容明确建议切换到新画布。" if should_switch
+                else "手动 transcript 批量输入默认直接触发结构更新。"
+            )
             decision = GateDecision(
-                action="EMIT_UPDATE",
-                reason="手动 transcript 批量输入默认直接触发结构更新。",
+                action=action,
+                reason=reason,
                 confidence=1.0,
                 metadata={
                     "provider": "heuristic_batch_gate",
@@ -1214,7 +1677,7 @@ class CoordinationRuntimeSession:
                 "latency_ms": 0.0,
                 "updated_at": int(time.time() * 1000),
                 "error_message": None,
-                "debug": {"force_emit": force_emit, "shortcut": "manual_transcript_batch"},
+                "debug": {"force_emit": force_emit, "shortcut": "manual_transcript_batch", "switch_intent": should_switch},
             }
             _log_coordination_event(
                 "Gate shortcut applied",
@@ -1223,6 +1686,7 @@ class CoordinationRuntimeSession:
                     "input_source": input_source,
                     "capture_mode": capture_mode,
                     "pending_turn_ids": [turn.turn_id for turn in pending_turns],
+                    "switch_intent": should_switch,
                 },
             )
             return decision
@@ -1292,6 +1756,7 @@ class CoordinationRuntimeSession:
                             "current_update_index": self.update_index,
                             "pending_turns": [_dialogue_payload(turn) for turn in pending_turns],
                             "recent_turns": [_dialogue_payload(turn) for turn in self.turns[-8:]],
+                            "canvas_state": self._canvas_prompt_summary(),
                             "current_graph_metrics": _graph_metrics(self.current_graph_ir),
                             "current_graph_ir": self.current_graph_ir.to_payload(),
                             "force_emit": force_emit,
@@ -1305,7 +1770,7 @@ class CoordinationRuntimeSession:
             last_result_text = result.text or ""
             payload = _parse_json_object(result.text)
             action = _coerce_gate_action(payload.get("action", "WAIT"))
-            if force_emit:
+            if force_emit and action == "WAIT":
                 action = "EMIT_UPDATE"
             decision = GateDecision(
                 action=action,
@@ -1446,6 +1911,7 @@ class CoordinationRuntimeSession:
                         "session_id": self.session_id,
                         "diagram_type": self.diagram_type,
                         "current_update_index": self.update_index,
+                        "canvas_state": self._canvas_prompt_summary(),
                         "pending_turns": [_dialogue_payload(turn) for turn in pending_turns],
                         "recent_turns": [_dialogue_payload(turn) for turn in self.turns[-24:]],
                         "recent_dialogue_snapshot": _build_recent_dialogue_snapshot(self.turns[-24:]),
@@ -1467,8 +1933,13 @@ class CoordinationRuntimeSession:
                                     "parent": "optional group id",
                                 }
                             ],
+                            "styles": [
+                                {
+                                    "line": "optional Mermaid style directive such as classDef/class/style/linkStyle",
+                                }
+                            ],
                             "notes": "short string",
-                            "target_graph_ir": "optional full graph object",
+                            "target_graph_ir": "optional full graph object, including styles when available",
                         },
                     },
                     ensure_ascii=False,
@@ -1486,15 +1957,31 @@ class CoordinationRuntimeSession:
                 last_result_text = result.text or ""
                 payload = _parse_json_object(result.text)
                 raw_graph_payload = _extract_graph_payload(payload)
+                style_entries = _coerce_style_entries(payload.get("styles"))
                 target_graph_ir = None
                 if isinstance(raw_graph_payload, dict) and raw_graph_payload:
                     target_graph_ir = _graph_ir_from_payload(raw_graph_payload)
+                    if style_entries and not target_graph_ir.styles:
+                        target_graph_ir.styles = list(style_entries)
                     target_graph_ir = _refine_graph_ir(sample_hint, self.turns, target_graph_ir)
+                elif style_entries:
+                    target_graph_ir = _clone_graph_ir(self.current_graph_ir)
+                    target_graph_ir.styles = list(style_entries)
                 delta_ops = _refine_delta_ops(sample_hint, self.turns, state_hint, _coerce_delta_ops(payload))
                 if not delta_ops and target_graph_ir is None and _has_delta_ops_field(payload):
                     target_graph_ir = _clone_graph_ir(self.current_graph_ir)
                 if not delta_ops and target_graph_ir is None:
                     raise ValueError("planner returned neither delta_ops nor target_graph_ir")
+                # Extract diagram_type suggestion from planner response
+                suggested_diagram_type = payload.get("diagram_type")
+                if suggested_diagram_type and isinstance(suggested_diagram_type, str):
+                    validated_type = canonical_diagram_type(suggested_diagram_type)
+                    if validated_type not in ("unknown", ""):
+                        suggested_diagram_type = validated_type
+                    else:
+                        suggested_diagram_type = None
+                else:
+                    suggested_diagram_type = None
                 decision = PlannerDecision(
                     delta_ops=delta_ops,
                     target_graph_ir=target_graph_ir,
@@ -1508,6 +1995,7 @@ class CoordinationRuntimeSession:
                         "raw_text_preview": (result.text or "")[:400],
                         "planner_noop": (not delta_ops and target_graph_ir is not None),
                     },
+                    diagram_type=suggested_diagram_type,
                 )
                 self.planner_latency_ms.append(float(result.latency_ms))
                 _log_coordination_event(
@@ -1581,6 +2069,7 @@ class CoordinationRuntimeSession:
                     {
                         "session_id": self.session_id,
                         "diagram_type": self.diagram_type,
+                        "canvas_state": self._canvas_prompt_summary(),
                         "recent_turns": [_dialogue_payload(turn) for turn in self.turns[-24:]],
                         "current_graph_ir": self.current_graph_ir.to_payload(),
                         "current_graph_metrics": _graph_metrics(self.current_graph_ir),
@@ -1588,12 +2077,18 @@ class CoordinationRuntimeSession:
                         "manual_relayout_intent": drag_payload,
                         "output_contract": {
                             "notes": "short string",
+                            "styles": [
+                                {
+                                    "line": "optional Mermaid style directive such as classDef/class/style/linkStyle",
+                                }
+                            ],
                             "target_graph_ir": {
                                 "graph_id": self.current_graph_ir.graph_id,
                                 "diagram_type": self.current_graph_ir.diagram_type,
                                 "nodes": "full list with every existing node id",
                                 "edges": "full list after rewiring",
                                 "groups": "full list with every existing group id",
+                                "styles": "optional Mermaid style directives",
                             },
                         },
                     },
@@ -1615,6 +2110,9 @@ class CoordinationRuntimeSession:
                 if not isinstance(raw_graph_payload, dict) or not raw_graph_payload:
                     raise ValueError("relayout planner returned no target_graph_ir")
                 target_graph_ir = _graph_ir_from_payload(raw_graph_payload)
+                style_entries = _coerce_style_entries(payload.get("styles"))
+                if style_entries and not target_graph_ir.styles:
+                    target_graph_ir.styles = list(style_entries)
                 target_graph_ir = _refine_graph_ir(sample_hint, self.turns, target_graph_ir)
                 decision = PlannerDecision(
                     target_graph_ir=target_graph_ir,
@@ -1748,8 +2246,14 @@ class CoordinationRuntimeSession:
         )
         render_ms = round((time.time() - render_t0) * 1000.0, 4)
         self.render_latency_ms.append(render_ms)
+        next_graph = _ensure_graph_styles(next_graph)
         self.current_graph_ir = next_graph
         self.rendered_mermaid = render_preview_mermaid(next_graph)
+        now_ms = int(time.time() * 1000)
+        self._sync_active_canvas_from_runtime(
+            last_turn_id=self.last_consumed_turn_id,
+            updated_at=now_ms,
+        )
 
         planner_latency = float(planner_decision.metadata.get("latency_ms") or 0.0)
         e2e_ms = round(planner_latency + render_ms, 4)
@@ -1769,6 +2273,8 @@ class CoordinationRuntimeSession:
                 "update_id": self.update_index,
                 "intent_type": "manual_relayout",
                 "semantic_action": "manual_relayout",
+                "canvas_id": self.active_canvas().canvas_id,
+                "canvas_index": self.active_canvas_index,
                 "operations": [],
                 "focus_entities": focus_entities,
                 "annotations": [
@@ -1859,6 +2365,7 @@ class CoordinationRuntimeSession:
     def pipeline_payload(self) -> dict[str, Any]:
         if self.read_only and self.stored_pipeline is not None:
             return dict(self.stored_pipeline)
+        self._sync_active_canvas_from_runtime(last_turn_id=self.last_consumed_turn_id)
         runtime_ms = int(time.time() * 1000) - self.created_wall_ms
         transcript_duration_ms = 0
         if self.first_ts is not None and self.last_ts is not None:
@@ -1908,15 +2415,30 @@ class CoordinationRuntimeSession:
                 "gate_action_counts": dict(self.gate_action_counts),
                 "planner_noop_count": self.planner_noop_count,
                 "last_consumed_turn_id": self.last_consumed_turn_id,
+                "active_canvas_index": self.active_canvas_index,
+                "canvas_count": len(self.canvases),
             },
             "gate_state": dict(self.gate_state),
             "planner_state": dict(self.planner_state),
+            "canvas_state": {
+                "active_canvas_id": self.active_canvas().canvas_id,
+                "active_canvas_index": self.active_canvas_index,
+                "canvas_count": len(self.canvases),
+                "canvases": [
+                    canvas.to_payload(
+                        is_active=index == self.active_canvas_index,
+                        planner_state=self.planner_state if index == self.active_canvas_index else None,
+                    )
+                    for index, canvas in enumerate(self.canvases)
+                ],
+            },
             "graph_state": {
                 "diagram_type": self.diagram_type,
                 "update_index": self.update_index,
                 "current_graph_ir": self.current_graph_ir.to_payload(),
                 "graph_metrics": graph_metrics,
                 "preview_mermaid": self.rendered_mermaid,
+                "active_canvas_id": self.active_canvas().canvas_id,
                 "pending_turn_count": len(self.pending_turn_ids),
                 "pending_turn_ids": list(self.pending_turn_ids),
                 "last_consumed_turn_id": self.last_consumed_turn_id,

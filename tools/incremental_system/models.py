@@ -606,6 +606,7 @@ GATE_SYSTEM_PROMPT = (
     "Judge dialogue sufficiency, not whether the current graph already contains the new items. "
     "An empty or lagging current graph is normal before an update is emitted. "
     "If recent turns introduce concrete nodes, groups, actors, components, or other buildable structure for the next stage, prefer EMIT_UPDATE. "
+    "If recent turns request concrete Mermaid styling, highlighting, or regrouping for existing structure, also prefer EMIT_UPDATE. "
     "Always target exactly the immediate next stage. Never skip stage numbers. "
     "Do not emit too early for bootstrap-heavy stages: when the same stage is still actively introducing concrete identifiers, prefer WAIT until the stage has at least a couple of substantive turns. "
     "Use WAIT only when the dialogue is still generic, meta, or missing buildable structure. "
@@ -630,6 +631,8 @@ PLANNER_SYSTEM_PROMPT = (
     "For sequence, mindmap, ER, and state diagrams, prefer node-only outputs. "
     "For architecture, prefer groups plus nodes and avoid speculative edges. "
     "For flowcharts, prefer nodes and only essential groups; avoid speculative edges. "
+    "Whenever the dialogue implies visual grouping, emphasis, warning states, decision nodes, or branch hierarchy, include Mermaid style directives in target_graph_ir.styles as raw lines such as classDef, class, style, or linkStyle. "
+    "Prefer Mermaid-compatible attributes such as fill, stroke, color, stroke-width, font-size, font-style, font-weight, and text-decoration, and keep the style list compact. "
     "If target_graph_ir is provided, it must be the full next graph state and must include all previously existing items plus the new additions. "
     "If you are not fully confident about a complete next graph snapshot, omit target_graph_ir and return delta_ops only."
 )
@@ -789,7 +792,7 @@ class LLMPlannerModel(PlannerModel):
                                 }
                             ],
                             "notes": "short string",
-                            "target_graph_ir": "optional full graph object",
+                            "target_graph_ir": "optional full graph object, including Mermaid style directives in styles when available",
                         },
                     },
                     ensure_ascii=False,
