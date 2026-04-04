@@ -1,6 +1,7 @@
 "use client";
 
 export type InputSource =
+  | "demo_mode"
   | "transcript"
   | "microphone_browser"
   | "system_audio_browser_experimental"
@@ -92,6 +93,15 @@ export function getSystemAudioUnavailableReason(context: ClientAudioContext | nu
 }
 
 export function getInputSourceOptions(context: ClientAudioContext | null): InputSourceOption[] {
+  const demoOption: InputSourceOption = {
+    source: "demo_mode",
+    label: "演示模式",
+    description: "默认载入 4 组来自公开通知和活动指南的真实演示脚本，适合快速成图、多画布切换和拖拽重构展示。",
+    capture_mode: "manual_text",
+    capability_status: "supported",
+    capability_reason: "始终可用。",
+  };
+
   const transcriptOption: InputSourceOption = {
     source: "transcript",
     label: "打字输入",
@@ -112,7 +122,7 @@ export function getInputSourceOptions(context: ClientAudioContext | null): Input
       : "当前浏览器不支持或不稳定支持 Web Speech API。",
   };
 
-  const options: InputSourceOption[] = [transcriptOption, microphoneOption];
+  const options: InputSourceOption[] = [demoOption, transcriptOption, microphoneOption];
 
   if (supportsSystemAudioExperimentalUi(context)) {
     options.push({
@@ -193,7 +203,7 @@ export function buildRealtimeClientContext(params: {
   return {
     input_source: params.selectedSource,
     capture_mode:
-      params.selectedSource === "transcript"
+      params.selectedSource === "demo_mode" || params.selectedSource === "transcript"
         ? "manual_text"
         : params.selectedSource === "microphone_browser"
           ? "browser_speech"

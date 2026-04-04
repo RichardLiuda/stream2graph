@@ -9,6 +9,7 @@ import {
   AudioLines,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Fingerprint,
   Headphones,
@@ -63,6 +64,18 @@ const LOCAL_SESSION_KEY = "s2g:last-realtime-session";
 
 const DEFAULT_VOICEPRINT_BASE = "https://api.xf-yun.com";
 
+/** 将预设的 diagramHint 映射为有效的 Mermaid 图表类型 */
+function mapDiagramHintToMermaidType(diagramHint: string | null | undefined): string {
+  const hint = (diagramHint || "").trim().toLowerCase();
+  if (hint.includes("流程图") || hint.includes("流程") || hint.includes("flow")) return "flowchart";
+  if (hint.includes("状态图") || hint.includes("状态") || hint.includes("state")) return "stateDiagram-v2";
+  if (hint.includes("时序图") || hint.includes("时序") || hint.includes("sequence")) return "sequenceDiagram";
+  if (hint.includes("类图") || hint.includes("class")) return "classDiagram";
+  if (hint.includes("er") || hint.includes("实体")) return "erDiagram";
+  if (hint.includes("需求") || hint.includes("requirement")) return "requirementDiagram";
+  return "flowchart"; // 默认值
+}
+
 type AdminRuntimeOptionsPayload = Awaited<ReturnType<typeof api.getAdminRuntimeOptions>>;
 
 function voiceprintPayloadForSave(
@@ -108,6 +121,33 @@ type TranscriptPreset = {
   id: string;
   label: string;
   description: string;
+  value: string;
+};
+
+type OfficialDemoPreset = {
+  id: string;
+  label: string;
+  description: string;
+  diagramHint: string;
+  sourceTitle: string;
+  sourceUrl: string;
+  value: string;
+  scriptBatches?: string[];
+};
+
+type DemoTranscriptSeed = {
+  key: string;
+  label: string;
+  sourceKind: "dataset" | "preset";
+  datasetSlug: string | null;
+  split: string | null;
+  sampleId: string | null;
+  diagramType: string | null;
+  dialogueTurns: number;
+  description?: string | null;
+  sourceTitle?: string | null;
+  sourceUrl?: string | null;
+  scriptBatches?: string[] | null;
   value: string;
 };
 
@@ -183,6 +223,161 @@ const TRANSCRIPT_PRESETS: TranscriptPreset[] = [
   },
 ];
 
+const DEFAULT_DEMO_PRESET_ID = "dual_canvas_public_library_week";
+
+const CURATED_DEMO_PRESETS: OfficialDemoPreset[] = [
+  {
+    id: "dual_canvas_public_library_week",
+    label: "演示自动切换画布",
+    description: "基于重庆市合川区图书馆公共图书馆服务宣传周活动指南，先生成线下活动图，再自动切换到线上活动图。",
+    diagramHint: "双画布",
+    sourceTitle: "合川区图书馆2024年“公共图书馆服务宣传周”系列活动指南",
+    sourceUrl: "https://www.hc.gov.cn/bmxx/hmxx/202404/t20240424_13154753.html",
+    value: [
+      "馆员甲|我们先把合川区图书馆2024年公共图书馆服务宣传周的线下活动整理成总览图。|structural",
+      "馆员甲|第一块是全民阅读图书展，地点在绿港财富广场，里面有免费阅读、图书展销、图书角共建和阅读券兑换。|hierarchical",
+      "馆员乙|第二块是打卡一路书香，在总馆和直属分馆设置阅读打卡点，做打卡有礼。|structural",
+      "馆员乙|第三块是你读书我买单，读者可以去合川新华书店免费选书借书，读完归还图书馆。|structural",
+      "馆员甲|第四块是少儿科普讲座和金图图绘本故事分享，地点都在一楼儿童阅览区。|structural",
+    ].join("\n"),
+    scriptBatches: [
+      [
+        "馆员甲|我们先把合川区图书馆2024年公共图书馆服务宣传周的线下活动整理成总览图。|structural",
+        "馆员甲|第一块是全民阅读图书展，地点在绿港财富广场，里面有免费阅读、图书展销、图书角共建和阅读券兑换。|hierarchical",
+        "馆员乙|第二块是打卡一路书香，在总馆和直属分馆设置阅读打卡点，做打卡有礼。|structural",
+        "馆员乙|第三块是你读书我买单，读者可以去合川新华书店免费选书借书，读完归还图书馆。|structural",
+        "馆员甲|第四块是少儿科普讲座和金图图绘本故事分享，地点都在一楼儿童阅览区。|structural",
+      ].join("\n"),
+      [
+        "馆员甲|下面单独切到第二张图，整理这次服务宣传周的线上活动，不再混在线下总览里。|structural",
+        "馆员甲|第一项是春光中读诗词里的中国，通过微信公众号参与。|structural",
+        "馆员乙|第二项是声动云端书香四溢有声阅读大赛，读者可以选经典段落录制朗诵，也可以先去云图有声平台收听再回来分享感想。|hierarchical",
+        "馆员乙|第三项是穿越时空遇见宋潮的趣味闯关，一共设计了8个关卡和8道题。|structural",
+        "馆员甲|第四项是看图猜成语线上答题活动。|structural",
+        "馆员甲|第五项是423书菜云集市，用书和蔬菜结合的方式做阅读推广。|structural",
+      ].join("\n"),
+    ],
+  },
+  {
+    id: "manual_relayout_reading_festival",
+    label: "演示拖拽重构",
+    description: "基于河南工业职业技术学院第十四届读书节活动通知生成脑暴图，并通过节点拖拽触发明显重构。",
+    diagramHint: "头脑风暴",
+    sourceTitle: "关于开展学校“第十四届读书节系列活动”的通知",
+    sourceUrl: "https://www.hnpi.edu.cn/tsg/2025/0414/c815a105177/page.htm",
+    value: [
+      "工作坊主持|我们把河南工业职业技术学院第十四届读书节的活动项目先整理成一张脑暴图，后面我要手动拖动节点重组结构。|structural",
+      "工作坊主持|中心主题是第十四届读书节。|structural",
+      "成员甲|一组是线下体验活动，包括墨香雅集创意阅读市集、最美图书馆摄影、阅读越有趣桌游和新华书店进校园。|hierarchical",
+      "成员乙|一组是主题展示与评选，包括抗战主题书展和阅读之星评选。|hierarchical",
+      "成员丙|一组是传播与参与活动，包括主题诵读大赛、我的悦读时光视频征集和搜书达人互动。|hierarchical",
+      "工作坊主持|先把创意阅读市集、阅读之星和搜书达人这些节点保留下来，等会我会拖动它们看结构怎么变化。|structural",
+    ].join("\n"),
+  },
+  {
+    id: "digital_resources_flow",
+    label: "演示流程图生成",
+    description: "基于许昌学院数字资源阅读推广月通知生成真实流程图。",
+    diagramHint: "流程图",
+    sourceTitle: "关于图书馆举办“数字资源阅读推广月”系列活动的通知",
+    sourceUrl: "https://www.xcu.edu.cn/info/1042/19952.htm",
+    value: [
+      "馆员|请把许昌学院数字资源阅读推广月的参与流程整理成流程图。|sequential",
+      "馆员|流程从图书馆发布系列活动通知开始。|sequential",
+      "馆员|读者接下来要选择参加的场次，包括中国知网、IEEE ASPP、维普加考试资源系统加考研资源库，以及万方数据资源系统。|sequential",
+      "馆员|如果是学生团体参加，需要提前2天预约。|conditional",
+      "馆员|如果是学生个人或教师个人参加，就按讲座时间提前10分钟到场。|conditional",
+      "馆员|到场后进入对应数据库培训和检索技巧学习。|sequential",
+      "馆员|培训结束后，再把数字资源应用到课程学习、资料检索和论文写作中。|sequential",
+    ].join("\n"),
+  },
+  {
+    id: "innovation_project_state",
+    label: "演示状态图生成",
+    description: "基于浙江水利水电学院大创项目通知生成真实状态图。",
+    diagramHint: "状态图",
+    sourceTitle: "关于开展2025年度大学生创新创业训练计划项目申报、中期检查及结题验收工作的通知",
+    sourceUrl: "https://jwc.zuwe.edu.cn/10/d1/c3208a135377/page.htm",
+    value: [
+      "教务老师|请把浙江水利水电学院2025年度大学生创新创业训练计划项目工作的关键状态整理成状态图。|sequential",
+      "教务老师|项目一开始处于预申报准备状态。|sequential",
+      "教务老师|学生自主申报后进入申报条件审核。|sequential",
+      "教务老师|审核通过后进入学院遴选与推荐，再进入系统填报。|sequential",
+      "教务老师|系统填报完成后进入学校审核公示，公示无异议后转为已立项。|sequential",
+      "教务老师|如果学院审核发现条件不符，就退回调整后再回到学生自主申报。|conditional",
+      "教务老师|已立项项目后续会进入中期检查。|sequential",
+      "教务老师|中期检查通过后可以进入结题申请与结题验收。|sequential",
+      "教务老师|结题验收经学校复核通过后转为已结题；未通过则退回补充材料或归档为未通过。|conditional",
+    ].join("\n"),
+  },
+  {
+    id: "product_manager_mindmap",
+    label: "演示思维导图",
+    description: "基于软件开发流程，将各个阶段和关键活动组织成辐射状思维导图。",
+    diagramHint: "flowchart",
+    sourceTitle: "软件开发流程体系",
+    sourceUrl: "",
+    value: [
+      "讲师：我们把软件开发项目的完整流程整理成一张思维导图，方便新人培训。",
+      "讲师：中心主题是软件开发全流程。",
+      "学员甲：第一个大分支是需求阶段，包括需求调研、需求分析、需求评审和需求确认。",
+      "学员乙：第二个大分支是设计阶段，包括架构设计、模块划分、接口定义和详细设计。",
+      "学员甲：第三个大分支是开发阶段，包括编码实现、代码审查、单元测试和集成测试。",
+      "学员乙：第四个大分支是测试阶段，包括测试计划、用例设计、缺陷管理和回归测试。",
+      "学员丙：第五个大分支是上线交付，包括部署发布、版本管理、运维监控和故障响应。",
+    ].join("\n"),
+  },
+];
+
+function sanitizeTranscriptCell(value: unknown) {
+  return String(value ?? "")
+    .replace(/\r?\n+/g, " ")
+    .replaceAll("|", "｜")
+    .trim();
+}
+
+function formatDemoDialogue(dialogue: Array<Record<string, any>> | null | undefined) {
+  if (!dialogue?.length) return "";
+  return dialogue
+    .map((turn) => {
+      const speaker = sanitizeTranscriptCell(turn?.role || turn?.speaker || `speaker_${turn?.turn_id || ""}` || "speaker");
+      const text = sanitizeTranscriptCell(turn?.utterance || turn?.text || turn?.content || "");
+      const expectedIntent = sanitizeTranscriptCell(turn?.action_type || turn?.expected_intent || "");
+      if (!text) return "";
+      return expectedIntent ? `${speaker || "speaker"}|${text}|${expectedIntent}` : `${speaker || "speaker"}|${text}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildDemoSeedFromPreset(presetId = DEFAULT_DEMO_PRESET_ID): DemoTranscriptSeed {
+  const preset = CURATED_DEMO_PRESETS.find((item) => item.id === presetId) || CURATED_DEMO_PRESETS[0];
+  const scriptBatches = preset.scriptBatches?.filter((item) => item.trim()) ?? null;
+  const initialValue = scriptBatches?.[0] || preset.value;
+  const dialogueTurns = (scriptBatches ? scriptBatches.join("\n") : preset.value).split("\n").filter(Boolean).length;
+  return {
+    key: `preset:${preset.id}`,
+    label: preset.label,
+    sourceKind: "preset",
+    datasetSlug: null,
+    split: null,
+    sampleId: preset.id,
+    diagramType: preset.diagramHint,
+    dialogueTurns,
+    description: preset.description,
+    sourceTitle: preset.sourceTitle,
+    sourceUrl: preset.sourceUrl,
+    scriptBatches,
+    value: initialValue,
+  };
+}
+
+function getDemoScriptBatches(seed: DemoTranscriptSeed | null): string[] {
+  if (!seed) return [];
+  const batches = seed.scriptBatches?.filter((item) => item.trim()) ?? [];
+  return batches.length ? batches : [seed.value];
+}
+
 function parseTranscriptInput(raw: string): TranscriptRow[] {
   return raw
     .split("\n")
@@ -204,6 +399,8 @@ function getNoticeClassName(tone: NoticeTone) {
 
 function getSourceBadgeLabel(source: InputSource | null) {
   switch (source) {
+    case "demo_mode":
+      return "演示功能已加载";
     case "microphone_browser":
       return "浏览器麦克风采集中";
     case "system_audio_browser_experimental":
@@ -259,6 +456,7 @@ function preserveCoordinationSnapshot(
   if (!previousPipeline) return nextPipeline;
   return {
     ...nextPipeline,
+    canvas_state: nextPipeline.canvas_state ?? previousPipeline.canvas_state ?? null,
     gate_state: previousPipeline.gate_state ?? nextPipeline.gate_state ?? null,
     planner_state: previousPipeline.planner_state ?? nextPipeline.planner_state ?? null,
     mermaid_state: previousPipeline.mermaid_state ?? nextPipeline.mermaid_state ?? null,
@@ -312,6 +510,9 @@ function logBrowserRuntime(label: string, payload: Record<string, unknown>, leve
 }
 
 function buildBackendOptions(source: InputSource, helperCapabilities: HelperCapabilities | null): BackendOption[] {
+  if (source === "demo_mode") {
+    return [{ value: "manual" as const, label: "演示脚本回放" }];
+  }
   if (source === "transcript") {
     return [{ value: "manual" as const, label: "打字输入" }];
   }
@@ -363,10 +564,12 @@ export function RealtimeStudio() {
   const [titleDraft, setTitleDraft] = useState("研究演示会话");
   const [isTitleEditing, setIsTitleEditing] = useState(false);
   const [datasetVersion, setDatasetVersion] = useState("");
-  const [selectedTranscriptPresetId, setSelectedTranscriptPresetId] = useState("");
+  const [selectedTranscriptPresetId, setSelectedTranscriptPresetId] = useState(DEFAULT_DEMO_PRESET_ID);
   const [transcriptText, setTranscriptText] = useState("");
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Record<string, any> | null>(null);
+  const [selectedCanvasId, setSelectedCanvasId] = useState<string | null>(null);
+  const [demoSequenceRunning, setDemoSequenceRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
@@ -435,9 +638,14 @@ export function RealtimeStudio() {
     speaker: string;
   } | null>(null);
   const inputSourceMenuRef = useRef<HTMLDivElement | null>(null);
+  const demoSeedHydratedRef = useRef<string | null>(null);
+  const demoSeedAutoSentRef = useRef<string | null>(null);
+  const demoSequenceRunIdRef = useRef(0);
+  const previousActiveCanvasIdRef = useRef<string | null>(null);
 
   const selectedInputSource = studioState.context.selectedInputSource;
   const selectedRecognitionBackend = studioState.context.recognitionBackend;
+  const isTextInputSource = selectedInputSource === "transcript" || selectedInputSource === "demo_mode";
   const activeCaptureSource = studioState.context.captureStatus !== "idle" ? selectedInputSource : null;
   const inputLevel = studioState.context.inputLevel;
   const liveTranscript = studioState.context.liveTranscript;
@@ -548,6 +756,13 @@ export function RealtimeStudio() {
     () => buildBackendOptions(selectedInputSource, helperCapabilities),
     [helperCapabilities, selectedInputSource],
   );
+  const demoTranscriptSeed = useMemo<DemoTranscriptSeed | null>(() => {
+    return buildDemoSeedFromPreset(selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID);
+  }, [selectedTranscriptPresetId]);
+  const selectedOfficialDemoPreset = useMemo(
+    () => CURATED_DEMO_PRESETS.find((item) => item.id === (selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID)) || CURATED_DEMO_PRESETS[0],
+    [selectedTranscriptPresetId],
+  );
   const [gateProfileId, setGateProfileId] = useState("");
   const [gateModel, setGateModel] = useState("");
   const [plannerProfileId, setPlannerProfileId] = useState("");
@@ -572,8 +787,33 @@ export function RealtimeStudio() {
   }, [effectiveError, studioSend]);
 
   useEffect(() => {
+    if (selectedInputSource !== "demo_mode") return;
+    if (!workbenchDataReady) return;
+    if (!demoTranscriptSeed) return;
+    if (demoSeedHydratedRef.current === demoTranscriptSeed.key) return;
+
+    setSelectedTranscriptPresetId(demoTranscriptSeed.sampleId || demoTranscriptSeed.key);
+    setTranscriptText(demoTranscriptSeed.value);
+    studioSend({ type: "transcript.preview", text: demoTranscriptSeed.value });
+    if (currentSessionId) {
+      demoSeedHydratedRef.current = demoTranscriptSeed.key;
+      demoSeedAutoSentRef.current = null;
+      return;
+    }
+
+    const nextTitle = demoTranscriptSeed.label;
+    setTitle(nextTitle);
+    setTitleDraft(nextTitle);
+    const preferredTitle = selectedOfficialDemoPreset.label;
+    setTitle(preferredTitle);
+    setTitleDraft(preferredTitle);
+    demoSeedHydratedRef.current = demoTranscriptSeed.key;
+    demoSeedAutoSentRef.current = null;
+  }, [currentSessionId, demoTranscriptSeed, selectedInputSource, selectedOfficialDemoPreset, studioSend, workbenchDataReady]);
+
+  useEffect(() => {
     if (!inputOptions.some((item) => item.source === selectedInputSource)) {
-      studioSend({ type: "source.select", source: "transcript", backend: "manual" });
+      studioSend({ type: "source.select", source: "demo_mode", backend: "manual" });
     }
   }, [inputOptions, selectedInputSource, studioSend]);
 
@@ -1253,7 +1493,7 @@ export function RealtimeStudio() {
     mutationFn: () =>
       api.createRealtimeSession({
         title,
-        dataset_version_slug: datasetVersion || null,
+        dataset_version_slug: selectedInputSource === "demo_mode" ? null : datasetVersion || null,
         min_wait_k: 1,
         base_wait_k: 2,
         max_wait_k: 4,
@@ -1263,11 +1503,15 @@ export function RealtimeStudio() {
         planner_model: plannerModel || null,
         stt_profile_id: sttProfileId || null,
         stt_model: sttModel || null,
-        diagram_mode: diagramMode,
+        diagram_type:
+          selectedInputSource === "demo_mode"
+            ? mapDiagramHintToMermaidType(demoTranscriptSeed?.diagramType)
+            : "flowchart",
         client_context: currentClientContext(),
       }),
     onSuccess: (data) => {
       setCurrentSessionId(data.session_id);
+      setSelectedCanvasId(null);
       window.localStorage.setItem(LOCAL_SESSION_KEY, data.session_id);
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
     },
@@ -1396,11 +1640,19 @@ export function RealtimeStudio() {
       studioSend({ type: "gate.working" });
       studioSend({ type: "planner.working" });
     },
-    mutationFn: async () => {
+    mutationFn: async (variables?: { text?: string; source?: InputSource; reason?: "manual" | "auto_demo" }) => {
+      const source = variables?.source === "demo_mode" ? "demo_mode" : "transcript";
+      const metadataSource = source === "demo_mode" ? "transcript" : source;
+      const rawText = (variables?.text ?? transcriptText).trim();
+      if (!rawText) {
+        throw new Error("当前没有可发送的 transcript。");
+      }
       const sessionId = await ensureSession();
-      const rows = parseTranscriptInput(transcriptText);
+      const rows = parseTranscriptInput(rawText);
       logBrowserRuntime("transcript send started", {
         session_id: sessionId,
+        source,
+        reason: variables?.reason ?? "manual",
         row_count: rows.length,
         rows,
       });
@@ -1410,21 +1662,36 @@ export function RealtimeStudio() {
           text: row.text,
           speaker: row.speaker,
           expected_intent: row.expected_intent || null,
-          metadata: buildChunkMetadata("transcript", "manual_text"),
+          metadata: {
+            ...buildChunkMetadata(metadataSource, "manual_text"),
+            ...(source === "demo_mode"
+              ? {
+                  demo_mode: true,
+                  demo_seed_key: selectedTranscriptPresetId || null,
+                }
+              : {}),
+          },
         })),
       });
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       if (data) setSnapshot({ session_id: data.session_id, pipeline: data.pipeline, evaluation: data.evaluation });
       setError(null);
       logBrowserRuntime("transcript send completed", {
         session_id: data?.session_id ?? null,
+        source: variables?.source ?? "transcript",
         gate_state: data?.pipeline?.gate_state ?? null,
         planner_state: data?.pipeline?.planner_state ?? null,
         coordination_summary: data?.pipeline?.coordination_summary ?? null,
       });
       syncPipelineStatus(data?.pipeline);
-      setNotice({ tone: "success", text: "Transcript 已写入当前会话。" });
+      setNotice({
+        tone: "success",
+        text:
+          variables?.source === "demo_mode"
+            ? "演示脚本已写入当前会话，主图正在根据样本内容生成。"
+            : "Transcript 已写入当前会话。",
+      });
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
     },
     onError: (err) => {
@@ -1432,6 +1699,35 @@ export function RealtimeStudio() {
       setError((err as Error).message);
     },
   });
+
+  async function runDemoSequence(seed: DemoTranscriptSeed, reason: "manual" | "auto_demo") {
+    const batches = getDemoScriptBatches(seed);
+    if (!batches.length) return;
+    const runId = demoSequenceRunIdRef.current + 1;
+    demoSequenceRunIdRef.current = runId;
+    setDemoSequenceRunning(true);
+    let visibleTranscript = "";
+    try {
+      for (let index = 0; index < batches.length; index += 1) {
+        if (demoSequenceRunIdRef.current !== runId) return;
+        visibleTranscript = visibleTranscript ? `${visibleTranscript}\n${batches[index]}` : batches[index];
+        setTranscriptText(visibleTranscript);
+        studioSend({ type: "transcript.preview", text: visibleTranscript });
+        await sendTranscript.mutateAsync({
+          text: batches[index],
+          source: "demo_mode",
+          reason,
+        });
+        if (index < batches.length - 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 900));
+        }
+      }
+    } finally {
+      if (demoSequenceRunIdRef.current === runId) {
+        setDemoSequenceRunning(false);
+      }
+    }
+  }
 
   const flushMutation = useMutation({
     mutationFn: (sessionId: string) => {
@@ -1469,6 +1765,7 @@ export function RealtimeStudio() {
     onSuccess: () => {
       if (currentSessionId) window.localStorage.removeItem(LOCAL_SESSION_KEY);
       setCurrentSessionId(null);
+      setSelectedCanvasId(null);
       setSnapshot(null);
       studioSend({ type: "capture.stop" });
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
@@ -1783,14 +2080,147 @@ export function RealtimeStudio() {
     rendererState.groups || snapshot?.pipeline?.graph_state?.current_graph_ir?.groups || [];
   const currentGraphPayload = snapshot?.pipeline?.graph_state?.current_graph_ir ?? null;
 
+  const canvasState = snapshot?.pipeline?.canvas_state ?? null;
+  const canvasList: Array<Record<string, any>> = Array.isArray(canvasState?.canvases) ? canvasState.canvases : [];
+  const activeCanvasId =
+    typeof canvasState?.active_canvas_id === "string"
+      ? canvasState.active_canvas_id
+      : typeof snapshot?.pipeline?.graph_state?.active_canvas_id === "string"
+        ? snapshot.pipeline.graph_state.active_canvas_id
+        : null;
+  const activeCanvasIndex =
+    typeof canvasState?.active_canvas_index === "number"
+      ? canvasState.active_canvas_index
+      : Math.max(
+          0,
+          canvasList.findIndex((canvas) => canvas?.canvas_id === activeCanvasId),
+        );
+  const viewedCanvas =
+    (selectedCanvasId
+      ? canvasList.find((canvas) => canvas?.canvas_id === selectedCanvasId)
+      : null) ||
+    (activeCanvasId ? canvasList.find((canvas) => canvas?.canvas_id === activeCanvasId) : null) ||
+    canvasList[0] ||
+    null;
+  const viewedCanvasIndex = viewedCanvas
+    ? Math.max(
+        0,
+        canvasList.findIndex((canvas) => canvas?.canvas_id === viewedCanvas.canvas_id),
+      )
+    : 0;
+  const isViewingHistoricalCanvas = Boolean(
+    viewedCanvas?.canvas_id && activeCanvasId && viewedCanvas.canvas_id !== activeCanvasId,
+  );
+  const displayedRendererState = viewedCanvas?.renderer_state || rendererState;
+  const displayedMermaidState = viewedCanvas?.mermaid_state ?? mermaidState;
+  const displayedRendererGroups =
+    displayedRendererState.groups ||
+    viewedCanvas?.graph_ir?.groups ||
+    rendererGroups;
+  const displayedGraphPayload = viewedCanvas?.graph_ir ?? currentGraphPayload;
+  const displayedCanvasCount = canvasList.length || 1;
+
   function handleMermaidNodeRelayout(payload: MermaidNodeRelayoutPayload) {
     if (!currentSessionId || relayoutMutation.isPending) return;
     relayoutMutation.mutate({ sessionId: currentSessionId, payload });
   }
 
+  function jumpCanvasBy(delta: number) {
+    if (!canvasList.length) return;
+    const nextIndex = Math.max(0, Math.min(viewedCanvasIndex + delta, canvasList.length - 1));
+    const nextCanvas = canvasList[nextIndex];
+    if (!nextCanvas) return;
+    if (activeCanvasId && nextCanvas.canvas_id === activeCanvasId) {
+      setSelectedCanvasId(null);
+      return;
+    }
+    setSelectedCanvasId(nextCanvas.canvas_id);
+  }
+
+  function resetCanvasView() {
+    setSelectedCanvasId(null);
+  }
+
+  function handleDemoPresetChange(nextPresetId: string) {
+    demoSequenceRunIdRef.current += 1;
+    setDemoSequenceRunning(false);
+    setSelectedTranscriptPresetId(nextPresetId);
+    const nextSeed = buildDemoSeedFromPreset(nextPresetId);
+    const nextPreset = CURATED_DEMO_PRESETS.find((item) => item.id === nextPresetId) || CURATED_DEMO_PRESETS[0];
+    setTranscriptText(nextSeed.value);
+    studioSend({ type: "transcript.preview", text: nextSeed.value });
+    const nextTitle = nextPreset.label;
+    setTitle(nextTitle);
+    setTitleDraft(nextTitle);
+    demoSeedHydratedRef.current = nextSeed.key;
+    demoSeedAutoSentRef.current = null;
+  }
+
+  useEffect(() => {
+    if (!canvasList.length) {
+      if (selectedCanvasId) setSelectedCanvasId(null);
+      previousActiveCanvasIdRef.current = null;
+      return;
+    }
+    if (selectedCanvasId && !canvasList.some((canvas) => canvas?.canvas_id === selectedCanvasId)) {
+      setSelectedCanvasId(null);
+    }
+  }, [canvasList, selectedCanvasId]);
+
+  useEffect(() => {
+    if (!activeCanvasId) {
+      previousActiveCanvasIdRef.current = null;
+      return;
+    }
+    const previousActiveCanvasId = previousActiveCanvasIdRef.current;
+    if (previousActiveCanvasId && previousActiveCanvasId !== activeCanvasId) {
+      if (!selectedCanvasId || selectedCanvasId === previousActiveCanvasId) {
+        setSelectedCanvasId(null);
+      }
+      setNotice({
+        tone: "info",
+        text: `系统已自动切换到画布 ${activeCanvasIndex + 1}，后续内容会继续在新画布绘制。`,
+      });
+    }
+    previousActiveCanvasIdRef.current = activeCanvasId;
+  }, [activeCanvasId, activeCanvasIndex, selectedCanvasId]);
+
   const hasGateProfiles = Boolean(runtimeOptions.data?.gate_profiles.length);
   const hasPlannerProfiles = Boolean(runtimeOptions.data?.planner_profiles.length);
   const hasSttProfiles = Boolean(runtimeOptions.data?.stt_profiles.length);
+
+  useEffect(() => {
+    if (selectedInputSource !== "demo_mode") return;
+    if (!demoTranscriptSeed) return;
+    if (!workbenchDataReady) return;
+    if (currentSessionId) return;
+    if (!transcriptText.trim()) return;
+    if (sendTranscript.isPending || createSession.isPending || demoSequenceRunning) return;
+    if (demoSeedHydratedRef.current !== demoTranscriptSeed.key) return;
+    if (demoSeedAutoSentRef.current === demoTranscriptSeed.key) return;
+    if (!hasPlannerProfiles) {
+      if (runtimeOptions.isFetched) {
+        setNotice({
+          tone: "warning",
+          text: "演示脚本已装载，但当前还没有可用的 Planner profile，暂时无法自动成图。",
+        });
+      }
+      return;
+    }
+    demoSeedAutoSentRef.current = demoTranscriptSeed.key;
+    void runDemoSequence(demoTranscriptSeed, "auto_demo");
+  }, [
+    createSession.isPending,
+    currentSessionId,
+    demoSequenceRunning,
+    demoTranscriptSeed,
+    hasPlannerProfiles,
+    runtimeOptions.isFetched,
+    selectedInputSource,
+    sendTranscript,
+    transcriptText,
+    workbenchDataReady,
+  ]);
 
   const summaryCards = useMemo(() => {
     const metrics = snapshot?.evaluation?.metrics ?? {};
@@ -1831,6 +2261,7 @@ export function RealtimeStudio() {
     }
 
     const modelBusy =
+      demoSequenceRunning ||
       sendTranscript.isPending ||
       snapshotMutation.isPending ||
       flushMutation.isPending ||
@@ -1913,6 +2344,7 @@ export function RealtimeStudio() {
     gateModel,
     selectedPlannerProfile,
     plannerModel,
+    demoSequenceRunning,
     sendTranscript.isPending,
     snapshotMutation.isPending,
     flushMutation.isPending,
@@ -1945,7 +2377,7 @@ export function RealtimeStudio() {
 
   /** @description 主舞台顶栏：与抽屉内相同的开始/暂停（停止）采集逻辑 */
   async function stageStartCapture() {
-    if (selectedInputSource === "transcript") return;
+    if (isTextInputSource) return;
     if (selectedInputSource === "microphone_browser") {
       if (selectedRecognitionBackend === "browser_speech") return startRecognition();
       if (selectedRecognitionBackend === "api_stt") return startApiCapture();
@@ -1961,7 +2393,7 @@ export function RealtimeStudio() {
   }
 
   function stageStopCapture() {
-    if (selectedInputSource === "transcript") return;
+    if (isTextInputSource) return;
     if (selectedInputSource === "microphone_browser") {
       if (selectedRecognitionBackend === "browser_speech") return void stopRecognition();
       if (selectedRecognitionBackend === "api_stt") return void stopApiCapture();
@@ -1976,8 +2408,8 @@ export function RealtimeStudio() {
     }
   }
 
-  const canStartStageCapture = selectedInputSource !== "transcript" && canStartCapture;
-  const canStopStageCapture = selectedInputSource !== "transcript" && canStopCapture;
+  const canStartStageCapture = !isTextInputSource && canStartCapture;
+  const canStopStageCapture = !isTextInputSource && canStopCapture;
   const titleDisplay = title.trim() || "未命名会话";
 
   function startTitleEdit() {
@@ -2106,8 +2538,13 @@ export function RealtimeStudio() {
                           ? "模型：已返回"
                           : "模型：空闲"}
                   </Badge>
-                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                    来源：{getSourceBadgeLabel(activeCaptureSource)}
+                    <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
+                      来源：
+                      {selectedInputSource === "demo_mode"
+                        ? "演示功能已加载"
+                        : selectedInputSource === "transcript"
+                          ? "手动文本输入"
+                          : getSourceBadgeLabel(activeCaptureSource)}
                   </Badge>
                   <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
                     转写：{backendLabel(selectedRecognitionBackend)}
@@ -2150,9 +2587,7 @@ export function RealtimeStudio() {
                 aria-expanded={inputSourceMenuOpen}
                 onClick={() => setInputSourceMenuOpen((open) => !open)}
               >
-                <span className="truncate">
-                  {selectedOption.label} · {selectedOption.capability_status}
-                </span>
+                <span className="truncate">{selectedOption.label}</span>
                 <ChevronDown
                   className={`h-4 w-4 shrink-0 text-theme-4 transition-transform duration-200 ${inputSourceMenuOpen ? "rotate-180" : ""}`}
                 />
@@ -2195,11 +2630,11 @@ export function RealtimeStudio() {
                 </div>
               ) : null}
             </div>
-            <p className="text-[11px] leading-relaxed text-theme-3">
-              {selectedOption.description}
-            </p>
-            {/* 声纹盲认仅与语音/STT 相关；纯文本 Transcript 输入时不展示 */}
-            {selectedInputSource !== "transcript" ? (
+            {selectedInputSource === "demo_mode" ? null : selectedOption.description ? (
+              <p className="text-[11px] leading-relaxed text-theme-3">{selectedOption.description}</p>
+            ) : null}
+            {/* 声纹盲认仅与语音/STT 相关；纯文本/演示输入时不展示 */}
+            {!isTextInputSource ? (
               <div className="flex min-h-[2rem] items-center justify-between gap-2 rounded-lg border border-theme-subtle bg-surface-muted px-2 py-1">
                 {!isAdmin ? (
                   <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-theme-3">
@@ -2278,8 +2713,30 @@ export function RealtimeStudio() {
               <div className="text-sm font-semibold text-theme-1">实时转写</div>
               <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
             </div>
-            {selectedInputSource === "transcript" ? (
+            {isTextInputSource ? (
               <div className="mt-1.5 flex min-h-[4rem] flex-1 flex-col gap-1.5">
+                {selectedInputSource === "demo_mode" ? (
+                  <div className="rounded-lg border border-theme-subtle bg-surface-muted/90 px-3 py-2">
+                    <div className="grid gap-2">
+                      <label className="space-y-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-theme-4">
+                          演示功能
+                        </span>
+                        <select
+                          className="w-full rounded-md border border-theme-default bg-surface-1 px-2.5 py-2 text-[11px] text-theme-1 outline-none transition focus:border-[color:var(--accent)] focus:ring-2 focus:ring-[color:var(--accent)]/15"
+                          value={selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID}
+                          onChange={(event) => handleDemoPresetChange(event.target.value)}
+                        >
+                          {CURATED_DEMO_PRESETS.map((preset) => (
+                            <option key={preset.id} value={preset.id}>
+                              {preset.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                ) : null}
                 <Textarea
                   className="min-h-[7rem] flex-1 resize-y text-[12px] leading-relaxed"
                   rows={8}
@@ -2293,12 +2750,22 @@ export function RealtimeStudio() {
                 <Button
                   type="button"
                   variant="secondary"
-                  className="shrink-0 border-violet-900/50 bg-violet-950/45 py-2 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
-                  onClick={() => sendTranscript.mutate()}
-                  disabled={sendTranscript.isPending || !transcriptText.trim()}
+                  className="shrink-0 border-[color:var(--workspace-tab-active-border)] bg-[color:var(--workspace-tab-active-bg)] py-2 text-xs text-[color:var(--workspace-tab-active-fg)] shadow-[var(--workspace-tab-indicator-shadow)] hover:border-violet-700/70 hover:bg-violet-950/70 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
+                  onClick={() => {
+                    if (selectedInputSource === "demo_mode" && demoTranscriptSeed) {
+                      void runDemoSequence(demoTranscriptSeed, "manual");
+                      return;
+                    }
+                    sendTranscript.mutate({
+                      text: transcriptText,
+                      source: selectedInputSource === "demo_mode" ? "demo_mode" : "transcript",
+                      reason: "manual",
+                    });
+                  }}
+                  disabled={sendTranscript.isPending || demoSequenceRunning || !transcriptText.trim()}
                 >
                   <Send className="h-3.5 w-3.5" />
-                  发送文本
+                  {selectedInputSource === "demo_mode" ? "重新生成主图" : "发送文本"}
                 </Button>
               </div>
             ) : (
@@ -2317,11 +2784,13 @@ export function RealtimeStudio() {
                 )}
               </div>
             )}
-            <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-theme-4">
-              {selectedInputSource === "transcript"
-                ? "与侧栏同一输入；发送后写入会话。"
-                : "浏览器听写多为临时内容；本机助手 / 云端听写会写回这里。"}
-            </p>
+            {selectedInputSource !== "demo_mode" ? (
+              <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-theme-4">
+                {isTextInputSource
+                  ? "与侧栏同一输入；发送后写入会话。"
+                  : "浏览器听写多为临时内容；本机助手 / 云端听写会回写到这里。"}
+              </p>
+            ) : null}
           </div>
 
           <div
@@ -2449,36 +2918,36 @@ export function RealtimeStudio() {
                     <button
                       type="button"
                       title={
-                        selectedInputSource === "transcript"
+                        isTextInputSource
                           ? "请先在左侧栏选择麦克风或系统音输入"
                           : "开始录音"
                       }
                       onClick={() => void stageStartCapture()}
                       disabled={!canStartStageCapture}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-violet-900/50 bg-violet-950/45 text-violet-200 transition hover:border-violet-700/60 hover:bg-violet-950/65 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-700 sm:h-14 sm:w-14"
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-violet-900/60 bg-violet-950/55 text-violet-100 shadow-[0_10px_24px_rgba(76,29,149,0.22)] transition hover:border-violet-700/70 hover:bg-violet-950/70 active:scale-[0.98] disabled:cursor-not-allowed disabled:border-violet-900/55 disabled:bg-violet-950/50 disabled:text-violet-100 disabled:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-700 sm:h-14 sm:w-14"
                       aria-label="开始录音"
                     >
                       <Mic className="h-6 w-6 sm:h-7 sm:w-7" />
                     </button>
-                    <div className="mt-2 text-center text-xs leading-4 text-violet-200/85">开始录音</div>
+                    <div className="mt-2 text-center text-xs leading-4 text-violet-600">开始录音</div>
                   </div>
 
                   <div className="flex shrink-0 flex-col items-center">
                     <button
                       type="button"
                       title={
-                        selectedInputSource === "transcript"
+                        isTextInputSource
                           ? "请先在左侧栏选择麦克风或系统音输入"
                           : "暂停录音（停止当前采集）"
                       }
                       onClick={() => void stageStopCapture()}
                       disabled={!canStopStageCapture}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-red-900/50 bg-red-950/40 text-red-200 transition hover:border-red-800 hover:bg-red-950/60 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-800 sm:h-14 sm:w-14"
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-red-900/60 bg-red-950/50 text-red-100 shadow-[0_10px_24px_rgba(127,29,29,0.2)] transition hover:border-red-800/75 hover:bg-red-950/62 active:scale-[0.98] disabled:cursor-not-allowed disabled:border-red-900/55 disabled:bg-red-950/45 disabled:text-red-100 disabled:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-800 sm:h-14 sm:w-14"
                       aria-label="暂停录音"
                     >
                       <Pause className="h-6 w-6 sm:h-7 sm:w-7" />
                     </button>
-                    <div className="mt-2 text-center text-xs leading-4 text-red-200/85">暂停录音</div>
+                    <div className="mt-2 text-center text-xs leading-4 text-red-600">暂停录音</div>
                   </div>
 
                   <div className="flex shrink-0 flex-col items-center">
@@ -2499,36 +2968,142 @@ export function RealtimeStudio() {
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <Tabs.Content value="mermaid" className="absolute inset-0 flex min-h-0 flex-col outline-none">
               <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-3 pt-1 sm:px-3">
-                <MermaidCard
-                  title=""
-                  embedded
-                  code={mermaidState?.code || mermaidState?.normalized_code || ""}
-                  rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
-                  repairRawOutputText={
-                    typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
-                  }
-                  provider={mermaidState?.provider || selectedPlannerProfile?.label || null}
-                  model={mermaidState?.model || plannerModel || null}
-                  latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
-                  compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
-                  updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null)}
-                  graphPayload={currentGraphPayload}
-                  onNodeRelayout={handleMermaidNodeRelayout}
-                  relayoutBusy={relayoutMutation.isPending}
-                />
+                <div className="mb-2 flex shrink-0 items-center justify-between gap-2 px-1">
+                  <div className="min-w-0 text-[11px] text-theme-3">
+                    {isViewingHistoricalCanvas
+                      ? `当前查看历史画布，新的增量内容仍会继续写入画布 ${activeCanvasIndex + 1}。`
+                      : `当前活跃画布：画布 ${activeCanvasIndex + 1}。`}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-7 w-7 min-w-0 rounded-lg p-0"
+                      onClick={() => jumpCanvasBy(-1)}
+                      disabled={viewedCanvasIndex <= 0}
+                      aria-label="查看上一张画布"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Badge className="px-2 py-1 text-[10px]">
+                      {`画布 ${viewedCanvasIndex + 1} / ${displayedCanvasCount}${
+                        isViewingHistoricalCanvas ? " · 历史" : " · 当前"
+                      }`}
+                    </Badge>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-7 w-7 min-w-0 rounded-lg p-0"
+                      onClick={() => jumpCanvasBy(1)}
+                      disabled={viewedCanvasIndex >= displayedCanvasCount - 1}
+                      aria-label="查看下一张画布"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    {isViewingHistoricalCanvas ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-7 rounded-lg px-2 text-[10px]"
+                        onClick={resetCanvasView}
+                      >
+                        回到当前
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+                  <MermaidCard
+                    title=""
+                    embedded
+                    code={displayedMermaidState?.code || displayedMermaidState?.normalized_code || ""}
+                    rawOutputText={
+                      typeof displayedMermaidState?.raw_output_text === "string"
+                        ? displayedMermaidState.raw_output_text
+                        : null
+                    }
+                    repairRawOutputText={
+                      typeof displayedMermaidState?.repair_raw_output_text === "string"
+                        ? displayedMermaidState.repair_raw_output_text
+                        : null
+                    }
+                    provider={displayedMermaidState?.provider || selectedPlannerProfile?.label || null}
+                    model={displayedMermaidState?.model || plannerModel || null}
+                    latencyMs={
+                      typeof displayedMermaidState?.latency_ms === "number" ? displayedMermaidState.latency_ms : null
+                    }
+                    compileOk={
+                      typeof displayedMermaidState?.compile_ok === "boolean" ? displayedMermaidState.compile_ok : null
+                    }
+                    updatedAt={
+                      toLocalDateTimeLabel(
+                        displayedMermaidState?.updated_at
+                          ? String(displayedMermaidState.updated_at)
+                          : lastMermaidUpdatedAt || null,
+                      )
+                    }
+                    graphPayload={displayedGraphPayload}
+                    onNodeRelayout={isViewingHistoricalCanvas ? null : handleMermaidNodeRelayout}
+                    relayoutBusy={!isViewingHistoricalCanvas && relayoutMutation.isPending}
+                  />
+                </div>
               </div>
             </Tabs.Content>
 
             <Tabs.Content value="structure" className="absolute inset-0 flex min-h-0 flex-col outline-none">
               <div className="flex min-h-0 flex-1 px-4 py-2">
-                <Card className="flex-1 min-h-0 rounded-xl border border-theme-default bg-surface-muted p-2">
+                <Card className="flex min-h-0 flex-1 flex-col rounded-xl border border-theme-default bg-surface-muted p-2">
+                  <div className="mb-2 flex shrink-0 items-center justify-between gap-2 px-1">
+                    <div className="min-w-0 text-[11px] text-theme-3">
+                      {isViewingHistoricalCanvas
+                        ? `当前查看历史画布，新的增量内容仍会继续写入画布 ${activeCanvasIndex + 1}。`
+                        : `当前活跃画布：画布 ${activeCanvasIndex + 1}。`}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-7 w-7 min-w-0 rounded-lg p-0"
+                        onClick={() => jumpCanvasBy(-1)}
+                        disabled={viewedCanvasIndex <= 0}
+                        aria-label="查看上一张画布"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Badge className="px-2 py-1 text-[10px]">
+                        {`画布 ${viewedCanvasIndex + 1} / ${displayedCanvasCount}${
+                          isViewingHistoricalCanvas ? " · 历史" : " · 当前"
+                        }`}
+                      </Badge>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-7 w-7 min-w-0 rounded-lg p-0"
+                        onClick={() => jumpCanvasBy(1)}
+                        disabled={viewedCanvasIndex >= displayedCanvasCount - 1}
+                        aria-label="查看下一张画布"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                      {isViewingHistoricalCanvas ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="h-7 rounded-lg px-2 text-[10px]"
+                          onClick={resetCanvasView}
+                        >
+                          回到当前
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
                   <div className="flex-1 min-h-0 overflow-hidden rounded-lg">
                     <GraphStage
                       embedded
                       title="结构图"
-                      nodes={rendererState.nodes || []}
-                      edges={rendererState.edges || []}
-                      groups={rendererGroups}
+                      nodes={displayedRendererState.nodes || []}
+                      edges={displayedRendererState.edges || []}
+                      groups={displayedRendererGroups}
                     />
                   </div>
                 </Card>
@@ -2622,7 +3197,7 @@ export function RealtimeStudio() {
                   className={
                     currentSessionId
                       ? "h-8 shrink-0 gap-1 px-3 text-xs font-semibold"
-                      : "h-8 shrink-0 gap-1 px-3 text-xs font-semibold bg-[linear-gradient(135deg,#4d7cff,#a78bfa)] text-white"
+                      : "h-8 shrink-0 gap-1 px-3 text-xs font-semibold border border-[#6f8faa]/65 bg-[linear-gradient(135deg,#5f83a6,#85a8c4)] text-white shadow-[0_8px_18px_rgba(95,131,166,0.24)] hover:border-[#7d9db9]/75 hover:bg-[linear-gradient(135deg,#698db1,#8fb2cc)]"
                   }
                   onClick={() => createSession.mutate()}
                   disabled={createSession.isPending}
