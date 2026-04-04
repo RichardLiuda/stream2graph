@@ -968,6 +968,12 @@ export function RealtimeStudio() {
   }, [selectedInputSource, selectedTranscriptPresetId, studioSend]);
 
   useEffect(() => {
+    if (selectedInputSource !== "transcript") return;
+    setTranscriptText("");
+    studioSend({ type: "transcript.preview", text: "" });
+  }, [selectedInputSource, studioSend]);
+
+  useEffect(() => {
     if (!backendOptions.some((item) => item.value === selectedRecognitionBackend && !item.disabled)) {
       const fallback = backendOptions.find((item) => !item.disabled) || backendOptions[0];
       studioSend({ type: "backend.select", backend: fallback.value });
@@ -2564,7 +2570,7 @@ export function RealtimeStudio() {
       setNotice({ tone: "warning", text: "当前会话已结束，请重建会话后继续采集。" });
       return;
     }
-    if (selectedInputSource === "transcript") return;
+    if (selectedInputSource === "transcript" || selectedInputSource === "demo_mode") return;
     if (selectedInputSource === "microphone_browser") {
       if (selectedRecognitionBackend === "browser_speech") return startRecognition();
       if (selectedRecognitionBackend === "api_stt") return startApiCapture();
@@ -2581,7 +2587,7 @@ export function RealtimeStudio() {
 
   async function stageStopCapture() {
     if (currentSessionClosed) return;
-    if (selectedInputSource === "transcript") return;
+    if (selectedInputSource === "transcript" || selectedInputSource === "demo_mode") return;
     if (selectedInputSource === "microphone_browser") {
       if (selectedRecognitionBackend === "browser_speech") {
         stopRecognition();
@@ -2609,10 +2615,11 @@ export function RealtimeStudio() {
     }
   }
 
-  const canStartStageCapture = selectedInputSource !== "transcript" && canStartCapture;
-  const canStopStageCapture = selectedInputSource !== "transcript" && canStopCapture;
-  const startRecordingPrimaryStyle =
-    canStartStageCapture && selectedInputSource !== "demo_mode";
+  const canStartStageCapture =
+    selectedInputSource !== "transcript" && selectedInputSource !== "demo_mode" && canStartCapture;
+  const canStopStageCapture =
+    selectedInputSource !== "transcript" && selectedInputSource !== "demo_mode" && canStopCapture;
+  const startRecordingPrimaryStyle = canStartStageCapture;
   const titleDisplay = title.trim() || "未命名会话";
 
   function startTitleEdit() {
@@ -2833,8 +2840,8 @@ export function RealtimeStudio() {
             <p className="text-[11px] leading-relaxed text-theme-3">
               {selectedOption.description}
             </p>
-            {/* 声纹盲认仅与语音/STT 相关；纯文本 Transcript 输入时不展示 */}
-            {selectedInputSource !== "transcript" ? (
+            {/* 声纹盲认仅与语音/STT 相关；纯文本 / 演示模式不展示 */}
+            {selectedInputSource !== "transcript" && selectedInputSource !== "demo_mode" ? (
               <div className="flex min-h-[2rem] items-center justify-between gap-2 rounded-lg border border-theme-subtle bg-surface-muted px-2 py-1">
                 {!isAdmin ? (
                   <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-theme-3">
@@ -2891,14 +2898,16 @@ export function RealtimeStudio() {
                 )}
               </div>
             ) : null}
-            {!audioContext?.is_desktop ? (
-              <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
-                移动端不提供系统声音相关采集入口。
-              </div>
-            ) : !systemAudioExperimentalVisible ? (
-              <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
-                实验性「共享屏幕音频」仅 Chrome/Edge；可用「增强模式」+ 本机 audio helper。
-              </div>
+            {selectedInputSource !== "demo_mode" ? (
+              !audioContext?.is_desktop ? (
+                <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
+                  移动端不提供系统声音相关采集入口。
+                </div>
+              ) : !systemAudioExperimentalVisible ? (
+                <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
+                  实验性「共享屏幕音频」仅 Chrome/Edge；可用「增强模式」+ 本机 audio helper。
+                </div>
+              ) : null
             ) : null}
           </div>
 
