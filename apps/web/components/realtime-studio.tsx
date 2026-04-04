@@ -1665,8 +1665,18 @@ export function RealtimeStudio() {
   }
 
   const createSession = useMutation({
-    mutationFn: () =>
-      api.createRealtimeSession({
+    mutationFn: async () => {
+      // Auto-detect diagram type for manual sessions with existing text input
+      let detectedDiagramType = "flowchart";
+      if (selectedInputSource !== "demo_mode" && transcriptText.trim()) {
+        try {
+          const detected = await api.detectDiagramType(transcriptText.trim());
+          detectedDiagramType = detected.diagram_type;
+        } catch {
+          // Fallback to flowchart; Planner will correct on first update
+        }
+      }
+      return api.createRealtimeSession({
         title,
         dataset_version_slug: datasetVersion || null,
         min_wait_k: 1,
@@ -1679,8 +1689,13 @@ export function RealtimeStudio() {
         stt_profile_id: sttProfileId || null,
         stt_model: sttModel || null,
         diagram_mode: diagramMode,
+        diagram_type:
+          selectedInputSource === "demo_mode"
+            ? mapDiagramHintToMermaidType(demoTranscriptSeed?.diagramType)
+            : detectedDiagramType,
         client_context: currentClientContext(),
-      }),
+      });
+    },
     onSuccess: (data) => {
       setCurrentSessionId(data.session_id);
       setClosedSessionMeta(null);
@@ -2883,6 +2898,77 @@ export function RealtimeStudio() {
             ) : null}
           </div>
 
+          {/* 纯文本输入：简单文本框 + 预设选择器 */}
+          {(selectedInputSource === "demo_mode" || selectedInputSource === "transcript") && (
+            <div className="relative z-[2] flex min-h-0 flex-1 flex-col space-y-3">
+              <div className="flex min-h-0 flex-1 flex-col gap-2">
+                {selectedInputSource === "demo_mode" && (
+                  <label className="text-[12px] font-medium text-theme-2">
+                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-4">演示脚本</span>
+                    <select
+                      className="flex h-9 w-full items-center justify-between rounded-md border border-theme-default bg-surface-2 px-3 text-sm text-theme-1 outline-none transition hover:border-theme-strong focus-visible:ring-2 focus-visible:ring-theme-focus"
+                      value={selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID}
+                      onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                        switchDemoPreset(event.target.value);
+                      }}
+                    >
+                      {CURATED_DEMO_PRESETS.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {selectedInputSource === "transcript" && (
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-4">文本输入</div>
+                )}
+                <Textarea
+                  className="min-h-[10rem] flex-1 resize-y text-[12px] leading-relaxed"
+                  rows={10}
+                  value={transcriptText}
+                  disabled={currentSessionClosed}
+                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
+                    const next = event.target.value;
+                    setTranscriptText(next);
+                    studioSend({ type: "transcript.preview", text: next });
+                  }}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                className="shrink-0 border-violet-900/50 bg-violet-950/45 py-2 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
+                onClick={() => {
+                  if (selectedInputSource === "demo_mode" && demoTranscriptSeed) {
+                    void runDemoSequence(demoTranscriptSeed, "manual");
+                    return;
+                  }
+                  sendTranscript.mutate();
+                }}
+                disabled={
+                  sendTranscript.isPending ||
+                  !transcriptText.trim() ||
+                  currentSessionClosed
+                }
+              >
+                <Send className="h-3.5 w-3.5" />
+                {currentSessionClosed
+                  ? "会话已结束"
+                  : selectedInputSource === "demo_mode"
+                    ? "发送演示脚本"
+                    : "发送文本"}
+              </Button>
+              <p className="text-[10px] leading-snug text-theme-4">
+                {selectedInputSource === "demo_mode"
+                  ? "切换演示脚本后点击发送，或自动播放全部。"
+                  : "按「说话人|内容|意图」格式输入，纯文本则视为单一发言者。"}
+              </p>
+            </div>
+          )}
+
+          {/* 语音输入：实时转写 UI */}
+          {selectedInputSource !== "demo_mode" && selectedInputSource !== "transcript" && (
           <div
             className={`relative z-[2] flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border px-2.5 py-2 transition-[border-color,box-shadow,background] ${
               activeCaptureSource
@@ -2981,33 +3067,12 @@ export function RealtimeStudio() {
                   )}
                 </div>
               </div>
-
-              {selectedInputSource === "transcript" ? (
-                <div className="flex shrink-0 flex-col gap-1.5">
-                  <Textarea
-                    className="min-h-[6.5rem] flex-1 resize-y text-[12px] leading-relaxed"
-                    rows={6}
-                    value={transcriptText}
-                    disabled={currentSessionClosed}
-                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
-                      const next = event.target.value;
-                      setTranscriptText(next);
-                      studioSend({ type: "transcript.preview", text: next });
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="shrink-0 border-violet-900/50 bg-violet-950/45 py-2 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
-                    onClick={() => sendTranscript.mutate()}
-                    disabled={sendTranscript.isPending || !transcriptText.trim() || currentSessionClosed}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    {currentSessionClosed ? "会话已结束" : "发送文本"}
-                  </Button>
-                </div>
-              ) : null}
             </div>
+            <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-theme-4">
+              {currentSessionClosed
+                ? "会话结束后保留只读字幕和下载入口；如需继续，请重建会话。"
+                : "本地预览用于当前字幕，服务端聚合后的最近轮次会保留在下方历史区。"}
+            </p>
 
             <div
               className={`mt-2 shrink-0 border-t pt-2.5 ${

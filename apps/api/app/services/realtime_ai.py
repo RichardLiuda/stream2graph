@@ -211,6 +211,62 @@ def _request_mermaid_candidate(
     return raw_text, candidate, normalized
 
 
+DIAGRAM_TYPE_DETECTION_SYSTEM_PROMPT = (
+    "You analyze a dialogue/conversation transcript and determine the most appropriate Mermaid diagram type.\n"
+    "Return exactly one JSON object with a single key: {\"diagram_type\": \"...\"}.\n"
+    "Valid values and when to use them:\n"
+    "- flowchart: processes, workflows, decision trees, step-by-step procedures, system architectures\n"
+    "- sequence: interactions between actors/systems/components over time, message passing, API calls, request/response flows\n"
+    "- statediagram: state machines, lifecycle transitions, status changes, event-driven behavior\n"
+    "- class: object-oriented class relationships, inheritance, composition, UML class structures\n"
+    "- er: database schemas, entity-relationship modeling, data models, table relationships\n"
+    "- requirement: requirements specification, use case traceability, functional/non-functional requirements\n"
+    "Default to flowchart if uncertain. Return JSON only, no explanations."
+)
+
+
+def detect_diagram_type_from_transcript(
+    transcript: str,
+    *,
+    profile: dict[str, Any] | None = None,
+    model: str | None = None,
+) -> str:
+    """Use LLM to analyze transcript content and detect the most appropriate diagram type."""
+    if not transcript.strip():
+        return "flowchart"
+
+    try:
+        if profile and model:
+            response = _json_post(
+                str(profile["endpoint"]),
+                {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": DIAGRAM_TYPE_DETECTION_SYSTEM_PROMPT},
+                        {"role": "user", "content": f"Analyze this dialogue and determine the best diagram type:\n\n{transcript}"},
+                    ],
+                    "temperature": 0,
+                },
+                _profile_headers(profile),
+                timeout_sec=30,
+            )
+            raw_text = _extract_text_from_chat_response(response)
+            parsed = json.loads(raw_text)
+            detected = str(parsed.get("diagram_type", "flowchart")).strip().lower()
+            valid_types = {"flowchart", "sequence", "sequencediagram", "statediagram", "statediagram-v2", "class", "classdiagram", "er", "erdiagram", "requirementdiagram"}
+            if detected in valid_types:
+                _log_payload(
+                    "Diagram type detection succeeded",
+                    {"detected_type": detected, "transcript_chars": len(transcript)},
+                )
+                return detected
+            logger.warning("Detected invalid diagram type '%s', falling back to flowchart", detected)
+    except Exception as exc:
+        logger.warning("Diagram type detection failed, falling back to flowchart: %s", exc)
+
+    return "flowchart"
+
+
 def generate_mermaid_state(db: Session, session_obj: RealtimeSession) -> dict[str, Any]:
     runtime_options = _current_runtime_options(session_obj)
     profile = resolve_profile(db, "llm", runtime_options.get("llm_profile_id"))

@@ -887,7 +887,8 @@ LIVE_PLANNER_SYSTEM_PROMPT = (
     "You are the large planner model for a collaborative realtime diagram system. "
     "Extend the current graph monotonically using only the observed dialogue and the current GraphIR. "
     "Return one JSON object only. No markdown, no explanations, no prose before or after JSON. "
-    "Preferred top-level keys: delta_ops, notes. Optional top-level keys: target_graph_ir, styles, diagram_type. "
+    "Required top-level keys: diagram_type, delta_ops, notes. "
+    "Optional top-level keys: target_graph_ir, styles. "
     "Use these operation names only: add_group, add_node, add_edge. "
     "Never remove, rename, or rewrite existing ids. Never switch to an unrelated domain. "
     "Reuse literal identifiers from the dialogue whenever possible. "
@@ -897,11 +898,15 @@ LIVE_PLANNER_SYSTEM_PROMPT = (
     "Prefer 2 to 8 style lines total, and keep them valid Mermaid syntax. "
     "If you are unsure about a full graph snapshot, you may omit target_graph_ir and return delta_ops only, but if you need to add or change styles you should include either top-level styles or target_graph_ir.styles. "
     "If target_graph_ir is provided, it must include all previously existing items and all new additions. "
-    "DIAGRAM TYPE SELECTION: If the dialogue clearly implies a specific diagram type, you may suggest changing diagram_type. "
-    "Valid diagram_type values: flowchart (default, for processes/workflows), sequence (for actor interactions over time), "
-    "statediagram (for state machines/state transitions), class (for OOP class relationships), er (for database entity relationships), "
-    "requirement (for requirements traceability). "
-    "Only suggest a diagram_type change if the dialogue strongly implies a different type than the current one."
+    "DIAGRAM TYPE SELECTION: The diagram_type field is REQUIRED in every response. "
+    "Analyze the dialogue content and choose the most appropriate type: "
+    "- flowchart: processes, workflows, step-by-step procedures, decision trees, system architecture "
+    "- sequence: actor-to-actor interactions over time, message passing, API call chains, request/response flows "
+    "- statediagram: state machines, lifecycle transitions, status changes with triggers/guards "
+    "- class: OOP class/struct definitions, inheritance, composition, UML class relationships "
+    "- er: database entity relationships, table schemas, data modeling "
+    "- requirement: requirements specification, use case traceability, functional requirements "
+    "Do NOT default to flowchart unless the dialogue truly describes a generic process or workflow."
 )
 
 
@@ -1537,6 +1542,7 @@ class CoordinationRuntimeSession:
         # Apply diagram_type suggestion from planner if provided
         if planner_decision.diagram_type:
             self.diagram_type = planner_decision.diagram_type
+            next_graph.diagram_type = planner_decision.diagram_type
             _log_coordination_event(
                 "Diagram type updated by planner",
                 {
@@ -1952,6 +1958,7 @@ class CoordinationRuntimeSession:
                         "current_graph_ir": self.current_graph_ir.to_payload(),
                         "current_graph_metrics": _graph_metrics(self.current_graph_ir),
                         "output_contract": {
+                            "diagram_type": "REQUIRED: one of flowchart, sequence, statediagram, class, er, requirement — always include based on dialogue content",
                             "delta_ops": [
                                 {
                                     "op": "add_group|add_node|add_edge",
