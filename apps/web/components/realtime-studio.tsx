@@ -17,6 +17,7 @@ import {
   Pause,
   PanelRight,
   Pencil,
+  Download,
   Save,
   Send,
   StopCircle,
@@ -568,6 +569,41 @@ function buildTranscriptDownloadUrls(sessionId: string) {
   };
 }
 
+function sanitizeDownloadFileName(value: string) {
+  return value
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function downloadTextBlob(filename: string, content: string, mimeType: string) {
+  const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function downloadCurrentMermaidSvg(exportRootId: string, filename: string) {
+  const root = document.querySelector<HTMLElement>(`[data-mermaid-export-root="${exportRootId}"]`);
+  const svgElement = root?.querySelector("svg");
+  if (!(svgElement instanceof SVGSVGElement)) {
+    throw new Error("当前没有可下载的图表。");
+  }
+  const clone = svgElement.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+  const serialized = new XMLSerializer().serializeToString(clone);
+  const svgSource = `<?xml version="1.0" encoding="UTF-8"?>\n${serialized}`;
+  downloadTextBlob(filename, svgSource, "image/svg+xml");
+}
+
 function formatApiTranscriptSegments(segments: Array<Record<string, any>> | null | undefined) {
   if (!segments?.length) return "";
   return segments
@@ -768,6 +804,7 @@ export function RealtimeStudio() {
     captureMode: CaptureMode;
     speaker: string;
   } | null>(null);
+  const apiCaptureStopRequestedRef = useRef(false);
   const inputSourceMenuRef = useRef<HTMLDivElement | null>(null);
   const historyFeedKeysRef = useRef<string[]>([]);
 
@@ -1417,6 +1454,9 @@ export function RealtimeStudio() {
       if (!isFinal && chunkId % 2 === 1) {
         requestApiCaptureFlush(context.sessionId);
       }
+      if (apiCaptureStopRequestedRef.current || apiCaptureContextRef.current !== context) {
+        return;
+      }
       studioSend({ type: "capture.start" });
       setError(null);
     } catch (err) {
@@ -1448,6 +1488,7 @@ export function RealtimeStudio() {
   }
 
   async function teardownApiCaptureGraph({ flush = false }: { flush?: boolean } = {}) {
+    apiCaptureStopRequestedRef.current = true;
     if (apiCaptureFlushTimeoutRef.current !== null) {
       window.clearTimeout(apiCaptureFlushTimeoutRef.current);
       apiCaptureFlushTimeoutRef.current = null;
@@ -1489,6 +1530,7 @@ export function RealtimeStudio() {
       speaker: string;
     },
   ) {
+    apiCaptureStopRequestedRef.current = false;
     apiCaptureContextRef.current = payload;
     resetApiCaptureBuffers();
     apiCaptureUploadQueueRef.current = Promise.resolve();
@@ -1551,17 +1593,24 @@ export function RealtimeStudio() {
   async function startApiCapture() {
     clearFeedback();
     const source = selectedInputSource;
-    if (selectedRecognitionBackend !== "api_stt") {
-      setError("当前识别后端不是 API STT。");
-      return;
-    }
     if (source !== "microphone_browser" && source !== "system_audio_helper") {
       setError("当前输入源不支持 API STT 采集。");
       return;
     }
 
+    if (selectedRecognitionBackend !== "api_stt") {
+      setError("当前识别后端不支持 API STT 采集。");
+      return;
+    }
+
+    if (currentSessionClosed) {
+      setNotice({ tone: "warning", text: "当前会话已结束，请重建会话后继续采集。" });
+      return;
+    }
+
     const sessionId = await ensureSession();
-    let stream: MediaStream | null = null;
+
+    let stream: MediaStream;
     try {
       if (source === "microphone_browser") {
         stream = await window.navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1635,6 +1684,9 @@ export function RealtimeStudio() {
     onSuccess: (data) => {
       setCurrentSessionId(data.session_id);
       setClosedSessionMeta(null);
+      setSnapshot(null);
+      setLocalCommittedTranscriptTurns([]);
+      historyFeedKeysRef.current = [];
       window.localStorage.setItem(LOCAL_SESSION_KEY, data.session_id);
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
     },
@@ -1730,6 +1782,16 @@ export function RealtimeStudio() {
   useEffect(() => {
     historyFeedKeysRef.current = [];
   }, [currentSessionId]);
+
+  useEffect(() => {
+    if (!currentSessionId) {
+      setSnapshot(null);
+      return;
+    }
+    if (snapshot && snapshot.session_id !== currentSessionId) {
+      setSnapshot(null);
+    }
+  }, [currentSessionId, snapshot]);
 
   function pushLocalCommittedTurns(turns: RealtimeTranscriptTurn[]) {
     if (!turns.length) return;
@@ -1948,7 +2010,10 @@ export function RealtimeStudio() {
 
   const saveReportMutation = useMutation({
     mutationFn: (sessionId: string) => api.saveRealtimeReport(sessionId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reports"] }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
+      setNotice({ tone: "success", text: `已生成会话报告 ${data.report_id}。` });
+    },
     onError: (err) => setError((err as Error).message),
   });
 
@@ -2220,15 +2285,17 @@ export function RealtimeStudio() {
     setNotice({ tone: "info", text: message });
   }
 
-  const rendererState = snapshot?.pipeline?.renderer_state || {};
+  const activeSnapshot = snapshot?.session_id === currentSessionId ? snapshot : null;
+  const rendererState = activeSnapshot?.pipeline?.renderer_state || {};
   const events = useMemo<Array<Record<string, any>>>(() => {
-    return Array.isArray(snapshot?.pipeline?.events) ? snapshot.pipeline.events : [];
-  }, [snapshot?.pipeline?.events]);
-  const mermaidState = snapshot?.pipeline?.mermaid_state ?? null;
+    return Array.isArray(activeSnapshot?.pipeline?.events) ? activeSnapshot.pipeline.events : [];
+  }, [activeSnapshot?.pipeline?.events]);
+  const mermaidState = activeSnapshot?.pipeline?.mermaid_state ?? null;
   const rendererGroups =
-    rendererState.groups || snapshot?.pipeline?.graph_state?.current_graph_ir?.groups || [];
-  const currentGraphPayload = snapshot?.pipeline?.graph_state?.current_graph_ir ?? null;
-  const transcriptState = useMemo(() => readTranscriptState(snapshot?.pipeline), [snapshot?.pipeline]);
+    rendererState.groups || activeSnapshot?.pipeline?.graph_state?.current_graph_ir?.groups || [];
+  const currentGraphPayload = activeSnapshot?.pipeline?.graph_state?.current_graph_ir ?? null;
+  const mermaidExportRootId = "realtime-mermaid-export";
+  const transcriptState = useMemo(() => readTranscriptState(activeSnapshot?.pipeline), [activeSnapshot?.pipeline]);
   const transcriptDownloads = useMemo(() => {
     if (!currentSessionId) return null;
     if (closedSessionMeta?.sessionId === currentSessionId) {
@@ -2264,6 +2331,26 @@ export function RealtimeStudio() {
     if (live) return live;
     return activeTranscriptTurn?.text?.trim() || transcriptState.latestFinalTurn?.text?.trim() || "等待识别结果...";
   }, [activeTranscriptTurn, liveTranscript, transcriptState.latestFinalTurn]);
+
+  function downloadCurrentGraph() {
+    if (!currentSessionId) {
+      setError("当前没有可下载的图表。");
+      return;
+    }
+    try {
+      const fileName = `${sanitizeDownloadFileName(titleDisplay || currentSessionId)}_graph.svg`;
+      downloadCurrentMermaidSvg(mermaidExportRootId, fileName);
+      setNotice({ tone: "success", text: "图表 SVG 已开始下载。" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "当前没有可下载的图表。");
+    }
+  }
+
+  async function handleCloseSession() {
+    if (!currentSessionId || currentSessionClosed || closeMutation.isPending) return;
+    await stageStopCapture();
+    await closeMutation.mutateAsync(currentSessionId);
+  }
 
   useEffect(() => {
     const previousKeys = new Set(historyFeedKeysRef.current);
@@ -2475,20 +2562,33 @@ export function RealtimeStudio() {
     }
   }
 
-  function stageStopCapture() {
+  async function stageStopCapture() {
     if (currentSessionClosed) return;
     if (selectedInputSource === "transcript") return;
     if (selectedInputSource === "microphone_browser") {
-      if (selectedRecognitionBackend === "browser_speech") return void stopRecognition();
-      if (selectedRecognitionBackend === "api_stt") return void stopApiCapture();
+      if (selectedRecognitionBackend === "browser_speech") {
+        stopRecognition();
+        return;
+      }
+      if (selectedRecognitionBackend === "api_stt") {
+        await stopApiCapture();
+        return;
+      }
       return;
     }
     if (selectedInputSource === "system_audio_browser_experimental") {
-      return void stopBrowserDisplayAudioValidation();
+      stopBrowserDisplayAudioValidation();
+      return;
     }
     if (selectedInputSource === "system_audio_helper") {
-      if (selectedRecognitionBackend === "local_helper") return void stopHelperCapture();
-      if (selectedRecognitionBackend === "api_stt") return void stopApiCapture();
+      if (selectedRecognitionBackend === "local_helper") {
+        await stopHelperCapture();
+        return;
+      }
+      if (selectedRecognitionBackend === "api_stt") {
+        await stopApiCapture();
+        return;
+      }
     }
   }
 
@@ -3136,6 +3236,7 @@ export function RealtimeStudio() {
                   graphPayload={currentGraphPayload}
                   onNodeRelayout={handleMermaidNodeRelayout}
                   relayoutBusy={relayoutMutation.isPending}
+                  exportRootId={mermaidExportRootId}
                 />
               </div>
             </Tabs.Content>
@@ -3311,25 +3412,36 @@ export function RealtimeStudio() {
                   </div>
                 ) : null}
               </div>
-              <div className="grid w-[min(100%,14rem)] grid-cols-2 gap-2">
+              <div className="grid w-[min(100%,20rem)] grid-cols-3 gap-2">
                 <Button
                   type="button"
                   variant="secondary"
-                  title="保存报告"
+                  title="生成并保存报告"
                   className="h-8 min-w-0 gap-1 px-2 text-xs font-semibold"
                   onClick={() => (currentSessionId ? saveReportMutation.mutate(currentSessionId) : null)}
-                  disabled={!currentSessionId}
+                  disabled={!currentSessionId || saveReportMutation.isPending}
                 >
                   <Save className="h-3 w-3 shrink-0" />
-                  <span className="truncate">保存</span>
+                  <span className="truncate">{saveReportMutation.isPending ? "生成中..." : "生成报告"}</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  title="下载当前图表"
+                  className="h-8 min-w-0 gap-1 px-2 text-xs font-semibold"
+                  onClick={downloadCurrentGraph}
+                  disabled={!currentSessionId || !currentGraphPayload}
+                >
+                  <Download className="h-3 w-3 shrink-0" />
+                  <span className="truncate">下载图表</span>
                 </Button>
                 <Button
                   type="button"
                   variant="danger"
                   title="关闭会话"
                   className="h-8 min-w-0 gap-1 px-2 text-xs font-semibold"
-                  onClick={() => (currentSessionId ? closeMutation.mutate(currentSessionId) : null)}
-                  disabled={!currentSessionId || currentSessionClosed}
+                  onClick={() => void handleCloseSession()}
+                  disabled={!currentSessionId || currentSessionClosed || closeMutation.isPending}
                 >
                   <StopCircle className="h-3 w-3 shrink-0" />
                   <span className="truncate">{currentSessionClosed ? "已结束" : "关闭"}</span>

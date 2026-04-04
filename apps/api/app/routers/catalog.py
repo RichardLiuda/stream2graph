@@ -23,7 +23,6 @@ from app.schemas import (
 )
 from app.services import catalog as catalog_service
 from app.services.runtime_options import (
-    list_persisted_runtime_options,
     list_runtime_options,
     probe_runtime_models,
     save_runtime_options,
@@ -48,7 +47,7 @@ def get_runtime_options(db: Session = Depends(get_db)) -> RuntimeOptionsResponse
 def get_runtime_options_admin(
     db: Session = Depends(get_db),
 ) -> RuntimeOptionsAdminResponse:
-    payload = list_persisted_runtime_options(db, include_secrets=True)
+    payload = list_runtime_options(db, include_secrets=True)
     return RuntimeOptionsAdminResponse(
         gate_profiles=[RuntimeOptionProfileConfig(**row) for row in payload["gate_profiles"]],
         planner_profiles=[RuntimeOptionProfileConfig(**row) for row in payload["planner_profiles"]],

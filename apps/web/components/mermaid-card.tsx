@@ -573,6 +573,7 @@ function MermaidCardBody({
   graphPayload = null,
   onNodeRelayout,
   relayoutBusy = false,
+  exportRootId,
 }: {
   title: string;
   code: string;
@@ -594,6 +595,7 @@ function MermaidCardBody({
   graphPayload?: MermaidGraphPayload;
   onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
   relayoutBusy?: boolean;
+  exportRootId?: string | null;
 }) {
   const id = useId().replace(/:/g, "");
   const [diagramExpanded, setDiagramExpanded] = useState(defaultDiagramExpanded);
@@ -938,6 +940,7 @@ function MermaidCardBody({
                 <div
                   key={zoomRebuildNonce}
                   ref={renderSurfaceRef}
+                  data-mermaid-export-root={exportRootId || undefined}
                   className="relative z-[1] min-h-0 flex-1 [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
                   dangerouslySetInnerHTML={{ __html: svg }}
                 />
@@ -1054,6 +1057,7 @@ export function MermaidCard(props: {
   graphPayload?: MermaidGraphPayload;
   onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
   relayoutBusy?: boolean;
+  exportRootId?: string | null;
 }) {
   return (
     <ErrorBoundary

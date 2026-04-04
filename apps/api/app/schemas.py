@@ -60,6 +60,7 @@ class RuntimeOptionProfileConfig(BaseModel):
     endpoint: str
     models: list[str]
     default_model: str = ""
+    extra_body_json: str | None = None
     app_id: str | None = None
     api_key_env: str | None = None
     api_key: str | None = None

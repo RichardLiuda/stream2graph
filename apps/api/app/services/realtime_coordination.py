@@ -830,6 +830,19 @@ REALTIME_LLM_MAX_RETRIES = 1
 REALTIME_LLM_RETRY_BACKOFF_SEC = 0.5
 
 
+def _parse_profile_extra_body(profile: dict[str, Any]) -> dict[str, Any]:
+    raw = str(profile.get("extra_body_json", "") or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"invalid extra_body_json for profile {profile.get('id', '')}: {exc.msg}") from exc
+    if not isinstance(parsed, dict):
+        raise RuntimeError(f"invalid extra_body_json for profile {profile.get('id', '')}: must be a JSON object")
+    return parsed
+
+
 def build_chat_client(profile: dict[str, Any], model: str, *, timeout_sec: int = REALTIME_LLM_TIMEOUT_SEC):
     provider_kind = str(profile.get("provider_kind", "openai_compatible") or "openai_compatible").strip()
     api_key, api_key_env = _resolve_api_key(profile)
@@ -843,7 +856,7 @@ def build_chat_client(profile: dict[str, Any], model: str, *, timeout_sec: int =
         "retry_backoff_sec": REALTIME_LLM_RETRY_BACKOFF_SEC,
         "temperature": 0.0,
         "omit_temperature": False,
-        "extra_body": {},
+        "extra_body": _parse_profile_extra_body(profile),
     }
     if provider_kind == "local_hf":
         return LocalHFChatClient(**common_kwargs)
