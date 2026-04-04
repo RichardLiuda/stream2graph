@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.db import utc_now
 from app.models import RealtimeChunk, RealtimeEvent, RealtimeSession, RealtimeSnapshot
 from app.services.realtime_coordination import CoordinationRuntimeSession, normalize_runtime_options
+from app.services.realtime_transcript import attach_transcript_state
 
 
 _RUNTIME_LOCK = Lock()
@@ -96,14 +97,21 @@ def replace_events(db: Session, session_id: str, events: list[dict[str, Any]]) -
 
 
 def save_snapshot(db: Session, session_obj: RealtimeSession, *, pipeline: dict[str, Any], evaluation: dict[str, Any] | None) -> None:
+    pipeline = attach_transcript_state(db, session_obj.id, pipeline)
     runtime_meta = {}
     if isinstance(session_obj.config_snapshot, dict):
         runtime_meta = session_obj.config_snapshot.get("input_runtime", {}) if isinstance(session_obj.config_snapshot.get("input_runtime"), dict) else {}
     mermaid_state = pipeline.get("mermaid_state", {}) if isinstance(pipeline.get("mermaid_state"), dict) else {}
+    transcript_state = pipeline.get("transcript_state", {}) if isinstance(pipeline.get("transcript_state"), dict) else {}
     session_obj.summary_json = {
         **(pipeline.get("summary", {}) if isinstance(pipeline.get("summary", {}), dict) else {}),
         "input_runtime": runtime_meta,
         "mermaid_state": mermaid_state,
+        "transcript_summary": {
+            "turn_count": transcript_state.get("turn_count", 0),
+            "speaker_count": transcript_state.get("speaker_count", 0),
+            "chunk_count": transcript_state.get("chunk_count", 0),
+        },
     }
     session_obj.pipeline_payload = pipeline
     session_obj.evaluation_payload = evaluation or {}

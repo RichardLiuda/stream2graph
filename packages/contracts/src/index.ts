@@ -68,6 +68,27 @@ export const realtimeSnapshotSchema = z.object({
   evaluation: z.record(z.any()).nullable().optional(),
 });
 
+export const realtimeTranscriptTurnSchema = z.object({
+  speaker: z.string(),
+  text: z.string(),
+  start_ms: z.number(),
+  end_ms: z.number(),
+  is_final: z.boolean(),
+  source: z.string(),
+  capture_mode: z.string().optional().default(""),
+});
+
+export const realtimeSessionCloseSchema = z.object({
+  ok: z.boolean(),
+  session_id: z.string(),
+  closed: z.boolean(),
+  downloads: z.object({
+    txt_url: z.string(),
+    markdown_url: z.string(),
+  }),
+  transcript_summary: z.record(z.any()),
+});
+
 export const realtimeAudioTranscriptionSchema = z.object({
   ok: z.boolean(),
   text: z.string(),
@@ -201,6 +222,8 @@ export type SampleListItem = z.infer<typeof sampleListItemSchema>;
 export type SampleDetail = z.infer<typeof sampleDetailSchema>;
 export type RealtimeSession = z.infer<typeof realtimeSessionSchema>;
 export type RealtimeSnapshot = z.infer<typeof realtimeSnapshotSchema>;
+export type RealtimeTranscriptTurn = z.infer<typeof realtimeTranscriptTurnSchema>;
+export type RealtimeSessionClose = z.infer<typeof realtimeSessionCloseSchema>;
 export type RealtimeAudioTranscription = z.infer<typeof realtimeAudioTranscriptionSchema>;
 export type VoiceprintFeature = z.infer<typeof voiceprintFeatureSchema>;
 export type VoiceprintGroup = z.infer<typeof voiceprintGroupSchema>;
