@@ -155,6 +155,7 @@ def _current_runtime_options(session_obj: RealtimeSession) -> dict[str, Any]:
     input_runtime = snapshot.get("input_runtime", {})
     if isinstance(input_runtime, dict):
         for key in (
+            "diagram_type",
             "gate_profile_id",
             "gate_model",
             "planner_profile_id",
@@ -236,9 +237,11 @@ def generate_mermaid_state(db: Session, session_obj: RealtimeSession) -> dict[st
             "updated_at": int(time.time() * 1000),
         }
 
+    diagram_type = str(runtime_options.get("diagram_type") or "flowchart").strip()
     prompt = build_final_diagram_user_prompt(
         transcript,
         session_title=session_obj.title,
+        diagram_type=diagram_type,
         current_best=True,
     )
     t0 = time.time()
@@ -251,6 +254,7 @@ def generate_mermaid_state(db: Session, session_obj: RealtimeSession) -> dict[st
             "session_title": session_obj.title,
             "provider": str((profile or {}).get("id", "")),
             "model": model,
+            "diagram_type": diagram_type,
             "transcript_chars": len(transcript),
             "transcript_preview": _snippet(transcript, 800),
         },

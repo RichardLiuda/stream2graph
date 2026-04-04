@@ -30,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       >
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("s2g-theme-mode");document.documentElement.setAttribute("data-theme",t==="light"?"light":"dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();`,
+            __html: `(function(){try{var t=localStorage.getItem("s2g-theme-mode");document.documentElement.setAttribute("data-theme",t==="dark"?"dark":"light");}catch(e){document.documentElement.setAttribute("data-theme","light");}})();`,
           }}
         />
         <Providers>{children}</Providers>

@@ -54,7 +54,7 @@ export const realtimeStudioMachine = setup({
 }).createMachine({
   id: "realtimeStudio",
   context: {
-    selectedInputSource: "transcript",
+    selectedInputSource: "demo_mode",
     recognitionBackend: "manual",
     captureStatus: "idle",
     sttStatus: "idle",

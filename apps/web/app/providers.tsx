@@ -9,13 +9,13 @@ import { Button } from "@stream2graph/ui";
 type ThemeMode = "dark" | "light";
 
 function readThemePreference(): ThemeMode {
-  if (typeof window === "undefined") return "dark";
+  if (typeof window === "undefined") return "light";
   const stored = window.localStorage.getItem("s2g-theme-mode");
-  return stored === "light" ? "light" : "dark";
+  return stored === "dark" ? "dark" : "light";
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<ThemeMode>("dark");
+  const [theme, setTheme] = useState<ThemeMode>("light");
   const [ready, setReady] = useState(false);
 
   useEffect(() => {

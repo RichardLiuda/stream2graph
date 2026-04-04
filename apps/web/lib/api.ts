@@ -30,6 +30,25 @@ function resolveLocalApiBaseUrl(hostname: string) {
   return `http://${hostname}:8000`;
 }
 
+function resolveDirectApiBaseUrl(): string {
+  if (typeof window === "undefined") {
+    return CONFIGURED_API_BASE_URL;
+  }
+
+  const { hostname, protocol } = window.location;
+  const isLocalhost = hostname === "127.0.0.1" || hostname === "localhost" || hostname.endsWith(".local");
+
+  if (isLocalhost || isPrivateLanIPv4Hostname(hostname)) {
+    return resolveLocalApiBaseUrl(hostname);
+  }
+
+  if (protocol === "http:" && CONFIGURED_API_BASE_URL.startsWith("https://")) {
+    return resolveLocalApiBaseUrl(hostname);
+  }
+
+  return CONFIGURED_API_BASE_URL;
+}
+
 const runtimeOptionProfileConfigSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -115,6 +134,12 @@ export function apiUrl(path: string): string {
   return `${clean}${p}`;
 }
 
+export function directApiUrl(path: string): string {
+  const clean = resolveDirectApiBaseUrl().replace(/\/$/, "");
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${clean}${p}`;
+}
+
 function logBrowserApiEvent(label: string, payload: Record<string, unknown>, level: "info" | "error" = "info") {
   if (typeof window === "undefined") return;
   const method = level === "error" ? console.error : console.info;
@@ -152,6 +177,21 @@ function messageFromErrorPayload(raw: Record<string, unknown>): string {
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 25_000;
 const REALTIME_AUDIO_TRANSCRIPTION_TIMEOUT_MS = 90_000;
+const REALTIME_PIPELINE_TIMEOUT_MS = 240_000;
+
+function isRealtimePipelinePath(path: string) {
+  return (
+    /^\/api\/v1\/realtime\/sessions\/[^/]+\/chunks(?:\/batch)?$/.test(path) ||
+    /^\/api\/v1\/realtime\/sessions\/[^/]+\/(?:snapshot|flush|diagram-relayout)$/.test(path)
+  );
+}
+
+function timeoutMessageForPath(path: string, timeoutMs: number) {
+  if (isRealtimePipelinePath(path)) {
+    return `请求超时（前端等待 ${Math.round(timeoutMs / 1000)} 秒）。实时成图、重排或快照在重型样本下可能仍在后端继续执行，这不一定表示 API 或 PostgreSQL 异常；可稍后刷新当前会话查看结果。`;
+  }
+  return "请求超时。请确认：① API 已启动；② PostgreSQL 可连接（登录会查库，库不可达时会一直卡住）；③ 前端与 `NEXT_PUBLIC_API_BASE_URL` 指向同一套服务。";
+}
 
 function shouldLogAsInfo(path: string, response: Response, raw: unknown) {
   return (
@@ -222,6 +262,65 @@ async function request<TSchema extends z.ZodTypeAny>(
       throw new ApiError(
         0,
         `无法连接 API（请求：${tried}）。请确认：① API 已在运行；② 若使用「直连模式」（NEXT_PUBLIC_API_BROWSER_PROXY=0），同一台机须监听 0.0.0.0:8000 且防火墙放行；③ 默认「同源代理」时，Next 会将 /api/* 转到 API_PROXY_TARGET / NEXT_PUBLIC_API_BASE_URL（见 apps/web/next.config.ts），请保证该地址在运行 Next 的机器上可访问。`,
+        {},
+      );
+    }
+    throw e;
+  }
+}
+
+async function requestRealtime<TSchema extends z.ZodTypeAny>(
+  path: string,
+  schema: TSchema,
+  init?: RequestInit,
+): Promise<z.infer<TSchema>> {
+  const timeoutMs = REALTIME_PIPELINE_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const requestUrl = directApiUrl(path);
+  try {
+    const response = await fetch(requestUrl, {
+      credentials: "include",
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers || {}),
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    const text = await response.text();
+    let raw: Record<string, unknown> = {};
+    try {
+      raw = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    } catch {
+      raw = { detail: text || response.statusText };
+    }
+    if (!response.ok) {
+      logBrowserApiEvent(
+        "request failed",
+        {
+          path,
+          url: requestUrl,
+          method: init?.method || "GET",
+          status: response.status,
+          payload: raw,
+        },
+        apiErrorLogLevel(path, response.status),
+      );
+      throw new ApiError(response.status, messageFromErrorPayload(raw), raw);
+    }
+    return schema.parse(raw);
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e instanceof ApiError) throw e;
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new ApiError(0, timeoutMessageForPath(path, timeoutMs), {});
+    }
+    if (e instanceof TypeError) {
+      throw new ApiError(
+        0,
+        `无法直连实时 API（请求：${requestUrl}）。请确认：① API 已在 8000 端口运行；② 浏览器可直接访问 ${requestUrl}; ③ 后端 CORS 允许当前页面来源。`,
         {},
       );
     }
@@ -331,7 +430,7 @@ export const api = {
       { method: "DELETE" },
     ),
   addRealtimeChunk: async (sessionId: string, payload: Record<string, unknown>) =>
-    request(
+    requestRealtime(
       `/api/v1/realtime/sessions/${sessionId}/chunks`,
       z.object({
         ok: z.boolean(),
@@ -346,7 +445,7 @@ export const api = {
       },
     ),
   addRealtimeChunksBatch: async (sessionId: string, payload: Record<string, unknown>) =>
-    request(
+    requestRealtime(
       `/api/v1/realtime/sessions/${sessionId}/chunks/batch`,
       z.object({
         ok: z.boolean(),
@@ -373,15 +472,15 @@ export const api = {
       },
     ),
   snapshotRealtime: async (sessionId: string) =>
-    request(`/api/v1/realtime/sessions/${sessionId}/snapshot`, realtimeSnapshotSchema, {
+    requestRealtime(`/api/v1/realtime/sessions/${sessionId}/snapshot`, realtimeSnapshotSchema, {
       method: "POST",
     }),
   flushRealtime: async (sessionId: string) =>
-    request(`/api/v1/realtime/sessions/${sessionId}/flush`, realtimeSnapshotSchema, {
+    requestRealtime(`/api/v1/realtime/sessions/${sessionId}/flush`, realtimeSnapshotSchema, {
       method: "POST",
     }),
   relayoutRealtimeDiagram: async (sessionId: string, payload: Record<string, unknown>) =>
-    request(`/api/v1/realtime/sessions/${sessionId}/diagram-relayout`, realtimeSnapshotSchema, {
+    requestRealtime(`/api/v1/realtime/sessions/${sessionId}/diagram-relayout`, realtimeSnapshotSchema, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
