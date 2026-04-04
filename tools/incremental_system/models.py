@@ -156,14 +156,22 @@ def _extract_identifier_candidates(turns: list[DialogueTurn], limit: int = 24) -
 
 def _diagram_type_alignment_priors(diagram_type: str) -> dict[str, Any]:
     diagram_type = (diagram_type or "").lower()
-    if diagram_type in {"mindmap", "statediagram", "er"}:
-        return {"allow_edges": False, "allow_groups": False}
-    if diagram_type == "sequence":
-        return {"allow_edges": False, "allow_groups": False}
+    if diagram_type in {"mindmap"}:
+        return {"allow_edges": True, "allow_groups": True}
+    if diagram_type in {"sequence", "sequencediagram"}:
+        return {"allow_edges": True, "allow_groups": False}
+    if diagram_type in {"state", "statediagram", "statediagram-v2"}:
+        return {"allow_edges": True, "allow_groups": False}
+    if diagram_type in {"er", "erdiagram"}:
+        return {"allow_edges": True, "allow_groups": False}
+    if diagram_type in {"class", "classdiagram"}:
+        return {"allow_edges": True, "allow_groups": False}
+    if diagram_type in {"requirement", "requirementdiagram"}:
+        return {"allow_edges": True, "allow_groups": False}
     if diagram_type == "flowchart":
-        return {"allow_edges": False, "allow_groups": True}
+        return {"allow_edges": True, "allow_groups": True}
     if diagram_type == "architecture":
-        return {"allow_edges": False, "allow_groups": True}
+        return {"allow_edges": True, "allow_groups": True}
     return {"allow_edges": True, "allow_groups": True}
 
 
