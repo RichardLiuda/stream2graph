@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from types import MethodType, SimpleNamespace
 
 from app.services.realtime_coordination import (
@@ -11,6 +12,8 @@ from app.services.realtime_coordination import (
     _coerce_style_entries,
 )
 from app.models import RealtimeSession
+from tools.incremental_dataset.schema import GraphGroup, GraphIR, GraphNode
+from tools.incremental_dataset.staging import render_preview_mermaid
 
 
 def test_runtime_session_emits_pipeline_payload() -> None:
@@ -172,3 +175,34 @@ def test_style_entries_normalize_class_targets() -> None:
         {"line": "class node_a,node_b primary"},
         {"line": "class node_c,node_d secondary"},
     ]
+
+
+def test_render_preview_mermaid_sanitizes_reserved_identifiers_and_style_aliases() -> None:
+    graph_ir = GraphIR(
+        graph_id="render-smoke",
+        diagram_type="flowchart",
+        nodes=[
+            GraphNode(id="end", label="结束节点", parent="online_group", source_index=1),
+            GraphNode(id="423_market", label="423书菜云集市", parent="online_group", source_index=2),
+            GraphNode(id="sound_cloud_reading", label="声动云端有声阅读大赛", parent="online_group", source_index=3),
+        ],
+        groups=[
+            GraphGroup(id="online_group", label="线上活动", source_index=1),
+        ],
+        styles=[
+            {"line": "classDef end fill:#fef3c7,stroke:#f59e0b,font-weight:bold"},
+            {"line": "class node_end,423_market,sound_cloud_reading start,end"},
+            {"line": "style group_online_group fill:#eff6ff,stroke:#3b82f6"},
+        ],
+    )
+
+    code = render_preview_mermaid(graph_ir)
+
+    assert "classDef end " not in code
+    assert "class node_end" not in code
+    assert "style group_online_group " not in code
+    assert not re.search(r"^\s*end\[", code, flags=re.MULTILINE)
+    assert not re.search(r"^\s*423_market\[", code, flags=re.MULTILINE)
+    assert re.search(r"^\s*classDef [A-Za-z][A-Za-z0-9_]* fill:#fef3c7,stroke:#f59e0b,font-weight:bold$", code, flags=re.MULTILINE)
+    assert re.search(r"^\s*class [A-Za-z0-9_,]+ start,class_end$", code, flags=re.MULTILINE)
+    assert re.search(r"^\s*style online_group fill:#eff6ff,stroke:#3b82f6$", code, flags=re.MULTILINE)

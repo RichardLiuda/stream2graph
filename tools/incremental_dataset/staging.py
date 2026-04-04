@@ -17,6 +17,17 @@ STAGE_NAMES = {
 
 MERMAID_STYLE_RE = re.compile(r"^\s*(classDef|class|style|linkStyle)\b", flags=re.IGNORECASE)
 MERMAID_INIT_RE = re.compile(r"^\s*%%\s*\{init:", flags=re.IGNORECASE)
+MERMAID_RESERVED_IDENTIFIERS = {
+    "end",
+    "subgraph",
+    "class",
+    "classdef",
+    "style",
+    "linkstyle",
+    "click",
+    "graph",
+    "flowchart",
+}
 
 
 def _escape_label(label: str) -> str:
@@ -122,6 +133,119 @@ def _style_line_from_entry(entry: object) -> tuple[str, str] | None:
     return None
 
 
+def _safe_mermaid_identifier(raw: str, fallback: str, seen: set[str]) -> str:
+    value = re.sub(r"[^A-Za-z0-9_]+", "_", str(raw or "").strip())
+    value = re.sub(r"_+", "_", value).strip("_")
+    if not value:
+        value = fallback
+    if not re.match(r"^[A-Za-z]", value):
+        value = f"{fallback}_{value}"
+    if value.lower() in MERMAID_RESERVED_IDENTIFIERS:
+        value = f"{fallback}_{value}"
+    value = value[:64].strip("_") or fallback
+
+    candidate = value
+    suffix = 2
+    while candidate in seen:
+        suffix_text = f"_{suffix}"
+        candidate = f"{value[: max(1, 64 - len(suffix_text))]}{suffix_text}"
+        suffix += 1
+    seen.add(candidate)
+    return candidate
+
+
+def _standalone_mermaid_identifier(raw: str, fallback: str) -> str:
+    return _safe_mermaid_identifier(raw, fallback, set())
+
+
+def _build_mermaid_identifier_maps(graph_ir: GraphIR) -> tuple[dict[str, str], dict[str, str]]:
+    seen: set[str] = set()
+    entity_ids: dict[str, str] = {}
+
+    for index, group in enumerate(sorted(graph_ir.groups, key=lambda item: (item.source_index, item.id)), start=1):
+        entity_ids[group.id] = _safe_mermaid_identifier(group.id, f"group_{index}", seen)
+    for index, node in enumerate(sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)), start=1):
+        entity_ids[node.id] = _safe_mermaid_identifier(node.id, f"node_{index}", seen)
+
+    alias_ids: dict[str, str] = {}
+    for original, safe in entity_ids.items():
+        alias_ids[original] = safe
+        alias_ids[safe] = safe
+        alias_ids.setdefault(f"node_{original}", safe)
+        alias_ids.setdefault(f"group_{original}", safe)
+    return entity_ids, alias_ids
+
+
+def _build_mermaid_class_name_map(style_lines: list[str]) -> tuple[dict[str, str], set[str]]:
+    seen: set[str] = set()
+    class_names: dict[str, str] = {}
+    for raw_line in style_lines:
+        compact = " ".join(str(raw_line or "").strip().split())
+        match = re.match(r"(?i)^classDef\s+(\S+)\s+(.+)$", compact)
+        if not match:
+            continue
+        raw_name = match.group(1).strip()
+        if raw_name and raw_name not in class_names:
+            class_names[raw_name] = _safe_mermaid_identifier(raw_name, "class", seen)
+    return class_names, seen
+
+
+def _rewrite_mermaid_style_line(
+    raw_line: str,
+    entity_aliases: dict[str, str],
+    class_names: dict[str, str],
+    seen_class_names: set[str],
+) -> str:
+    compact = " ".join(str(raw_line or "").strip().split())
+    if not compact:
+        return ""
+    lowered = compact.lower()
+    if MERMAID_INIT_RE.match(compact):
+        return compact
+    if lowered.startswith("classdef "):
+        match = re.match(r"(?i)^classDef\s+(\S+)\s+(.+)$", compact)
+        if not match:
+            return compact
+        raw_name = match.group(1).strip()
+        attrs = match.group(2).strip()
+        safe_name = class_names.setdefault(raw_name, _safe_mermaid_identifier(raw_name, "class", seen_class_names))
+        return f"classDef {safe_name} {attrs}"
+    if lowered.startswith("class "):
+        match = re.match(r"(?i)^class\s+(.+?)\s+(\S+)$", compact)
+        if not match:
+            return compact
+        raw_targets = match.group(1).strip()
+        raw_name = match.group(2).strip()
+        targets: list[str] = []
+        for token in re.split(r"[\s,]+", raw_targets):
+            candidate = token.strip()
+            if not candidate:
+                continue
+            targets.append(entity_aliases.get(candidate, _standalone_mermaid_identifier(candidate, "id")))
+        if not targets:
+            return ""
+        safe_names: list[str] = []
+        for token in raw_name.split(","):
+            class_token = token.strip()
+            if not class_token:
+                continue
+            safe_names.append(
+                class_names.setdefault(class_token, _safe_mermaid_identifier(class_token, "class", seen_class_names))
+            )
+        if not safe_names:
+            return ""
+        return f"class {','.join(dict.fromkeys(targets))} {','.join(dict.fromkeys(safe_names))}"
+    if lowered.startswith("style "):
+        match = re.match(r"(?i)^style\s+(\S+)\s+(.+)$", compact)
+        if not match:
+            return compact
+        raw_target = match.group(1).strip()
+        attrs = match.group(2).strip()
+        safe_target = entity_aliases.get(raw_target, _standalone_mermaid_identifier(raw_target, "id"))
+        return f"style {safe_target} {attrs}"
+    return compact
+
+
 def _extract_mermaid_style_lines(graph_ir: GraphIR) -> tuple[list[str], list[str]]:
     init_lines: list[str] = []
     style_lines: list[str] = []
@@ -147,37 +271,53 @@ def render_preview_mermaid(graph_ir: GraphIR) -> str:
     diagram_type = (graph_ir.diagram_type or "flowchart").strip()
     normalized_type = diagram_type.lower()
     init_lines, style_lines = _extract_mermaid_style_lines(graph_ir)
+    entity_id_map, entity_aliases = _build_mermaid_identifier_maps(graph_ir)
+    class_name_map, seen_class_names = _build_mermaid_class_name_map(style_lines)
+    rewritten_style_lines: list[str] = []
+    seen_rewritten_style_lines: set[str] = set()
+    for raw_line in style_lines:
+        rewritten = _rewrite_mermaid_style_line(raw_line, entity_aliases, class_name_map, seen_class_names)
+        if not rewritten or rewritten in seen_rewritten_style_lines:
+            continue
+        seen_rewritten_style_lines.add(rewritten)
+        rewritten_style_lines.append(rewritten)
 
     if normalized_type in {"sequence", "sequencediagram"}:
         lines = [*init_lines, "sequenceDiagram"]
         for node in sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)):
             label = _escape_label(node.label or node.id)
-            lines.append(f"    participant {node.id} as {label}")
+            lines.append(f"    participant {entity_id_map.get(node.id, node.id)} as {label}")
         for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
             edge_label = _escape_label(edge.label or edge.id or "relates")
-            lines.append(f"    {edge.source}->>{edge.target}: {edge_label}")
-        lines.extend(f"    {line}" for line in style_lines)
+            lines.append(
+                f"    {entity_id_map.get(edge.source, edge.source)}->>{entity_id_map.get(edge.target, edge.target)}: {edge_label}"
+            )
+        lines.extend(f"    {line}" for line in rewritten_style_lines)
         return "\n".join(lines)
 
     if normalized_type in {"class", "classdiagram"}:
         lines = [*init_lines, "classDiagram"]
         for node in sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)):
-            lines.append(f"    class {node.id}")
+            lines.append(f"    class {entity_id_map.get(node.id, node.id)}")
         for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
             edge_label = f" : {_escape_label(edge.label)}" if edge.label else ""
-            lines.append(f"    {edge.source} --> {edge.target}{edge_label}")
-        lines.extend(f"    {line}" for line in style_lines)
+            lines.append(
+                f"    {entity_id_map.get(edge.source, edge.source)} --> {entity_id_map.get(edge.target, edge.target)}{edge_label}"
+            )
+        lines.extend(f"    {line}" for line in rewritten_style_lines)
         return "\n".join(lines)
 
     if normalized_type in {"state", "statediagram", "statediagram-v2"}:
         lines = [*init_lines, "stateDiagram-v2"]
         for node in sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)):
             label = _escape_label(node.label or node.id)
-            lines.append(f'    state "{label}" as {node.id}')
+            lines.append(f'    state "{label}" as {entity_id_map.get(node.id, node.id)}')
         for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
             edge_label = f" : {_escape_label(edge.label)}" if edge.label else ""
-            lines.append(f"    {edge.source} --> {edge.target}{edge_label}")
-        lines.extend(f"    {line}" for line in style_lines)
+            lines.append(
+                f"    {entity_id_map.get(edge.source, edge.source)} --> {entity_id_map.get(edge.target, edge.target)}{edge_label}"
+            )
+        lines.extend(f"    {line}" for line in rewritten_style_lines)
         return "\n".join(lines)
 
     lines = [*init_lines, "graph TD"]
@@ -195,21 +335,25 @@ def render_preview_mermaid(graph_ir: GraphIR) -> str:
     def emit_group(group_id: str | None, indent: int = 1) -> None:
         prefix = "    " * indent
         for group in child_groups.get(group_id, []):
-            lines.append(f'{prefix}subgraph {group.id}["{_escape_label(group.label or group.id)}"]')
+            lines.append(
+                f'{prefix}subgraph {entity_id_map.get(group.id, group.id)}["{_escape_label(group.label or group.id)}"]'
+            )
             for node in nodes_by_parent.get(group.id, []):
                 label = _escape_label(node.label or node.id)
-                lines.append(f'{prefix}    {node.id}["{label}"]')
+                lines.append(f'{prefix}    {entity_id_map.get(node.id, node.id)}["{label}"]')
             emit_group(group.id, indent + 1)
             lines.append(f"{prefix}end")
 
     for node in nodes_by_parent.get(None, []):
         label = _escape_label(node.label or node.id)
-        lines.append(f'    {node.id}["{label}"]')
+        lines.append(f'    {entity_id_map.get(node.id, node.id)}["{label}"]')
     emit_group(None)
     for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
         edge_label = f"|{_escape_label(edge.label)}|" if edge.label else ""
-        lines.append(f"    {edge.source} -->{edge_label} {edge.target}")
-    lines.extend(f"    {line}" for line in style_lines)
+        lines.append(
+            f"    {entity_id_map.get(edge.source, edge.source)} -->{edge_label} {entity_id_map.get(edge.target, edge.target)}"
+        )
+    lines.extend(f"    {line}" for line in rewritten_style_lines)
     return "\n".join(lines)
 
 
