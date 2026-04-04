@@ -96,7 +96,7 @@ export function getInputSourceOptions(context: ClientAudioContext | null): Input
   const demoOption: InputSourceOption = {
     source: "demo_mode",
     label: "演示模式",
-    description: "默认载入 4 组来自公开访谈与活动通知的真实演示脚本，适合快速成图、多画布切换和不同图型展示。",
+    description: "默认载入 6 组基于公开访谈、办事指南和活动通知整理的中文演示脚本，直接用文本完成成图演示。",
     capture_mode: "manual_text",
     capability_status: "supported",
     capability_reason: "始终可用。",
