@@ -610,7 +610,7 @@ export function HomePage() {
 
         <section className="relative mx-auto w-full max-w-5xl px-6 pb-24 pt-6 text-theme-2 md:px-10 md:pb-28 md:pt-8">
           <Reveal rootRef={scrollRef} delayMs={0}>
-            <div className="relative overflow-hidden rounded-3xl border border-[color:var(--accent-muted)] bg-gradient-to-br from-[color:var(--accent)]/10 via-surface-muted to-surface-1/80 p-8 md:p-10">
+            <div className="relative overflow-hidden rounded-3xl border border-[color:var(--accent-muted)]/70 bg-gradient-to-br from-[color:var(--accent)]/12 via-surface-1/45 to-surface-1/35 p-8 shadow-lg backdrop-blur-xl backdrop-saturate-150 md:p-10">
               <span
                 className="pointer-events-none absolute left-2 top-0 translate-y-2 font-display text-[6.5rem] leading-none text-[color:var(--accent)] opacity-20"
                 aria-hidden
