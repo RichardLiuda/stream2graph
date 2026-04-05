@@ -830,11 +830,14 @@ const STAGE_TABS: ReadonlyArray<readonly [string, string]> = [
   ["pipeline", "运行摘要"],
 ] as const;
 
+/** 新建 / 重建会话时服务端与顶栏使用的默认名称 */
+const DEFAULT_REALTIME_SESSION_TITLE = "研究演示会话";
+
 export function RealtimeStudio() {
   const queryClient = useQueryClient();
   const [studioState, studioSend] = useMachine(realtimeStudioMachine);
-  const [title, setTitle] = useState("研究演示会话");
-  const [titleDraft, setTitleDraft] = useState("研究演示会话");
+  const [title, setTitle] = useState(DEFAULT_REALTIME_SESSION_TITLE);
+  const [titleDraft, setTitleDraft] = useState(DEFAULT_REALTIME_SESSION_TITLE);
   const [isTitleEditing, setIsTitleEditing] = useState(false);
   const [datasetVersion, setDatasetVersion] = useState("");
   const [selectedTranscriptPresetId, setSelectedTranscriptPresetId] = useState(
@@ -920,6 +923,8 @@ export function RealtimeStudio() {
   const inputSourceMenuRef = useRef<HTMLDivElement | null>(null);
   const historyFeedKeysRef = useRef<string[]>([]);
   const previousActiveCanvasIdRef = useRef<string | null>(null);
+  /** 用于区分「首次创建」与「重建会话」：仅重建时把标题恢复默认 */
+  const recreatingSessionRef = useRef(false);
 
   const demoTranscriptSeed = useMemo(() => {
     const presetId = selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID;
@@ -950,8 +955,8 @@ export function RealtimeStudio() {
     const preset = CURATED_DEMO_PRESETS[0];
     setSelectedTranscriptPresetId(preset.id);
     setTranscriptText((current) => (current.trim() ? current : preset.value));
-    setTitle((current) => (current === "研究演示会话" ? preset.label : current));
-    setTitleDraft((current) => (current === "研究演示会话" ? preset.label : current));
+    setTitle((current) => (current === DEFAULT_REALTIME_SESSION_TITLE ? preset.label : current));
+    setTitleDraft((current) => (current === DEFAULT_REALTIME_SESSION_TITLE ? preset.label : current));
   }, [selectedInputSource, selectedTranscriptPresetId]);
   const plannerStatus = studioState.context.plannerStatus;
   const mermaidStatus = studioState.context.mermaidStatus;
@@ -1605,7 +1610,7 @@ export function RealtimeStudio() {
         });
       }
       if (isFinal) {
-        syncPipelineStatus(response.pipeline);
+      syncPipelineStatus(response.pipeline);
       }
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
       if (!isFinal && chunkId % 2 === 1) {
@@ -1822,7 +1827,14 @@ export function RealtimeStudio() {
   }
 
   const createSession = useMutation({
+    onMutate: () => {
+      recreatingSessionRef.current = Boolean(currentSessionId);
+    },
     mutationFn: async () => {
+      // 重建时会话标题必须在请求里就用默认名：onSuccess 再 setState 无法改写已创建的会话标题
+      const resolvedTitle = recreatingSessionRef.current
+        ? DEFAULT_REALTIME_SESSION_TITLE
+        : title.trim() || DEFAULT_REALTIME_SESSION_TITLE;
       // Auto-detect diagram type for manual sessions with existing text input
       let detectedDiagramType = "flowchart";
       if (selectedInputSource !== "demo_mode" && transcriptText.trim()) {
@@ -1834,7 +1846,7 @@ export function RealtimeStudio() {
         }
       }
       return api.createRealtimeSession({
-        title,
+        title: resolvedTitle,
         dataset_version_slug: datasetVersion || null,
         min_wait_k: 1,
         base_wait_k: 2,
@@ -1859,10 +1871,18 @@ export function RealtimeStudio() {
       setSnapshot(null);
       setLocalCommittedTranscriptTurns([]);
       historyFeedKeysRef.current = [];
+      if (recreatingSessionRef.current) {
+        setTitle(DEFAULT_REALTIME_SESSION_TITLE);
+        setTitleDraft(DEFAULT_REALTIME_SESSION_TITLE);
+      }
       window.localStorage.setItem(LOCAL_SESSION_KEY, data.session_id);
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      recreatingSessionRef.current = false;
     },
-    onError: (err) => setError((err as Error).message),
+    onError: (err) => {
+      recreatingSessionRef.current = false;
+      setError((err as Error).message);
+    },
   });
 
   const renameSessionMutation = useMutation({
@@ -2089,8 +2109,17 @@ export function RealtimeStudio() {
         coordination_summary: data?.pipeline?.coordination_summary ?? null,
       });
       syncPipelineStatus(data?.pipeline);
-      setNotice({ tone: "success", text: "Transcript 已写入当前会话。" });
+      setNotice({ tone: "success", text: "已写入当前会话。" });
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      if (selectedInputSource === "demo_mode") {
+        const presetId = selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID;
+        const preset = CURATED_DEMO_PRESETS.find((item) => item.id === presetId) || CURATED_DEMO_PRESETS[0];
+        setTranscriptText(preset.value);
+        studioSend({ type: "transcript.preview", text: preset.value });
+      } else {
+        setTranscriptText("");
+        studioSend({ type: "transcript.preview", text: "" });
+      }
     },
     onError: (err) => {
       logBrowserRuntime("transcript send failed", { error: (err as Error).message }, "error");
@@ -2175,8 +2204,8 @@ export function RealtimeStudio() {
         setSnapshot(null);
         setClosedSessionMeta(null);
         studioSend({ type: "capture.stop" });
-        setTitle("研究演示会话");
-        setTitleDraft("研究演示会话");
+        setTitle(DEFAULT_REALTIME_SESSION_TITLE);
+        setTitleDraft(DEFAULT_REALTIME_SESSION_TITLE);
       }
       setNotice({ tone: "success", text: "已删除该会话。" });
       setDeleteSessionConfirmId(null);
@@ -2816,26 +2845,26 @@ export function RealtimeStudio() {
     currentSessionClosed
       ? false
       : selectedRecognitionBackend === "browser_speech"
-        ? !listening
-        : selectedRecognitionBackend === "browser_display_validation"
-          ? activeCaptureSource !== "system_audio_browser_experimental"
-          : selectedRecognitionBackend === "local_helper"
-            ? activeCaptureSource !== "system_audio_helper"
-            : selectedRecognitionBackend === "api_stt"
-              ? captureStatus === "idle"
-              : false;
+      ? !listening
+      : selectedRecognitionBackend === "browser_display_validation"
+        ? activeCaptureSource !== "system_audio_browser_experimental"
+        : selectedRecognitionBackend === "local_helper"
+          ? activeCaptureSource !== "system_audio_helper"
+          : selectedRecognitionBackend === "api_stt"
+            ? captureStatus === "idle"
+            : false;
   const canStopCapture =
     currentSessionClosed
       ? false
       : selectedRecognitionBackend === "browser_speech"
-        ? listening
-        : selectedRecognitionBackend === "browser_display_validation"
-          ? activeCaptureSource === "system_audio_browser_experimental"
-          : selectedRecognitionBackend === "local_helper"
-            ? activeCaptureSource === "system_audio_helper"
-            : selectedRecognitionBackend === "api_stt"
-              ? captureStatus !== "idle"
-              : false;
+      ? listening
+      : selectedRecognitionBackend === "browser_display_validation"
+        ? activeCaptureSource === "system_audio_browser_experimental"
+        : selectedRecognitionBackend === "local_helper"
+          ? activeCaptureSource === "system_audio_helper"
+          : selectedRecognitionBackend === "api_stt"
+            ? captureStatus !== "idle"
+            : false;
 
   /** @description 主舞台顶栏：与抽屉内相同的开始/暂停（停止）采集逻辑 */
   async function stageStartCapture() {
@@ -2891,6 +2920,9 @@ export function RealtimeStudio() {
   const canStartStageCapture = !isTextOnlySource && canStartCapture;
   const canStopStageCapture = !isTextOnlySource && canStopCapture;
   const startRecordingPrimaryStyle = canStartStageCapture;
+  const canSendTranscriptChunk =
+    !currentSessionClosed && !sendTranscript.isPending && Boolean(transcriptText.trim());
+  const sendTranscriptPrimaryStyle = canSendTranscriptChunk;
   const titleDisplay = title.trim() || "未命名会话";
 
   function startTitleEdit() {
@@ -2927,7 +2959,7 @@ export function RealtimeStudio() {
   }
 
   if (authQuery.isLoading) {
-    return (
+  return (
       <div className="flex min-h-[50vh] items-center justify-center px-4 text-sm text-theme-4">
         正在加载工作台…
       </div>
@@ -2975,7 +3007,7 @@ export function RealtimeStudio() {
             <p className="hidden max-w-md text-[11px] leading-snug text-theme-4 md:block">
               开麦或发送 Transcript 后，主图与结构视图会更新。
             </p>
-          </div>
+            </div>
           <div className="ml-auto flex min-w-0 items-center justify-end gap-2 pr-12 sm:pr-14">
             <div className="group relative">
               <Badge
@@ -3179,12 +3211,12 @@ export function RealtimeStudio() {
             {selectedInputSource !== "demo_mode" ? (
               !audioContext?.is_desktop ? (
                 <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
-                  移动端不提供系统声音相关采集入口。
-                </div>
-              ) : !systemAudioExperimentalVisible ? (
+                移动端不提供系统声音相关采集入口。
+              </div>
+            ) : !systemAudioExperimentalVisible ? (
                 <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
                   实验性「共享屏幕音频」仅 Chrome/Edge；要稳定听电脑里的声音请用「本机内录转写」并启动本机 audio helper。
-                </div>
+              </div>
               ) : null
             ) : null}
           </div>
@@ -3221,7 +3253,7 @@ export function RealtimeStudio() {
                     ) : (
                       <Badge className="text-[9px]">手动输入</Badge>
                     )}
-                  </div>
+            </div>
                 </div>
                 <div className="mt-1.5 flex shrink-0 flex-wrap gap-1.5">
                   <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
@@ -3263,42 +3295,58 @@ export function RealtimeStudio() {
                     {selectedInputSource === "transcript" && (
                       <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-4">文本输入</div>
                     )}
-                    <Textarea
+                <Textarea
                       className="min-h-[10rem] flex-1 resize-y text-[12px] leading-relaxed"
                       rows={10}
-                      value={transcriptText}
+                  value={transcriptText}
                       disabled={currentSessionClosed}
-                      onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
-                        const next = event.target.value;
-                        setTranscriptText(next);
-                        studioSend({ type: "transcript.preview", text: next });
-                      }}
-                    />
+                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
+                    const next = event.target.value;
+                    setTranscriptText(next);
+                    studioSend({ type: "transcript.preview", text: next });
+                  }}
+                />
                   </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="shrink-0 border-violet-900/50 bg-violet-950/45 py-2 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
-                    onClick={() => {
-                      sendTranscript.mutate();
-                    }}
-                    disabled={
-                      sendTranscript.isPending ||
-                      !transcriptText.trim() ||
-                      currentSessionClosed
-                    }
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    {currentSessionClosed
-                      ? "会话已结束"
-                      : selectedInputSource === "demo_mode"
-                        ? "生成演示图表"
-                        : "发送文本"}
-                  </Button>
+                  <div className="flex min-w-0 shrink-0 flex-wrap items-stretch gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                      disabled={!canSendTranscriptChunk}
+                      className={`min-h-[2.75rem] min-w-0 flex-1 px-3 text-xs font-semibold transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-45 ${
+                        sendTranscriptPrimaryStyle
+                          ? "border-violet-200/90 bg-violet-700/70 text-violet-50 shadow-[0_0_0_1px_rgba(139,92,246,0.32)_inset,0_10px_22px_rgba(109,40,217,0.36)] hover:border-violet-200/95 hover:bg-violet-700/75 focus-visible:ring-violet-200/80"
+                          : "border-violet-900/50 bg-violet-950/45 text-violet-200 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-violet-700"
+                      }`}
+                      onClick={() => {
+                        sendTranscript.mutate();
+                      }}
+                    >
+                      <Send className="h-3.5 w-3.5 shrink-0" />
+                      {currentSessionClosed
+                        ? "会话已结束"
+                        : selectedInputSource === "demo_mode"
+                          ? "生成演示图表"
+                          : "发送文本"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-auto min-h-[2.75rem] shrink-0 px-3 text-xs font-semibold text-theme-3 hover:bg-surface-muted hover:text-theme-2"
+                      disabled={
+                        currentSessionClosed || sendTranscript.isPending || !transcriptText.trim()
+                      }
+                      onClick={() => {
+                        setTranscriptText("");
+                        studioSend({ type: "transcript.preview", text: "" });
+                      }}
+                    >
+                      清空输入
+                </Button>
+                  </div>
                   <p className="text-[10px] leading-snug text-theme-4">
                     {selectedInputSource === "demo_mode"
-                      ? "切换演示类型后点击生成即可。"
-                      : "按「说话人|内容|意图」格式输入，纯文本则视为单一发言者。"}
+                      ? "有内容时主按钮高亮；发送后恢复当前演示脚本。历史转写为只读，改图请再发一段或重建会话。"
+                      : "有内容时主按钮高亮；发送后清空输入框。历史转写仅展示已入库轮次，不能直接改图——请在本框继续发送新内容。"}
                   </p>
                 </Tabs.Content>
 
@@ -3340,14 +3388,14 @@ export function RealtimeStudio() {
                               </div>
                             </div>
                           ))}
-                        </div>
-                      ) : (
+              </div>
+            ) : (
                         <div className="flex h-full min-h-[6rem] items-center justify-center rounded-lg border border-dashed border-[color:var(--accent)]/30 bg-[color:var(--accent)]/[0.04] px-3 py-3 text-center text-[12px] leading-relaxed text-theme-3">
                           {currentSessionClosed
                             ? "当前会话没有可回看的历史转写。"
                             : "发送成功后的轮次会出现在这里；草稿在「当前输入」继续编辑。"}
-                        </div>
-                      )}
+              </div>
+            )}
                     </div>
                   </div>
                 </Tabs.Content>
@@ -3358,8 +3406,8 @@ export function RealtimeStudio() {
                   : selectedInputSource === "demo_mode"
                     ? "演示：在「当前输入」选脚本并生成；已发送内容在「历史转写」回看。"
                     : "文本：在「当前输入」编辑并发送；归档在「历史转写」查看。"}
-              </p>
-            </div>
+            </p>
+          </div>
           )}
 
           {/* 语音输入：实时转写 UI */}
@@ -3494,33 +3542,33 @@ export function RealtimeStudio() {
                 activeCaptureSource ? "border-theme-subtle" : "border-dashed border-[color:var(--accent)]/22"
               }`}
             >
-              <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center justify-between gap-2">
                 <div className="text-sm font-semibold text-theme-1">输入音量</div>
-                <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
-              </div>
-              <div className="mt-2 flex h-5 items-center gap-1.5">
-                {Array.from({ length: 16 }).map((_, index) => {
-                  const level = Math.max(0, Math.min(1, inputLevel));
-                  const threshold = (index + 1) / 16;
-                  const isActive = level >= threshold;
+              <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
+            </div>
+            <div className="mt-2 flex h-5 items-center gap-1.5">
+              {Array.from({ length: 16 }).map((_, index) => {
+                const level = Math.max(0, Math.min(1, inputLevel));
+                const threshold = (index + 1) / 16;
+                const isActive = level >= threshold;
                   const showActive = Boolean(activeCaptureSource) && isActive;
-                  return (
-                    <span
-                      key={index}
+                return (
+                  <span
+                    key={index}
                       className={`h-3 flex-1 rounded-sm border transition-colors duration-150 ${
                         showActive
                           ? "border-violet-800/70 bg-violet-700/80"
                           : "border-theme-subtle bg-surface-muted"
-                      }`}
-                    />
-                  );
-                })}
-              </div>
+                    }`}
+                  />
+                );
+              })}
             </div>
+          </div>
           </div>
           )}
         </Card>
-        ) : null}
+                ) : null}
 
         <div
           className={`order-3 flex min-h-0 min-w-0 flex-1 flex-col xl:row-start-2 xl:min-h-0 ${
@@ -3565,33 +3613,33 @@ export function RealtimeStudio() {
               ))}
             </Tabs.List>
                   <Tooltip.Provider delayDuration={120}>
-                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                      {pipelineStages.map((step) => (
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  {pipelineStages.map((step) => (
                         <Tooltip.Root key={step.abbr}>
                           <Tooltip.Trigger asChild>
-                            <button
-                              type="button"
+                        <button
+                          type="button"
                               className={`inline-flex items-center gap-1.5 rounded-md border bg-surface-2 px-2 py-1 text-[11px] font-medium text-theme-2 transition-[box-shadow,border-color] ${
                                 pipelineAllIdle && step.abbr === "CAP"
                                   ? "border-[color:var(--accent)]/40 ring-1 ring-[color:var(--accent)]/25"
                                   : "border-theme-default"
                               }`}
                               aria-label={`${step.label}：${step.value}`}
-                            >
-                              <span
-                                className={`h-2 w-2 shrink-0 rounded-full ${
-                                  step.tone === "working"
+                        >
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${
+                              step.tone === "working"
                                     ? "bg-[color:var(--accent)]"
-                                    : step.tone === "success"
-                                      ? "bg-emerald-500"
-                                      : step.tone === "error"
-                                        ? "bg-red-500"
+                                : step.tone === "success"
+                                  ? "bg-emerald-500"
+                                  : step.tone === "error"
+                                    ? "bg-red-500"
                                         : "bg-surface-3"
-                                }`}
-                                aria-hidden
-                              />
-                              {step.label}
-                            </button>
+                            }`}
+                            aria-hidden
+                          />
+                          {step.label}
+                        </button>
                           </Tooltip.Trigger>
                           <Tooltip.Portal>
                             <Tooltip.Content
@@ -3607,8 +3655,8 @@ export function RealtimeStudio() {
                             </Tooltip.Content>
                           </Tooltip.Portal>
                         </Tooltip.Root>
-                      ))}
-                    </div>
+                  ))}
+                  </div>
                   </Tooltip.Provider>
                 </div>
                 <Tooltip.Provider delayDuration={200}>
@@ -3618,19 +3666,19 @@ export function RealtimeStudio() {
                       <Tooltip.Root>
                         <Tooltip.Trigger asChild>
                           <span className="inline-flex">
-                            <button
-                              type="button"
-                              onClick={() => void stageStartCapture()}
-                              disabled={!canStartStageCapture}
+                      <button
+                    type="button"
+                    onClick={() => void stageStartCapture()}
+                    disabled={!canStartStageCapture}
                               className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
                                 startRecordingPrimaryStyle
                                   ? "border-violet-200/90 bg-violet-700/70 text-violet-50 shadow-[0_0_0_1px_rgba(139,92,246,0.32)_inset,0_10px_22px_rgba(109,40,217,0.36)] hover:border-violet-200/95 hover:bg-violet-700/75 focus-visible:ring-violet-200/80"
                                   : "border-violet-900/50 bg-violet-950/45 text-violet-200 focus-visible:ring-violet-700"
                               }`}
-                              aria-label="开始录音"
-                            >
+                        aria-label="开始录音"
+                      >
                               <Mic className="h-6 w-6 sm:h-7 sm:w-7" />
-                            </button>
+                      </button>
                           </span>
                         </Tooltip.Trigger>
                         <Tooltip.Portal>
@@ -3651,19 +3699,19 @@ export function RealtimeStudio() {
                       <Tooltip.Root>
                         <Tooltip.Trigger asChild>
                           <span className="inline-flex">
-                            <button
-                              type="button"
-                              onClick={() => void stageStopCapture()}
-                              disabled={!canStopStageCapture}
+                      <button
+                    type="button"
+                    onClick={() => void stageStopCapture()}
+                    disabled={!canStopStageCapture}
                               className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
                                 canStopStageCapture
                                   ? "border-red-200/90 bg-red-700/70 text-red-50 shadow-[0_0_0_1px_rgba(239,68,68,0.30)_inset,0_10px_22px_rgba(220,38,38,0.32)] hover:border-red-200/95 hover:bg-red-700/75 focus-visible:ring-red-200/80"
                                   : "border-red-900/50 bg-red-950/40 text-red-200 focus-visible:ring-red-800"
                               }`}
-                              aria-label="暂停录音"
-                            >
+                        aria-label="暂停录音"
+                      >
                               <Pause className="h-6 w-6 sm:h-7 sm:w-7" />
-                            </button>
+                      </button>
                           </span>
                         </Tooltip.Trigger>
                         <Tooltip.Portal>
@@ -3682,7 +3730,7 @@ export function RealtimeStudio() {
 
                     <div className="flex shrink-0 flex-col items-center">
                       <Button
-                        type="button"
+                    type="button"
                         variant="secondary"
                         className="inline-flex h-12 shrink-0 gap-2 rounded-xl px-3 text-xs shadow-sm sm:h-14 sm:px-3.5 sm:text-sm"
                         onClick={() => setDetailDrawerOpen(true)}
@@ -3690,7 +3738,7 @@ export function RealtimeStudio() {
                         <PanelRight className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
                         历史会话
                       </Button>
-                    </div>
+                      </div>
                     </div>
                     {renderCanvasSwitcher()}
                   </div>
@@ -3700,14 +3748,14 @@ export function RealtimeStudio() {
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <Tabs.Content value="mermaid" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
               <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-3 pt-1 sm:px-3">
-                <MermaidCard
-                  title=""
-                  embedded
+              <MermaidCard
+                title=""
+                embedded
                   code={displayedMermaidState?.code || displayedMermaidState?.normalized_code || ""}
                   rawOutputText={
                     typeof displayedMermaidState?.raw_output_text === "string" ? displayedMermaidState.raw_output_text : null
                   }
-                  repairRawOutputText={
+                repairRawOutputText={
                     typeof displayedMermaidState?.repair_raw_output_text === "string"
                       ? displayedMermaidState.repair_raw_output_text
                       : null
@@ -3735,13 +3783,13 @@ export function RealtimeStudio() {
               <div className="flex min-h-0 flex-1 px-4 py-2">
                 <Card className="flex-1 min-h-0 rounded-xl border border-theme-default bg-surface-muted p-2">
                   <div className="flex-1 min-h-0 overflow-hidden rounded-lg">
-                    <GraphStage
-                      embedded
-                      title="结构图"
+              <GraphStage
+                embedded
+                title="结构图"
                       nodes={displayedRendererState.nodes || []}
                       edges={displayedRendererState.edges || []}
                       groups={displayedRendererGroups}
-                    />
+              />
                   </div>
                 </Card>
               </div>
@@ -3799,18 +3847,18 @@ export function RealtimeStudio() {
 
             <Tabs.Content value="metrics" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
               <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-2">
-                <div className="space-y-6">
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    {summaryCards.map((item) => (
-                      <StatCard key={item.label} label={item.label} value={String(item.value)} />
-                    ))}
-                  </div>
-                  <Card>
+              <div className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  {summaryCards.map((item) => (
+                    <StatCard key={item.label} label={item.label} value={String(item.value)} />
+                  ))}
+                </div>
+                <Card>
                     <div className="mb-4 text-sm font-semibold text-theme-1">效果数据</div>
                     <pre className="rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
-                      {JSON.stringify(snapshot?.evaluation || {}, null, 2)}
-                    </pre>
-                  </Card>
+                    {JSON.stringify(snapshot?.evaluation || {}, null, 2)}
+                  </pre>
+                </Card>
                 </div>
               </div>
             </Tabs.Content>
@@ -3820,9 +3868,9 @@ export function RealtimeStudio() {
                 <Card className="flex-1 min-h-0 overflow-hidden">
                   <div className="mb-4 text-sm font-semibold text-theme-1 px-5 pt-5">处理步骤摘要</div>
                   <pre className="max-h-full overflow-auto rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
-                    {JSON.stringify(snapshot?.pipeline?.summary || {}, null, 2)}
-                  </pre>
-                </Card>
+                  {JSON.stringify(snapshot?.pipeline?.summary || {}, null, 2)}
+                </pre>
+              </Card>
               </div>
             </Tabs.Content>
             </div>
@@ -3899,7 +3947,7 @@ export function RealtimeStudio() {
                     >
                       下载 Markdown
                     </a>
-                  </div>
+              </div>
                 ) : null}
               </div>
               <div className="grid w-[min(100%,20rem)] grid-cols-3 gap-2">
@@ -4015,7 +4063,7 @@ export function RealtimeStudio() {
                 const sessionSelected = currentSessionId === item.session_id;
                 return (
                   <div
-                    key={item.session_id}
+                  key={item.session_id}
                     className={`group flex w-full items-stretch gap-0 overflow-hidden rounded-lg border text-sm transition duration-200 ease-out ${
                       sessionSelected
                         ? "border-[color:var(--shell-nav-active-border)] bg-[var(--shell-nav-active-bg)] shadow-[var(--shell-nav-active-shadow)]"
@@ -4023,40 +4071,40 @@ export function RealtimeStudio() {
                     }`}
                   >
                     <button
-                      type="button"
+                  type="button"
                       className={`min-w-0 flex-1 px-3 py-3 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[color:var(--shell-nav-active-icon-border)] focus-visible:ring-offset-2 ${
                         sessionSelected
                           ? "focus-visible:ring-offset-[var(--shell-nav-active-bg)]"
                           : "focus-visible:ring-offset-surface-muted"
-                      }`}
-                      onClick={() => {
-                        setCurrentSessionId(item.session_id);
-                        setTitle(item.title || "研究演示会话");
-                        setTitleDraft(item.title || "研究演示会话");
-                        setIsTitleEditing(false);
-                        window.localStorage.setItem(LOCAL_SESSION_KEY, item.session_id);
-                        setDetailDrawerOpen(false);
-                      }}
-                    >
+                  }`}
+                  onClick={() => {
+                    setCurrentSessionId(item.session_id);
+                        setTitle(item.title || DEFAULT_REALTIME_SESSION_TITLE);
+                        setTitleDraft(item.title || DEFAULT_REALTIME_SESSION_TITLE);
+                    setIsTitleEditing(false);
+                    window.localStorage.setItem(LOCAL_SESSION_KEY, item.session_id);
+                    setDetailDrawerOpen(false);
+                  }}
+                >
                       <div
                         className={`font-semibold ${
                           sessionSelected ? "text-[color:var(--shell-nav-active-fg)]" : "text-theme-3"
                         }`}
                       >
-                        {item.title}
-                      </div>
+                    {item.title}
+                    </div>
                       <div className={`mt-1 text-xs ${sessionSelected ? "text-white/80" : "text-theme-4"}`}>
-                        {item.session_id}
-                      </div>
+                    {item.session_id}
+                    </div>
                       <div className={`mt-1 text-xs ${sessionSelected ? "text-white/70" : "text-theme-4"}`}>
                         状态：{item.status === "closed" ? "closed" : "active"}
-                      </div>
-                      {item.summary?.input_runtime?.input_source ? (
+                    </div>
+                  {item.summary?.input_runtime?.input_source ? (
                         <div className={`mt-2 text-xs ${sessionSelected ? "text-white/70" : "text-theme-4"}`}>
-                          输入源：{String(item.summary.input_runtime.input_source)}
-                        </div>
-                      ) : null}
-                    </button>
+                      输入源：{String(item.summary.input_runtime.input_source)}
+              </div>
+            ) : null}
+                </button>
                     <button
                       type="button"
                       className={`shrink-0 border-l px-2 transition disabled:pointer-events-none disabled:opacity-40 ${

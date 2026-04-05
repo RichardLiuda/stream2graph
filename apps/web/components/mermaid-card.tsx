@@ -946,14 +946,14 @@ function MermaidCardBody({
                   )}
                 </div>
               ) : null}
-              {svg ? (
-                <div
+          {svg ? (
+            <div
                   key={zoomRebuildNonce}
                   ref={renderSurfaceRef}
                   data-mermaid-export-root={exportRootId || undefined}
                   className="relative z-[1] min-h-0 flex-1 [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
-                  dangerouslySetInnerHTML={{ __html: svg }}
-                />
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
               ) : null}
             </PanZoomCanvas>
           </div>
@@ -1004,11 +1004,11 @@ function MermaidCardBody({
 
   const headerBadges = (
     <>
-      {provider ? <Badge>{provider}</Badge> : null}
-      {model ? <Badge>{model}</Badge> : null}
-      {typeof latencyMs === "number" ? <Badge>{latencyMs.toFixed(1)} ms</Badge> : null}
-      <MermaidCompileStatusBadge compileOk={compileOk} updatedAt={updatedAt} />
-      {headerExtra}
+            {provider ? <Badge>{provider}</Badge> : null}
+            {model ? <Badge>{model}</Badge> : null}
+            {typeof latencyMs === "number" ? <Badge>{latencyMs.toFixed(1)} ms</Badge> : null}
+            <MermaidCompileStatusBadge compileOk={compileOk} updatedAt={updatedAt} />
+            {headerExtra}
     </>
   );
 
@@ -1043,7 +1043,7 @@ function MermaidCardBody({
       ) : (
         <div className="border-b border-theme-default px-5 py-3 text-xs leading-snug text-theme-4">
           图预览已收起，点击标题栏可展开查看（画布内仍可平移与缩放）。
-        </div>
+      </div>
       )}
     </Card>
   );

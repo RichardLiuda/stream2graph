@@ -425,14 +425,14 @@ export function HomePage() {
         <section className="soft-enter relative flex min-h-[100dvh] items-center justify-center">
           <div className="relative px-6 py-10 text-center text-theme-1 md:px-10 md:py-12">
             <Badge className="border-theme-default bg-surface-2 text-theme-2 normal-case tracking-normal">
-              Stream2Graph 正式平台
-            </Badge>
+            Stream2Graph 正式平台
+          </Badge>
             <h1 className="mt-8">
               <div className="text-center text-6xl font-semibold tracking-tight sm:text-7xl md:text-8xl lg:text-9xl">语流生图</div>
               <div className="mt-4 text-center text-xl font-semibold tracking-[0.12em] text-theme-4 sm:text-2xl md:text-3xl lg:text-4xl">
-                STREAM2GRAPH
+              STREAM2GRAPH
               </div>
-            </h1>
+          </h1>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               {authMeQuery.isLoading ? (
@@ -444,8 +444,8 @@ export function HomePage() {
                   <Button variant="primary" className="h-10 rounded-lg px-6 text-sm font-semibold">
                     开始使用
                     <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden />
-                  </Button>
-                </Link>
+              </Button>
+            </Link>
               )}
               <div className="inline-flex items-center gap-1.5 rounded-md border border-theme-subtle bg-surface-muted px-2.5 py-1 text-[11px] text-theme-4">
                 <span className="inline-block h-1.5 w-1.5 rounded-sm bg-emerald-600" aria-hidden />
@@ -626,7 +626,7 @@ export function HomePage() {
               </p>
             </div>
           </Reveal>
-        </section>
+      </section>
       </div>
     </main>
   );
