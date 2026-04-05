@@ -740,6 +740,94 @@ def _graph_delta(base: GraphIR, target: GraphIR) -> list[dict[str, Any]]:
     return delta_ops
 
 
+def _root_like_node_id(nodes: list[GraphNode]) -> str | None:
+    if not nodes:
+        return None
+    root_tokens = ("主题", "中心", "核心", "总览", "总图", "主线", "root", "center", "theme", "overview")
+
+    def _score(node: GraphNode) -> tuple[int, int]:
+        identifier = str(node.id or "").lower()
+        label = str(node.label or "")
+        score_value = 0
+        if identifier in {"root", "center", "center_theme"}:
+            score_value += 4
+        if any(token in identifier for token in ("root", "center", "theme")):
+            score_value += 2
+        if any(token in label for token in root_tokens):
+            score_value += 3
+        if int(node.source_index or 0) <= 1:
+            score_value += 1
+        return (score_value, -int(node.source_index or 0))
+
+    ranked = sorted(nodes, key=_score, reverse=True)
+    best = ranked[0]
+    if _score(best)[0] <= 0:
+        return nodes[0].id
+    return best.id
+
+
+def _prefix_parent_node_id(node_id: str, existing_node_ids: set[str]) -> str | None:
+    parts = [part for part in str(node_id or "").split("_") if part]
+    if len(parts) <= 1:
+        return None
+    for index in range(len(parts) - 1, 0, -1):
+        candidate = "_".join(parts[:index])
+        if candidate in existing_node_ids and candidate != node_id:
+            return candidate
+    return None
+
+
+def _backfill_sparse_flow_edges(graph_ir: GraphIR) -> tuple[GraphIR, bool]:
+    diagram_type = canonical_diagram_type(graph_ir.diagram_type or "")
+    if graph_ir.edges or graph_ir.groups or len(graph_ir.nodes) < 2:
+        return graph_ir, False
+
+    ordered_nodes = sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id))
+    existing_node_ids = {node.id for node in ordered_nodes}
+    root_id = _root_like_node_id(ordered_nodes)
+    if not root_id:
+        return graph_ir, False
+
+    inferred_edges: list[GraphEdge] = []
+    seen_edge_ids: set[str] = set()
+    next_edge_index = 1
+    flow_like = diagram_type in {"flowchart", "architecture", "mindmap", "unknown"}
+    for index, node in enumerate(ordered_nodes):
+        if node.id == root_id:
+            continue
+        parent_id = _prefix_parent_node_id(node.id, existing_node_ids)
+        if not parent_id:
+            if flow_like or root_id != ordered_nodes[0].id:
+                parent_id = root_id
+            elif index > 0:
+                parent_id = ordered_nodes[index - 1].id
+        if not parent_id or parent_id == node.id:
+            continue
+        edge_id = f"edge_{parent_id}__{node.id}"
+        if edge_id in seen_edge_ids:
+            continue
+        seen_edge_ids.add(edge_id)
+        inferred_edges.append(
+            GraphEdge(
+                id=edge_id,
+                source=parent_id,
+                target=node.id,
+                label="",
+                kind="hierarchy",
+                source_index=next_edge_index,
+                metadata={"inferred": True, "source": "sparse_flow_backfill"},
+            )
+        )
+        next_edge_index += 1
+
+    if not inferred_edges:
+        return graph_ir, False
+
+    clone = _clone_graph_ir(graph_ir)
+    clone.edges = inferred_edges
+    return clone, True
+
+
 def _renderer_operations(delta_ops: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ops: list[dict[str, Any]] = []
     for op in delta_ops:
@@ -887,7 +975,8 @@ LIVE_PLANNER_SYSTEM_PROMPT = (
     "You are the large planner model for a collaborative realtime diagram system. "
     "Extend the current graph monotonically using only the observed dialogue and the current GraphIR. "
     "Return one JSON object only. No markdown, no explanations, no prose before or after JSON. "
-    "Preferred top-level keys: delta_ops, notes. Optional top-level keys: target_graph_ir, styles, diagram_type. "
+    "Required top-level keys: diagram_type, delta_ops, notes. "
+    "Optional top-level keys: target_graph_ir, styles. "
     "Use these operation names only: add_group, add_node, add_edge. "
     "Never remove, rename, or rewrite existing ids. Never switch to an unrelated domain. "
     "Reuse literal identifiers from the dialogue whenever possible. "
@@ -897,11 +986,18 @@ LIVE_PLANNER_SYSTEM_PROMPT = (
     "Prefer 2 to 8 style lines total, and keep them valid Mermaid syntax. "
     "If you are unsure about a full graph snapshot, you may omit target_graph_ir and return delta_ops only, but if you need to add or change styles you should include either top-level styles or target_graph_ir.styles. "
     "If target_graph_ir is provided, it must include all previously existing items and all new additions. "
-    "DIAGRAM TYPE SELECTION: If the dialogue clearly implies a specific diagram type, you may suggest changing diagram_type. "
-    "Valid diagram_type values: flowchart (default, for processes/workflows), sequence (for actor interactions over time), "
-    "statediagram (for state machines/state transitions), class (for OOP class relationships), er (for database entity relationships), "
-    "requirement (for requirements traceability). "
-    "Only suggest a diagram_type change if the dialogue strongly implies a different type than the current one."
+    "STRUCTURAL COMPLETENESS: If you add 3 or more nodes, you should also add explicit edges or groups that explain how those nodes relate. "
+    "A response with isolated nodes only and zero edges/groups is incomplete unless the dialogue is explicitly just an unordered inventory. "
+    "For mind-map-like content rendered as flowchart, connect the center topic to first-level branches and connect branches to their details. "
+    "DIAGRAM TYPE SELECTION: The diagram_type field is REQUIRED in every response. "
+    "Analyze the dialogue content and choose the most appropriate type: "
+    "- flowchart: processes, workflows, step-by-step procedures, decision trees, system architecture "
+    "- sequence: actor-to-actor interactions over time, message passing, API call chains, request/response flows "
+    "- statediagram: state machines, lifecycle transitions, status changes with triggers/guards "
+    "- class: OOP class/struct definitions, inheritance, composition, UML class relationships "
+    "- er: database entity relationships, table schemas, data modeling "
+    "- requirement: requirements specification, use case traceability, functional requirements "
+    "Do NOT default to flowchart unless the dialogue truly describes a generic process or workflow."
 )
 
 
@@ -1051,7 +1147,7 @@ def _restore_runtime_canvas(
             "styles": [],
             "metadata": {},
         }
-    graph_ir = _ensure_graph_styles(_graph_ir_from_payload(graph_payload))
+    graph_ir = _ensure_graph_styles(_backfill_sparse_flow_edges(_graph_ir_from_payload(graph_payload))[0])
     renderer_payload = {"renderer_state": payload.get("renderer_state")}
     mermaid_state = payload.get("mermaid_state") if isinstance(payload.get("mermaid_state"), dict) else {}
     rendered_mermaid = render_preview_mermaid(graph_ir)
@@ -1158,7 +1254,7 @@ class CoordinationRuntimeSession:
                 "styles": [],
                 "metadata": {},
             }
-        graph_ir = _ensure_graph_styles(_graph_ir_from_payload(graph_payload))
+        graph_ir = _ensure_graph_styles(_backfill_sparse_flow_edges(_graph_ir_from_payload(graph_payload))[0])
         runtime = cls.create(session_id, diagram_type=graph_ir.diagram_type)
         runtime.current_graph_ir = graph_ir
         runtime.rendered_mermaid = render_preview_mermaid(graph_ir)
@@ -1537,6 +1633,7 @@ class CoordinationRuntimeSession:
         # Apply diagram_type suggestion from planner if provided
         if planner_decision.diagram_type:
             self.diagram_type = planner_decision.diagram_type
+            next_graph.diagram_type = planner_decision.diagram_type
             _log_coordination_event(
                 "Diagram type updated by planner",
                 {
@@ -1952,6 +2049,7 @@ class CoordinationRuntimeSession:
                         "current_graph_ir": self.current_graph_ir.to_payload(),
                         "current_graph_metrics": _graph_metrics(self.current_graph_ir),
                         "output_contract": {
+                            "diagram_type": "REQUIRED: one of flowchart, sequence, statediagram, class, er, requirement — always include based on dialogue content",
                             "delta_ops": [
                                 {
                                     "op": "add_group|add_node|add_edge",
@@ -2390,7 +2488,23 @@ class CoordinationRuntimeSession:
         else:
             target_graph = _clone_graph_ir(base_graph)
 
-        effective_delta = planner_decision.delta_ops or _graph_delta(base_graph, target_graph)
+        target_graph, backfilled_sparse_edges = _backfill_sparse_flow_edges(target_graph)
+        if backfilled_sparse_edges:
+            _log_coordination_event(
+                "Backfilled sparse flow edges",
+                {
+                    "session_id": self.session_id,
+                    "node_count": len(target_graph.nodes),
+                    "edge_count": len(target_graph.edges),
+                    "diagram_type": target_graph.diagram_type,
+                },
+            )
+
+        effective_delta = (
+            _graph_delta(base_graph, target_graph)
+            if backfilled_sparse_edges or not planner_decision.delta_ops
+            else planner_decision.delta_ops
+        )
         graph_changed = _graph_payload_signature(base_graph) != _graph_payload_signature(target_graph)
         return target_graph, effective_delta, graph_changed
 

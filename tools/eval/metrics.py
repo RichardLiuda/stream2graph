@@ -183,7 +183,105 @@ def normalize_mermaid(code: str) -> str:
         lines.append(stripped)
     if _leading_diagram_type(lines) == "flowchart":
         lines = _normalize_graph_lines(lines)
+        lines = _fix_flowchart_self_parent_cycle(lines)
     return "\n".join(lines).strip()
+
+
+def _fix_flowchart_self_parent_cycle(lines: list[str]) -> list[str]:
+    """Detect and fix self-parent cycles in flowchart mermaid code.
+
+    The error 'Setting X as parent of X would create a cycle' occurs when:
+    1. A subgraph and a node inside it share the same ID.
+    2. A node is implicitly or explicitly set as its own parent.
+
+    Fix: deduplicate node IDs inside subgraphs by appending a suffix.
+    """
+    subgraph_ids: set[str] = set()
+    node_ids_in_subgraph: dict[str, set[str]] = {}  # subgraph_id -> set of node_ids inside it
+    current_subgraph: str | None = None
+
+    for line in lines:
+        lower = line.strip().lower()
+        sub_match = _subgraph_id_match(line)
+        if sub_match:
+            current_subgraph = sub_match
+            subgraph_ids.add(current_subgraph)
+            node_ids_in_subgraph[current_subgraph] = set()
+        elif lower == "end" and current_subgraph:
+            current_subgraph = None
+        elif current_subgraph:
+            node_id = _extract_flowchart_node_id(line)
+            if node_id:
+                node_ids_in_subgraph.setdefault(current_subgraph, set()).add(node_id)
+
+    # Find conflicts: node ID inside subgraph == subgraph ID
+    conflicts: dict[str, set[str]] = {}  # subgraph_id -> set of conflicting node IDs
+    for sub_id, node_set in node_ids_in_subgraph.items():
+        if sub_id in node_set:
+            conflicts[sub_id] = {sub_id}
+
+    if not conflicts:
+        return lines
+
+    # Collect all identifiers to avoid creating new conflicts
+    all_ids: set[str] = set()
+    for ns in node_ids_in_subgraph.values():
+        all_ids.update(ns)
+    all_ids.update(subgraph_ids)
+
+    suffix = "_n"
+    while suffix in all_ids:
+        suffix = f"{suffix}2"
+
+    result: list[str] = []
+    current_subgraph = None
+    for line in lines:
+        if current_subgraph and current_subgraph in conflicts:
+            node_id = _extract_flowchart_node_id(line)
+            if node_id == current_subgraph:
+                line = line.replace(node_id, f"{node_id}{suffix}", 1)
+        sub_match = _subgraph_id_match(line)
+        if sub_match:
+            current_subgraph = sub_match
+        elif line.strip().lower() == "end":
+            current_subgraph = None
+        result.append(line)
+    return result
+
+
+def _subgraph_id_match(line: str) -> str | None:
+    """Extract subgraph ID from lines like 'subgraph foo["..."]' or 'subgraph foo'."""
+    stripped = line.strip()
+    if not stripped.lower().startswith("subgraph "):
+        return None
+    rest = stripped[len("subgraph "):].strip()
+    if not rest:
+        return None
+    import re
+    m = re.match(r"^([A-Za-z_]\w*)", rest)
+    return m.group(1) if m else None
+
+
+def _extract_flowchart_node_id(line: str) -> str | None:
+    """Extract the leading identifier from a flowchart node declaration line."""
+    stripped = line.strip()
+    # Skip subgraph, end, edge, comment, init directives
+    lower = stripped.lower()
+    if (lower.startswith("subgraph") or lower == "end" or lower.startswith("%%")
+            or lower.startswith("%%{") or lower.startswith("classdef")
+            or lower.startswith("class ") or lower.startswith("style ")):
+        return None
+    # Check if line starts with an edge pattern (contains --> or -.-> or ==>)
+    if "-->" in stripped or "-.-" in stripped or "==>" in stripped:
+        # The source is the first token
+        source = stripped.split()[0] if stripped else None
+        return source
+    # Node declaration: identifier followed by optional ["..."], ("..."), etc.
+    import re
+    m = re.match(r"^([A-Za-z_]\w*)", stripped)
+    if m:
+        return m.group(1)
+    return None
 
 
 def canonical_diagram_type(raw: str) -> str:
@@ -194,6 +292,12 @@ def canonical_diagram_type(raw: str) -> str:
         return "sequence"
     if value.startswith("statediagram"):
         return "statediagram"
+    if value in {"classdiagram", "class"}:
+        return "class"
+    if value in {"erdiagram", "er"}:
+        return "er"
+    if value in {"requirementdiagram", "requirement"}:
+        return "requirement"
     return value or "unknown"
 
 

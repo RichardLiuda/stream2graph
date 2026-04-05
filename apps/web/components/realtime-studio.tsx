@@ -143,67 +143,162 @@ type NoticeTone = "info" | "success" | "warning";
 
 const TRANSCRIPT_PRESETS: TranscriptPreset[] = [
   {
-    id: "platform_architecture",
-    label: "平台架构梳理",
-    description: "适合生成服务依赖、数据流和后台管理关系图。",
+    id: "demo_mindmap_public_culture",
+    label: "演示思维导图",
+    description: "基于公开访谈整理，适合展示中心主题、一级分支和延展细节。",
     value: [
-      "host|We need a platform map that starts from the web console and reaches the backend services.|structural",
-      "expert|Put the admin console on the left because every workflow begins there.|structural",
-      "expert|From the admin console, connect to the API gateway that handles auth, runtime control, and report export.|sequential",
-      "expert|The API gateway talks to the session manager for realtime runs and to the study manager for participant workflows.|structural",
-      "expert|The session manager writes state into PostgreSQL and artifacts into object storage.|structural",
-      "expert|A worker service reads queued jobs from PostgreSQL and produces reports and evaluation artifacts.|sequential",
-      "expert|The audio helper is optional and only feeds transcript chunks back into the API gateway.|structural",
-      "host|Please show that the runtime options service configures both the LLM path and the STT path.|structural",
-      "expert|Add a runtime settings module above the API gateway and connect it to LLM provider, STT provider, and model probe capability.|structural",
+      "主持人|我们今天围绕公共文化服务提升来做一张思维导图，中心主题就叫公共文化服务提升。|structural",
+      "嘉宾|中心主题下面先分成四个一级分支，分别是空间建设、数字服务、社会参与和文旅融合。|structural",
+      "主持人|空间建设这一支继续展开，放角楼图书馆、红楼藏书楼和腾退空间改造。|structural",
+      "嘉宾|数字服务这一支补充线上阅读、数字资源下沉和家门口文化服务。|structural",
+      "主持人|社会参与这一支体现政府引导、社会力量参与、街道社区联动和企业合作。|structural",
+      "嘉宾|文旅融合这一支展开成以文塑旅、以旅彰文、老工业厂区更新和阅读空间拓展。|structural",
+      "主持人|最后再加一个成果分支，连到群众文化获得感提升、城市品质提升和北京故事传播。|structural",
     ].join("\n"),
   },
   {
-    id: "incident_response",
-    label: "故障响应流程",
-    description: "适合展示顺序步骤、分支决策和回滚路径。",
+    id: "demo_er_reading_festival",
+    label: "演示实体关系图",
+    description: "基于高校读书节通知整理，适合展示活动、参与者、作品和奖项关系。",
     value: [
-      "operator|We need an incident response flow for a production outage.|sequential",
-      "lead|Start with alert ingestion from monitoring and paging into the on-call engineer.|sequential",
-      "lead|After triage, add a decision node: is customer traffic impacted?|structural",
-      "lead|If yes, branch to mitigation, status page update, and executive notification in parallel.|parallel",
-      "lead|If no, branch to deeper diagnosis without public communication.|conditional",
-      "operator|Mitigation should route to rollback, traffic shift, or feature flag disable depending on root cause.|conditional",
-      "lead|Once mitigation is stable, move into root-cause analysis, action items, and follow-up review.|sequential",
-      "operator|Close the loop by feeding action items back into backlog and runbooks.|feedback_loop",
+      "图书馆老师|我们按第十一届读书节活动通知来梳理实体，先放总活动实体“读书节”。|structural",
+      "学院老师|读书节下面包含征文、摄影大赛、阅读之星评选和书香学院评选四类子活动。|structural",
+      "图书馆老师|参与者分成学生、二级学院、图书馆和评委组。|structural",
+      "学院老师|学生可以提交作品，作品可能是征文、摄影作品或阅读案例，每件作品都归属于一个学生，也归属于一个学院。|structural",
+      "图书馆老师|评委组负责审核作品并给出奖项，奖项既可以关联作品，也可以直接关联学生或学院。|structural",
+      "学院老师|图书馆负责发布通知、汇总报名和公示结果，学院负责组织报名和推荐。|structural",
+      "图书馆老师|如果是阅读之星这类个人奖，就把学生和奖项直接关联；如果是书香学院，就把学院和奖项直接关联。|structural",
     ].join("\n"),
   },
   {
-    id: "research_workflow",
-    label: "用户研究闭环",
-    description: "适合演示 participant session、提交、评测和报告产出。",
+    id: "demo_flow_transport_service",
+    label: "演示流程图",
+    description: "基于“开办运输企业一件事”公开资料整理，适合展示办理流程与条件分支。",
     value: [
-      "researcher|Describe the study workflow from task creation to report export.|sequential",
-      "expert|First create a study task with materials, condition setup, and participant codes.|sequential",
-      "expert|Participants enter through the participant page, review materials, and start a timed session.|sequential",
-      "expert|During the session, autosave keeps draft Mermaid output and transcript notes in progress storage.|structural",
-      "expert|Submission sends final Mermaid, compile result, and survey answers into the study session record.|sequential",
-      "researcher|Add automatic evaluation after submit so the system compares final output with reference and computes metrics.|sequential",
-      "expert|The study manager writes all session data into PostgreSQL and triggers report generation for aggregate analysis.|structural",
-      "researcher|End with a report dashboard that exports JSON, CSV, and markdown summaries for the whole study.|sequential",
+      "办事人|我要开办道路货物运输企业，请按一件事流程帮我梳理。|sequential",
+      "导办员|第一步先进入高效办成一件事专区。|sequential",
+      "导办员|第二步一次填写一张表单，并上传一套共享材料。|sequential",
+      "办事人|提交之后会经过哪些环节。|structural",
+      "导办员|系统受理后会自动流转到营业执照、道路货运经营许可和相关审批环节。|sequential",
+      "导办员|如果材料不完整，就退回补正；如果材料齐全，就进入并联审批。|conditional",
+      "办事人|审批通过以后怎么结束。|sequential",
+      "导办员|最后统一出结果并反馈给企业，实现一次申请、一次办结。|sequential",
     ].join("\n"),
   },
   {
-    id: "data_pipeline",
-    label: "数据处理管线",
-    description: "适合演示 ingest、校验、富化、分发和监控。",
+    id: "demo_sequence_online_clinic",
+    label: "演示时序图",
+    description: "基于公开医疗服务流程整理，适合展示患者、平台、医生和医保之间的时序关系。",
     value: [
-      "architect|Map the event processing pipeline for partner data ingestion.|sequential",
-      "architect|Source systems push files and webhooks into an ingestion gateway.|sequential",
-      "architect|The ingestion gateway forwards payloads to schema validation and deduplication.|sequential",
-      "architect|Validated records go into an enrichment stage that joins account metadata and policy rules.|sequential",
-      "architect|After enrichment, split the flow into analytics warehouse, operational database, and search index.|parallel",
-      "architect|Any failed validation or policy conflict should go into a quarantine queue with manual review.|conditional",
-      "architect|Monitoring watches latency, failure rate, and backlog depth, then alerts ops when thresholds are exceeded.|structural",
-      "architect|Manual review can either release records back into enrichment or permanently reject them.|feedback_loop",
+      "患者|我想按公开医疗服务流程梳理一次线上复诊结算时序。|sequential",
+      "客服|先由患者在医院应用上注册并预约复诊。|sequential",
+      "客服|到预约时间后，应用把复诊请求发送给医生。|sequential",
+      "医生|我先核验患者身份和既往记录，再进行在线问诊。|sequential",
+      "医生|问诊完成后开具电子处方，并把处方发送给药房。|sequential",
+      "药房|药房收到处方后配药，同时把费用信息提交给医保结算系统。|sequential",
+      "医保专员|医保系统完成审核和实时报销，再把结算结果回传给医院和患者。|sequential",
+      "客服|最后药品配送到家，患者在线查看结算结果和配送状态。|sequential",
+    ].join("\n"),
+  },
+  {
+    id: "demo_state_student_project",
+    label: "演示状态图",
+    description: "基于大学生创新创业训练计划工作指南整理，适合展示项目生命周期状态。",
+    value: [
+      "老师|我们按大学生创新创业训练计划的全生命周期来做一张状态图。|structural",
+      "学生|项目最开始是申报中，提交申请书后进入立项评审。|sequential",
+      "老师|评审通过转为已立项，评审未通过就进入未立项结束态。|conditional",
+      "学生|已立项之后进入执行中，团队开始周记、调研和实验。|sequential",
+      "老师|到中期检查时，如果进展正常就继续执行；如果问题严重就进入整改中。|conditional",
+      "学生|整改通过回到执行中，整改失败可以转为终止。|conditional",
+      "老师|完成研究任务并提交结题材料后，项目进入结题验收。|sequential",
+      "老师|验收通过转为已结题，验收未通过可以修改后再次提交。|conditional",
+    ].join("\n"),
+  },
+  {
+    id: "demo_arch_government_service",
+    label: "演示架构图",
+    description: "基于北京市政务服务公开访谈整理，适合展示入口、服务、协同和结果层。",
+    value: [
+      "主持人|我们按北京市政务服务渠道协同来画一张架构图，中心放政务服务总入口。|structural",
+      "嘉宾|总入口上面接首都之窗、北京通、政务服务大厅和自助终端四类入口。|structural",
+      "主持人|总入口下面连接事项受理平台、知识库、身份认证和短信通知。|structural",
+      "嘉宾|事项受理平台再对接各委办局业务系统，实现数据共享和结果回传。|structural",
+      "主持人|12345热线和帮办代办体系也要接入总入口，用于咨询、回访和督办。|structural",
+      "嘉宾|结果层再分成办理结果推送、评价反馈、统计分析和效能监管。|structural",
+      "主持人|请把入口层、服务层、协同层和结果层的层次关系表达清楚。|structural",
     ].join("\n"),
   },
 ];
+
+type DemoPreset = {
+  id: string;
+  label: string;
+  description: string;
+  value: string;
+  diagramType: string;
+};
+
+const CURATED_DEMO_PRESETS: DemoPreset[] = [
+  {
+    id: "demo_mindmap_public_culture",
+    label: "演示思维导图",
+    description: "基于公开访谈整理，适合展示中心主题和层级展开。",
+    value: TRANSCRIPT_PRESETS.find((p) => p.id === "demo_mindmap_public_culture")!.value,
+    diagramType: "flowchart",
+  },
+  {
+    id: "demo_er_reading_festival",
+    label: "演示实体关系图",
+    description: "基于高校活动通知整理，适合展示实体与关系。",
+    value: TRANSCRIPT_PRESETS.find((p) => p.id === "demo_er_reading_festival")!.value,
+    diagramType: "er",
+  },
+  {
+    id: "demo_flow_transport_service",
+    label: "演示流程图",
+    description: "基于政务服务公开资料整理，适合展示条件分支和办理闭环。",
+    value: TRANSCRIPT_PRESETS.find((p) => p.id === "demo_flow_transport_service")!.value,
+    diagramType: "flowchart",
+  },
+  {
+    id: "demo_sequence_online_clinic",
+    label: "演示时序图",
+    description: "基于公开医疗服务流程整理，适合展示角色之间的消息往返。",
+    value: TRANSCRIPT_PRESETS.find((p) => p.id === "demo_sequence_online_clinic")!.value,
+    diagramType: "sequence",
+  },
+  {
+    id: "demo_state_student_project",
+    label: "演示状态图",
+    description: "基于项目指南整理，适合展示状态流转与回退。",
+    value: TRANSCRIPT_PRESETS.find((p) => p.id === "demo_state_student_project")!.value,
+    diagramType: "state",
+  },
+  {
+    id: "demo_arch_government_service",
+    label: "演示架构图",
+    description: "基于公开访谈整理，适合展示多层服务协同。",
+    value: TRANSCRIPT_PRESETS.find((p) => p.id === "demo_arch_government_service")!.value,
+    diagramType: "flowchart",
+  },
+];
+
+const DEFAULT_DEMO_PRESET_ID = CURATED_DEMO_PRESETS[0].id;
+
+function mapDiagramHintToMermaidType(hint?: string): string {
+  if (!hint) return "flowchart";
+  const map: Record<string, string> = {
+    flowchart: "flowchart",
+    sequence: "sequence",
+    class: "class",
+    state: "state",
+    er: "er",
+    requirement: "requirement",
+    architecture: "flowchart",
+  };
+  return map[hint] || "flowchart";
+}
 
 function parseTranscriptInput(raw: string): TranscriptRow[] {
   return raw
@@ -678,8 +773,8 @@ function logBrowserRuntime(label: string, payload: Record<string, unknown>, leve
 }
 
 function buildBackendOptions(source: InputSource, helperCapabilities: HelperCapabilities | null): BackendOption[] {
-  if (source === "transcript") {
-    return [{ value: "manual" as const, label: "打字输入" }];
+  if (source === "transcript" || source === "demo_mode") {
+    return [{ value: "manual" as const, label: "文本输入" }];
   }
   if (source === "microphone_browser") {
     return [
@@ -712,6 +807,17 @@ function capabilityBadgeTone(status: string) {
   if (status === "limited") return "border-amber-200 bg-amber-50 text-amber-700";
   if (status === "unsupported") return "border-red-200 bg-red-50 text-red-700";
   return "";
+}
+
+function capabilityStatusLabel(status: string) {
+  if (status === "supported") return "可用";
+  if (status === "limited") return "受限";
+  if (status === "unsupported") return "不可用";
+  return status;
+}
+
+function shouldShowCapabilityStatus(source: InputSource) {
+  return source !== "demo_mode" && source !== "transcript";
 }
 
 const STAGE_TABS: ReadonlyArray<readonly [string, string]> = [
@@ -811,7 +917,22 @@ export function RealtimeStudio() {
   const inputSourceMenuRef = useRef<HTMLDivElement | null>(null);
   const historyFeedKeysRef = useRef<string[]>([]);
 
+  const demoTranscriptSeed = useMemo(() => {
+    const presetId = selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID;
+    const preset = CURATED_DEMO_PRESETS.find((item) => item.id === presetId) || CURATED_DEMO_PRESETS[0];
+    return preset;
+  }, [selectedTranscriptPresetId]);
+
+  const switchDemoPreset = (presetId: string) => {
+    const preset = CURATED_DEMO_PRESETS.find((item) => item.id === presetId) || CURATED_DEMO_PRESETS[0];
+    setSelectedTranscriptPresetId(presetId);
+    setTranscriptText(preset.value);
+    setTitle(preset.label);
+    setTitleDraft(preset.label);
+  };
+
   const selectedInputSource = studioState.context.selectedInputSource;
+  const isTextOnlySource = selectedInputSource === "demo_mode" || selectedInputSource === "transcript";
   const selectedRecognitionBackend = studioState.context.recognitionBackend;
   const activeCaptureSource = studioState.context.captureStatus !== "idle" ? selectedInputSource : null;
   const inputLevel = studioState.context.inputLevel;
@@ -819,6 +940,15 @@ export function RealtimeStudio() {
   const captureStatus = studioState.context.captureStatus;
   const sttStatus = studioState.context.sttStatus;
   const gateStatus = studioState.context.gateStatus;
+
+  useEffect(() => {
+    if (selectedInputSource !== "demo_mode" || selectedTranscriptPresetId) return;
+    const preset = CURATED_DEMO_PRESETS[0];
+    setSelectedTranscriptPresetId(preset.id);
+    setTranscriptText((current) => (current.trim() ? current : preset.value));
+    setTitle((current) => (current === "研究演示会话" ? preset.label : current));
+    setTitleDraft((current) => (current === "研究演示会话" ? preset.label : current));
+  }, [selectedInputSource, selectedTranscriptPresetId]);
   const plannerStatus = studioState.context.plannerStatus;
   const mermaidStatus = studioState.context.mermaidStatus;
   const machineError = studioState.context.error;
@@ -1683,8 +1813,18 @@ export function RealtimeStudio() {
   }
 
   const createSession = useMutation({
-    mutationFn: () =>
-      api.createRealtimeSession({
+    mutationFn: async () => {
+      // Auto-detect diagram type for manual sessions with existing text input
+      let detectedDiagramType = "flowchart";
+      if (selectedInputSource !== "demo_mode" && transcriptText.trim()) {
+        try {
+          const detected = await api.detectDiagramType(transcriptText.trim());
+          detectedDiagramType = detected.diagram_type;
+        } catch {
+          // Fallback to flowchart; Planner will correct on first update
+        }
+      }
+      return api.createRealtimeSession({
         title,
         dataset_version_slug: datasetVersion || null,
         min_wait_k: 1,
@@ -1697,8 +1837,13 @@ export function RealtimeStudio() {
         stt_profile_id: sttProfileId || null,
         stt_model: sttModel || null,
         diagram_mode: diagramMode,
+        diagram_type:
+          selectedInputSource === "demo_mode"
+            ? mapDiagramHintToMermaidType(demoTranscriptSeed?.diagramType)
+            : detectedDiagramType,
         client_context: currentClientContext(),
-      }),
+      });
+    },
     onSuccess: (data) => {
       setCurrentSessionId(data.session_id);
       setClosedSessionMeta(null);
@@ -2615,10 +2760,8 @@ export function RealtimeStudio() {
     }
   }
 
-  const canStartStageCapture =
-    selectedInputSource !== "transcript" && selectedInputSource !== "demo_mode" && canStartCapture;
-  const canStopStageCapture =
-    selectedInputSource !== "transcript" && selectedInputSource !== "demo_mode" && canStopCapture;
+  const canStartStageCapture = !isTextOnlySource && canStartCapture;
+  const canStopStageCapture = !isTextOnlySource && canStopCapture;
   const startRecordingPrimaryStyle = canStartStageCapture;
   const titleDisplay = title.trim() || "未命名会话";
 
@@ -2793,7 +2936,10 @@ export function RealtimeStudio() {
                 onClick={() => setInputSourceMenuOpen((open) => !open)}
               >
                 <span className="truncate">
-                  {selectedOption.label} · {selectedOption.capability_status}
+                  {selectedOption.label}
+                  {shouldShowCapabilityStatus(selectedOption.source)
+                    ? ` · ${capabilityStatusLabel(selectedOption.capability_status)}`
+                    : ""}
                 </span>
                 <ChevronDown
                   className={`h-4 w-4 shrink-0 text-theme-4 transition-transform duration-200 ${inputSourceMenuOpen ? "rotate-180" : ""}`}
@@ -2829,7 +2975,11 @@ export function RealtimeStudio() {
                             </span>
                             <span className="truncate">{option.label}</span>
             </div>
-                          <span className="ml-2 shrink-0 text-xs text-theme-4">{option.capability_status}</span>
+                          {shouldShowCapabilityStatus(option.source) ? (
+                            <span className="ml-2 shrink-0 text-xs text-theme-4">
+                              {capabilityStatusLabel(option.capability_status)}
+                            </span>
+                          ) : null}
                         </button>
                       );
                     })}
@@ -2840,8 +2990,8 @@ export function RealtimeStudio() {
             <p className="text-[11px] leading-relaxed text-theme-3">
               {selectedOption.description}
             </p>
-            {/* 声纹盲认仅与语音/STT 相关；纯文本 / 演示模式不展示 */}
-            {selectedInputSource !== "transcript" && selectedInputSource !== "demo_mode" ? (
+            {/* 声纹盲认仅与语音/STT 相关；演示和文本模式不展示 */}
+            {!isTextOnlySource ? (
               <div className="flex min-h-[2rem] items-center justify-between gap-2 rounded-lg border border-theme-subtle bg-surface-muted px-2 py-1">
                 {!isAdmin ? (
                   <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-theme-3">
@@ -2911,8 +3061,75 @@ export function RealtimeStudio() {
             ) : null}
           </div>
 
+          {/* 纯文本输入：简单文本框 + 预设选择器 */}
+          {(selectedInputSource === "demo_mode" || selectedInputSource === "transcript") && (
+            <div className="relative z-[2] flex min-h-0 flex-1 flex-col space-y-3">
+              <div className="flex min-h-0 flex-1 flex-col gap-2">
+                {selectedInputSource === "demo_mode" && (
+                  <label className="text-[12px] font-medium text-theme-2">
+                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-4">演示类型</span>
+                    <select
+                      className="flex h-9 w-full items-center justify-between rounded-md border border-theme-default bg-surface-2 px-3 text-sm text-theme-1 outline-none transition hover:border-theme-strong focus-visible:ring-2 focus-visible:ring-theme-focus"
+                      value={selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID}
+                      onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                        switchDemoPreset(event.target.value);
+                      }}
+                    >
+                      {CURATED_DEMO_PRESETS.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {selectedInputSource === "transcript" && (
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-4">文本输入</div>
+                )}
+                <Textarea
+                  className="min-h-[10rem] flex-1 resize-y text-[12px] leading-relaxed"
+                  rows={10}
+                  value={transcriptText}
+                  disabled={currentSessionClosed}
+                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
+                    const next = event.target.value;
+                    setTranscriptText(next);
+                    studioSend({ type: "transcript.preview", text: next });
+                  }}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                className="shrink-0 border-violet-900/50 bg-violet-950/45 py-2 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
+                onClick={() => {
+                  sendTranscript.mutate();
+                }}
+                disabled={
+                  sendTranscript.isPending ||
+                  !transcriptText.trim() ||
+                  currentSessionClosed
+                }
+              >
+                <Send className="h-3.5 w-3.5" />
+                {currentSessionClosed
+                  ? "会话已结束"
+                  : selectedInputSource === "demo_mode"
+                    ? "生成演示图表"
+                    : "发送文本"}
+              </Button>
+              <p className="text-[10px] leading-snug text-theme-4">
+                {selectedInputSource === "demo_mode"
+                  ? "切换演示类型后点击生成即可。"
+                  : "按「说话人|内容|意图」格式输入，纯文本则视为单一发言者。"}
+              </p>
+            </div>
+          )}
+
+          {/* 语音输入：实时转写 UI */}
+          {selectedInputSource !== "demo_mode" && selectedInputSource !== "transcript" && (
           <div
-            className={`relative z-[2] flex min-h-0 flex-1 flex-col rounded-lg border px-2.5 py-2 transition-[border-color,box-shadow,background] ${
+            className={`relative z-[2] flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border px-2.5 py-2 transition-[border-color,box-shadow,background] ${
               activeCaptureSource
                 ? "border-[color:var(--accent)]/55 bg-surface-muted ring-1 ring-[color:var(--accent)]/20"
                 : "border-theme-subtle bg-gradient-to-b from-[color:var(--accent)]/[0.06] to-surface-muted"
@@ -2940,11 +3157,6 @@ export function RealtimeStudio() {
                 </Tabs.List>
                 <div className="flex flex-wrap items-center justify-end gap-1.5 pb-2">
                   {currentSessionClosed ? <Badge className="text-[9px]">已结束</Badge> : null}
-                  {selectedInputSource === "transcript" ? (
-                    <Badge className="text-[9px]">手动输入</Badge>
-                  ) : selectedInputSource === "demo_mode" ? (
-                    <Badge className="text-[9px]">演示脚本</Badge>
-                  ) : null}
                   <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
                 </div>
               </div>
@@ -2964,63 +3176,26 @@ export function RealtimeStudio() {
                 value="panel-input"
                 className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden outline-none data-[state=inactive]:hidden"
               >
-                {selectedInputSource === "demo_mode" ? (
-                  <div className="shrink-0 rounded-lg border border-theme-subtle bg-surface-1 px-2.5 py-2">
-                    <div className="text-[10px] font-semibold text-theme-2">演示功能</div>
-                    <label className="sr-only" htmlFor="transcript-demo-preset">
-                      选择演示脚本
-                    </label>
-                    <select
-                      id="transcript-demo-preset"
-                      className="mt-1.5 w-full rounded-md border border-theme-default bg-surface-2 px-2 py-1.5 text-xs text-theme-1 outline-none focus-visible:ring-2 focus-visible:ring-theme-focus"
-                      value={selectedTranscriptPresetId}
-                      disabled={currentSessionClosed}
-                      onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                        setSelectedTranscriptPresetId(event.target.value);
-                      }}
-                    >
-                      {TRANSCRIPT_PRESETS.map((preset) => (
-                        <option key={preset.id} value={preset.id}>
-                          {preset.label}
-                        </option>
-                      ))}
-                    </select>
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[color:var(--accent)]/25 bg-[color:var(--accent)]/[0.05] px-3 py-3">
+                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--accent-strong)]/90">
+                    当前字幕
                   </div>
-                ) : null}
-
-                {selectedInputSource === "transcript" || selectedInputSource === "demo_mode" ? (
-                  <Textarea
-                    className="min-h-[8rem] w-full flex-1 resize-y text-[12px] leading-relaxed"
-                    rows={6}
-                    value={transcriptText}
-                    disabled={currentSessionClosed}
-                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
-                      const next = event.target.value;
-                      setTranscriptText(next);
-                      studioSend({ type: "transcript.preview", text: next });
-                    }}
-                  />
-                ) : null}
-
-                {selectedInputSource !== "transcript" && selectedInputSource !== "demo_mode" ? (
-                  <div className="flex min-h-[14rem] flex-1 flex-col overflow-hidden rounded-xl border border-[color:var(--accent)]/25 bg-[color:var(--accent)]/[0.05] px-3 py-3">
-                    <div className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap text-[15px] leading-7 text-theme-1 sm:text-[16px]">
-                      {currentSubtitleText}
-                    </div>
-                    <div className="mt-2 flex shrink-0 items-center justify-between gap-2 border-t border-[color:var(--accent)]/15 pt-2 text-[10px] text-theme-4">
-                      <span>
-                        {liveTranscript.trim()
-                          ? "正在显示浏览器 / 本机识别的实时预览"
-                          : currentSessionClosed
-                            ? "当前会话已结束，可切换到「历史转写」查看"
-                            : "开麦后此处显示当前一句；多条轮次在「历史转写」"}
-                      </span>
-                      {activeTranscriptTurn?.speaker ? (
-                        <span className="truncate">发言：{activeTranscriptTurn.speaker}</span>
-                      ) : null}
-                    </div>
+                  <div className="max-h-[min(12rem,38vh)] min-h-[4.5rem] flex-1 overflow-y-auto whitespace-pre-wrap text-[15px] leading-7 text-theme-1 sm:max-h-[min(18rem,42vh)] sm:min-h-[6.5rem] sm:text-[16px] md:max-h-none md:min-h-0 md:overflow-visible md:min-h-[7.5rem]">
+                    {currentSubtitleText}
                   </div>
-                ) : null}
+                  <div className="mt-2 flex shrink-0 items-center justify-between gap-2 border-t border-[color:var(--accent)]/15 pt-2 text-[10px] text-theme-4">
+                    <span>
+                      {liveTranscript.trim()
+                        ? "优先显示本地实时预览"
+                        : currentSessionClosed
+                          ? "当前会话已结束，可切换到「历史转写」查看"
+                          : "开麦后此处显示当前一句；多条轮次在「历史转写」"}
+                    </span>
+                    {activeTranscriptTurn?.speaker ? (
+                      <span className="truncate">发言：{activeTranscriptTurn.speaker}</span>
+                    ) : null}
+                  </div>
+                </div>
               </Tabs.Content>
 
               <Tabs.Content
@@ -3076,63 +3251,40 @@ export function RealtimeStudio() {
             <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-theme-4">
               {currentSessionClosed
                 ? "会话结束后保留只读字幕和下载入口；如需继续，请重建会话。"
-                : selectedInputSource === "transcript"
-                  ? "在输入框中编辑并发送；归档在「历史转写」查看。"
-                  : selectedInputSource === "demo_mode"
-                    ? "演示脚本在输入框中编辑；下方按钮发送并刷新主图。"
-                    : "开麦后上方大字区为实时预览；服务端轮次可在「历史转写」查看。"}
+                : "开麦后「当前字幕」为大字预览；稳定轮次归档在「历史转写」。"}
             </p>
-          </div>
-
-          {selectedInputSource === "transcript" || selectedInputSource === "demo_mode" ? (
-            <div className="relative z-[2] shrink-0">
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full border-violet-900/50 bg-violet-950/45 py-2.5 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
-                onClick={() => sendTranscript.mutate()}
-                disabled={sendTranscript.isPending || !transcriptText.trim() || currentSessionClosed}
-              >
-                <Send className="h-3.5 w-3.5" />
-                {currentSessionClosed
-                  ? "会话已结束"
-                  : selectedInputSource === "demo_mode"
-                    ? "重新生成主图"
-                    : "发送文本"}
-              </Button>
-            </div>
-          ) : null}
-
-          <div
-            className={`relative z-[2] shrink-0 rounded-lg bg-surface-muted px-2.5 py-2 ${
-              activeCaptureSource ? "border border-theme-subtle" : "border border-dashed border-[color:var(--accent)]/22"
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-theme-1">输入音量</div>
-              <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
-            </div>
-            <div className="mt-2 flex h-5 items-center gap-1.5">
-              {Array.from({ length: 16 }).map((_, index) => {
-                const level = Math.max(0, Math.min(1, inputLevel));
-                const threshold = (index + 1) / 16;
-                const isActive = level >= threshold;
-                const showActive = Boolean(activeCaptureSource) && isActive;
-                return (
-                  <span
-                    key={index}
-                    className={`h-3 flex-1 rounded-sm border transition-colors duration-150 ${
-                      showActive
-                        ? "border-violet-800/70 bg-violet-700/80"
-                        : "border-theme-subtle bg-surface-muted"
-                    }`}
-                  />
-                );
-              })}
+            <div
+              className={`mt-2 shrink-0 border-t pt-2.5 ${
+                activeCaptureSource ? "border-theme-subtle" : "border-dashed border-[color:var(--accent)]/22"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-theme-1">输入音量</div>
+                <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
+              </div>
+              <div className="mt-2 flex h-5 items-center gap-1.5">
+                {Array.from({ length: 16 }).map((_, index) => {
+                  const level = Math.max(0, Math.min(1, inputLevel));
+                  const threshold = (index + 1) / 16;
+                  const isActive = level >= threshold;
+                  const showActive = Boolean(activeCaptureSource) && isActive;
+                  return (
+                    <span
+                      key={index}
+                      className={`h-3 flex-1 rounded-sm border transition-colors duration-150 ${
+                        showActive
+                          ? "border-violet-800/70 bg-violet-700/80"
+                          : "border-theme-subtle bg-surface-muted"
+                      }`}
+                    />
+                  );
+                })}
+              </div>
             </div>
           </div>
+          )}
         </Card>
-                ) : null}
+        ) : null}
 
         <div
           className={`order-3 flex min-h-0 min-w-0 flex-1 flex-col xl:row-start-2 xl:min-h-0 ${

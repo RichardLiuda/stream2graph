@@ -385,6 +385,11 @@ export const api = {
       sampleDetailSchema,
     ),
   listRealtimeSessions: async () => request("/api/v1/realtime/sessions", z.array(realtimeSessionSchema)),
+  detectDiagramType: async (transcript: string) =>
+    request("/api/v1/realtime/sessions/detect-diagram-type", z.object({ diagram_type: z.string() }), {
+      method: "POST",
+      body: JSON.stringify({ transcript }),
+    }),
   createRealtimeSession: async (payload: Record<string, unknown>) =>
     request("/api/v1/realtime/sessions", realtimeSessionSchema, {
       method: "POST",

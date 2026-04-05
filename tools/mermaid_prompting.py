@@ -43,6 +43,10 @@ MERMAID_GENERATION_SYSTEM_PROMPT = "\n".join(
         "8. Do not use bare '--' as a connector in flowcharts.",
         "9. If a specific diagram type is requested, use that exact Mermaid family header.",
         "10. If the diagram type is unclear, default to flowchart TD.",
+        "11. Every node identifier must be unique across the entire diagram. Never reuse an identifier.",
+        "12. Never create a subgraph and then place a node with the same identifier as the subgraph inside it.",
+        "13. Never set a node or subgraph as its own parent — this creates a cycle and breaks rendering.",
+        "14. All edges must connect two different existing nodes. Never create self-referencing edges (A --> A).",
         "Plan the overall structure internally first, then emit only the final Mermaid code.",
     ]
 )
