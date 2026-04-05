@@ -244,6 +244,10 @@ export const realtimeTranscriptTurnSchema = z.object({
   is_final: z.boolean(),
   source: z.string(),
   capture_mode: z.string().optional().default(""),
+  speaker_slot_key: z.string().optional().default(""),
+  speaker_identity: z.string().optional().default(""),
+  raw_role_label: z.string().optional().default(""),
+  speaker_resolution_source: z.string().optional().default(""),
 });
 
 export const realtimeSessionCloseSchema = z.object({

@@ -15,7 +15,7 @@ from app.services.realtime_coordination import (
     _coerce_style_entries,
 )
 from app.models import RealtimeSession
-from tools.incremental_dataset.schema import GraphGroup, GraphIR, GraphNode
+from tools.incremental_dataset.schema import GraphEdge, GraphGroup, GraphIR, GraphNode
 from tools.incremental_dataset.staging import render_preview_mermaid
 from tools.incremental_system.models import _diagram_type_alignment_priors
 
@@ -210,6 +210,102 @@ def test_render_preview_mermaid_sanitizes_reserved_identifiers_and_style_aliases
     assert re.search(r"^\s*classDef [A-Za-z][A-Za-z0-9_]* fill:#fef3c7,stroke:#f59e0b,font-weight:bold$", code, flags=re.MULTILINE)
     assert re.search(r"^\s*class [A-Za-z0-9_,]+ start,class_end$", code, flags=re.MULTILINE)
     assert re.search(r"^\s*style online_group fill:#eff6ff,stroke:#3b82f6$", code, flags=re.MULTILINE)
+
+
+def test_render_preview_mermaid_emits_lane_flowchart_with_sorted_lanes_and_relation_edges() -> None:
+    graph_ir = GraphIR(
+        graph_id="debate-lanes",
+        diagram_type="flowchart",
+        nodes=[
+            GraphNode(id="alice_claim", label="主张 A", parent="alice_lane", source_index=2, metadata={"turn_index": 2}),
+            GraphNode(id="alice_evidence", label="证据 A1", parent="alice_lane", source_index=1, metadata={"turn_index": 1}),
+            GraphNode(id="bob_counter", label="反驳 B", parent="bob_lane", source_index=2, metadata={"turn_index": 2}),
+            GraphNode(id="bob_question", label="追问 B1", parent="bob_lane", source_index=1, metadata={"turn_index": 1}),
+        ],
+        edges=[
+            GraphEdge(id="support_1", source="alice_evidence", target="alice_claim", source_index=1, metadata={"relation_type": "support"}),
+            GraphEdge(id="attack_1", source="bob_counter", target="alice_claim", source_index=2, metadata={"relation_type": "attack"}),
+            GraphEdge(id="reply_1", source="bob_question", target="alice_claim", source_index=3, metadata={"relation_type": "reply"}),
+            GraphEdge(id="reference_1", source="alice_claim", target="bob_question", source_index=4, metadata={"relation_type": "reference"}),
+        ],
+        groups=[
+            GraphGroup(
+                id="alice_lane",
+                label="正方",
+                source_index=2,
+                metadata={"group_type": "speaker_lane", "lane_index": 2, "speaker_id": "alice"},
+            ),
+            GraphGroup(
+                id="bob_lane",
+                label="反方",
+                source_index=1,
+                metadata={"group_type": "speaker_lane", "lane_index": 1, "speaker_id": "bob"},
+            ),
+        ],
+        metadata={"view_mode": "debate_lane_flowchart"},
+    )
+
+    code = render_preview_mermaid(graph_ir)
+
+    assert code.startswith("flowchart LR")
+    assert code.index('subgraph bob_lane["反方"]') < code.index('subgraph alice_lane["正方"]')
+    assert "    direction TB" in code
+    assert code.index('bob_question["#1 追问 B1"]') < code.index('bob_counter["#2 反驳 B"]')
+    assert code.index('alice_evidence["#1 证据 A1"]') < code.index('alice_claim["#2 主张 A"]')
+    assert "alice_evidence ---o alice_claim" in code
+    assert "bob_counter ---x alice_claim" in code
+    assert "bob_question --> alice_claim" in code
+    assert "alice_claim ==> bob_question" in code
+
+
+def test_render_preview_mermaid_keeps_plain_flowchart_unchanged_without_lane_view() -> None:
+    graph_ir = GraphIR(
+        graph_id="plain-flowchart",
+        diagram_type="flowchart",
+        nodes=[
+            GraphNode(id="start", label="开始", source_index=1),
+            GraphNode(id="next_step", label="下一步", source_index=2),
+        ],
+        edges=[GraphEdge(id="edge_1", source="start", target="next_step", source_index=1)],
+    )
+
+    code = render_preview_mermaid(graph_ir)
+
+    assert code.startswith("graph TD")
+    assert "flowchart LR" not in code
+    assert 'start["开始"]' in code
+    assert "start --> next_step" in code
+
+
+def test_runtime_session_pipeline_payload_exposes_lane_metadata_and_edges() -> None:
+    runtime = CoordinationRuntimeSession.create("debate-runtime")
+    runtime.current_graph_ir = GraphIR(
+        graph_id="debate-runtime",
+        diagram_type="flowchart",
+        nodes=[
+            GraphNode(id="speaker_a_1", label="观点 A1", parent="speaker_a", source_index=1),
+            GraphNode(id="speaker_b_1", label="观点 B1", parent="speaker_b", source_index=2),
+        ],
+        edges=[
+            GraphEdge(id="edge_1", source="speaker_b_1", target="speaker_a_1", source_index=1, metadata={"relation_type": "attack"})
+        ],
+        groups=[
+            GraphGroup(id="speaker_a", label="甲方", source_index=1),
+            GraphGroup(id="speaker_b", label="乙方", source_index=2),
+        ],
+    )
+    runtime.rendered_mermaid = render_preview_mermaid(runtime.current_graph_ir)
+
+    payload = runtime.pipeline_payload()
+    graph_payload = payload["graph_state"]["current_graph_ir"]
+
+    assert graph_payload["metadata"]["view_mode"] == "debate_lane_flowchart"
+    assert graph_payload["nodes"][0]["metadata"]["lane_id"] == "speaker_a"
+    assert graph_payload["nodes"][0]["metadata"]["speaker_label"] == "甲方"
+    assert graph_payload["edges"][0]["metadata"]["relation_type"] == "attack"
+    assert graph_payload["edges"][0]["metadata"]["cross_lane"] is True
+    assert graph_payload["edges"][0]["metadata"]["mermaid_source_id"]
+    assert payload["graph_state"]["preview_mermaid"].startswith("flowchart LR")
 
 
 def test_diagram_type_priors_keep_edges_for_structured_diagrams() -> None:

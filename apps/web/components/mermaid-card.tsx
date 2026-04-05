@@ -83,16 +83,31 @@ svg path.flowchart-link {
 type MermaidGraphNode = {
   id: string;
   label: string;
+  kind?: string;
+  metadata?: Record<string, unknown>;
 };
 
 type MermaidGraphGroup = {
   id: string;
   label: string;
+  metadata?: Record<string, unknown>;
+};
+
+type MermaidGraphEdge = {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+  kind?: string;
+  source_index?: number;
+  metadata?: Record<string, unknown>;
 };
 
 export type MermaidGraphPayload = {
   nodes?: MermaidGraphNode[];
   groups?: MermaidGraphGroup[];
+  edges?: MermaidGraphEdge[];
+  metadata?: Record<string, unknown>;
 } | null;
 
 export type MermaidDiagramEntityPosition = {
@@ -125,6 +140,14 @@ type MermaidInteractiveEntity = MermaidDiagramEntityPosition & {
   element: SVGGElement;
 };
 
+type MermaidRenderedEdge = {
+  edge: MermaidGraphEdge;
+  path: SVGPathElement;
+  container: SVGGElement | SVGPathElement;
+  relationType: string;
+  crossLane: boolean;
+};
+
 type SvgPoint = {
   x: number;
   y: number;
@@ -136,6 +159,37 @@ function roundCoordinate(value: number) {
 
 function normalizeLabelText(value: string | null | undefined) {
   return (value || "").replace(/\s+/g, " ").trim();
+}
+
+function metadataString(metadata: Record<string, unknown> | undefined, key: string, fallback = "") {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function metadataNumber(metadata: Record<string, unknown> | undefined, key: string, fallback = 0) {
+  const value = metadata?.[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function metadataBoolean(metadata: Record<string, unknown> | undefined, key: string, fallback = false) {
+  const value = metadata?.[key];
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const lowered = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(lowered)) return true;
+    if (["false", "0", "no", "off"].includes(lowered)) return false;
+  }
+  return fallback;
+}
+
+function fallbackLaneColor(index: number) {
+  const palette = ["#eff6ff", "#fef3c7", "#ecfccb", "#fce7f3", "#ede9fe", "#cffafe"];
+  return palette[index % palette.length] || "#eff6ff";
 }
 
 function buildLabelToIdMap(items: Array<{ id: string; label: string }> | undefined) {
@@ -257,6 +311,70 @@ function collectInteractiveEntities(
   }
 
   return { nodes, groups };
+}
+
+function collectRenderedEdges(svg: SVGSVGElement, graphPayload: MermaidGraphPayload): MermaidRenderedEdge[] {
+  const graphEdges = [...(graphPayload?.edges || [])].sort(
+    (left, right) => (left.source_index || 0) - (right.source_index || 0) || left.id.localeCompare(right.id),
+  );
+  const fallbackPaths = Array.from(svg.querySelectorAll<SVGPathElement>("path.flowchart-link"));
+
+  return graphEdges
+    .map((edge, index) => {
+      const metadata = edge.metadata || {};
+      const mermaidSourceId = metadataString(metadata, "mermaid_source_id");
+      const mermaidTargetId = metadataString(metadata, "mermaid_target_id");
+      const selector =
+        mermaidSourceId && mermaidTargetId ? `[id^="L_${mermaidSourceId}_${mermaidTargetId}_"]` : "";
+      const matchedElement = selector ? svg.querySelector<SVGElement>(selector) : null;
+      const candidatePath =
+        (matchedElement?.closest?.("g.edgePath")?.querySelector("path.path, path.flowchart-link") as SVGPathElement | null) ||
+        (matchedElement instanceof SVGPathElement ? matchedElement : null) ||
+        fallbackPaths[index] ||
+        null;
+      if (!(candidatePath instanceof SVGPathElement)) return null;
+      const container = candidatePath.closest("g.edgePath");
+      return {
+        edge,
+        path: candidatePath,
+        container: container instanceof SVGGElement ? container : candidatePath,
+        relationType: metadataString(metadata, "relation_type", edge.kind || "reply"),
+        crossLane: metadataBoolean(metadata, "cross_lane"),
+      };
+    })
+    .filter((item): item is MermaidRenderedEdge => Boolean(item));
+}
+
+function collectHighlightPath(startNodeId: string, edges: MermaidRenderedEdge[], maxDepth = 2) {
+  const edgesByNode = new Map<string, MermaidRenderedEdge[]>();
+  for (const edge of edges) {
+    const current = edgesByNode.get(edge.edge.source) || [];
+    current.push(edge);
+    edgesByNode.set(edge.edge.source, current);
+    const reverse = edgesByNode.get(edge.edge.target) || [];
+    reverse.push(edge);
+    edgesByNode.set(edge.edge.target, reverse);
+  }
+
+  const activeNodeIds = new Set<string>([startNodeId]);
+  const activeEdgeIds = new Set<string>();
+  const queue: Array<{ nodeId: string; depth: number }> = [{ nodeId: startNodeId, depth: 0 }];
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current) break;
+    if (current.depth >= maxDepth) continue;
+    for (const edge of edgesByNode.get(current.nodeId) || []) {
+      activeEdgeIds.add(edge.edge.id);
+      const neighbor = edge.edge.source === current.nodeId ? edge.edge.target : edge.edge.source;
+      if (!activeNodeIds.has(neighbor)) {
+        activeNodeIds.add(neighbor);
+        queue.push({ nodeId: neighbor, depth: current.depth + 1 });
+      }
+    }
+  }
+
+  return { activeNodeIds, activeEdgeIds };
 }
 
 function relationHintBetween(source: SvgPoint, target: SvgPoint | null) {
@@ -700,6 +818,219 @@ function MermaidCardBody({
       active = false;
     };
   }, [code, id, compileOk, height, latencyMs, model, provider, title, updatedAt, zoomRebuildNonce]);
+
+  useEffect(() => {
+    const host = renderSurfaceRef.current;
+    if (!host || !svg || !graphPayload) return;
+    const svgElement = host.querySelector("svg");
+    if (!(svgElement instanceof SVGSVGElement)) return;
+
+    const groupPayloadById = new Map((graphPayload.groups || []).map((group) => [group.id, group]));
+    const nodePayloadById = new Map((graphPayload.nodes || []).map((node) => [node.id, node]));
+    const collected = collectInteractiveEntities(svgElement, graphPayload);
+    const renderedEdges = collectRenderedEdges(svgElement, graphPayload);
+    const laneGroups = collected.groups.filter((group) => {
+      const payload = groupPayloadById.get(group.id);
+      return metadataString(payload?.metadata, "group_type") === "speaker_lane";
+    });
+
+    const svgNs = "http://www.w3.org/2000/svg";
+    const overlayRoot = document.createElementNS(svgNs, "g");
+    overlayRoot.setAttribute("data-s2g-overlay-layer", "lane-underlay");
+    overlayRoot.setAttribute("pointer-events", "none");
+
+    const firstRenderableChild =
+      Array.from(svgElement.children).find((child) => {
+        const tag = child.tagName.toLowerCase();
+        return tag !== "defs" && tag !== "style";
+      }) || svgElement.firstChild;
+    if (laneGroups.length) {
+      svgElement.insertBefore(overlayRoot, firstRenderableChild);
+    }
+
+    laneGroups.forEach((group, index) => {
+      const payload = groupPayloadById.get(group.id);
+      const rect = document.createElementNS(svgNs, "rect");
+      const laneColor = metadataString(payload?.metadata, "lane_color", fallbackLaneColor(index));
+      rect.setAttribute("data-s2g-lane-underlay", "true");
+      rect.setAttribute("x", `${group.x - group.width / 2 - 16}`);
+      rect.setAttribute("y", `${group.y - group.height / 2 - 18}`);
+      rect.setAttribute("width", `${group.width + 32}`);
+      rect.setAttribute("height", `${group.height + 36}`);
+      rect.setAttribute("rx", "18");
+      rect.setAttribute("ry", "18");
+      rect.setAttribute("fill", laneColor);
+      rect.setAttribute("fill-opacity", "0.32");
+      rect.setAttribute("stroke", "#cbd5e1");
+      rect.setAttribute("stroke-width", "1.5");
+      overlayRoot.appendChild(rect);
+    });
+
+    const nodeElementById = new Map(collected.nodes.map((entity) => [entity.id, entity]));
+    const groupElementById = new Map(collected.groups.map((entity) => [entity.id, entity]));
+
+    const clearVisualState = () => {
+      for (const entity of collected.nodes) {
+        entity.element.style.opacity = "";
+        entity.element.style.filter = "";
+      }
+      for (const entity of collected.groups) {
+        entity.element.style.opacity = "";
+        entity.element.style.filter = "";
+      }
+      for (const renderedEdge of renderedEdges) {
+        renderedEdge.path.style.opacity = "";
+        renderedEdge.path.style.filter = "";
+        renderedEdge.path.style.strokeLinecap = "round";
+        renderedEdge.path.style.transition = "opacity 120ms ease, filter 120ms ease, stroke-width 120ms ease";
+        renderedEdge.container.style.opacity = "";
+      }
+    };
+
+    const applyBaseStyles = () => {
+      clearVisualState();
+      laneGroups.forEach((group, index) => {
+        const payload = groupPayloadById.get(group.id);
+        const laneColor = metadataString(payload?.metadata, "lane_color", fallbackLaneColor(index));
+        for (const shape of Array.from(group.element.querySelectorAll<SVGElement>("rect,polygon,path"))) {
+          shape.style.stroke = "#334155";
+          shape.style.strokeWidth = "2.2px";
+          shape.style.fill = laneColor;
+          shape.style.fillOpacity = "0.15";
+        }
+        for (const label of Array.from(group.element.querySelectorAll<SVGElement>("text,tspan"))) {
+          label.style.fontWeight = "700";
+          label.style.fill = "#0f172a";
+        }
+      });
+      renderedEdges.forEach((renderedEdge) => {
+        if (renderedEdge.relationType === "attack") {
+          renderedEdge.path.style.stroke = "#dc2626";
+          renderedEdge.path.style.strokeWidth = "2.8px";
+        } else if (renderedEdge.relationType === "support") {
+          renderedEdge.path.style.stroke = "#16a34a";
+          renderedEdge.path.style.strokeWidth = "2.6px";
+        } else if (renderedEdge.relationType === "reference") {
+          renderedEdge.path.style.stroke = "#2563eb";
+          renderedEdge.path.style.strokeWidth = "2.4px";
+        } else if (renderedEdge.relationType === "elaborate") {
+          renderedEdge.path.style.stroke = "#7c3aed";
+          renderedEdge.path.style.strokeWidth = "2.3px";
+        } else if (renderedEdge.crossLane) {
+          renderedEdge.path.style.stroke = "#0f172a";
+          renderedEdge.path.style.strokeWidth = "2.2px";
+        } else {
+          renderedEdge.path.style.strokeWidth = "2.1px";
+        }
+      });
+    };
+
+    const dimEverything = () => {
+      collected.nodes.forEach((entity) => {
+        entity.element.style.opacity = "0.18";
+      });
+      collected.groups.forEach((entity) => {
+        entity.element.style.opacity = "0.18";
+      });
+      renderedEdges.forEach((renderedEdge) => {
+        renderedEdge.path.style.opacity = "0.14";
+        renderedEdge.container.style.opacity = "0.14";
+      });
+    };
+
+    const highlightLaneIds = (laneIds: Set<string>) => {
+      laneIds.forEach((laneId) => {
+        const group = groupElementById.get(laneId);
+        if (!group) return;
+        group.element.style.opacity = "1";
+        group.element.style.filter = "drop-shadow(0 0 12px rgba(15,23,42,0.12))";
+      });
+    };
+
+    const activateNodePath = (nodeId: string) => {
+      applyBaseStyles();
+      dimEverything();
+      const { activeNodeIds, activeEdgeIds } = collectHighlightPath(nodeId, renderedEdges, 2);
+      const laneIds = new Set<string>();
+
+      activeNodeIds.forEach((activeNodeId) => {
+        const activeNode = nodeElementById.get(activeNodeId);
+        const payload = nodePayloadById.get(activeNodeId);
+        const laneId = metadataString(payload?.metadata, "lane_id");
+        if (laneId) laneIds.add(laneId);
+        if (!activeNode) return;
+        activeNode.element.style.opacity = "1";
+        activeNode.element.style.filter = "drop-shadow(0 0 12px rgba(37,99,235,0.22))";
+      });
+
+      highlightLaneIds(laneIds);
+
+      renderedEdges.forEach((renderedEdge) => {
+        if (!activeEdgeIds.has(renderedEdge.edge.id)) return;
+        renderedEdge.container.style.opacity = "1";
+        renderedEdge.path.style.opacity = "1";
+        renderedEdge.path.style.filter = "drop-shadow(0 0 10px rgba(15,23,42,0.16))";
+        renderedEdge.path.style.strokeWidth = renderedEdge.relationType === "attack" ? "3.6px" : "3.2px";
+      });
+    };
+
+    const activateEdgeFocus = (targetEdge: MermaidRenderedEdge) => {
+      applyBaseStyles();
+      dimEverything();
+      targetEdge.container.style.opacity = "1";
+      targetEdge.path.style.opacity = "1";
+      targetEdge.path.style.filter = "drop-shadow(0 0 12px rgba(15,23,42,0.18))";
+      targetEdge.path.style.strokeWidth = targetEdge.relationType === "attack" ? "3.6px" : "3.2px";
+
+      const sourceNode = nodeElementById.get(targetEdge.edge.source);
+      const targetNode = nodeElementById.get(targetEdge.edge.target);
+      const sourceLaneId = metadataString(nodePayloadById.get(targetEdge.edge.source)?.metadata, "lane_id");
+      const targetLaneId = metadataString(nodePayloadById.get(targetEdge.edge.target)?.metadata, "lane_id");
+      if (sourceNode) {
+        sourceNode.element.style.opacity = "1";
+        sourceNode.element.style.filter = "drop-shadow(0 0 12px rgba(37,99,235,0.22))";
+      }
+      if (targetNode) {
+        targetNode.element.style.opacity = "1";
+        targetNode.element.style.filter = "drop-shadow(0 0 12px rgba(37,99,235,0.22))";
+      }
+      highlightLaneIds(new Set([sourceLaneId, targetLaneId].filter(Boolean)));
+    };
+
+    applyBaseStyles();
+
+    const cleanupFns: Array<() => void> = [];
+    for (const entity of collected.nodes) {
+      const handleEnter = () => activateNodePath(entity.id);
+      const handleLeave = () => applyBaseStyles();
+      entity.element.addEventListener("pointerenter", handleEnter);
+      entity.element.addEventListener("pointerleave", handleLeave);
+      cleanupFns.push(() => {
+        entity.element.removeEventListener("pointerenter", handleEnter);
+        entity.element.removeEventListener("pointerleave", handleLeave);
+      });
+    }
+
+    for (const renderedEdge of renderedEdges) {
+      if (!["attack", "support"].includes(renderedEdge.relationType)) continue;
+      const handleEnter = () => activateEdgeFocus(renderedEdge);
+      const handleLeave = () => applyBaseStyles();
+      renderedEdge.container.addEventListener("pointerenter", handleEnter);
+      renderedEdge.container.addEventListener("pointerleave", handleLeave);
+      cleanupFns.push(() => {
+        renderedEdge.container.removeEventListener("pointerenter", handleEnter);
+        renderedEdge.container.removeEventListener("pointerleave", handleLeave);
+      });
+    }
+
+    return () => {
+      cleanupFns.forEach((cleanup) => cleanup());
+      clearVisualState();
+      if (overlayRoot.parentNode) {
+        overlayRoot.parentNode.removeChild(overlayRoot);
+      }
+    };
+  }, [graphPayload, svg, zoomRebuildNonce]);
 
   useEffect(() => {
     const host = renderSurfaceRef.current;

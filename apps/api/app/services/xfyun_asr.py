@@ -39,6 +39,13 @@ _STREAMS_LOCK = threading.Lock()
 _STREAMS: dict[str, "RTASRRealtimeSessionStream"] = {}
 
 
+def _anonymous_speaker_label(index: int) -> str:
+    normalized = max(1, int(index or 1))
+    if normalized <= 26:
+        return f"匿名说话人 {chr(ord('A') + normalized - 1)}"
+    return f"匿名说话人 {normalized}"
+
+
 def _build_ssl_context() -> ssl.SSLContext:
     settings = get_settings()
     if not settings.tls_verify:
@@ -295,6 +302,7 @@ def _group_role_segments(
     role_state_by_index: dict[int, dict[str, str]] = {}
     for item in words:
         role_index = item.get("role_index")
+        normalized_role_index = int(role_index or 0)
         feature_id = ""
         candidate = item.get("candidate", {}) if isinstance(item.get("candidate"), dict) else {}
         for key in ("feature_id", "featureId", "uid", "speakerId", "speaker_id"):
@@ -303,22 +311,27 @@ def _group_role_segments(
                 break
 
         resolution_source = "rtasr_role"
-        speaker_label = f"role_{int(role_index or len(grouped) + 1)}"
+        raw_role_label = f"role_{normalized_role_index or len(grouped) + 1}"
+        speaker_identity = ""
+        speaker_label = _anonymous_speaker_label(normalized_role_index or len(grouped) + 1)
         if feature_id and feature_id in feature_label_by_id:
             resolution_source = "rtasr_feature"
-            speaker_label = feature_label_by_id[feature_id]
-        elif int(role_index or 0) > 0 and int(role_index or 0) in role_state_by_index:
-            previous_state = role_state_by_index[int(role_index or 0)]
+            speaker_identity = feature_label_by_id[feature_id]
+            speaker_label = speaker_identity
+        elif normalized_role_index > 0 and normalized_role_index in role_state_by_index:
+            previous_state = role_state_by_index[normalized_role_index]
             speaker_label = previous_state.get("speaker", speaker_label)
+            speaker_identity = previous_state.get("speaker_identity", "")
             resolution_source = previous_state.get("speaker_resolution_source", resolution_source)
 
-        if int(role_index or 0) > 0:
-            role_state_by_index[int(role_index or 0)] = {
+        if normalized_role_index > 0:
+            role_state_by_index[normalized_role_index] = {
                 "speaker": speaker_label,
+                "speaker_identity": speaker_identity,
                 "speaker_resolution_source": resolution_source,
             }
 
-        if grouped and grouped[-1]["speaker"] == speaker_label and grouped[-1]["role_index"] == role_index:
+        if grouped and grouped[-1]["speaker"] == speaker_label and grouped[-1]["role_index"] == normalized_role_index:
             grouped[-1]["text"] += item["text"]
             grouped[-1]["word_count"] += 1
             grouped[-1]["word_end"] = item.get("we")
@@ -329,7 +342,10 @@ def _group_role_segments(
                 "seg_id": seg_id,
                 "text": item["text"],
                 "speaker": speaker_label or fallback_speaker,
-                "role_index": int(role_index or 0),
+                "speaker_display_label": speaker_label or fallback_speaker,
+                "speaker_identity": speaker_identity,
+                "raw_role_label": raw_role_label,
+                "role_index": normalized_role_index,
                 "feature_id": feature_id,
                 "speaker_resolution_source": resolution_source,
                 "word_begin": item.get("wb"),

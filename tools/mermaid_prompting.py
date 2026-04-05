@@ -4,7 +4,7 @@ import re
 from typing import Optional
 
 
-MERMAID_RUNTIME_VERSION = "11.5.0"
+MERMAID_RUNTIME_VERSION = "11.13.0"
 MERMAID_SYNTAX_PROFILE = f"mermaid@{MERMAID_RUNTIME_VERSION}/strict-subset-v1"
 
 _DIAGRAM_HEADER_HINTS = {

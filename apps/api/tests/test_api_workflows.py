@@ -497,6 +497,9 @@ def test_runtime_options_and_audio_transcription_endpoint(
                     "seg_id": 1,
                     "text": "张三先说。",
                     "speaker": "张三",
+                    "speaker_display_label": "张三",
+                    "speaker_identity": "张三",
+                    "raw_role_label": "role_1",
                     "role_index": 1,
                     "feature_id": "feature_zhangsan",
                     "speaker_resolution_source": "rtasr_feature",
@@ -505,11 +508,15 @@ def test_runtime_options_and_audio_transcription_endpoint(
                     "seg_id": 1,
                     "text": "李四补充。",
                     "speaker": "role_2",
+                    "speaker_display_label": "匿名说话人 B",
+                    "speaker_identity": "",
+                    "raw_role_label": "role_2",
                     "role_index": 2,
                     "feature_id": "",
                     "speaker_resolution_source": "rtasr_role",
                 },
             ],
+            "sid": "rtasr-session-1",
         },
     )
     monkeypatch.setattr(
@@ -558,6 +565,12 @@ def test_runtime_options_and_audio_transcription_endpoint(
     assert payload["voiceprint"]["matched"] is True
     assert payload["voiceprint"]["mode"] == "feature_split"
     assert len(payload["segments"]) == 2
+    assert payload["segments"][0]["speaker"] == "张三"
+    assert payload["segments"][0]["speaker_identity"] == "张三"
+    assert payload["segments"][0]["speaker_slot_key"].endswith(":role:1")
+    assert payload["segments"][1]["speaker"] == "匿名说话人 B"
+    assert payload["segments"][1]["raw_role_label"] == "role_2"
+    assert payload["segments"][1]["speaker_slot_key"].endswith(":role:2")
     assert payload["provider"] == "stt-default"
     assert payload["pipeline"]["planner_state"]["model"] == "model-large"
     assert payload["pipeline"]["mermaid_state"]["source"] == "algorithm_preview"
@@ -569,6 +582,12 @@ def test_runtime_options_and_audio_transcription_endpoint(
         ).all()
         assert rows
         assert all(0 <= int(row.timestamp_ms) <= 2_147_483_647 for row in rows)
+        assert rows[0].speaker == "张三"
+        assert rows[0].meta_json["speaker_slot_key"].endswith(":role:1")
+        assert rows[0].meta_json["speaker_identity"] == "张三"
+        assert rows[1].speaker == "匿名说话人 B"
+        assert rows[1].meta_json["raw_role_label"] == "role_2"
+        assert rows[1].meta_json["speaker_slot_key"].endswith(":role:2")
 
 
 def test_runtime_options_can_persist_stt_voiceprint_config(admin_client: TestClient) -> None:
@@ -613,6 +632,147 @@ def test_runtime_options_can_persist_stt_voiceprint_config(admin_client: TestCli
     assert public_view.status_code == 200
     assert public_view.json()["stt_profiles"][0]["voiceprint"]["enabled"] is True
     assert "test-xfyun-secret" not in public_view.text
+
+
+def test_audio_transcription_upgrades_historical_slot_identity(
+    admin_client: TestClient,
+    monkeypatch,
+    session_factory,
+) -> None:
+    monkeypatch.setattr(
+        "app.routers.realtime.resolve_profile",
+        lambda db, kind, profile_id: {
+            "id": "stt-default",
+            "provider_kind": "xfyun_asr",
+            "default_model": "rtasr_llm",
+        },
+    )
+
+    call_count = {"value": 0}
+
+    def _fake_transcribe(db, session_obj, payload):
+        call_count["value"] += 1
+        if call_count["value"] == 1:
+            return {
+                "text": "我先补充一点。",
+                "provider": "stt-default",
+                "model": "rtasr_llm",
+                "latency_ms": 40.0,
+                "speaker": "匿名说话人 B",
+                "sid": "rtasr-a",
+                "segments": [
+                    {
+                        "seg_id": 1,
+                        "text": "我先补充一点。",
+                        "speaker": "匿名说话人 B",
+                        "speaker_display_label": "匿名说话人 B",
+                        "speaker_identity": "",
+                        "raw_role_label": "role_2",
+                        "role_index": 2,
+                        "feature_id": "",
+                        "speaker_resolution_source": "rtasr_role",
+                    }
+                ],
+            }
+        return {
+            "text": "其实我是李四。",
+            "provider": "stt-default",
+            "model": "rtasr_llm",
+            "latency_ms": 42.0,
+            "speaker": "李四",
+            "sid": "rtasr-b",
+            "segments": [
+                {
+                    "seg_id": 2,
+                    "text": "其实我是李四。",
+                    "speaker": "李四",
+                    "speaker_display_label": "李四",
+                    "speaker_identity": "李四",
+                    "raw_role_label": "role_2",
+                    "role_index": 2,
+                    "feature_id": "feature_lisi",
+                    "speaker_resolution_source": "rtasr_feature",
+                }
+            ],
+        }
+
+    monkeypatch.setattr("app.routers.realtime.transcribe_audio_chunk", _fake_transcribe)
+    monkeypatch.setattr(
+        "app.routers.realtime.blind_recognize_speaker",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("blind path should not run")),
+    )
+
+    created = admin_client.post(
+        "/api/v1/realtime/sessions",
+        json={
+            "title": "speaker upgrade session",
+            "stt_profile_id": "stt-default",
+            "stt_model": "rtasr_llm",
+            "client_context": {"input_source": "system_audio"},
+        },
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    first = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/audio/transcriptions",
+        json={
+            "chunk_id": 0,
+            "sample_rate": 16000,
+            "channel_count": 1,
+            "pcm_s16le_base64": "AAA=",
+            "timestamp_ms": 1000,
+            "speaker": "system_audio",
+            "is_final": True,
+            "metadata": {"input_source": "system_audio", "capture_mode": "api_stt"},
+        },
+    )
+    assert first.status_code == 200
+    assert first.json()["speaker"] == "匿名说话人 B"
+    assert first.json()["segments"][0]["speaker_slot_key"].endswith(":role:2")
+
+    second = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/audio/transcriptions",
+        json={
+            "chunk_id": 1,
+            "sample_rate": 16000,
+            "channel_count": 1,
+            "pcm_s16le_base64": "AAA=",
+            "timestamp_ms": 2000,
+            "speaker": "system_audio",
+            "is_final": True,
+            "metadata": {"input_source": "system_audio", "capture_mode": "api_stt"},
+        },
+    )
+    assert second.status_code == 200
+    second_payload = second.json()
+    assert second_payload["speaker"] == "李四"
+    assert second_payload["segments"][0]["speaker"] == "李四"
+    assert second_payload["segments"][0]["speaker_slot_key"].endswith(":role:2")
+
+    snapshot = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/snapshot")
+    assert snapshot.status_code == 200
+    transcript_state = snapshot.json()["pipeline"]["transcript_state"]
+    assert transcript_state["turn_count"] == 2
+    assert transcript_state["current_turn"]["speaker"] == "李四"
+    assert transcript_state["current_turn"]["speaker_slot_key"].endswith(":role:2")
+    assert transcript_state["current_turn"]["speaker_identity"] == "李四"
+    assert transcript_state["current_turn"]["text"] == "其实我是李四。"
+    assert transcript_state["archived_recent_turns"][0]["speaker"] == "李四"
+    assert transcript_state["archived_recent_turns"][0]["speaker_slot_key"].endswith(":role:2")
+    assert transcript_state["archived_recent_turns"][0]["text"] == "我先补充一点。"
+
+    with session_factory() as db:
+        rows = db.scalars(
+            select(RealtimeChunk)
+            .where(RealtimeChunk.session_id == session_id)
+            .order_by(RealtimeChunk.sequence_no.asc())
+        ).all()
+        assert len(rows) == 2
+        assert all(row.speaker == "李四" for row in rows)
+        assert all(row.meta_json["speaker_slot_key"].endswith(":role:2") for row in rows)
+        assert all(row.meta_json["speaker_identity"] == "李四" for row in rows)
+        assert rows[0].meta_json["raw_role_label"] == "role_2"
 
 
 def test_voiceprint_management_api_and_audio_transcription_fallback(

@@ -268,6 +268,10 @@ class RealtimeTranscriptTurn(BaseModel):
     is_final: bool = True
     source: str = ""
     capture_mode: str = ""
+    speaker_slot_key: str = ""
+    speaker_identity: str = ""
+    raw_role_label: str = ""
+    speaker_resolution_source: str = ""
 
 
 class RealtimeSessionCloseDownloads(BaseModel):

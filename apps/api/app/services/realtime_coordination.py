@@ -20,7 +20,7 @@ from incremental_renderer import NodeState, RenderFrame
 from tools.eval.common import strip_think_traces
 from tools.eval.metrics import canonical_diagram_type
 from tools.incremental_dataset.schema import GraphEdge, GraphGroup, GraphIR, GraphNode
-from tools.incremental_dataset.staging import render_preview_mermaid
+from tools.incremental_dataset.staging import prepare_graph_for_mermaid_display, render_preview_mermaid
 from tools.incremental_system.chat_clients import LocalHFChatClient, OpenAICompatibleChatClient
 from tools.incremental_system.loader import _graph_ir_from_payload
 from tools.incremental_system.models import (
@@ -81,6 +81,9 @@ def _dialogue_payload(turn: DialogueTurn) -> dict[str, Any]:
         "content": turn.content,
         "timestamp_ms": int(turn.metadata.get("timestamp_ms", 0) or 0),
         "is_final": bool(turn.metadata.get("is_final", True)),
+        "speaker_slot_key": str(turn.metadata.get("speaker_slot_key", "") or "").strip(),
+        "speaker_identity": str(turn.metadata.get("speaker_identity", "") or "").strip(),
+        "raw_role_label": str(turn.metadata.get("raw_role_label", "") or "").strip(),
     }
 
 
@@ -115,6 +118,13 @@ def _graph_metrics(graph_ir: GraphIR) -> dict[str, Any]:
 
 def _graph_payload_signature(graph_ir: GraphIR) -> str:
     return json.dumps(graph_ir.to_payload(), ensure_ascii=False, sort_keys=True)
+
+
+def _presentation_graph_ir(graph_ir: GraphIR, *, diagram_type: str | None = None) -> GraphIR:
+    canonical_type = canonical_diagram_type(diagram_type or graph_ir.diagram_type or "")
+    top_level_groups = [group for group in graph_ir.groups if not group.parent]
+    force_lane_view = canonical_type in {"flowchart", "architecture", "mindmap", "unknown"} and len(top_level_groups) >= 2
+    return prepare_graph_for_mermaid_display(graph_ir, force_lane_view=force_lane_view)
 
 
 def _normalize_style_line(line: str) -> str:
@@ -1086,6 +1096,8 @@ class RuntimeCanvas:
 
     def to_payload(self, *, is_active: bool, planner_state: dict[str, Any] | None = None) -> dict[str, Any]:
         planner_meta = planner_state if isinstance(planner_state, dict) else {}
+        presentation_graph = _presentation_graph_ir(self.graph_ir, diagram_type=self.diagram_type)
+        preview_mermaid = render_preview_mermaid(presentation_graph)
         return {
             "canvas_id": self.canvas_id,
             "title": self.title,
@@ -1096,12 +1108,12 @@ class RuntimeCanvas:
             "switch_trigger_turn_id": self.switch_trigger_turn_id,
             "updated_at": self.updated_at,
             "is_active": is_active,
-            "graph_ir": self.graph_ir.to_payload(),
-            "graph_metrics": _graph_metrics(self.graph_ir),
-            "preview_mermaid": self.rendered_mermaid,
+            "graph_ir": presentation_graph.to_payload(),
+            "graph_metrics": _graph_metrics(presentation_graph),
+            "preview_mermaid": preview_mermaid,
             "mermaid_state": {
-                "code": self.rendered_mermaid,
-                "normalized_code": self.rendered_mermaid,
+                "code": preview_mermaid,
+                "normalized_code": preview_mermaid,
                 "source": "algorithm_preview",
                 "provider": str(planner_meta.get("provider") or "deterministic_algorithm_layer"),
                 "model": planner_meta.get("model"),
@@ -1113,7 +1125,7 @@ class RuntimeCanvas:
             },
             "renderer_state": {
                 **self.renderer.export_state(),
-                "groups": [group.to_payload() for group in self.graph_ir.groups],
+                "groups": [group.to_payload() for group in presentation_graph.groups],
             },
         }
 
@@ -1320,6 +1332,7 @@ class CoordinationRuntimeSession:
         runtime.turns = []
         for index, row in enumerate(rows, start=1):
             timestamp_ms = int(row.get("timestamp_ms", 0) or 0)
+            row_metadata = row.get("metadata", {}) if isinstance(row.get("metadata"), dict) else {}
             runtime.turns.append(
                 DialogueTurn(
                     turn_id=index,
@@ -1327,6 +1340,7 @@ class CoordinationRuntimeSession:
                     content=str(row.get("text", "")),
                     stage_index=None,
                     metadata={
+                        **row_metadata,
                         "timestamp_ms": timestamp_ms,
                         "is_final": bool(row.get("is_final", True)),
                         "expected_intent": row.get("expected_intent"),
@@ -1513,6 +1527,7 @@ class CoordinationRuntimeSession:
         speaker: str,
         is_final: bool,
         expected_intent: str | None,
+        metadata: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         if self.read_only:
             raise RuntimeError("legacy realtime sessions are read-only and cannot ingest new chunks")
@@ -1526,6 +1541,7 @@ class CoordinationRuntimeSession:
             content=text,
             stage_index=None,
             metadata={
+                **(metadata if isinstance(metadata, dict) else {}),
                 "timestamp_ms": timestamp_ms,
                 "is_final": is_final,
                 "expected_intent": expected_intent,
@@ -1543,6 +1559,7 @@ class CoordinationRuntimeSession:
         speaker: str,
         is_final: bool,
         expected_intent: str | None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         if self.read_only:
             raise RuntimeError("legacy realtime sessions are read-only and cannot ingest new chunks")
@@ -1556,6 +1573,7 @@ class CoordinationRuntimeSession:
             content=text,
             stage_index=None,
             metadata={
+                **(metadata if isinstance(metadata, dict) else {}),
                 "timestamp_ms": timestamp_ms,
                 "is_final": is_final,
                 "expected_intent": expected_intent,
@@ -2551,10 +2569,12 @@ class CoordinationRuntimeSession:
             if runtime_ms > 0 and transcript_duration_ms > 0
             else 0.0
         )
-        graph_metrics = _graph_metrics(self.current_graph_ir)
+        presentation_graph = _presentation_graph_ir(self.current_graph_ir, diagram_type=self.diagram_type)
+        graph_metrics = _graph_metrics(presentation_graph)
+        preview_mermaid = render_preview_mermaid(presentation_graph)
         mermaid_state = {
-            "code": self.rendered_mermaid,
-            "normalized_code": self.rendered_mermaid,
+            "code": preview_mermaid,
+            "normalized_code": preview_mermaid,
             "source": "algorithm_preview",
             "provider": str(self.planner_state.get("provider") or "deterministic_algorithm_layer"),
             "model": self.planner_state.get("model"),
@@ -2611,9 +2631,9 @@ class CoordinationRuntimeSession:
             "graph_state": {
                 "diagram_type": self.diagram_type,
                 "update_index": self.update_index,
-                "current_graph_ir": self.current_graph_ir.to_payload(),
+                "current_graph_ir": presentation_graph.to_payload(),
                 "graph_metrics": graph_metrics,
-                "preview_mermaid": self.rendered_mermaid,
+                "preview_mermaid": preview_mermaid,
                 "active_canvas_id": self.active_canvas().canvas_id,
                 "pending_turn_count": len(self.pending_turn_ids),
                 "pending_turn_ids": list(self.pending_turn_ids),
@@ -2623,7 +2643,7 @@ class CoordinationRuntimeSession:
             "mermaid_state": mermaid_state,
             "renderer_state": {
                 **self.renderer.export_state(),
-                "groups": [group.to_payload() for group in self.current_graph_ir.groups],
+                "groups": [group.to_payload() for group in presentation_graph.groups],
             },
             "events": list(self.events),
         }

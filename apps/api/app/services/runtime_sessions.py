@@ -42,6 +42,7 @@ def restore_runtime_if_needed(db: Session, session_obj: RealtimeSession) -> Coor
             "speaker": row.speaker,
             "is_final": row.is_final,
             "expected_intent": row.expected_intent,
+            "metadata": row.meta_json if isinstance(row.meta_json, dict) else {},
         }
         for row in db.scalars(
             select(RealtimeChunk).where(RealtimeChunk.session_id == session_obj.id).order_by(RealtimeChunk.sequence_no.asc())
