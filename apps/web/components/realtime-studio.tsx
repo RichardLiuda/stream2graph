@@ -327,7 +327,7 @@ function getSourceBadgeLabel(source: InputSource | null) {
     case "system_audio_browser_experimental":
       return "共享音频验证中";
     case "system_audio_helper":
-      return "增强模式运行中";
+      return "本机内录采集中";
     default:
       return "当前未进行实时采集";
   }
@@ -1469,7 +1469,7 @@ export function RealtimeStudio() {
     };
 
     const handleEnded = () => {
-      void stopHelperCapture("系统声音共享已结束。你可以重新开始增强模式，或切回 Transcript 输入。");
+      void stopHelperCapture("内录共享已结束。可重新开启本机内录转写，或改回打字输入。");
     };
     stream.getTracks().forEach((track) => track.addEventListener("ended", handleEnded));
 
@@ -2319,7 +2319,7 @@ export function RealtimeStudio() {
   async function startBrowserDisplayAudioValidation() {
     clearFeedback();
     if (!window.navigator.mediaDevices?.getDisplayMedia) {
-      setError("当前浏览器不支持共享音频采集。请改用 Transcript 输入或增强模式。");
+      setError("当前浏览器不支持共享音频采集。请改用打字输入或本机内录转写。");
       return;
     }
     try {
@@ -2342,7 +2342,7 @@ export function RealtimeStudio() {
       studioSend({ type: "capture.start" });
       setNotice({
         tone: "warning",
-        text: "浏览器已成功提供共享音频轨道，但当前版本只做能力验证，尚未把共享音频直接转成文本 chunk。请改用增强模式或 Transcript 输入。",
+        text: "浏览器已成功提供共享音频轨道，但当前版本只做能力验证，尚未把共享音频直接转成文本。请改用本机内录转写或打字输入。",
       });
     } catch (err) {
       setError(getDisplayAudioErrorMessage(err instanceof DOMException ? err.name : undefined));
@@ -2398,11 +2398,11 @@ export function RealtimeStudio() {
         if (payload.status === "running") {
           studioSend({ type: "capture.start" });
           studioSend({ type: "stt.working" });
-          setNotice({ tone: "success", text: "增强模式已启动，等待本地辅助层推送识别结果。" });
+          setNotice({ tone: "success", text: "本机内录已启动，正在等待小助手推送识别结果。" });
         }
         if (payload.status === "stopped") {
           studioSend({ type: "capture.stop" });
-          setNotice({ tone: "info", text: "增强模式已停止。" });
+          setNotice({ tone: "info", text: "本机内录已停止。" });
         }
         if (payload.text?.trim()) {
           studioSend({ type: "transcript.preview", text: payload.text.trim() });
@@ -2438,18 +2438,18 @@ export function RealtimeStudio() {
       studioSend({ type: "transcript.preview", text: "" });
       await startHelperAudioBridge(stream, sessionId);
       studioSend({ type: "capture.start" });
-      setNotice({ tone: "success", text: "增强模式已启动，正在把共享音频分段转写并写入当前会话。" });
+      setNotice({ tone: "success", text: "本机内录已启动，正在把共享到的声音分段转写并写入当前会话。" });
     } catch (err) {
       stream.getTracks().forEach((track) => track.stop());
       helperEventSourceRef.current?.close();
       helperEventSourceRef.current = null;
       await audioHelper.stopCapture().catch(() => undefined);
-      studioSend({ type: "stt.error", message: err instanceof Error ? err.message : "增强模式启动失败" });
-      setError(err instanceof Error ? err.message : "增强模式启动失败");
+      studioSend({ type: "stt.error", message: err instanceof Error ? err.message : "本机内录启动失败" });
+      setError(err instanceof Error ? err.message : "本机内录启动失败");
     }
   }
 
-  async function stopHelperCapture(message = "已请求停止增强模式采集。") {
+  async function stopHelperCapture(message = "已请求停止本机内录。") {
     helperEventSourceRef.current?.close();
     helperEventSourceRef.current = null;
     await teardownHelperAudioGraph({ flush: true });
@@ -3183,73 +3183,181 @@ export function RealtimeStudio() {
                 </div>
               ) : !systemAudioExperimentalVisible ? (
                 <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
-                  实验性「共享屏幕音频」仅 Chrome/Edge；可用「增强模式」+ 本机 audio helper。
+                  实验性「共享屏幕音频」仅 Chrome/Edge；要稳定听电脑里的声音请用「本机内录转写」并启动本机 audio helper。
                 </div>
               ) : null
             ) : null}
           </div>
 
-          {/* 纯文本输入：简单文本框 + 预设选择器 */}
+          {/* 纯文本 / 演示：Tab「当前输入」+「历史转写」（与语音侧一致） */}
           {(selectedInputSource === "demo_mode" || selectedInputSource === "transcript") && (
-            <div className="relative z-[2] flex min-h-0 flex-1 flex-col space-y-3">
-              <div className="flex min-h-0 flex-1 flex-col gap-2">
-                {selectedInputSource === "demo_mode" && (
-                  <label className="text-[12px] font-medium text-theme-2">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-4">演示类型</span>
-                    <select
-                      className="flex h-9 w-full items-center justify-between rounded-md border border-theme-default bg-surface-2 px-3 text-sm text-theme-1 outline-none transition hover:border-theme-strong focus-visible:ring-2 focus-visible:ring-theme-focus"
-                      value={selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID}
-                      onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                        switchDemoPreset(event.target.value);
-                      }}
-                    >
-                      {CURATED_DEMO_PRESETS.map((preset) => (
-                        <option key={preset.id} value={preset.id}>
-                          {preset.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                {selectedInputSource === "transcript" && (
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-4">文本输入</div>
-                )}
-                <Textarea
-                  className="min-h-[10rem] flex-1 resize-y text-[12px] leading-relaxed"
-                  rows={10}
-                  value={transcriptText}
-                  disabled={currentSessionClosed}
-                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
-                    const next = event.target.value;
-                    setTranscriptText(next);
-                    studioSend({ type: "transcript.preview", text: next });
-                  }}
-                />
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                className="shrink-0 border-violet-900/50 bg-violet-950/45 py-2 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
-                onClick={() => {
-                  sendTranscript.mutate();
-                }}
-                disabled={
-                  sendTranscript.isPending ||
-                  !transcriptText.trim() ||
-                  currentSessionClosed
-                }
+            <div
+              className={`relative z-[2] flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border px-2.5 py-2 transition-[border-color,box-shadow,background] border-theme-subtle bg-gradient-to-b from-[color:var(--accent)]/[0.06] to-surface-muted`}
+            >
+              <Tabs.Root
+                value={transcriptSidebarTab}
+                onValueChange={setTranscriptSidebarTab}
+                className="flex min-h-0 flex-1 flex-col"
               >
-                <Send className="h-3.5 w-3.5" />
+                <div className="flex shrink-0 flex-wrap items-end justify-between gap-x-3 gap-y-2 border-b border-theme-subtle">
+                  <Tabs.List className="flex min-w-0 gap-1 sm:gap-5" aria-label="文本与历史">
+                    <Tabs.Trigger
+                      value="panel-input"
+                      className="-mb-px border-b-2 border-transparent px-0.5 py-2 text-left text-sm font-semibold text-theme-3 outline-none transition-colors data-[state=active]:border-[color:var(--accent)] data-[state=active]:text-theme-1 data-[state=inactive]:hover:text-theme-2 focus-visible:ring-2 focus-visible:ring-theme-focus focus-visible:ring-offset-2"
+                    >
+                      当前输入
+                    </Tabs.Trigger>
+                    <Tabs.Trigger
+                      value="panel-history"
+                      className="-mb-px border-b-2 border-transparent px-0.5 py-2 text-left text-sm font-semibold text-theme-3 outline-none transition-colors data-[state=active]:border-[color:var(--accent)] data-[state=active]:text-theme-1 data-[state=inactive]:hover:text-theme-2 focus-visible:ring-2 focus-visible:ring-theme-focus focus-visible:ring-offset-2"
+                    >
+                      历史转写
+                    </Tabs.Trigger>
+                  </Tabs.List>
+                  <div className="flex flex-wrap items-center justify-end gap-1.5 pb-2">
+                    {currentSessionClosed ? <Badge className="text-[9px]">已结束</Badge> : null}
+                    {selectedInputSource === "demo_mode" ? (
+                      <Badge className="text-[9px]">演示脚本</Badge>
+                    ) : (
+                      <Badge className="text-[9px]">手动输入</Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-1.5 flex shrink-0 flex-wrap gap-1.5">
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
+                    轮次：{transcriptState.turnCount}
+                  </Badge>
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
+                    说话人：{transcriptState.speakerCount}
+                  </Badge>
+                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
+                    Chunk：{transcriptState.chunkCount}
+                  </Badge>
+                </div>
+
+                <Tabs.Content
+                  value="panel-input"
+                  className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden outline-none data-[state=inactive]:hidden"
+                >
+                  <div className="flex min-h-0 flex-1 flex-col gap-2">
+                    {selectedInputSource === "demo_mode" && (
+                      <label className="text-[12px] font-medium text-theme-2">
+                        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-4">
+                          演示类型
+                        </span>
+                        <select
+                          className="flex h-9 w-full items-center justify-between rounded-md border border-theme-default bg-surface-2 px-3 text-sm text-theme-1 outline-none transition hover:border-theme-strong focus-visible:ring-2 focus-visible:ring-theme-focus"
+                          value={selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID}
+                          onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                            switchDemoPreset(event.target.value);
+                          }}
+                        >
+                          {CURATED_DEMO_PRESETS.map((preset) => (
+                            <option key={preset.id} value={preset.id}>
+                              {preset.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    {selectedInputSource === "transcript" && (
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-4">文本输入</div>
+                    )}
+                    <Textarea
+                      className="min-h-[10rem] flex-1 resize-y text-[12px] leading-relaxed"
+                      rows={10}
+                      value={transcriptText}
+                      disabled={currentSessionClosed}
+                      onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
+                        const next = event.target.value;
+                        setTranscriptText(next);
+                        studioSend({ type: "transcript.preview", text: next });
+                      }}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="shrink-0 border-violet-900/50 bg-violet-950/45 py-2 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
+                    onClick={() => {
+                      sendTranscript.mutate();
+                    }}
+                    disabled={
+                      sendTranscript.isPending ||
+                      !transcriptText.trim() ||
+                      currentSessionClosed
+                    }
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    {currentSessionClosed
+                      ? "会话已结束"
+                      : selectedInputSource === "demo_mode"
+                        ? "生成演示图表"
+                        : "发送文本"}
+                  </Button>
+                  <p className="text-[10px] leading-snug text-theme-4">
+                    {selectedInputSource === "demo_mode"
+                      ? "切换演示类型后点击生成即可。"
+                      : "按「说话人|内容|意图」格式输入，纯文本则视为单一发言者。"}
+                  </p>
+                </Tabs.Content>
+
+                <Tabs.Content
+                  value="panel-history"
+                  className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden outline-none data-[state=inactive]:hidden"
+                >
+                  <div className="flex min-h-[9rem] flex-1 flex-col overflow-hidden rounded-xl border border-theme-subtle bg-surface-muted/88">
+                    <div className="flex shrink-0 justify-end border-b border-theme-subtle px-3 py-1.5">
+                      <div className="text-[10px] text-theme-4">
+                        {archivedTranscriptTurns.length ? `${archivedTranscriptTurns.length} / 10` : "等待归档"}
+                      </div>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
+                      {archivedTranscriptTurns.length ? (
+                        <div className="space-y-2.5">
+                          {archivedTranscriptTurns.map((turn, index) => (
+                            <div
+                              key={turn.key || `${turn.speaker}-${turn.start_ms}-${index}`}
+                              className="rounded-lg border border-theme-subtle bg-surface-1/70 px-3 py-2"
+                            >
+                              <div className="flex items-center justify-between gap-2 text-[10px] text-theme-4">
+                                <span className="truncate font-semibold text-theme-2">{turn.speaker || "speaker"}</span>
+                                <span className="shrink-0">
+                                  {formatRelativeTranscriptTime(turn.start_ms)} -{" "}
+                                  {formatRelativeTranscriptTime(turn.end_ms)}
+                                </span>
+                              </div>
+                              <div className="mt-1 whitespace-pre-wrap text-[12px] leading-6 text-theme-2">{turn.text}</div>
+                              <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-theme-4">
+                                <span>
+                                  {turn.origin === "server"
+                                    ? "server transcript"
+                                    : turn.origin === "event"
+                                      ? "event fallback"
+                                      : "local instant"}
+                                </span>
+                                <span>{turn.is_final ? "final" : "pending"}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex h-full min-h-[6rem] items-center justify-center rounded-lg border border-dashed border-[color:var(--accent)]/30 bg-[color:var(--accent)]/[0.04] px-3 py-3 text-center text-[12px] leading-relaxed text-theme-3">
+                          {currentSessionClosed
+                            ? "当前会话没有可回看的历史转写。"
+                            : "发送成功后的轮次会出现在这里；草稿在「当前输入」继续编辑。"}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Tabs.Content>
+              </Tabs.Root>
+              <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-theme-4">
                 {currentSessionClosed
-                  ? "会话已结束"
+                  ? "会话结束后保留只读字幕和下载入口；如需继续，请重建会话。"
                   : selectedInputSource === "demo_mode"
-                    ? "生成演示图表"
-                    : "发送文本"}
-              </Button>
-              <p className="text-[10px] leading-snug text-theme-4">
-                {selectedInputSource === "demo_mode"
-                  ? "切换演示类型后点击生成即可。"
-                  : "按「说话人|内容|意图」格式输入，纯文本则视为单一发言者。"}
+                    ? "演示：在「当前输入」选脚本并生成；已发送内容在「历史转写」回看。"
+                    : "文本：在「当前输入」编辑并发送；归档在「历史转写」查看。"}
               </p>
             </div>
           )}
@@ -3682,7 +3790,7 @@ export function RealtimeStudio() {
                     ))
                   ) : (
                     <div className="rounded-[22px] border border-dashed border-theme-default p-5 text-sm text-theme-2">
-                      还没有增量事件。创建会话后发送 transcript、启动浏览器麦克风，或接入增强模式。
+                      还没有增量事件。创建会话后可打字发送、开浏览器麦克风，或启用本机内录转写。
                     </div>
                   )}
                 </div>

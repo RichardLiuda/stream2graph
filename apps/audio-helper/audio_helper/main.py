@@ -163,7 +163,7 @@ def _build_capability_payload() -> dict[str, Any]:
             "source_type": "system_audio_helper",
             "platform": platform_name,
             "capability_status": "unsupported",
-            "capability_reason": "当前平台未纳入系统声音增强模式支持范围。",
+            "capability_reason": "当前平台暂不支持本机内录转写。",
             "native_engine": "unsupported",
             "transcriber_backend": backend,
             "model_size": _helper_model_size(),
