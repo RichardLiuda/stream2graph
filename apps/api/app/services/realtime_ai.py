@@ -551,13 +551,14 @@ def transcribe_audio_chunk(db: Session, session_obj: RealtimeSession, payload: d
             pcm_s16le_base64=str(payload["pcm_s16le_base64"]),
             sample_rate=int(payload["sample_rate"]),
             channel_count=int(payload.get("channel_count", 1)),
-            is_final=bool(payload.get("is_final", True)),
+            is_final=bool(payload.get("stream_final", payload.get("is_final", True))),
             fallback_speaker=str(payload.get("speaker", "speaker") or "speaker"),
             role_type=2,
             feature_ids=feature_ids,
             eng_spk_match=1 if feature_ids else None,
             feature_label_by_id=feature_label_by_id,
             model=model,
+            reuse_session_stream=True,
         )
         response = {
             "text": str(result.get("text", "")).strip(),

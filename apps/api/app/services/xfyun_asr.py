@@ -671,6 +671,7 @@ def get_or_create_rtasr_session_stream(
     with _STREAMS_LOCK:
         stream = _STREAMS.get(session_id)
         if stream is None:
+            logger.info("Creating RTASR session stream for realtime session=%s", session_id)
             stream = RTASRRealtimeSessionStream(
                 session_id=session_id,
                 endpoint=endpoint,
@@ -687,6 +688,8 @@ def get_or_create_rtasr_session_stream(
                 fallback_speaker=fallback_speaker,
             )
             _STREAMS[session_id] = stream
+        else:
+            logger.info("Reusing RTASR session stream for realtime session=%s", session_id)
         return stream
 
 
@@ -694,6 +697,7 @@ def close_rtasr_session_stream(session_id: str) -> None:
     with _STREAMS_LOCK:
         stream = _STREAMS.pop(session_id, None)
     if stream is not None:
+        logger.info("Closing RTASR session stream for realtime session=%s", session_id)
         stream.close()
 
 

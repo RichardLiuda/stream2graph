@@ -125,7 +125,7 @@ export function directApiUrl(path: string): string {
 function logBrowserApiEvent(label: string, payload: Record<string, unknown>, level: "info" | "error" = "info") {
   if (typeof window === "undefined") return;
   const method = level === "error" ? console.error : console.info;
-  method(`[S2G][API] ${label}`, payload);
+  method(`[S2G][API] ${label}: ${JSON.stringify(payload)}`);
 }
 
 function apiErrorLogLevel(path: string, status: number) {
@@ -480,6 +480,14 @@ export const api = {
     requestRealtime(`/api/v1/realtime/sessions/${sessionId}/flush`, realtimeSnapshotSchema, {
       method: "POST",
     }),
+  closeRealtimeAudioStream: async (sessionId: string) =>
+    request(
+      `/api/v1/realtime/sessions/${sessionId}/audio/transcriptions/stream/close`,
+      z.object({ ok: z.boolean(), session_id: z.string() }),
+      {
+        method: "POST",
+      },
+    ),
   relayoutRealtimeDiagram: async (sessionId: string, payload: Record<string, unknown>) =>
     requestRealtime(`/api/v1/realtime/sessions/${sessionId}/diagram-relayout`, realtimeSnapshotSchema, {
       method: "POST",

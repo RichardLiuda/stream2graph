@@ -424,6 +424,7 @@ def test_runtime_options_and_audio_transcription_endpoint(
     monkeypatch,
     session_factory,
 ) -> None:
+    captured_payload: dict[str, object] = {}
     monkeypatch.setattr(
         "app.routers.catalog.list_runtime_options",
         lambda db, include_secrets=False: {
@@ -486,7 +487,8 @@ def test_runtime_options_and_audio_transcription_endpoint(
     )
     monkeypatch.setattr(
         "app.routers.realtime.transcribe_audio_chunk",
-        lambda db, session_obj, payload: {
+        lambda db, session_obj, payload: captured_payload.update(payload)
+        or {
             "text": "识别出的系统音频文本",
             "provider": "stt-default",
             "model": "rtasr_llm",
@@ -555,7 +557,11 @@ def test_runtime_options_and_audio_transcription_endpoint(
             "timestamp_ms": 1775133797936,
             "speaker": "system_audio",
             "is_final": True,
-            "metadata": {"input_source": "system_audio", "capture_mode": "api_stt"},
+            "metadata": {
+                "input_source": "system_audio",
+                "capture_mode": "api_stt",
+                "api_stt_stream_final": False,
+            },
         },
     )
     assert response.status_code == 200
@@ -574,6 +580,8 @@ def test_runtime_options_and_audio_transcription_endpoint(
     assert payload["provider"] == "stt-default"
     assert payload["pipeline"]["planner_state"]["model"] == "model-large"
     assert payload["pipeline"]["mermaid_state"]["source"] == "algorithm_preview"
+    assert captured_payload["is_final"] is True
+    assert captured_payload["stream_final"] is False
     with session_factory() as db:
         rows = db.scalars(
             select(RealtimeChunk)
@@ -588,6 +596,30 @@ def test_runtime_options_and_audio_transcription_endpoint(
         assert rows[1].speaker == "匿名说话人 B"
         assert rows[1].meta_json["raw_role_label"] == "role_2"
         assert rows[1].meta_json["speaker_slot_key"].endswith(":role:2")
+
+
+def test_audio_transcription_stream_close_endpoint_closes_rtasr_stream(
+    admin_client: TestClient,
+    monkeypatch,
+) -> None:
+    closed_sessions: list[str] = []
+    monkeypatch.setattr("app.routers.realtime.close_rtasr_session_stream", lambda session_id: closed_sessions.append(session_id))
+
+    created = admin_client.post(
+        "/api/v1/realtime/sessions",
+        json={
+            "title": "close stream session",
+            "client_context": {"input_source": "system_audio"},
+        },
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    response = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/audio/transcriptions/stream/close")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "session_id": session_id}
+    assert closed_sessions == [session_id]
 
 
 def test_runtime_options_can_persist_stt_voiceprint_config(admin_client: TestClient) -> None:
