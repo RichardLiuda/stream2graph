@@ -8,6 +8,7 @@ import Link from "next/link";
 import {
   AudioLines,
   Check,
+  ChevronLeft,
   ChevronDown,
   ChevronRight,
   Fingerprint,
@@ -720,6 +721,7 @@ function preserveCoordinationSnapshot(
   if (!previousPipeline) return nextPipeline;
   return {
     ...nextPipeline,
+    canvas_state: nextPipeline.canvas_state ?? previousPipeline.canvas_state ?? null,
     gate_state: previousPipeline.gate_state ?? nextPipeline.gate_state ?? null,
     planner_state: previousPipeline.planner_state ?? nextPipeline.planner_state ?? null,
     mermaid_state: previousPipeline.mermaid_state ?? nextPipeline.mermaid_state ?? null,
@@ -842,6 +844,7 @@ export function RealtimeStudio() {
   const [transcriptSidebarTab, setTranscriptSidebarTab] = useState("panel-input");
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Record<string, any> | null>(null);
+  const [selectedCanvasId, setSelectedCanvasId] = useState<string | null>(null);
   const [localCommittedTranscriptTurns, setLocalCommittedTranscriptTurns] = useState<TranscriptHistoryItem[]>([]);
   const [closedSessionMeta, setClosedSessionMeta] = useState<{
     sessionId: string;
@@ -916,6 +919,7 @@ export function RealtimeStudio() {
   const apiCaptureStopRequestedRef = useRef(false);
   const inputSourceMenuRef = useRef<HTMLDivElement | null>(null);
   const historyFeedKeysRef = useRef<string[]>([]);
+  const previousActiveCanvasIdRef = useRef<string | null>(null);
 
   const demoTranscriptSeed = useMemo(() => {
     const presetId = selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID;
@@ -1042,6 +1046,11 @@ export function RealtimeStudio() {
     const stored = window.localStorage.getItem(LOCAL_SESSION_KEY);
     if (stored) setCurrentSessionId(stored);
   }, []);
+
+  useEffect(() => {
+    setSelectedCanvasId(null);
+    previousActiveCanvasIdRef.current = null;
+  }, [currentSessionId]);
 
   const inputOptions = useMemo(() => getInputSourceOptions(audioContext), [audioContext]);
   const selectedOption = useMemo<InputSourceOption>(() => {
@@ -2462,6 +2471,40 @@ export function RealtimeStudio() {
   const rendererGroups =
     rendererState.groups || activeSnapshot?.pipeline?.graph_state?.current_graph_ir?.groups || [];
   const currentGraphPayload = activeSnapshot?.pipeline?.graph_state?.current_graph_ir ?? null;
+  const canvasState = activeSnapshot?.pipeline?.canvas_state ?? null;
+  const canvasList: Array<Record<string, any>> = Array.isArray(canvasState?.canvases) ? canvasState.canvases : [];
+  const activeCanvasId =
+    typeof canvasState?.active_canvas_id === "string"
+      ? canvasState.active_canvas_id
+      : typeof activeSnapshot?.pipeline?.graph_state?.active_canvas_id === "string"
+        ? activeSnapshot.pipeline.graph_state.active_canvas_id
+        : null;
+  const activeCanvasIndex =
+    typeof canvasState?.active_canvas_index === "number"
+      ? canvasState.active_canvas_index
+      : Math.max(
+          0,
+          canvasList.findIndex((canvas) => canvas?.canvas_id === activeCanvasId),
+        );
+  const viewedCanvas =
+    (selectedCanvasId ? canvasList.find((canvas) => canvas?.canvas_id === selectedCanvasId) : null) ||
+    (activeCanvasId ? canvasList.find((canvas) => canvas?.canvas_id === activeCanvasId) : null) ||
+    canvasList[0] ||
+    null;
+  const viewedCanvasIndex = viewedCanvas
+    ? Math.max(
+        0,
+        canvasList.findIndex((canvas) => canvas?.canvas_id === viewedCanvas.canvas_id),
+      )
+    : 0;
+  const isViewingHistoricalCanvas = Boolean(
+    viewedCanvas?.canvas_id && activeCanvasId && viewedCanvas.canvas_id !== activeCanvasId,
+  );
+  const displayedRendererState = viewedCanvas?.renderer_state || rendererState;
+  const displayedMermaidState = viewedCanvas?.mermaid_state ?? mermaidState;
+  const displayedRendererGroups = displayedRendererState.groups || viewedCanvas?.graph_ir?.groups || rendererGroups;
+  const displayedGraphPayload = viewedCanvas?.graph_ir ?? currentGraphPayload;
+  const displayedCanvasCount = canvasList.length || 1;
   const mermaidExportRootId = "realtime-mermaid-export";
   const transcriptState = useMemo(() => readTranscriptState(activeSnapshot?.pipeline), [activeSnapshot?.pipeline]);
   const transcriptDownloads = useMemo(() => {
@@ -2544,6 +2587,91 @@ export function RealtimeStudio() {
 
     historyFeedKeysRef.current = currentKeys;
   }, [archivedTranscriptTurns, currentSessionId]);
+
+  useEffect(() => {
+    if (!canvasList.length) {
+      if (selectedCanvasId) setSelectedCanvasId(null);
+      previousActiveCanvasIdRef.current = null;
+      return;
+    }
+    if (selectedCanvasId && !canvasList.some((canvas) => canvas?.canvas_id === selectedCanvasId)) {
+      setSelectedCanvasId(null);
+    }
+  }, [canvasList, selectedCanvasId]);
+
+  useEffect(() => {
+    if (!activeCanvasId) {
+      previousActiveCanvasIdRef.current = null;
+      return;
+    }
+    const previousActiveCanvasId = previousActiveCanvasIdRef.current;
+    if (previousActiveCanvasId && previousActiveCanvasId !== activeCanvasId) {
+      if (!selectedCanvasId || selectedCanvasId === previousActiveCanvasId) {
+        setSelectedCanvasId(null);
+      }
+    }
+    previousActiveCanvasIdRef.current = activeCanvasId;
+  }, [activeCanvasId, selectedCanvasId]);
+
+  function jumpCanvasBy(delta: number) {
+    if (!canvasList.length) return;
+    const nextIndex = Math.max(0, Math.min(viewedCanvasIndex + delta, canvasList.length - 1));
+    const nextCanvas = canvasList[nextIndex];
+    if (!nextCanvas) return;
+    if (activeCanvasId && nextCanvas.canvas_id === activeCanvasId) {
+      setSelectedCanvasId(null);
+      return;
+    }
+    setSelectedCanvasId(nextCanvas.canvas_id);
+  }
+
+  function resetCanvasView() {
+    setSelectedCanvasId(null);
+  }
+
+  function renderCanvasSwitcher() {
+    if (!canvasList.length) return null;
+    return (
+      <div className="flex w-full flex-wrap items-center justify-end gap-1.5">
+        <span className="text-[10px] text-theme-4">
+          {isViewingHistoricalCanvas ? `历史画布，当前写入画布 ${activeCanvasIndex + 1}` : `当前画布 ${activeCanvasIndex + 1}`}
+        </span>
+        <Button
+          type="button"
+          variant="secondary"
+          className="h-7 w-7 min-w-0 rounded-lg p-0"
+          onClick={() => jumpCanvasBy(-1)}
+          disabled={viewedCanvasIndex <= 0}
+          aria-label="查看上一张画布"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <Badge className="px-2 py-1 text-[10px]">
+          {`画布 ${viewedCanvasIndex + 1} / ${displayedCanvasCount}${isViewingHistoricalCanvas ? " · 历史" : " · 当前"}`}
+        </Badge>
+        <Button
+          type="button"
+          variant="secondary"
+          className="h-7 w-7 min-w-0 rounded-lg p-0"
+          onClick={() => jumpCanvasBy(1)}
+          disabled={viewedCanvasIndex >= displayedCanvasCount - 1}
+          aria-label="查看下一张画布"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        {isViewingHistoricalCanvas ? (
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-7 rounded-lg px-2 text-[10px]"
+            onClick={resetCanvasView}
+          >
+            回到当前
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
 
   function handleMermaidNodeRelayout(payload: MermaidNodeRelayoutPayload) {
     if (!currentSessionId || relayoutMutation.isPending) return;
@@ -3376,7 +3504,8 @@ export function RealtimeStudio() {
                   </Tooltip.Provider>
                 </div>
                 <Tooltip.Provider delayDuration={200}>
-                  <div className="flex w-full min-w-0 shrink-0 flex-nowrap items-start justify-end gap-4 sm:ml-auto sm:max-w-md sm:gap-6 sm:pr-1">
+                  <div className="flex w-full min-w-0 shrink-0 flex-col items-end gap-2 -mt-1 sm:ml-auto sm:max-w-md sm:gap-2.5 sm:pr-1">
+                    <div className="flex w-full min-w-0 flex-nowrap items-start justify-end gap-4 sm:gap-6">
                     <div className="flex shrink-0 flex-col items-center">
                       <Tooltip.Root>
                         <Tooltip.Trigger asChild>
@@ -3454,51 +3583,63 @@ export function RealtimeStudio() {
                         历史会话
                       </Button>
                     </div>
+                    </div>
+                    {renderCanvasSwitcher()}
                   </div>
                 </Tooltip.Provider>
               </div>
 
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <Tabs.Content value="mermaid" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+            <Tabs.Content value="mermaid" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
               <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-3 pt-1 sm:px-3">
                 <MermaidCard
                   title=""
                   embedded
-                  code={mermaidState?.code || mermaidState?.normalized_code || ""}
-                  rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
-                  repairRawOutputText={
-                    typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
+                  code={displayedMermaidState?.code || displayedMermaidState?.normalized_code || ""}
+                  rawOutputText={
+                    typeof displayedMermaidState?.raw_output_text === "string" ? displayedMermaidState.raw_output_text : null
                   }
-                  provider={mermaidState?.provider || selectedPlannerProfile?.label || null}
-                  model={mermaidState?.model || plannerModel || null}
-                  latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
-                  compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
-                  updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null)}
-                  graphPayload={currentGraphPayload}
-                  onNodeRelayout={handleMermaidNodeRelayout}
-                  relayoutBusy={relayoutMutation.isPending}
+                  repairRawOutputText={
+                    typeof displayedMermaidState?.repair_raw_output_text === "string"
+                      ? displayedMermaidState.repair_raw_output_text
+                      : null
+                  }
+                  provider={displayedMermaidState?.provider || selectedPlannerProfile?.label || null}
+                  model={displayedMermaidState?.model || plannerModel || null}
+                  latencyMs={typeof displayedMermaidState?.latency_ms === "number" ? displayedMermaidState.latency_ms : null}
+                  compileOk={typeof displayedMermaidState?.compile_ok === "boolean" ? displayedMermaidState.compile_ok : null}
+                  updatedAt={
+                    toLocalDateTimeLabel(
+                      displayedMermaidState?.updated_at
+                        ? String(displayedMermaidState.updated_at)
+                        : lastMermaidUpdatedAt || null,
+                    )
+                  }
+                  graphPayload={displayedGraphPayload}
+                  onNodeRelayout={isViewingHistoricalCanvas ? null : handleMermaidNodeRelayout}
+                  relayoutBusy={!isViewingHistoricalCanvas && relayoutMutation.isPending}
                   exportRootId={mermaidExportRootId}
                 />
               </div>
             </Tabs.Content>
 
-            <Tabs.Content value="structure" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+            <Tabs.Content value="structure" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
               <div className="flex min-h-0 flex-1 px-4 py-2">
                 <Card className="flex-1 min-h-0 rounded-xl border border-theme-default bg-surface-muted p-2">
                   <div className="flex-1 min-h-0 overflow-hidden rounded-lg">
                     <GraphStage
                       embedded
                       title="结构图"
-                      nodes={rendererState.nodes || []}
-                      edges={rendererState.edges || []}
-                      groups={rendererGroups}
+                      nodes={displayedRendererState.nodes || []}
+                      edges={displayedRendererState.edges || []}
+                      groups={displayedRendererGroups}
                     />
                   </div>
                 </Card>
               </div>
             </Tabs.Content>
 
-            <Tabs.Content value="events" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+            <Tabs.Content value="events" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
               <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div className="mb-5 flex items-center justify-between gap-4">
                   <div>
@@ -3548,7 +3689,7 @@ export function RealtimeStudio() {
               </Card>
             </Tabs.Content>
 
-            <Tabs.Content value="metrics" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+            <Tabs.Content value="metrics" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
               <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-2">
                 <div className="space-y-6">
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -3566,7 +3707,7 @@ export function RealtimeStudio() {
               </div>
             </Tabs.Content>
 
-            <Tabs.Content value="pipeline" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+            <Tabs.Content value="pipeline" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
               <div className="flex min-h-0 flex-1 flex-col">
                 <Card className="flex-1 min-h-0 overflow-hidden">
                   <div className="mb-4 text-sm font-semibold text-theme-1 px-5 pt-5">处理步骤摘要</div>

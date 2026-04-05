@@ -7,6 +7,8 @@ from app.services.realtime_coordination import (
     CoordinationRuntimeSession,
     DialogueTurn,
     GateDecision,
+    LIVE_PLANNER_SYSTEM_PROMPT,
+    LIVE_RELAYOUT_SYSTEM_PROMPT,
     PlannerDecision,
     _backfill_sparse_flow_edges,
     _coerce_gate_action,
@@ -215,6 +217,12 @@ def test_diagram_type_priors_keep_edges_for_structured_diagrams() -> None:
     assert _diagram_type_alignment_priors("sequence")["allow_edges"] is True
     assert _diagram_type_alignment_priors("statediagram")["allow_edges"] is True
     assert _diagram_type_alignment_priors("er")["allow_edges"] is True
+
+
+def test_realtime_prompts_require_language_consistency() -> None:
+    assert "Use the same dominant language as the observed dialogue" in LIVE_PLANNER_SYSTEM_PROMPT
+    assert "Do not translate unless the user explicitly asks for translation." in LIVE_PLANNER_SYSTEM_PROMPT
+    assert "Do not silently translate Chinese content into English" in LIVE_RELAYOUT_SYSTEM_PROMPT
 
 
 def test_backfill_sparse_flow_edges_connects_root_and_prefixed_children() -> None:

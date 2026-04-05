@@ -9,6 +9,8 @@ from tools.mermaid_prompting import (
     MERMAID_RUNTIME_VERSION,
     MERMAID_SYNTAX_PROFILE,
     build_final_diagram_user_prompt,
+    build_output_language_requirement,
+    detect_dominant_dialogue_language,
 )
 
 
@@ -23,6 +25,16 @@ def test_shared_mermaid_prompt_includes_runtime_and_structure_rules() -> None:
     assert f"Syntax profile: {MERMAID_SYNTAX_PROFILE}" in prompt
     assert "Use this header unless the dialogue makes a different valid family unavoidable: flowchart TD" in prompt
     assert "Never chain multiple edges or declarations on one line." in MERMAID_GENERATION_SYSTEM_PROMPT
+    assert "Detected dominant dialogue language: Chinese." in prompt
+    assert "Output every human-readable diagram label in Chinese." in prompt
+    assert "Use the same dominant language as the source dialogue for every human-readable label." in MERMAID_GENERATION_SYSTEM_PROMPT
+
+
+def test_language_requirement_prefers_source_language_without_translation() -> None:
+    assert detect_dominant_dialogue_language("先提交材料，再进入审批流程。API Gateway 保留英文名。") == "Chinese"
+    assert detect_dominant_dialogue_language("User submits the form and waits for approval.") == "English"
+    requirement = build_output_language_requirement("办事人先填写申请表单，再提交材料。")
+    assert "Do not translate Chinese source content into English." in requirement
 
 
 def test_generate_mermaid_state_repairs_failed_candidate(

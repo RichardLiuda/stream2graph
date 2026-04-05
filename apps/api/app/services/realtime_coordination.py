@@ -35,6 +35,7 @@ from tools.incremental_system.models import (
     _refine_graph_ir,
     _repair_prompt,
 )
+from tools.mermaid_prompting import build_output_language_requirement, detect_dominant_dialogue_language
 from tools.incremental_system.schema import DialogueTurn
 
 
@@ -80,6 +81,23 @@ def _dialogue_payload(turn: DialogueTurn) -> dict[str, Any]:
         "content": turn.content,
         "timestamp_ms": int(turn.metadata.get("timestamp_ms", 0) or 0),
         "is_final": bool(turn.metadata.get("is_final", True)),
+    }
+
+
+def _dialogue_language_guidance(turns: list[DialogueTurn]) -> dict[str, str]:
+    seen_turn_ids: set[int] = set()
+    fragments: list[str] = []
+    for turn in turns:
+        if turn.turn_id in seen_turn_ids:
+            continue
+        seen_turn_ids.add(turn.turn_id)
+        content = str(turn.content or "").strip()
+        if content:
+            fragments.append(content)
+    merged = "\n".join(fragments)
+    return {
+        "dominant_language": detect_dominant_dialogue_language(merged),
+        "instruction": build_output_language_requirement(merged),
     }
 
 
@@ -986,6 +1004,8 @@ LIVE_PLANNER_SYSTEM_PROMPT = (
     "Prefer 2 to 8 style lines total, and keep them valid Mermaid syntax. "
     "If you are unsure about a full graph snapshot, you may omit target_graph_ir and return delta_ops only, but if you need to add or change styles you should include either top-level styles or target_graph_ir.styles. "
     "If target_graph_ir is provided, it must include all previously existing items and all new additions. "
+    "LANGUAGE CONSISTENCY: Use the same dominant language as the observed dialogue for all human-readable node labels, edge labels, group labels, notes, and Mermaid text. "
+    "Do not translate unless the user explicitly asks for translation. Preserve proper nouns, acronyms, API names, and official product names in their original form when appropriate. "
     "STRUCTURAL COMPLETENESS: If you add 3 or more nodes, you should also add explicit edges or groups that explain how those nodes relate. "
     "A response with isolated nodes only and zero edges/groups is incomplete unless the dialogue is explicitly just an unordered inventory. "
     "For mind-map-like content rendered as flowchart, connect the center topic to first-level branches and connect branches to their details. "
@@ -1008,6 +1028,8 @@ LIVE_RELAYOUT_SYSTEM_PROMPT = (
     "Top-level keys: notes, target_graph_ir. "
     "Preserve every existing node id and group id. Do not create or delete nodes or groups. "
     "You may reorder source_index, rewire edges, change edge labels, change node parent, and update group member_ids to reflect the new meaning of the drag. "
+    "LANGUAGE CONSISTENCY: Keep all human-readable node labels, edge labels, group labels, and notes in the same dominant language as the observed dialogue unless the user explicitly asks for translation. "
+    "Do not silently translate Chinese content into English or English content into Chinese. Preserve proper nouns, acronyms, API names, and official product names in their original form when appropriate. "
     "Preserve existing Mermaid styles unless the new organization clearly calls for updated highlighting or grouping, and when you change styles use Mermaid-compatible attributes such as fill, stroke, color, stroke-width, font-size, font-style, font-weight, and text-decoration. "
     "Prefer the smallest coherent graph edit that explains the new spatial arrangement. "
     "If the drag does not imply a real structural change, return the current graph unchanged with a short note."
@@ -2031,6 +2053,7 @@ class CoordinationRuntimeSession:
         client = build_chat_client(profile, model, timeout_sec=REALTIME_RELAYOUT_LLM_TIMEOUT_SEC)
         sample_hint = SimpleNamespace(sample_id=self.session_id, diagram_type=self.diagram_type)
         state_hint = SimpleNamespace(current_graph_ir=self.current_graph_ir)
+        language_guidance = _dialogue_language_guidance([*self.turns[-24:], *pending_turns])
         base_messages = [
             {"role": "system", "content": LIVE_PLANNER_SYSTEM_PROMPT},
             {
@@ -2041,6 +2064,8 @@ class CoordinationRuntimeSession:
                         "diagram_type": self.diagram_type,
                         "current_update_index": self.update_index,
                         "canvas_state": self._canvas_prompt_summary(),
+                        "dominant_dialogue_language": language_guidance["dominant_language"],
+                        "language_requirement": language_guidance["instruction"],
                         "pending_turns": [_dialogue_payload(turn) for turn in pending_turns],
                         "recent_turns": [_dialogue_payload(turn) for turn in self.turns[-24:]],
                         "recent_dialogue_snapshot": _build_recent_dialogue_snapshot(self.turns[-24:]),
@@ -2068,6 +2093,7 @@ class CoordinationRuntimeSession:
                                     "line": "optional Mermaid style directive such as classDef/class/style/linkStyle",
                                 }
                             ],
+                            "language": "all human-readable labels and notes must stay in the dominant dialogue language unless the user explicitly requests translation",
                             "notes": "short string",
                             "target_graph_ir": "optional full graph object, including styles when available",
                         },
@@ -2191,6 +2217,7 @@ class CoordinationRuntimeSession:
         )
         client = build_chat_client(profile, model)
         sample_hint = SimpleNamespace(sample_id=self.session_id, diagram_type=self.diagram_type)
+        language_guidance = _dialogue_language_guidance(self.turns[-24:])
         base_messages = [
             {"role": "system", "content": LIVE_RELAYOUT_SYSTEM_PROMPT},
             {
@@ -2200,6 +2227,8 @@ class CoordinationRuntimeSession:
                         "session_id": self.session_id,
                         "diagram_type": self.diagram_type,
                         "canvas_state": self._canvas_prompt_summary(),
+                        "dominant_dialogue_language": language_guidance["dominant_language"],
+                        "language_requirement": language_guidance["instruction"],
                         "recent_turns": [_dialogue_payload(turn) for turn in self.turns[-24:]],
                         "current_graph_ir": self.current_graph_ir.to_payload(),
                         "current_graph_metrics": _graph_metrics(self.current_graph_ir),
@@ -2212,6 +2241,7 @@ class CoordinationRuntimeSession:
                                     "line": "optional Mermaid style directive such as classDef/class/style/linkStyle",
                                 }
                             ],
+                            "language": "all human-readable labels and notes must stay in the dominant dialogue language unless the user explicitly requests translation",
                             "target_graph_ir": {
                                 "graph_id": self.current_graph_ir.graph_id,
                                 "diagram_type": self.current_graph_ir.diagram_type,
