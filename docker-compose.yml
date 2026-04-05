@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:16-alpine
+    container_name: stream2graph-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-stream2graph}
+      POSTGRES_USER: ${POSTGRES_USER:-stream2graph}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stream2graph}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stream2graph}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - stream2graph-network
+
+  # API 后端服务
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: stream2graph-api
+    environment:
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-stream2graph}:${POSTGRES_PASSWORD:-stream2graph}@postgres:5432/${POSTGRES_DB:-stream2graph}
+      - S2G_SESSION_SECRET=${S2G_SESSION_SECRET:-change-me-in-production}
+      - S2G_ADMIN_USERNAME=${S2G_ADMIN_USERNAME:-admin}
+      - S2G_ADMIN_PASSWORD=${S2G_ADMIN_PASSWORD:-admin123456}
+      - S2G_ADMIN_DISPLAY_NAME=${S2G_ADMIN_DISPLAY_NAME:-Stream2Graph Admin}
+      - S2G_CORS_ORIGINS=${S2G_CORS_ORIGINS:-http://localhost:3000}
+      - S2G_COOKIE_SECURE=${S2G_COOKIE_SECURE:-false}
+      - S2G_COOKIE_SAMESITE=${S2G_COOKIE_SAMESITE:-lax}
+      - S2G_TLS_VERIFY=${S2G_TLS_VERIFY:-true}
+      - S2G_DEFAULT_DATASET_VERSION=${S2G_DEFAULT_DATASET_VERSION:-release_v7_kimi_k25_fullregen_strict_20260313}
+      - S2G_LLM_PROFILES_JSON=${S2G_LLM_PROFILES_JSON}
+      - S2G_STT_PROFILES_JSON=${S2G_STT_PROFILES_JSON}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - stream2graph-network
+
+  # Web 前端服务
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: stream2graph-web
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_AUDIO_HELPER_BASE_URL=${NEXT_PUBLIC_AUDIO_HELPER_BASE_URL:-http://localhost:8765}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - stream2graph-network
+
+  # Audio Helper 服务（可选）
+  audio-helper:
+    build:
+      context: .
+      dockerfile: Dockerfile.audio-helper
+    container_name: stream2graph-audio-helper
+    environment:
+      - S2G_AUDIO_HELPER_CORS_ORIGINS=${S2G_AUDIO_HELPER_CORS_ORIGINS:-http://localhost:3000}
+      - S2G_HELPER_TRANSCRIBER=${S2G_HELPER_TRANSCRIBER:-faster_whisper}
+      - S2G_HELPER_MODEL_SIZE=${S2G_HELPER_MODEL_SIZE:-small}
+      - S2G_HELPER_LANGUAGE=${S2G_HELPER_LANGUAGE:-zh}
+      - S2G_HELPER_DEVICE=${S2G_HELPER_DEVICE:-cpu}
+      - S2G_HELPER_COMPUTE_TYPE=${S2G_HELPER_COMPUTE_TYPE:-int8}
+    ports:
+      - "${AUDIO_HELPER_PORT:-8765}:8765"
+    restart: unless-stopped
+    networks:
+      - stream2graph-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  stream2graph-network:
+    driver: bridge
