@@ -252,7 +252,7 @@ async function requestRealtime<TSchema extends z.ZodTypeAny>(
   const timeoutMs = REALTIME_PIPELINE_TIMEOUT_MS;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  const requestUrl = directApiUrl(path);
+  const requestUrl = apiUrl(path);
   try {
     const response = await fetch(requestUrl, {
       credentials: "include",
@@ -295,7 +295,7 @@ async function requestRealtime<TSchema extends z.ZodTypeAny>(
     if (e instanceof TypeError) {
       throw new ApiError(
         0,
-        `无法直连实时 API（请求：${requestUrl}）。请确认：① API 已在 8000 端口运行；② 浏览器可直接访问 ${requestUrl}; ③ 后端 CORS 允许当前页面来源。`,
+        `无法连接实时 API（请求：${requestUrl}）。请确认：① API 已在运行；② 若使用默认同源代理，请检查 app/api/[...path]/route.ts 的代理目标配置；③ 若使用直连模式（NEXT_PUBLIC_API_BROWSER_PROXY=0），请确认浏览器可直接访问该地址且后端 CORS 允许当前页面来源。`,
         {},
       );
     }
