@@ -2,7 +2,7 @@
 set -e
 
 echo "等待 PostgreSQL 启动..."
-until pg_isready -h postgres -U ${POSTGRES_USER:-stream2graph}; do
+until pg_isready -h postgres -U "${POSTGRES_USER:-stream2graph}" -d "${POSTGRES_DB:-stream2graph}"; do
   echo "PostgreSQL 未就绪 - 等待中..."
   sleep 2
 done

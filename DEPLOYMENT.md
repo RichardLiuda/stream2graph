@@ -57,17 +57,21 @@ nano .env
 - `S2G_SESSION_SECRET`: 生成随机字符串（可用 `openssl rand -hex 32`）
 - `S2G_ADMIN_PASSWORD`: 设置管理员密码
 - `S2G_CORS_ORIGINS`: 设置你的域名
-- `NEXT_PUBLIC_API_BASE_URL`: 设置你的 API 地址
+- `NEXT_PUBLIC_API_BASE_URL`: 设置你的站点根地址（例如 `https://your-domain.com`，不要带 `/api`）
+- `API_PROXY_TARGET`: 保持为 `http://api:8000`，供 `web` 容器内部通过 Docker 网络转发到后端
 - `NEXT_PUBLIC_AUDIO_HELPER_BASE_URL`: 设置你的 Audio Helper 地址
 
 ### 4. 构建并启动服务
 
 ```bash
-# 构建镜像
-docker compose build
+# Linux 服务器只构建核心服务，避免卡在 audio-helper
+docker compose build api web
 
-# 启动所有服务
-docker compose up -d
+# Linux 服务器推荐只启动核心服务
+docker compose up -d postgres api web
+
+# 如确实需要 Audio Helper，再额外启动
+# docker compose up -d audio-helper
 
 # 查看服务状态
 docker compose ps
@@ -83,10 +87,10 @@ docker compose logs -f
 docker compose exec postgres psql -U stream2graph -c "SELECT version();"
 
 # 检查 API
-curl http://localhost:8000/health
+curl http://localhost:8000/api/health
 
 # 检查 Web
-curl http://localhost:3000
+curl http://localhost:6666
 ```
 
 ## 服务管理
@@ -156,7 +160,7 @@ server {
 
     # Web 前端
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:6666;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -198,6 +202,32 @@ sudo systemctl reload nginx
 ```bash
 sudo apt install certbot python3-certbot-nginx
 sudo certbot --nginx -d your-domain.com
+```
+
+## Linux 服务器上的 Audio Helper 说明
+
+- `audio-helper` 更适合桌面端本机音频采集联调，不是 Linux 服务器上的核心依赖
+- 当前实现里，Linux 平台能力会返回 `unsupported`
+- 因此线上部署推荐先只启动 `postgres + api + web`
+
+## 使用 CI 构建镜像（推荐）
+
+- 已新增 GitHub Actions 工作流：`.github/workflows/docker-images.yml`
+- 默认会把 `api` / `web` 镜像推到 GHCR
+- 推荐在服务器上直接拉 CI 产物，不要在 `1C1G` 机器上本地 `build`
+
+服务器示例：
+
+```bash
+cp .env.production .env
+
+# 按你的 GitHub 用户名或组织名修改
+echo 'S2G_API_IMAGE=ghcr.io/<owner>/stream2graph-api:latest' >> .env
+echo 'S2G_WEB_IMAGE=ghcr.io/<owner>/stream2graph-web:latest' >> .env
+
+docker login ghcr.io
+docker compose -f docker-compose.ci.yml pull
+docker compose -f docker-compose.ci.yml up -d
 ```
 
 ## 故障排查
