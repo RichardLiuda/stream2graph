@@ -26,7 +26,7 @@ const CONFIGURED_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\
 
 function resolveFallbackApiBaseUrl() {
   if (typeof window === "undefined") {
-    return "http://api:8000";
+    return "";
   }
   return `${window.location.protocol}//${window.location.hostname}:8000`;
 }
@@ -84,12 +84,12 @@ export class ApiError extends Error {
 }
 
 /**
- * 默认走 Next `rewrites` 同源代理（见 `next.config.ts`），浏览器请求 `/api/*` 即可，无需直连 :8000。
+ * 默认走 Next Route Handler 同源代理（见 `app/api/[...path]/route.ts`），浏览器请求 `/api/*` 即可，无需直连 :8000。
  * 设置 `NEXT_PUBLIC_API_BROWSER_PROXY=0` 时改回直连（需后端 CORS、与页面同协议等）。
  */
 function resolveApiBaseUrl(): string {
   if (typeof window === "undefined") {
-    return CONFIGURED_API_BASE_URL || "http://api:8000";
+    return CONFIGURED_API_BASE_URL || "";
   }
 
   if (process.env.NEXT_PUBLIC_API_BROWSER_PROXY === "0") {
@@ -236,7 +236,7 @@ async function request<TSchema extends z.ZodTypeAny>(
       const tried = apiUrl(path);
       throw new ApiError(
         0,
-        `无法连接 API（请求：${tried}）。请确认：① API 已在运行；② 若使用「直连模式」（NEXT_PUBLIC_API_BROWSER_PROXY=0），同一台机须监听 0.0.0.0:8000 且防火墙放行；③ 默认「同源代理」时，Next 会将 /api/* 转到 API_PROXY_TARGET / NEXT_PUBLIC_API_BASE_URL（见 apps/web/next.config.ts），请保证该地址在运行 Next 的机器上可访问。`,
+        `无法连接 API（请求：${tried}）。请确认：① API 已在运行；② 若使用「直连模式」（NEXT_PUBLIC_API_BROWSER_PROXY=0），同一台机须监听 0.0.0.0:8000 且防火墙放行；③ 默认「同源代理」时，Next 会通过 app/api/[...path]/route.ts 按环境变量 API_PROXY_TARGET、S2G_API_PROXY_CANDIDATES、S2G_API_SERVICE_URL / HOST / PORT 转发到后端。`,
         {},
       );
     }
