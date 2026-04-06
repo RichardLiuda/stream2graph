@@ -634,7 +634,7 @@ function MermaidCardBody({
       console.debug("[MermaidCard] render candidate", summarizeMermaid(candidate));
       if (!candidate) {
         setSvg("");
-        setError("暂无 Mermaid 内容");
+        setError(null);
         console.info("[MermaidCard] skipped: empty Mermaid content");
         console.groupEnd();
         return;
@@ -925,25 +925,35 @@ function MermaidCardBody({
               />
               {!svg ? (
                 <div
-                  className={`absolute z-[2] rounded-lg border border-amber-900/55 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100 ${
-                    embedded ? "left-2 right-2 top-2" : "left-3 right-3 top-3"
+                  className={`pointer-events-none absolute z-[2] rounded-lg border border-theme-subtle bg-surface-2/90 px-3 py-2.5 text-center text-[12px] leading-relaxed text-theme-2 shadow-sm backdrop-blur-[2px] ${
+                    embedded ? "left-1/2 top-1/2 w-[min(92%,20rem)] -translate-x-1/2 -translate-y-1/2" : "left-3 right-3 top-3"
                   }`}
                 >
-                  画布已就绪，但目前没有可渲染的 Mermaid。
-                  <span className="text-amber-200/80">
-                    {" "}
-                    你可以：左侧发送 Transcript / 开始录音；会话建立后这里会自动更新。
-                  </span>
+                  {embedded ? (
+                    <>
+                      暂无图形内容。
+                      <span className="mt-1 block text-[11px] text-theme-4">
+                        请在左侧输入或载入脚本后点击发送，或切换语音来源并开始采集，主图将在此处更新。
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      画布已就绪，但目前没有可渲染的 Mermaid。
+                      <span className="mt-1 block text-[11px] text-theme-4">
+                        发送 Transcript、开始录音或等待会话出图后，此处会自动更新。
+                      </span>
+                    </>
+                  )}
                 </div>
               ) : null}
-              {svg ? (
-                <div
+          {svg ? (
+            <div
                   key={zoomRebuildNonce}
                   ref={renderSurfaceRef}
                   data-mermaid-export-root={exportRootId || undefined}
                   className="relative z-[1] min-h-0 flex-1 [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
-                  dangerouslySetInnerHTML={{ __html: svg }}
-                />
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
               ) : null}
             </PanZoomCanvas>
           </div>
@@ -994,11 +1004,11 @@ function MermaidCardBody({
 
   const headerBadges = (
     <>
-      {provider ? <Badge>{provider}</Badge> : null}
-      {model ? <Badge>{model}</Badge> : null}
-      {typeof latencyMs === "number" ? <Badge>{latencyMs.toFixed(1)} ms</Badge> : null}
-      <MermaidCompileStatusBadge compileOk={compileOk} updatedAt={updatedAt} />
-      {headerExtra}
+            {provider ? <Badge>{provider}</Badge> : null}
+            {model ? <Badge>{model}</Badge> : null}
+            {typeof latencyMs === "number" ? <Badge>{latencyMs.toFixed(1)} ms</Badge> : null}
+            <MermaidCompileStatusBadge compileOk={compileOk} updatedAt={updatedAt} />
+            {headerExtra}
     </>
   );
 
@@ -1033,7 +1043,7 @@ function MermaidCardBody({
       ) : (
         <div className="border-b border-theme-default px-5 py-3 text-xs leading-snug text-theme-4">
           图预览已收起，点击标题栏可展开查看（画布内仍可平移与缩放）。
-        </div>
+      </div>
       )}
     </Card>
   );
