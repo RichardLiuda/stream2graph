@@ -3314,7 +3314,7 @@ export function RealtimeStudio() {
                       disabled={!canSendTranscriptChunk}
                       className={`min-h-[2.75rem] min-w-0 flex-1 px-3 text-xs font-semibold transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-45 ${
                         sendTranscriptPrimaryStyle
-                          ? "border-violet-200/90 bg-violet-700/70 text-violet-50 shadow-[0_0_0_1px_rgba(139,92,246,0.32)_inset,0_10px_22px_rgba(109,40,217,0.36)] hover:border-violet-200/95 hover:bg-violet-700/75 focus-visible:ring-violet-200/80"
+                          ? "border-[color:var(--workspace-tab-active-border)] bg-[color:var(--workspace-tab-active-bg)] text-[color:var(--workspace-tab-active-fg)] hover:border-[color:var(--workspace-tab-active-border)] hover:bg-[color:var(--workspace-tab-active-bg)]/95 focus-visible:ring-[color:var(--workspace-tab-active-border)]/70"
                           : "border-violet-900/50 bg-violet-950/45 text-violet-200 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-violet-700"
                       }`}
                       onClick={() => {
@@ -3672,7 +3672,7 @@ export function RealtimeStudio() {
                     disabled={!canStartStageCapture}
                               className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
                                 startRecordingPrimaryStyle
-                                  ? "border-violet-200/90 bg-violet-700/70 text-violet-50 shadow-[0_0_0_1px_rgba(139,92,246,0.32)_inset,0_10px_22px_rgba(109,40,217,0.36)] hover:border-violet-200/95 hover:bg-violet-700/75 focus-visible:ring-violet-200/80"
+                                  ? "border-[color:var(--workspace-tab-active-border)] bg-[color:var(--workspace-tab-active-bg)] text-[color:var(--workspace-tab-active-fg)] hover:border-[color:var(--workspace-tab-active-border)] hover:bg-[color:var(--workspace-tab-active-bg)]/95 focus-visible:ring-[color:var(--workspace-tab-active-border)]/70"
                                   : "border-violet-900/50 bg-violet-950/45 text-violet-200 focus-visible:ring-violet-700"
                               }`}
                         aria-label="开始录音"
@@ -3705,7 +3705,7 @@ export function RealtimeStudio() {
                     disabled={!canStopStageCapture}
                               className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
                                 canStopStageCapture
-                                  ? "border-red-200/90 bg-red-700/70 text-red-50 shadow-[0_0_0_1px_rgba(239,68,68,0.30)_inset,0_10px_22px_rgba(220,38,38,0.32)] hover:border-red-200/95 hover:bg-red-700/75 focus-visible:ring-red-200/80"
+                                  ? "border-red-200/90 bg-red-700/70 text-red-50 hover:border-red-200/95 hover:bg-red-700/75 focus-visible:ring-red-200/80"
                                   : "border-red-900/50 bg-red-950/40 text-red-200 focus-visible:ring-red-800"
                               }`}
                         aria-label="暂停录音"
