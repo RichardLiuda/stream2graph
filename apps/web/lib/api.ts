@@ -26,7 +26,7 @@ const CONFIGURED_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\
 
 function resolveFallbackApiBaseUrl() {
   if (typeof window === "undefined") {
-    return "http://127.0.0.1:8000";
+    return "http://api:8000";
   }
   return `${window.location.protocol}//${window.location.hostname}:8000`;
 }
@@ -89,7 +89,7 @@ export class ApiError extends Error {
  */
 function resolveApiBaseUrl(): string {
   if (typeof window === "undefined") {
-    return CONFIGURED_API_BASE_URL || "http://127.0.0.1:8000";
+    return CONFIGURED_API_BASE_URL || "http://api:8000";
   }
 
   if (process.env.NEXT_PUBLIC_API_BROWSER_PROXY === "0") {
