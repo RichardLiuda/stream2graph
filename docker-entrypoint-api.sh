@@ -10,7 +10,8 @@ done
 echo "PostgreSQL 已就绪！"
 
 echo "运行数据库迁移..."
-alembic upgrade head
+cd /app
+alembic -c apps/api/alembic.ini upgrade head
 
 echo "启动 API 服务..."
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+exec uvicorn app.main:app --app-dir /app/apps/api --host 0.0.0.0 --port 8000
