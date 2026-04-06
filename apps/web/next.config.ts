@@ -9,6 +9,7 @@ const apiProxyTarget = (
 ).replace(/\/$/, "");
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   transpilePackages: ["@stream2graph/ui", "@stream2graph/contracts"],
   async rewrites() {
     if (process.env.NEXT_PUBLIC_API_BROWSER_PROXY === "0") {
