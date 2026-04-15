@@ -718,8 +718,6 @@ const STAGE_TABS: ReadonlyArray<readonly [string, string]> = [
   ["mermaid", "主图"],
   ["structure", "结构视图"],
   ["events", "更新记录"],
-  ["metrics", "评测指标"],
-  ["pipeline", "运行摘要"],
 ] as const;
 
 export function RealtimeStudio() {
@@ -824,6 +822,7 @@ export function RealtimeStudio() {
     0,
     STAGE_TABS.findIndex(([value]) => value === stageTab),
   );
+  const stageTabCount = STAGE_TABS.length;
 
   const authQuery = useQuery({
     queryKey: ["auth", "me"],
@@ -3063,13 +3062,13 @@ export function RealtimeStudio() {
               />
               <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-2 pt-3">
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                <Tabs.List className="workspace-tab-list w-full max-w-[760px] grid-cols-5 self-start">
+                <Tabs.List className="workspace-tab-list w-full max-w-[460px] grid-cols-3 self-start">
               <span
                 aria-hidden
                 className="workspace-tab-indicator"
                 style={{
                   left: "0.25rem",
-                  width: "calc((100% - 0.5rem) / 5)",
+                  width: `calc((100% - 0.5rem) / ${stageTabCount})`,
                   transform: `translateX(calc(${activeStageTabIndex} * 100%))`,
                 }}
               />
@@ -3242,18 +3241,14 @@ export function RealtimeStudio() {
             </Tabs.Content>
 
             <Tabs.Content value="structure" className="absolute inset-0 flex min-h-0 flex-col outline-none">
-              <div className="flex min-h-0 flex-1 px-4 py-2">
-                <Card className="flex-1 min-h-0 rounded-xl border border-theme-default bg-surface-muted p-2">
-                  <div className="flex-1 min-h-0 overflow-hidden rounded-lg">
-                    <GraphStage
-                      embedded
-                      title="结构图"
-                      nodes={rendererState.nodes || []}
-                      edges={rendererState.edges || []}
-                      groups={rendererGroups}
-                    />
-                  </div>
-                </Card>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-3 pt-1 sm:px-3">
+                <GraphStage
+                  embedded
+                  title="结构图"
+                  nodes={rendererState.nodes || []}
+                  edges={rendererState.edges || []}
+                  groups={rendererGroups}
+                />
               </div>
             </Tabs.Content>
 
@@ -3307,34 +3302,6 @@ export function RealtimeStudio() {
               </Card>
             </Tabs.Content>
 
-            <Tabs.Content value="metrics" className="absolute inset-0 flex min-h-0 flex-col outline-none">
-              <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-2">
-                <div className="space-y-6">
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    {summaryCards.map((item) => (
-                      <StatCard key={item.label} label={item.label} value={String(item.value)} />
-                    ))}
-                  </div>
-                  <Card>
-                    <div className="mb-4 text-sm font-semibold text-theme-1">效果数据</div>
-                    <pre className="rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
-                      {JSON.stringify(snapshot?.evaluation || {}, null, 2)}
-                    </pre>
-                  </Card>
-                </div>
-              </div>
-            </Tabs.Content>
-
-            <Tabs.Content value="pipeline" className="absolute inset-0 flex min-h-0 flex-col outline-none">
-              <div className="flex min-h-0 flex-1 flex-col">
-                <Card className="flex-1 min-h-0 overflow-hidden">
-                  <div className="mb-4 text-sm font-semibold text-theme-1 px-5 pt-5">处理步骤摘要</div>
-                  <pre className="max-h-full overflow-auto rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
-                    {JSON.stringify(snapshot?.pipeline?.summary || {}, null, 2)}
-                  </pre>
-                </Card>
-              </div>
-            </Tabs.Content>
             </div>
             <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 px-4 py-2.5">
               <div className="flex w-full max-w-[min(100%,30rem)] flex-wrap items-center gap-2">
@@ -3521,6 +3488,28 @@ export function RealtimeStudio() {
                   ) : null}
                       </div>
                       </div>
+              <div className="rounded-lg border border-theme-default bg-surface-muted px-3 py-3">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-theme-4">评测指标</div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {summaryCards.map((item) => (
+                    <StatCard key={item.label} label={item.label} value={String(item.value)} />
+                  ))}
+                </div>
+                <div className="mt-2 overflow-hidden rounded-lg border border-theme-subtle bg-surface-1">
+                  <div className="border-b border-theme-subtle px-3 py-2 text-xs font-medium text-theme-2">效果数据</div>
+                  <pre className="max-h-56 overflow-auto px-3 py-2 text-xs leading-6 text-theme-1">
+                    {JSON.stringify(snapshot?.evaluation || {}, null, 2)}
+                  </pre>
+                </div>
+              </div>
+              <div className="rounded-lg border border-theme-default bg-surface-muted px-3 py-3">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-theme-4">运行摘要</div>
+                <div className="overflow-hidden rounded-lg border border-theme-subtle bg-surface-1">
+                  <pre className="max-h-56 overflow-auto px-3 py-2 text-xs leading-6 text-theme-1">
+                    {JSON.stringify(snapshot?.pipeline?.summary || {}, null, 2)}
+                  </pre>
+                </div>
+              </div>
               {sessions.data?.map((item) => {
                 const sessionSelected = currentSessionId === item.session_id;
                 return (
