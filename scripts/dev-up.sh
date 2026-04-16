@@ -7,9 +7,15 @@ LOG_DIR="$ROOT_DIR/var/log"
 RUN_DIR="$ROOT_DIR/var/run"
 ENV_FILE="$ROOT_DIR/.env"
 ENV_EXAMPLE="$ROOT_DIR/.env.example"
-VENV_PYTHON="$ROOT_DIR/.venv-platform/bin/python"
-VENV_ALEMBIC="$ROOT_DIR/.venv-platform/bin/alembic"
-VENV_UVICORN="$ROOT_DIR/.venv-platform/bin/uvicorn"
+# Detect virtualenv path based on platform
+if [[ -d "$ROOT_DIR/.venv-platform/Scripts" ]]; then
+  VENV_BIN="$ROOT_DIR/.venv-platform/Scripts"
+else
+  VENV_BIN="$ROOT_DIR/.venv-platform/bin"
+fi
+VENV_PYTHON="$VENV_BIN/python"
+VENV_ALEMBIC="$VENV_BIN/alembic"
+VENV_UVICORN="$VENV_BIN/uvicorn"
 START_WORKER="${S2G_START_WORKER:-1}"
 START_AUDIO_HELPER="${S2G_START_AUDIO_HELPER:-1}"
 START_DB="${S2G_START_DB:-1}"
@@ -316,7 +322,7 @@ main() {
     "$LOG_DIR/api.log" \
     "http" \
     "http://127.0.0.1:8000/api/health" \
-    env PYTHONPATH=apps/api "$VENV_UVICORN" app.main:app --app-dir apps/api --host 0.0.0.0 --port 8000
+    env PYTHONPATH=apps/api "$VENV_PYTHON" -m uvicorn app.main:app --app-dir apps/api --host 0.0.0.0 --port 8000
 
   if [[ "$START_WORKER" != "0" ]]; then
     start_service \
@@ -345,7 +351,7 @@ main() {
       "$LOG_DIR/audio-helper.log" \
       "http" \
       "http://127.0.0.1:8765/health" \
-      env PYTHONPATH=apps/audio-helper "$VENV_UVICORN" audio_helper.main:app --app-dir apps/audio-helper --host 0.0.0.0 --port 8765
+      env PYTHONPATH=apps/audio-helper "$VENV_PYTHON" -m uvicorn audio_helper.main:app --app-dir apps/audio-helper --host 0.0.0.0 --port 8765
   else
     echo "Skipping audio-helper because S2G_START_AUDIO_HELPER=0"
   fi

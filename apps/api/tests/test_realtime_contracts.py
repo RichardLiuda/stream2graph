@@ -7,13 +7,17 @@ from app.services.realtime_coordination import (
     CoordinationRuntimeSession,
     DialogueTurn,
     GateDecision,
+    LIVE_PLANNER_SYSTEM_PROMPT,
+    LIVE_RELAYOUT_SYSTEM_PROMPT,
     PlannerDecision,
+    _backfill_sparse_flow_edges,
     _coerce_gate_action,
     _coerce_style_entries,
 )
 from app.models import RealtimeSession
 from tools.incremental_dataset.schema import GraphGroup, GraphIR, GraphNode
 from tools.incremental_dataset.staging import render_preview_mermaid
+from tools.incremental_system.models import _diagram_type_alignment_priors
 
 
 def test_runtime_session_emits_pipeline_payload() -> None:
@@ -206,3 +210,40 @@ def test_render_preview_mermaid_sanitizes_reserved_identifiers_and_style_aliases
     assert re.search(r"^\s*classDef [A-Za-z][A-Za-z0-9_]* fill:#fef3c7,stroke:#f59e0b,font-weight:bold$", code, flags=re.MULTILINE)
     assert re.search(r"^\s*class [A-Za-z0-9_,]+ start,class_end$", code, flags=re.MULTILINE)
     assert re.search(r"^\s*style online_group fill:#eff6ff,stroke:#3b82f6$", code, flags=re.MULTILINE)
+
+
+def test_diagram_type_priors_keep_edges_for_structured_diagrams() -> None:
+    assert _diagram_type_alignment_priors("flowchart")["allow_edges"] is True
+    assert _diagram_type_alignment_priors("sequence")["allow_edges"] is True
+    assert _diagram_type_alignment_priors("statediagram")["allow_edges"] is True
+    assert _diagram_type_alignment_priors("er")["allow_edges"] is True
+
+
+def test_realtime_prompts_require_language_consistency() -> None:
+    assert "Use the same dominant language as the observed dialogue" in LIVE_PLANNER_SYSTEM_PROMPT
+    assert "Do not translate unless the user explicitly asks for translation." in LIVE_PLANNER_SYSTEM_PROMPT
+    assert "Do not silently translate Chinese content into English" in LIVE_RELAYOUT_SYSTEM_PROMPT
+
+
+def test_backfill_sparse_flow_edges_connects_root_and_prefixed_children() -> None:
+    graph_ir = GraphIR(
+        graph_id="sparse-flow",
+        diagram_type="flowchart",
+        nodes=[
+            GraphNode(id="root", label="中心主题", source_index=1),
+            GraphNode(id="fusion", label="融合发展", source_index=2),
+            GraphNode(id="night", label="夜间文旅", source_index=3),
+            GraphNode(id="fusion_path", label="路径", source_index=4),
+            GraphNode(id="night_1", label="夜间演出", source_index=5),
+        ],
+    )
+
+    next_graph, changed = _backfill_sparse_flow_edges(graph_ir)
+
+    assert changed is True
+    assert {(edge.source, edge.target) for edge in next_graph.edges} == {
+        ("root", "fusion"),
+        ("root", "night"),
+        ("fusion", "fusion_path"),
+        ("night", "night_1"),
+    }

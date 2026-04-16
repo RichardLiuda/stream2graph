@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 
@@ -20,10 +21,66 @@ _DIAGRAM_HEADER_HINTS = {
     "requirementdiagram": "requirementDiagram",
 }
 
+_CJK_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
+_LATIN_PATTERN = re.compile(r"[A-Za-z]")
+_SPEAKER_PREFIX_PATTERN = re.compile(r"^[A-Za-z0-9_ ./-]{1,32}:\s+")
+
 
 def canonical_diagram_hint(diagram_type: str | None) -> str:
     value = (diagram_type or "").strip().lower()
     return _DIAGRAM_HEADER_HINTS.get(value, "flowchart TD")
+
+
+def detect_dominant_dialogue_language(text: str) -> str:
+    content = str(text or "")
+    normalized_lines: list[str] = []
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        line = _SPEAKER_PREFIX_PATTERN.sub("", line)
+        normalized_lines.append(line)
+    content = "\n".join(normalized_lines) or content
+    cjk_count = len(_CJK_PATTERN.findall(content))
+    latin_count = len(_LATIN_PATTERN.findall(content))
+    if cjk_count == 0 and latin_count == 0:
+        return "Unknown"
+    if cjk_count and not latin_count:
+        return "Chinese"
+    if latin_count and not cjk_count:
+        return "English"
+    if cjk_count >= 2 and (cjk_count * 2) >= latin_count:
+        return "Chinese"
+    if latin_count >= max(6, cjk_count * 3):
+        return "English"
+    return "Mixed Chinese-English"
+
+
+def build_output_language_requirement(text: str) -> str:
+    language = detect_dominant_dialogue_language(text)
+    if language == "Chinese":
+        return (
+            "Detected dominant dialogue language: Chinese. Output every human-readable diagram "
+            "label in Chinese. Do not translate Chinese source content into English. "
+            "Preserve proper nouns, acronyms, API names, and official product names in their "
+            "original form when appropriate."
+        )
+    if language == "English":
+        return (
+            "Detected dominant dialogue language: English. Output every human-readable diagram "
+            "label in English. Do not translate English source content into another language "
+            "unless the user explicitly asks for translation."
+        )
+    if language == "Mixed Chinese-English":
+        return (
+            "Detected dominant dialogue language: Mixed Chinese-English. Keep each label in the "
+            "language used by the source content, and do not normalize everything into a "
+            "different single language. Preserve proper nouns and API names as written."
+        )
+    return (
+        "Keep all human-readable diagram labels in the same language as the source dialogue. "
+        "Do not translate unless the user explicitly asks for translation."
+    )
 
 
 MERMAID_GENERATION_SYSTEM_PROMPT = "\n".join(
@@ -43,6 +100,13 @@ MERMAID_GENERATION_SYSTEM_PROMPT = "\n".join(
         "8. Do not use bare '--' as a connector in flowcharts.",
         "9. If a specific diagram type is requested, use that exact Mermaid family header.",
         "10. If the diagram type is unclear, default to flowchart TD.",
+        "11. Every node identifier must be unique across the entire diagram. Never reuse an identifier.",
+        "12. Never create a subgraph and then place a node with the same identifier as the subgraph inside it.",
+        "13. Never set a node or subgraph as its own parent — this creates a cycle and breaks rendering.",
+        "14. All edges must connect two different existing nodes. Never create self-referencing edges (A --> A).",
+        "15. Use the same dominant language as the source dialogue for every human-readable label.",
+        "16. Do not translate Chinese source text into English or English source text into Chinese unless explicitly asked.",
+        "17. ASCII identifiers are internal only; labels must still follow the source language.",
         "Plan the overall structure internally first, then emit only the final Mermaid code.",
     ]
 )
@@ -67,6 +131,8 @@ def build_final_diagram_user_prompt(
         "- Keep one node declaration or edge statement per line.",
         "- Prefer a stable top-level structure with a small number of core nodes first, then add branches.",
         "- Do not emit markdown fences or any prose.",
+        "Language requirement:",
+        f"- {build_output_language_requirement(dialogue_text)}",
     ]
     if sample_id:
         lines.append(f"Sample ID: {sample_id}")
@@ -98,6 +164,8 @@ def build_repair_diagram_user_prompt(
         "- Keep one statement per line.",
         "- Remove invalid chained statements, invalid separators, and invalid connectors.",
         "- For flowcharts, replace invalid bare '--' edges with a valid explicit connector if needed.",
+        "Language requirement:",
+        f"- {build_output_language_requirement(dialogue_text)}",
     ]
     if session_title:
         lines.append(f"Session title: {session_title}")

@@ -320,6 +320,35 @@ def render_preview_mermaid(graph_ir: GraphIR) -> str:
         lines.extend(f"    {line}" for line in rewritten_style_lines)
         return "\n".join(lines)
 
+    if normalized_type in {"er", "erdiagram"}:
+        lines = [*init_lines, "erDiagram"]
+        for node in sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)):
+            label = _escape_label(node.label or node.id)
+            lines.append(f'    {entity_id_map.get(node.id, node.id)}["{label}"]')
+        for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
+            edge_label = f" {_escape_label(edge.label)}" if edge.label else ""
+            lines.append(
+                f"    {entity_id_map.get(edge.source, edge.source)} }}|--|| {entity_id_map.get(edge.target, edge.target)}{edge_label}"
+            )
+        lines.extend(f"    {line}" for line in rewritten_style_lines)
+        return "\n".join(lines)
+
+    if normalized_type in {"requirement", "requirementdiagram"}:
+        lines = [*init_lines, "requirementDiagram"]
+        for node in sorted(graph_ir.nodes, key=lambda item: (item.source_index, item.id)):
+            node_id = entity_id_map.get(node.id, node.id)
+            label = _escape_label(node.label or node.id)
+            lines.append(f'    requirement {node_id} {{')
+            lines.append(f'        id: "{label}"')
+            lines.append(f'    }}')
+        for edge in sorted(graph_ir.edges, key=lambda item: (item.source_index, item.id)):
+            edge_label = edge.label or "traces"
+            lines.append(
+                f"    {entity_id_map.get(edge.source, edge.source)} - traces -> {entity_id_map.get(edge.target, edge.target)}"
+            )
+        lines.extend(f"    {line}" for line in rewritten_style_lines)
+        return "\n".join(lines)
+
     lines = [*init_lines, "graph TD"]
     graph_ir = _fix_group_parent_cycles(graph_ir)
     groups_by_id = {group.id: group for group in graph_ir.groups}

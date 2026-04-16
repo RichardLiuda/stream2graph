@@ -75,7 +75,7 @@ export function supportsSystemAudioUi(context: ClientAudioContext | null) {
   return supportsSystemAudioExperimentalUi(context);
 }
 
-/** 桌面端可展示「增强模式」（本机 helper）；与浏览器是否为 Chrome/Edge 无关。 */
+/** 桌面端可展示「本机内录转写」（本机 helper）；与浏览器是否为 Chrome/Edge 无关。 */
 export function supportsHelperSystemAudioUi(context: ClientAudioContext | null) {
   return Boolean(context?.is_desktop);
 }
@@ -96,7 +96,7 @@ export function getInputSourceOptions(context: ClientAudioContext | null): Input
   const demoOption: InputSourceOption = {
     source: "demo_mode",
     label: "演示模式",
-    description: "默认载入 4 组来自公开访谈与活动通知的真实演示脚本，适合快速成图、多画布切换和不同图型展示。",
+    description: "默认载入 6 组基于公开访谈、办事指南和活动通知整理的中文演示脚本，直接用文本完成成图演示。",
     capture_mode: "manual_text",
     capability_status: "supported",
     capability_reason: "始终可用。",
@@ -145,8 +145,9 @@ export function getInputSourceOptions(context: ClientAudioContext | null): Input
         context.browser_family === "other");
     options.push({
       source: "system_audio_helper",
-      label: "系统声音（增强模式）",
-      description: "用本机小助手接收系统声音并在电脑里转成文字，推荐正式使用。",
+      label: "本机内录转写",
+      description:
+        "在电脑上跑小助手，抓取系统里播放的声音（内录），在本地分段转文字；需先启动 audio helper，适合会议、网课、视频等。",
       capture_mode: "helper_native_capture",
       capability_status: "limited",
       capability_reason: nonChromeEdgeDesktop
@@ -189,7 +190,7 @@ export function getDisplayAudioErrorMessage(errorName?: string) {
     case "NotReadableError":
       return "浏览器无法读取共享音频。请检查系统权限和浏览器状态。";
     default:
-      return "无法开始共享音频验证。你可以先改用 Transcript 输入，或尝试增强模式。";
+      return "无法开始共享音频验证。你可以先改用打字输入，或尝试本机内录转写。";
   }
 }
 

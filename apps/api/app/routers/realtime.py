@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -23,7 +24,7 @@ from app.schemas import (
     RealtimeSessionUpdateRequest,
     RealtimeSnapshot,
 )
-from app.services.realtime_ai import transcribe_audio_chunk
+from app.services.realtime_ai import detect_diagram_type_from_transcript, transcribe_audio_chunk
 from app.services.reports import create_report
 from app.services.runtime_options import resolve_profile
 from app.services.runtime_sessions import (
@@ -230,6 +231,40 @@ def list_sessions(db: Session = Depends(get_db)) -> list[RealtimeSessionSchema]:
         )
         for item in items
     ]
+
+
+class DiagramTypeDetectionRequest(BaseModel):
+    transcript: str = Field(..., min_length=1, description="Dialogue transcript to analyze for diagram type detection.")
+
+
+@router.post("/detect-diagram-type", response_model=dict[str, str])
+def detect_diagram_type(payload: DiagramTypeDetectionRequest, db: Session = Depends(get_db)) -> dict[str, str]:
+    """Analyze dialogue transcript and automatically detect the most appropriate diagram type."""
+    runtime_options = db.execute(
+        select(RealtimeSession.config_snapshot)
+        .order_by(RealtimeSession.created_at.desc())
+        .limit(1)
+    ).first()
+    profile = None
+    model = None
+    if runtime_options:
+        snapshot = runtime_options[0] if isinstance(runtime_options, tuple) else runtime_options
+        if isinstance(snapshot, dict):
+            ropts = snapshot.get("runtime_options", {})
+            if isinstance(ropts, dict):
+                profile = resolve_profile(db, "llm", ropts.get("llm_profile_id"))
+                model = str(ropts.get("llm_model") or (profile or {}).get("default_model") or "")
+
+    detected = detect_diagram_type_from_transcript(
+        payload.transcript,
+        profile=profile,
+        model=model,
+    )
+    _log_runtime_event(
+        "Diagram type auto-detected",
+        {"detected_type": detected, "transcript_chars": len(payload.transcript)},
+    )
+    return {"diagram_type": detected}
 
 
 @router.post("", response_model=RealtimeSessionSchema)
