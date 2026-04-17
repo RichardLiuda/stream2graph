@@ -6,6 +6,7 @@ import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
 import { Badge, Card } from "@stream2graph/ui";
 import { PanZoomCanvas } from "@/components/pan-zoom-canvas";
+import { AnnotationLayer, type AnnotationDoc, type AnnotationTool } from "@/components/annotation-layer";
 
 let mermaidReady: Promise<typeof import("mermaid")> | null = null;
 let mermaidInitialized = false;
@@ -574,6 +575,14 @@ function MermaidCardBody({
   onNodeRelayout,
   relayoutBusy = false,
   exportRootId,
+  annotationsEnabled = false,
+  annotationsTool = "none",
+  annotationPenWidth = 2,
+  annotationPenColor = "rgba(229,231,235,0.92)",
+  annotationRectColor = "rgba(229,231,235,0.92)",
+  annotationEraserWidth = 12,
+  annotationsDoc,
+  onAnnotationsChange,
 }: {
   title: string;
   code: string;
@@ -596,6 +605,14 @@ function MermaidCardBody({
   onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
   relayoutBusy?: boolean;
   exportRootId?: string | null;
+  annotationsEnabled?: boolean;
+  annotationsTool?: AnnotationTool;
+  annotationPenWidth?: number;
+  annotationPenColor?: string;
+  annotationRectColor?: string;
+  annotationEraserWidth?: number;
+  annotationsDoc?: AnnotationDoc;
+  onAnnotationsChange?: (next: AnnotationDoc) => void;
 }) {
   const id = useId().replace(/:/g, "");
   const [diagramExpanded, setDiagramExpanded] = useState(defaultDiagramExpanded);
@@ -634,7 +651,7 @@ function MermaidCardBody({
       console.debug("[MermaidCard] render candidate", summarizeMermaid(candidate));
       if (!candidate) {
         setSvg("");
-        setError(null);
+        setError("暂无 Mermaid 内容");
         console.info("[MermaidCard] skipped: empty Mermaid content");
         console.groupEnd();
         return;
@@ -898,6 +915,7 @@ function MermaidCardBody({
               contentClassName="min-h-0 flex-1"
               style={panZoomCanvasStyle}
               onZoomEnd={() => setZoomRebuildNonce((n) => n + 1)}
+              interactionMode={annotationsEnabled && annotationsTool !== "none" ? "annotate" : "panzoom"}
               minScale={0.55}
               maxScale={2.6}
               initialScale={1}
@@ -925,35 +943,37 @@ function MermaidCardBody({
               />
               {!svg ? (
                 <div
-                  className={`pointer-events-none absolute z-[2] rounded-lg border border-theme-subtle bg-surface-2/90 px-3 py-2.5 text-center text-[12px] leading-relaxed text-theme-2 shadow-sm backdrop-blur-[2px] ${
-                    embedded ? "left-1/2 top-1/2 w-[min(92%,20rem)] -translate-x-1/2 -translate-y-1/2" : "left-3 right-3 top-3"
+                  className={`absolute z-[2] rounded-lg border border-amber-900/55 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100 ${
+                    embedded ? "left-2 right-2 top-2" : "left-3 right-3 top-3"
                   }`}
                 >
-                  {embedded ? (
-                    <>
-                      暂无图形内容。
-                      <span className="mt-1 block text-[11px] text-theme-4">
-                        请在左侧输入或载入脚本后点击发送，或切换语音来源并开始采集，主图将在此处更新。
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      画布已就绪，但目前没有可渲染的 Mermaid。
-                      <span className="mt-1 block text-[11px] text-theme-4">
-                        发送 Transcript、开始录音或等待会话出图后，此处会自动更新。
-                      </span>
-                    </>
-                  )}
+                  画布已就绪，但目前没有可渲染的 Mermaid。
+                  <span className="text-amber-200/80">
+                    {" "}
+                    你可以：左侧发送 Transcript / 开始录音；会话建立后这里会自动更新。
+                  </span>
                 </div>
               ) : null}
-          {svg ? (
-            <div
+              {svg ? (
+                <div
                   key={zoomRebuildNonce}
                   ref={renderSurfaceRef}
                   data-mermaid-export-root={exportRootId || undefined}
                   className="relative z-[1] min-h-0 flex-1 [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
-              dangerouslySetInnerHTML={{ __html: svg }}
-            />
+                  dangerouslySetInnerHTML={{ __html: svg }}
+                />
+              ) : null}
+              {annotationsDoc && onAnnotationsChange ? (
+                <AnnotationLayer
+                  enabled={annotationsEnabled}
+                  tool={annotationsTool}
+                  penWidth={annotationPenWidth}
+                  penColor={annotationPenColor}
+                  rectColor={annotationRectColor}
+                  eraserWidth={annotationEraserWidth}
+                  doc={annotationsDoc}
+                  onChange={onAnnotationsChange}
+                />
               ) : null}
             </PanZoomCanvas>
           </div>
@@ -1004,11 +1024,11 @@ function MermaidCardBody({
 
   const headerBadges = (
     <>
-            {provider ? <Badge>{provider}</Badge> : null}
-            {model ? <Badge>{model}</Badge> : null}
-            {typeof latencyMs === "number" ? <Badge>{latencyMs.toFixed(1)} ms</Badge> : null}
-            <MermaidCompileStatusBadge compileOk={compileOk} updatedAt={updatedAt} />
-            {headerExtra}
+      {provider ? <Badge>{provider}</Badge> : null}
+      {model ? <Badge>{model}</Badge> : null}
+      {typeof latencyMs === "number" ? <Badge>{latencyMs.toFixed(1)} ms</Badge> : null}
+      <MermaidCompileStatusBadge compileOk={compileOk} updatedAt={updatedAt} />
+      {headerExtra}
     </>
   );
 
@@ -1043,7 +1063,7 @@ function MermaidCardBody({
       ) : (
         <div className="border-b border-theme-default px-5 py-3 text-xs leading-snug text-theme-4">
           图预览已收起，点击标题栏可展开查看（画布内仍可平移与缩放）。
-      </div>
+        </div>
       )}
     </Card>
   );
@@ -1068,6 +1088,14 @@ export function MermaidCard(props: {
   onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
   relayoutBusy?: boolean;
   exportRootId?: string | null;
+  annotationsEnabled?: boolean;
+  annotationsTool?: AnnotationTool;
+  annotationPenWidth?: number;
+  annotationPenColor?: string;
+  annotationRectColor?: string;
+  annotationEraserWidth?: number;
+  annotationsDoc?: AnnotationDoc;
+  onAnnotationsChange?: (next: AnnotationDoc) => void;
 }) {
   return (
     <ErrorBoundary

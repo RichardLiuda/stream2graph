@@ -192,6 +192,17 @@ class RealtimeSnapshot(BaseModel):
     evaluation: dict[str, Any] | None = None
 
 
+class RealtimeSessionAnnotations(BaseModel):
+    session_id: str
+    version: int = 1
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class RealtimeSessionAnnotationsUpdateRequest(BaseModel):
+    version: int = 1
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
 class RealtimeTranscriptTurn(BaseModel):
     speaker: str
     text: str

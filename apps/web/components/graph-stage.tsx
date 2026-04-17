@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
+
 import { Card } from "@stream2graph/ui";
 import { PanZoomCanvas } from "@/components/pan-zoom-canvas";
-import { useState } from "react";
+import { AnnotationLayer, type AnnotationDoc, type AnnotationTool } from "@/components/annotation-layer";
 
 type RendererNode = {
   id: string;
@@ -28,6 +30,14 @@ export function GraphStage({
   edges,
   groups = [],
   embedded = false,
+  annotationsEnabled = false,
+  annotationsTool = "none",
+  annotationPenWidth = 2,
+  annotationPenColor = "rgba(229,231,235,0.92)",
+  annotationRectColor = "rgba(229,231,235,0.92)",
+  annotationEraserWidth = 12,
+  annotationsDoc,
+  onAnnotationsChange,
 }: {
   title: string;
   nodes: RendererNode[];
@@ -35,6 +45,14 @@ export function GraphStage({
   groups?: RendererGroup[];
   /** @description 为 true 时不渲染标题栏与外层 Card，由主舞台统一容器承载 */
   embedded?: boolean;
+  annotationsEnabled?: boolean;
+  annotationsTool?: AnnotationTool;
+  annotationPenWidth?: number;
+  annotationPenColor?: string;
+  annotationRectColor?: string;
+  annotationEraserWidth?: number;
+  annotationsDoc?: AnnotationDoc;
+  onAnnotationsChange?: (next: AnnotationDoc) => void;
 }) {
   const [zoomRebuildNonce, setZoomRebuildNonce] = useState(0);
   const isEmpty = nodes.length === 0;
@@ -66,13 +84,14 @@ export function GraphStage({
   const inner = (
       <div className={embedded ? "flex h-full min-h-0 min-w-0 flex-col bg-transparent" : "bg-transparent p-4"}>
         <PanZoomCanvas
-          onZoomEnd={() => setZoomRebuildNonce((n) => n + 1)}
           className={
             embedded
               ? "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-[var(--mindmap-canvas-bg)] p-2 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
               : "relative flex h-full min-h-[min(370px,51vh)] min-w-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-theme-default bg-[var(--mindmap-canvas-bg)] p-3 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
           }
           contentClassName="min-h-0 flex-1"
+          onZoomEnd={() => setZoomRebuildNonce((n) => n + 1)}
+          interactionMode={annotationsEnabled && annotationsTool !== "none" ? "annotate" : "panzoom"}
           minScale={0.55}
           maxScale={2.6}
           initialScale={1}
@@ -101,7 +120,8 @@ export function GraphStage({
             key={zoomRebuildNonce}
             viewBox="-120 -120 1240 760"
             className="relative z-[1] h-full min-h-0 w-full flex-1"
-            style={{ textRendering: "geometricPrecision" }}
+            shapeRendering="geometricPrecision"
+            textRendering="geometricPrecision"
           >
           <defs>
             <marker id="arrowHead" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
@@ -139,7 +159,6 @@ export function GraphStage({
                 y2={to.y}
                 stroke="var(--graph-svg-edge)"
                 strokeWidth="2"
-                shapeRendering="geometricPrecision"
                 markerEnd="url(#arrowHead)"
               />
             );
@@ -159,6 +178,18 @@ export function GraphStage({
             </g>
           ))}
           </svg>
+          {annotationsDoc && onAnnotationsChange ? (
+            <AnnotationLayer
+              enabled={annotationsEnabled}
+              tool={annotationsTool}
+              penWidth={annotationPenWidth}
+              penColor={annotationPenColor}
+              rectColor={annotationRectColor}
+              eraserWidth={annotationEraserWidth}
+              doc={annotationsDoc}
+              onChange={onAnnotationsChange}
+            />
+          ) : null}
         </PanZoomCanvas>
       </div>
   );

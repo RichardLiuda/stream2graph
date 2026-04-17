@@ -68,6 +68,61 @@ export const realtimeSnapshotSchema = z.object({
   evaluation: z.record(z.any()).nullable().optional(),
 });
 
+// Realtime session annotations (canvas/world coordinates)
+export const annotationPointSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
+
+export const annotationPenPathSchema = z.object({
+  kind: z.literal("pen"),
+  id: z.string(),
+  points: z.array(annotationPointSchema),
+  color: z.string().optional().default("#e5e7eb"),
+  width: z.number().optional().default(2),
+  opacity: z.number().optional().default(1),
+});
+
+export const annotationRectSchema = z.object({
+  kind: z.literal("rect"),
+  id: z.string(),
+  x: z.number(),
+  y: z.number(),
+  w: z.number(),
+  h: z.number(),
+  mode: z.enum(["highlight", "outline"]).optional().default("outline"),
+  stroke: z.string().optional().default("#e5e7eb"),
+  fill: z.string().optional().default("transparent"),
+  strokeWidth: z.number().optional().default(2),
+  opacity: z.number().optional().default(1),
+  radius: z.number().optional().default(8),
+});
+
+export const annotationTextSchema = z.object({
+  kind: z.literal("text"),
+  id: z.string(),
+  x: z.number(),
+  y: z.number(),
+  text: z.string(),
+  fontSize: z.number().optional().default(14),
+  color: z.string().optional().default("#e5e7eb"),
+  align: z.enum(["left", "center", "right"]).optional().default("left"),
+});
+
+export const annotationItemSchema = z.discriminatedUnion("kind", [
+  annotationPenPathSchema,
+  annotationRectSchema,
+  annotationTextSchema,
+]);
+
+export const realtimeSessionAnnotationsSchema = z.object({
+  session_id: z.string(),
+  version: z.number().int().nonnegative().default(1),
+  payload: z.object({
+    items: z.array(annotationItemSchema).default([]),
+  }).default({ items: [] }),
+});
+
 export const realtimeTranscriptTurnSchema = z.object({
   speaker: z.string(),
   text: z.string(),

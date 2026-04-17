@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db, utc_now
 from app.legacy import evaluate_payload
-from app.models import RealtimeChunk, RealtimeSession
+from app.models import RealtimeChunk, RealtimeSession, RealtimeSessionAnnotations
 from app.schemas import (
     RealtimeAudioTranscriptionRequest,
     RealtimeAudioTranscriptionResponse,
@@ -23,6 +23,8 @@ from app.schemas import (
     RealtimeSessionCreateRequest,
     RealtimeSessionUpdateRequest,
     RealtimeSnapshot,
+    RealtimeSessionAnnotations as RealtimeSessionAnnotationsSchema,
+    RealtimeSessionAnnotationsUpdateRequest,
 )
 from app.services.realtime_ai import detect_diagram_type_from_transcript, transcribe_audio_chunk
 from app.services.reports import create_report
@@ -231,6 +233,41 @@ def list_sessions(db: Session = Depends(get_db)) -> list[RealtimeSessionSchema]:
         )
         for item in items
     ]
+
+
+@router.get("/{session_id}/annotations", response_model=RealtimeSessionAnnotationsSchema)
+def get_session_annotations(session_id: str, db: Session = Depends(get_db)) -> RealtimeSessionAnnotationsSchema:
+    _get_session_or_404(db, session_id)
+    row = db.scalar(select(RealtimeSessionAnnotations).where(RealtimeSessionAnnotations.session_id == session_id))
+    if row is None:
+        return RealtimeSessionAnnotationsSchema(session_id=session_id, version=1, payload={})
+    return RealtimeSessionAnnotationsSchema(session_id=session_id, version=int(row.version or 1), payload=row.payload_json or {})
+
+
+@router.put("/{session_id}/annotations", response_model=RealtimeSessionAnnotationsSchema)
+def put_session_annotations(
+    session_id: str,
+    req: RealtimeSessionAnnotationsUpdateRequest,
+    db: Session = Depends(get_db),
+) -> RealtimeSessionAnnotationsSchema:
+    _get_session_or_404(db, session_id)
+    row = db.scalar(select(RealtimeSessionAnnotations).where(RealtimeSessionAnnotations.session_id == session_id))
+    if row is None:
+        row = RealtimeSessionAnnotations(
+            session_id=session_id,
+            version=max(1, int(req.version or 1)),
+            payload_json=req.payload or {},
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        db.add(row)
+        db.flush()
+    else:
+        row.version = max(1, int(req.version or 1))
+        row.payload_json = req.payload or {}
+        row.updated_at = utc_now()
+        db.add(row)
+    return RealtimeSessionAnnotationsSchema(session_id=session_id, version=int(row.version or 1), payload=row.payload_json or {})
 
 
 class DiagramTypeDetectionRequest(BaseModel):
