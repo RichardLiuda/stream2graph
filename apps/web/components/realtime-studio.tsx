@@ -2,7 +2,6 @@
 
 import * as Tabs from "@radix-ui/react-tabs";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import * as Popover from "@radix-ui/react-popover";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMachine } from "@xstate/react";
 import Link from "next/link";
@@ -22,7 +21,6 @@ import {
   Save,
   Send,
   StopCircle,
-  SlidersHorizontal,
   Trash2,
   WandSparkles,
 } from "lucide-react";
@@ -60,6 +58,8 @@ import {
   saveRuntimePreferences,
 } from "@/lib/runtime-preferences";
 import type { AnnotationDoc, AnnotationTool } from "@/components/annotation-layer";
+import { AnnotationColorPopover } from "@/components/annotation-color-popover";
+import { AnnotationWidthSlider } from "@/components/annotation-width-slider";
 import { GraphStage } from "@/components/graph-stage";
 import { MermaidCard, type MermaidNodeRelayoutPayload } from "@/components/mermaid-card";
 
@@ -69,28 +69,34 @@ const DEFAULT_VOICEPRINT_BASE = "https://api.xf-yun.com";
 
 type AdminRuntimeOptionsPayload = Awaited<ReturnType<typeof api.getAdminRuntimeOptions>>;
 
-const ANNOTATION_COLOR_PRESETS = {
-  dark: [
-    "#E5E7EB", // near-white
-    "#A3A3A3", // gray
-    "#60A5FA", // blue
-    "#22D3EE", // cyan
-    "#A78BFA", // violet
-    "#F472B6", // pink
-    "#FB923C", // orange
-    "#FACC15", // yellow
-  ],
-  light: [
-    "#111827", // near-black
-    "#374151", // slate
-    "#1D4ED8", // deep blue
-    "#0F766E", // teal
-    "#6D28D9", // deep violet
-    "#BE185D", // deep pink
-    "#9A3412", // brown/orange
-    "#B45309", // amber/brown
-  ],
-} as const;
+/** 浅色画布上的笔触预设（原「浅」模式色板） */
+const ANNOTATION_SWATCHES_LIGHT_CANVAS = [
+  "#111827",
+  "#374151",
+  "#1D4ED8",
+  "#0F766E",
+  "#6D28D9",
+  "#BE185D",
+  "#9A3412",
+  "#B45309",
+] as const;
+
+const DEFAULT_ANNOTATION_COLOR = ANNOTATION_SWATCHES_LIGHT_CANVAS[0];
+
+/** 橡皮：小圆→大圆为精准擦宽度；叉为对象擦 */
+const ERASER_WIDTH_PRESETS = [
+  { w: 6, dot: 5 },
+  { w: 10, dot: 6 },
+  { w: 14, dot: 7 },
+  { w: 20, dot: 8 },
+  { w: 28, dot: 10 },
+  { w: 36, dot: 12 },
+] as const;
+
+function nearestEraserPresetWidth(width: number): number {
+  const ws = ERASER_WIDTH_PRESETS.map((p) => p.w);
+  return ws.reduce((best, p) => (Math.abs(p - width) < Math.abs(best - width) ? p : best), ws[0]!);
+}
 
 function voiceprintPayloadForSave(
   profile: AdminRuntimeOptionsPayload["stt_profiles"][number],
@@ -808,12 +814,11 @@ export function RealtimeStudio() {
   const [stageTab, setStageTab] = useState("mermaid");
   const [annotationsEnabled, setAnnotationsEnabled] = useState(false);
   const [annotationsTool, setAnnotationsTool] = useState<AnnotationTool>("pen");
-  const [annotationPresetSet, setAnnotationPresetSet] = useState<"dark" | "light">("dark");
+  const [activeAnnotationPanel, setActiveAnnotationPanel] = useState<"pen" | "rect" | "eraser" | null>(null);
   const [annotationPenWidth, setAnnotationPenWidth] = useState(2);
-  const [annotationPenColor, setAnnotationPenColor] = useState("rgba(229,231,235,0.92)");
-  const [annotationRectColor, setAnnotationRectColor] = useState("rgba(229,231,235,0.92)");
+  const [annotationPenColor, setAnnotationPenColor] = useState<string>(DEFAULT_ANNOTATION_COLOR);
+  const [annotationRectColor, setAnnotationRectColor] = useState<string>(DEFAULT_ANNOTATION_COLOR);
   const [annotationEraserWidth, setAnnotationEraserWidth] = useState(12);
-  const [annotationCustomColorDraft, setAnnotationCustomColorDraft] = useState("");
   const [annotationsDoc, setAnnotationsDoc] = useState<AnnotationDoc>({
     version: 1,
     payload: { items: [] },
@@ -3279,235 +3284,118 @@ export function RealtimeStudio() {
                     </div>
                   </Tooltip.Provider>
                   <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <Button
-                      type="button"
-                      variant={annotationsEnabled ? "primary" : "secondary"}
-                      className="h-7 gap-1 rounded-md px-2 text-[11px] font-semibold"
-                      onClick={() => setAnnotationsEnabled((v) => !v)}
-                      disabled={!currentSessionId}
-                      title={!currentSessionId ? "请先创建会话" : undefined}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      批注
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className={`h-7 rounded-md px-2 text-[11px] font-semibold ${
-                        annotationsEnabled && annotationsTool === "pen" ? "border-theme-strong bg-surface-3" : ""
+                    {/* 笔：横向展开，宽度随内容；高度固定一行 h-7 */}
+                    <div
+                      className={`inline-flex shrink-0 items-center rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[width] duration-200 ${
+                        activeAnnotationPanel === "pen"
+                          ? "h-7 w-auto max-w-[calc(100vw-2rem)] overflow-hidden"
+                          : "h-7 w-[56px] overflow-hidden"
                       }`}
-                      onClick={() => {
-                        setAnnotationsEnabled(true);
-                        setAnnotationsTool("pen");
-                      }}
-                      disabled={!currentSessionId}
                     >
-                      笔
-                    </Button>
-                    <Popover.Root>
-                      <Popover.Trigger asChild>
-                        <button
-                          type="button"
-                          disabled={!currentSessionId}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-theme-default bg-surface-2 text-theme-3 shadow-sm transition hover:bg-surface-muted/40 disabled:cursor-not-allowed disabled:opacity-60"
-                          aria-label="画笔设置"
-                          title={!currentSessionId ? "请先创建会话" : "画笔设置"}
-                          onClick={() => {
-                            setAnnotationsEnabled(true);
-                            setAnnotationsTool("pen");
-                          }}
-                        >
-                          <SlidersHorizontal className="h-3.5 w-3.5" />
-                        </button>
-                      </Popover.Trigger>
-                      <Popover.Portal>
-                        <Popover.Content
-                          side="bottom"
-                          align="start"
-                          sideOffset={8}
-                          collisionPadding={12}
-                          className="z-[24000] w-[280px] rounded-xl border border-theme-default bg-surface-2 p-3 shadow-xl"
-                        >
-                          <div className="text-[11px] font-semibold text-theme-1">画笔设置</div>
-                          <div className="mt-2 flex items-center justify-between gap-3">
-                            <div className="text-[10px] font-semibold text-theme-3">粗细</div>
-                            <div className="text-[10px] text-theme-4">{annotationPenWidth}</div>
+                      <button
+                        type="button"
+                        disabled={!currentSessionId}
+                        className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 border-r border-theme-default text-[11px] font-semibold ${
+                          annotationsEnabled && annotationsTool === "pen" ? "bg-surface-3 text-theme-1" : "text-theme-2 hover:bg-surface-muted/40"
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                        onClick={() => {
+                          if (!currentSessionId) return;
+                          if (activeAnnotationPanel === "pen") {
+                            setActiveAnnotationPanel(null);
+                            return;
+                          }
+                          setAnnotationsEnabled(true);
+                          setAnnotationsTool("pen");
+                          setActiveAnnotationPanel("pen");
+                        }}
+                        title={!currentSessionId ? "请先创建会话" : "画笔"}
+                      >
+                        笔
+                      </button>
+                      {activeAnnotationPanel === "pen" ? (
+                        <>
+                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-x-1.5 px-1.5">
+                            <AnnotationWidthSlider
+                              min={1}
+                              max={24}
+                              value={annotationPenWidth}
+                              onChange={setAnnotationPenWidth}
+                              thumbMinPx={5}
+                              thumbMaxPx={15}
+                              aria-label="画笔粗细"
+                            />
+                            <AnnotationColorPopover
+                              swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                              value={annotationPenColor}
+                              onChange={setAnnotationPenColor}
+                            />
                           </div>
-                          <input
-                            type="range"
-                            min={1}
-                            max={24}
-                            value={annotationPenWidth}
-                            onChange={(e) => setAnnotationPenWidth(Number(e.target.value))}
-                            className="mt-1 w-full"
-                          />
-                          <div className="mt-3 flex items-center justify-between">
-                            <div className="text-[10px] font-semibold text-theme-3">颜色预设</div>
-                            <div className="flex overflow-hidden rounded-md border border-theme-default bg-surface-1">
-                              <button
-                                type="button"
-                                className={`px-2 py-1 text-[10px] font-semibold ${
-                                  annotationPresetSet === "dark" ? "bg-surface-3 text-theme-1" : "text-theme-3 hover:bg-surface-muted/40"
-                                }`}
-                                onClick={() => setAnnotationPresetSet("dark")}
-                              >
-                                深
-                              </button>
-                              <div className="w-px bg-theme-default/60" aria-hidden />
-                              <button
-                                type="button"
-                                className={`px-2 py-1 text-[10px] font-semibold ${
-                                  annotationPresetSet === "light" ? "bg-surface-3 text-theme-1" : "text-theme-3 hover:bg-surface-muted/40"
-                                }`}
-                                onClick={() => setAnnotationPresetSet("light")}
-                              >
-                                浅
-                              </button>
-                            </div>
-                          </div>
-                          <div className="mt-2 grid grid-cols-8 gap-1.5">
-                            {ANNOTATION_COLOR_PRESETS[annotationPresetSet].map((c) => (
-                              <button
-                                key={c}
-                                type="button"
-                                onClick={() => {
-                                  setAnnotationPenColor(c);
-                                  setAnnotationCustomColorDraft(c);
-                                }}
-                                className={`h-6 w-6 rounded-md border ${
-                                  annotationPenColor === c ? "border-theme-strong" : "border-theme-default"
-                                }`}
-                                style={{ background: c }}
-                                aria-label={`颜色 ${c}`}
-                                title={c}
-                              />
-                            ))}
-                          </div>
-                          <div className="mt-3">
-                            <div className="text-[10px] font-semibold text-theme-3">自定义</div>
-                            <div className="mt-1 flex items-center gap-2">
-                              <input
-                                value={annotationCustomColorDraft}
-                                onChange={(e) => setAnnotationCustomColorDraft(e.target.value)}
-                                placeholder="#RRGGBB / rgba(...)"
-                                className="h-8 w-full rounded-md border border-theme-default bg-surface-1 px-2 text-xs text-theme-1 outline-none focus:border-theme-strong"
-                              />
-                              <button
-                                type="button"
-                                className="h-8 rounded-md border border-theme-default bg-surface-2 px-2 text-xs font-semibold text-theme-2 hover:bg-surface-muted/40"
-                                onClick={() => setAnnotationPenColor(annotationCustomColorDraft.trim() || annotationPenColor)}
-                              >
-                                应用
-                              </button>
-                            </div>
-                          </div>
-                          <Popover.Arrow className="fill-[var(--surface-2)]" />
-                        </Popover.Content>
-                      </Popover.Portal>
-                    </Popover.Root>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className={`h-7 rounded-md px-2 text-[11px] font-semibold ${
-                        annotationsEnabled && annotationsTool === "rect" ? "border-theme-strong bg-surface-3" : ""
+                          <button
+                            type="button"
+                            className="inline-flex h-7 min-w-[72px] shrink-0 items-center justify-center border-l border-theme-default px-2.5 text-[11px] font-semibold text-theme-2 hover:bg-surface-muted/40"
+                            onClick={() => {
+                              setAnnotationsEnabled(false);
+                              setActiveAnnotationPanel(null);
+                            }}
+                          >
+                            退出批注
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+
+                    {/* 框：横向展开，宽度随内容 */}
+                    <div
+                      className={`inline-flex shrink-0 items-center rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[width] duration-200 ${
+                        activeAnnotationPanel === "rect"
+                          ? "h-7 w-auto max-w-[calc(100vw-2rem)] overflow-hidden"
+                          : "h-7 w-[56px] overflow-hidden"
                       }`}
-                      onClick={() => {
-                        setAnnotationsEnabled(true);
-                        setAnnotationsTool("rect");
-                      }}
-                      disabled={!currentSessionId}
                     >
-                      框
-                    </Button>
-                    <Popover.Root>
-                      <Popover.Trigger asChild>
-                        <button
-                          type="button"
-                          disabled={!currentSessionId}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-theme-default bg-surface-2 text-theme-3 shadow-sm transition hover:bg-surface-muted/40 disabled:cursor-not-allowed disabled:opacity-60"
-                          aria-label="框设置"
-                          title={!currentSessionId ? "请先创建会话" : "框设置"}
-                          onClick={() => {
-                            setAnnotationsEnabled(true);
-                            setAnnotationsTool("rect");
-                          }}
-                        >
-                          <SlidersHorizontal className="h-3.5 w-3.5" />
-                        </button>
-                      </Popover.Trigger>
-                      <Popover.Portal>
-                        <Popover.Content
-                          side="bottom"
-                          align="start"
-                          sideOffset={8}
-                          collisionPadding={12}
-                          className="z-[24000] w-[280px] rounded-xl border border-theme-default bg-surface-2 p-3 shadow-xl"
-                        >
-                          <div className="text-[11px] font-semibold text-theme-1">框设置</div>
-                          <div className="mt-3 flex items-center justify-between">
-                            <div className="text-[10px] font-semibold text-theme-3">颜色预设</div>
-                            <div className="flex overflow-hidden rounded-md border border-theme-default bg-surface-1">
-                              <button
-                                type="button"
-                                className={`px-2 py-1 text-[10px] font-semibold ${
-                                  annotationPresetSet === "dark" ? "bg-surface-3 text-theme-1" : "text-theme-3 hover:bg-surface-muted/40"
-                                }`}
-                                onClick={() => setAnnotationPresetSet("dark")}
-                              >
-                                深
-                              </button>
-                              <div className="w-px bg-theme-default/60" aria-hidden />
-                              <button
-                                type="button"
-                                className={`px-2 py-1 text-[10px] font-semibold ${
-                                  annotationPresetSet === "light" ? "bg-surface-3 text-theme-1" : "text-theme-3 hover:bg-surface-muted/40"
-                                }`}
-                                onClick={() => setAnnotationPresetSet("light")}
-                              >
-                                浅
-                              </button>
-                            </div>
+                      <button
+                        type="button"
+                        disabled={!currentSessionId}
+                        className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 border-r border-theme-default text-[11px] font-semibold ${
+                          annotationsEnabled && annotationsTool === "rect" ? "bg-surface-3 text-theme-1" : "text-theme-2 hover:bg-surface-muted/40"
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                        onClick={() => {
+                          if (!currentSessionId) return;
+                          if (activeAnnotationPanel === "rect") {
+                            setActiveAnnotationPanel(null);
+                            return;
+                          }
+                          setAnnotationsEnabled(true);
+                          setAnnotationsTool("rect");
+                          setActiveAnnotationPanel("rect");
+                        }}
+                        title={!currentSessionId ? "请先创建会话" : "框"}
+                      >
+                        框
+                      </button>
+                      {activeAnnotationPanel === "rect" ? (
+                        <>
+                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-1.5 px-1.5">
+                            <AnnotationColorPopover
+                              swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                              value={annotationRectColor}
+                              onChange={setAnnotationRectColor}
+                            />
                           </div>
-                          <div className="mt-2 grid grid-cols-8 gap-1.5">
-                            {ANNOTATION_COLOR_PRESETS[annotationPresetSet].map((c) => (
-                              <button
-                                key={c}
-                                type="button"
-                                onClick={() => {
-                                  setAnnotationRectColor(c);
-                                  setAnnotationCustomColorDraft(c);
-                                }}
-                                className={`h-6 w-6 rounded-md border ${
-                                  annotationRectColor === c ? "border-theme-strong" : "border-theme-default"
-                                }`}
-                                style={{ background: c }}
-                                aria-label={`颜色 ${c}`}
-                                title={c}
-                              />
-                            ))}
-                          </div>
-                          <div className="mt-3">
-                            <div className="text-[10px] font-semibold text-theme-3">自定义</div>
-                            <div className="mt-1 flex items-center gap-2">
-                              <input
-                                value={annotationCustomColorDraft}
-                                onChange={(e) => setAnnotationCustomColorDraft(e.target.value)}
-                                placeholder="#RRGGBB / rgba(...)"
-                                className="h-8 w-full rounded-md border border-theme-default bg-surface-1 px-2 text-xs text-theme-1 outline-none focus:border-theme-strong"
-                              />
-                              <button
-                                type="button"
-                                className="h-8 rounded-md border border-theme-default bg-surface-2 px-2 text-xs font-semibold text-theme-2 hover:bg-surface-muted/40"
-                                onClick={() => setAnnotationRectColor(annotationCustomColorDraft.trim() || annotationRectColor)}
-                              >
-                                应用
-                              </button>
-                            </div>
-                          </div>
-                          <Popover.Arrow className="fill-[var(--surface-2)]" />
-                        </Popover.Content>
-                      </Popover.Portal>
-                    </Popover.Root>
+                          <button
+                            type="button"
+                            className="inline-flex h-7 min-w-[72px] shrink-0 items-center justify-center border-l border-theme-default px-2.5 text-[11px] font-semibold text-theme-2 hover:bg-surface-muted/40"
+                            onClick={() => {
+                              setAnnotationsEnabled(false);
+                              setActiveAnnotationPanel(null);
+                            }}
+                          >
+                            退出批注
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+
+                    {/* 字：仍然是直接切换工具（无侧滑面板） */}
                     <Button
                       type="button"
                       variant="secondary"
@@ -3515,95 +3403,118 @@ export function RealtimeStudio() {
                         annotationsEnabled && annotationsTool === "text" ? "border-theme-strong bg-surface-3" : ""
                       }`}
                       onClick={() => {
+                        if (!currentSessionId) return;
                         setAnnotationsEnabled(true);
                         setAnnotationsTool("text");
+                        setActiveAnnotationPanel(null);
                       }}
                       disabled={!currentSessionId}
                     >
                       字
                     </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className={`h-7 rounded-md px-2 text-[11px] font-semibold ${
-                        annotationsEnabled && (annotationsTool === "erase_object" || annotationsTool === "erase_precise")
-                          ? "border-theme-strong bg-surface-3"
-                          : ""
+
+                    {/* 橡皮：横向展开，宽度随内容 */}
+                    <div
+                      className={`inline-flex shrink-0 items-center rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[width] duration-200 ${
+                        activeAnnotationPanel === "eraser"
+                          ? "h-7 w-auto max-w-[calc(100vw-2rem)] overflow-hidden"
+                          : "h-7 w-[72px] overflow-hidden"
                       }`}
-                      onClick={() => {
-                        setAnnotationsEnabled(true);
-                        setAnnotationsTool("erase_object");
-                      }}
-                      disabled={!currentSessionId}
                     >
-                      橡皮
-                    </Button>
-                    {annotationsEnabled && (annotationsTool === "erase_object" || annotationsTool === "erase_precise") ? (
-                      <div className="flex h-7 overflow-hidden rounded-md border border-theme-default bg-surface-2">
-                        <button
-                          type="button"
-                          className={`px-2 text-[11px] font-semibold ${
-                            annotationsTool === "erase_object"
-                              ? "bg-surface-3 text-theme-1"
-                              : "text-theme-3 hover:bg-surface-muted/40"
-                          }`}
-                          onClick={() => setAnnotationsTool("erase_object")}
-                        >
-                          对象
-                        </button>
-                        <div className="w-px bg-theme-default/60" aria-hidden />
-                        <button
-                          type="button"
-                          className={`px-2 text-[11px] font-semibold ${
-                            annotationsTool === "erase_precise"
-                              ? "bg-surface-3 text-theme-1"
-                              : "text-theme-3 hover:bg-surface-muted/40"
-                          }`}
-                          onClick={() => setAnnotationsTool("erase_precise")}
-                        >
-                          精准
-                        </button>
-                      </div>
-                    ) : null}
-                    {annotationsEnabled && annotationsTool === "erase_precise" ? (
-                      <Popover.Root>
-                        <Popover.Trigger asChild>
+                      <button
+                        type="button"
+                        disabled={!currentSessionId}
+                        className={`inline-flex h-7 w-[72px] shrink-0 items-center justify-center border-r border-theme-default text-[11px] font-semibold ${
+                          annotationsEnabled && (annotationsTool === "erase_object" || annotationsTool === "erase_precise")
+                            ? "bg-surface-3 text-theme-1"
+                            : "text-theme-2 hover:bg-surface-muted/40"
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                        onClick={() => {
+                          if (!currentSessionId) return;
+                          if (activeAnnotationPanel === "eraser") {
+                            setActiveAnnotationPanel(null);
+                            return;
+                          }
+                          setAnnotationsEnabled(true);
+                          setAnnotationsTool(
+                            annotationsTool === "erase_object" || annotationsTool === "erase_precise"
+                              ? annotationsTool
+                              : "erase_object",
+                          );
+                          setActiveAnnotationPanel("eraser");
+                        }}
+                        title={!currentSessionId ? "请先创建会话" : "橡皮"}
+                      >
+                        橡皮
+                      </button>
+                      {activeAnnotationPanel === "eraser" ? (
+                        <>
+                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-0.5 px-1">
+                            {ERASER_WIDTH_PRESETS.map(({ w, dot }) => {
+                              const active =
+                                annotationsTool === "erase_precise" &&
+                                nearestEraserPresetWidth(annotationEraserWidth) === w;
+                              return (
+                                <button
+                                  key={w}
+                                  type="button"
+                                  title={`精准擦 ${w}px`}
+                                  aria-label={`精准橡皮，宽度 ${w}`}
+                                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-sm transition-colors ${
+                                    active ? "bg-surface-3 text-theme-1" : "text-theme-3 hover:bg-surface-muted/40"
+                                  }`}
+                                  onClick={() => {
+                                    setAnnotationsEnabled(true);
+                                    setAnnotationsTool("erase_precise");
+                                    setAnnotationEraserWidth(w);
+                                  }}
+                                >
+                                  <span
+                                    className="shrink-0 rounded-full bg-current opacity-90"
+                                    style={{ width: dot, height: dot }}
+                                    aria-hidden
+                                  />
+                                </button>
+                              );
+                            })}
+                            <button
+                              type="button"
+                              title="对象擦：整段笔画 / 整框"
+                              aria-label="对象橡皮"
+                              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-theme-3 transition-colors ${
+                                annotationsTool === "erase_object"
+                                  ? "bg-surface-3 text-theme-1"
+                                  : "hover:bg-surface-muted/40"
+                              }`}
+                              onClick={() => {
+                                setAnnotationsEnabled(true);
+                                setAnnotationsTool("erase_object");
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                                <path
+                                  d="M3.5 3.5l7 7M10.5 3.5l-7 7"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.75"
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                            </button>
+                          </div>
                           <button
                             type="button"
-                            disabled={!currentSessionId}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-theme-default bg-surface-2 text-theme-3 shadow-sm transition hover:bg-surface-muted/40 disabled:cursor-not-allowed disabled:opacity-60"
-                            aria-label="精准橡皮设置"
-                            title="精准橡皮设置"
+                            className="inline-flex h-7 min-w-[72px] shrink-0 items-center justify-center border-l border-theme-default px-2.5 text-[11px] font-semibold text-theme-2 hover:bg-surface-muted/40"
+                            onClick={() => {
+                              setAnnotationsEnabled(false);
+                              setActiveAnnotationPanel(null);
+                            }}
                           >
-                            <SlidersHorizontal className="h-3.5 w-3.5" />
+                            退出批注
                           </button>
-                        </Popover.Trigger>
-                        <Popover.Portal>
-                          <Popover.Content
-                            side="bottom"
-                            align="start"
-                            sideOffset={8}
-                            collisionPadding={12}
-                            className="z-[24000] w-[260px] rounded-xl border border-theme-default bg-surface-2 p-3 shadow-xl"
-                          >
-                            <div className="text-[11px] font-semibold text-theme-1">精准橡皮设置</div>
-                            <div className="mt-2 flex items-center justify-between gap-3">
-                              <div className="text-[10px] font-semibold text-theme-3">粗细</div>
-                              <div className="text-[10px] text-theme-4">{annotationEraserWidth}</div>
-                            </div>
-                            <input
-                              type="range"
-                              min={4}
-                              max={40}
-                              value={annotationEraserWidth}
-                              onChange={(e) => setAnnotationEraserWidth(Number(e.target.value))}
-                              className="mt-1 w-full"
-                            />
-                            <Popover.Arrow className="fill-[var(--surface-2)]" />
-                          </Popover.Content>
-                        </Popover.Portal>
-                      </Popover.Root>
-                    ) : null}
+                        </>
+                      ) : null}
+                    </div>
                     <Button
                       type="button"
                       variant="ghost"
@@ -3724,6 +3635,7 @@ export function RealtimeStudio() {
                 <MermaidCard
                   title=""
                   embedded
+                  fixedLightCanvas
                   code={mermaidState?.code || mermaidState?.normalized_code || ""}
                   rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
                   repairRawOutputText={
@@ -3754,6 +3666,7 @@ export function RealtimeStudio() {
               <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-3 pt-1 sm:px-3">
                 <GraphStage
                   embedded
+                  fixedLightCanvas
                   title="结构图"
                   nodes={rendererState.nodes || []}
                   edges={rendererState.edges || []}

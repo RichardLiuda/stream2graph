@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Card } from "@stream2graph/ui";
 import { PanZoomCanvas } from "@/components/pan-zoom-canvas";
 import { AnnotationLayer, type AnnotationDoc, type AnnotationTool } from "@/components/annotation-layer";
+import { cn } from "@/lib/utils";
 
 type RendererNode = {
   id: string;
@@ -38,6 +39,8 @@ export function GraphStage({
   annotationEraserWidth = 12,
   annotationsDoc,
   onAnnotationsChange,
+  /** @description 在 Realtime 中固定为浅底+浅色结构图 token，不随站点主题 */
+  fixedLightCanvas = false,
 }: {
   title: string;
   nodes: RendererNode[];
@@ -53,6 +56,7 @@ export function GraphStage({
   annotationEraserWidth?: number;
   annotationsDoc?: AnnotationDoc;
   onAnnotationsChange?: (next: AnnotationDoc) => void;
+  fixedLightCanvas?: boolean;
 }) {
   const [zoomRebuildNonce, setZoomRebuildNonce] = useState(0);
   const isEmpty = nodes.length === 0;
@@ -84,11 +88,12 @@ export function GraphStage({
   const inner = (
       <div className={embedded ? "flex h-full min-h-0 min-w-0 flex-col bg-transparent" : "bg-transparent p-4"}>
         <PanZoomCanvas
-          className={
+          className={cn(
             embedded
               ? "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-[var(--mindmap-canvas-bg)] p-2 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
-              : "relative flex h-full min-h-[min(370px,51vh)] min-w-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-theme-default bg-[var(--mindmap-canvas-bg)] p-3 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
-          }
+              : "relative flex h-full min-h-[min(370px,51vh)] min-w-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-theme-default bg-[var(--mindmap-canvas-bg)] p-3 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]",
+            fixedLightCanvas && "realtime-light-graph-surface",
+          )}
           contentClassName="min-h-0 flex-1"
           onZoomEnd={() => setZoomRebuildNonce((n) => n + 1)}
           interactionMode={annotationsEnabled && annotationsTool !== "none" ? "annotate" : "panzoom"}

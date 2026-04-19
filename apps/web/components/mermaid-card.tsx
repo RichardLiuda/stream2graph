@@ -7,6 +7,7 @@ import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 import { Badge, Card } from "@stream2graph/ui";
 import { PanZoomCanvas } from "@/components/pan-zoom-canvas";
 import { AnnotationLayer, type AnnotationDoc, type AnnotationTool } from "@/components/annotation-layer";
+import { cn } from "@/lib/utils";
 
 let mermaidReady: Promise<typeof import("mermaid")> | null = null;
 let mermaidInitialized = false;
@@ -583,6 +584,8 @@ function MermaidCardBody({
   annotationEraserWidth = 12,
   annotationsDoc,
   onAnnotationsChange,
+  /** @description Realtime 嵌入时固定浅色画布 token */
+  fixedLightCanvas = false,
 }: {
   title: string;
   code: string;
@@ -613,6 +616,7 @@ function MermaidCardBody({
   annotationEraserWidth?: number;
   annotationsDoc?: AnnotationDoc;
   onAnnotationsChange?: (next: AnnotationDoc) => void;
+  fixedLightCanvas?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
   const [diagramExpanded, setDiagramExpanded] = useState(defaultDiagramExpanded);
@@ -881,9 +885,12 @@ function MermaidCardBody({
   const panZoomCanvasStyle = embedded ? { minHeight: 0 } : { minHeight: viewportMinCss };
   const showDiagram = !collapsible || diagramExpanded;
 
-  const panZoomChromeClass = embedded
-    ? "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-[var(--mindmap-canvas-bg)] p-2 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
-    : "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-theme-default bg-[var(--mindmap-canvas-bg)] p-3 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]";
+  const panZoomChromeClass = cn(
+    embedded
+      ? "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-[var(--mindmap-canvas-bg)] p-2 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
+      : "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-theme-default bg-[var(--mindmap-canvas-bg)] p-3 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]",
+    fixedLightCanvas && "realtime-light-graph-surface",
+  );
 
   const body = (
     <div
@@ -1096,6 +1103,7 @@ export function MermaidCard(props: {
   annotationEraserWidth?: number;
   annotationsDoc?: AnnotationDoc;
   onAnnotationsChange?: (next: AnnotationDoc) => void;
+  fixedLightCanvas?: boolean;
 }) {
   return (
     <ErrorBoundary
