@@ -2973,7 +2973,7 @@ export function RealtimeStudio() {
             </div>
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-hidden pb-0 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(280px,3fr)_minmax(0,7fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
+        <div className="flex-1 min-h-0 overflow-hidden pb-0 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(260px,2fr)_minmax(0,8fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
         {studioPage === 1 ? (
           <Card className="soft-enter relative order-1 flex min-h-0 min-w-0 flex-col space-y-3 text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none">
           <div
@@ -3356,13 +3356,13 @@ export function RealtimeStudio() {
                       ))}
                     </div>
                   </Tooltip.Provider>
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pt-1 pr-1">
                     {/* 笔：横向展开，宽度随内容；高度固定一行 h-7 */}
                     <div
-                      className={`inline-flex shrink-0 items-center rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[width] duration-200 ${
+                      className={`inline-flex h-7 w-auto shrink-0 items-center overflow-hidden rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[max-width] duration-300 ease-out will-change-[max-width] ${
                         activeAnnotationPanel === "pen"
-                          ? "h-7 w-auto max-w-[calc(100vw-2rem)] overflow-hidden"
-                          : "h-7 w-[56px] overflow-hidden"
+                          ? "max-w-[min(420px,calc(100vw-2rem))]"
+                          : "max-w-[56px]"
                       }`}
                     >
                       <button
@@ -3394,8 +3394,11 @@ export function RealtimeStudio() {
                           <path d="M7.6 3.3l2.1 2.1" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
                         </svg>
                       </button>
-                      {activeAnnotationPanel === "pen" ? (
-                        <>
+                      <div
+                        className={`flex min-w-0 flex-nowrap items-center overflow-hidden transition-[max-width,opacity] duration-300 ease-out ${
+                          activeAnnotationPanel === "pen" ? "max-w-[360px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
+                        }`}
+                      >
                           <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-x-1.5 px-1.5">
                             <AnnotationWidthSlider
                               min={1}
@@ -3422,16 +3425,15 @@ export function RealtimeStudio() {
                           >
                             退出批注
                           </button>
-                        </>
-                      ) : null}
+                      </div>
                     </div>
 
                     {/* 框：横向展开，宽度随内容 */}
                     <div
-                      className={`inline-flex shrink-0 items-center rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[width] duration-200 ${
+                      className={`inline-flex h-7 w-auto shrink-0 items-center overflow-hidden rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[max-width] duration-300 ease-out will-change-[max-width] ${
                         activeAnnotationPanel === "rect"
-                          ? "h-7 w-auto max-w-[calc(100vw-2rem)] overflow-hidden"
-                          : "h-7 w-[56px] overflow-hidden"
+                          ? "max-w-[min(420px,calc(100vw-2rem))]"
+                          : "max-w-[56px]"
                       }`}
                     >
                       <button
@@ -3465,8 +3467,11 @@ export function RealtimeStudio() {
                           />
                         </svg>
                       </button>
-                      {activeAnnotationPanel === "rect" ? (
-                        <>
+                      <div
+                        className={`flex min-w-0 flex-nowrap items-center overflow-hidden transition-[max-width,opacity] duration-300 ease-out ${
+                          activeAnnotationPanel === "rect" ? "max-w-[360px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
+                        }`}
+                      >
                           <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-x-1.5 px-1.5">
                             <AnnotationWidthSlider
                               min={1}
@@ -3493,15 +3498,14 @@ export function RealtimeStudio() {
                           >
                             退出批注
                           </button>
-                        </>
-                      ) : null}
+                      </div>
                     </div>
 
                     <div
-                      className={`inline-flex shrink-0 items-center rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[width] duration-200 ${
+                      className={`inline-flex h-7 w-auto shrink-0 items-center overflow-hidden rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[max-width] duration-300 ease-out will-change-[max-width] ${
                         activeAnnotationPanel === "text"
-                          ? "h-7 w-auto max-w-[calc(100vw-2rem)] overflow-hidden"
-                          : "h-7 w-[56px] overflow-hidden"
+                          ? "max-w-[min(320px,calc(100vw-2rem))]"
+                          : "max-w-[56px]"
                       }`}
                     >
                       <button
@@ -3533,8 +3537,11 @@ export function RealtimeStudio() {
                           />
                         </svg>
                       </button>
-                      {activeAnnotationPanel === "text" ? (
-                        <>
+                      <div
+                        className={`flex min-w-0 flex-nowrap items-center overflow-hidden transition-[max-width,opacity] duration-300 ease-out ${
+                          activeAnnotationPanel === "text" ? "max-w-[240px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
+                        }`}
+                      >
                           <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-1.5 px-1.5">
                             <AnnotationColorPopover
                               swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
@@ -3552,16 +3559,15 @@ export function RealtimeStudio() {
                           >
                             退出批注
                           </button>
-                        </>
-                      ) : null}
+                      </div>
                     </div>
 
                     {/* 橡皮：横向展开，宽度随内容 */}
                     <div
-                      className={`inline-flex shrink-0 items-center rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[width] duration-200 ${
+                      className={`inline-flex h-7 w-auto shrink-0 items-center overflow-hidden rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[max-width] duration-300 ease-out will-change-[max-width] ${
                         activeAnnotationPanel === "eraser"
-                          ? "h-7 w-auto max-w-[calc(100vw-2rem)] overflow-hidden"
-                          : "h-7 w-[72px] overflow-hidden"
+                          ? "max-w-[min(360px,calc(100vw-2rem))]"
+                          : "max-w-[72px]"
                       }`}
                     >
                       <button
@@ -3599,8 +3605,11 @@ export function RealtimeStudio() {
                           <path d="M4.2 11.7h6.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
                         </svg>
                       </button>
-                      {activeAnnotationPanel === "eraser" ? (
-                        <>
+                      <div
+                        className={`flex min-w-0 flex-nowrap items-center overflow-hidden transition-[max-width,opacity] duration-300 ease-out ${
+                          activeAnnotationPanel === "eraser" ? "max-w-[300px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
+                        }`}
+                      >
                           <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-0.5 px-1">
                             {ERASER_WIDTH_PRESETS.map(({ w, dot }) => {
                               const active =
@@ -3664,8 +3673,7 @@ export function RealtimeStudio() {
                           >
                             退出批注
                           </button>
-                        </>
-                      ) : null}
+                      </div>
                     </div>
                     <Button
                       type="button"
@@ -3695,7 +3703,7 @@ export function RealtimeStudio() {
                   </div>
                 </div>
                 <Tooltip.Provider delayDuration={200}>
-                  <div className="flex w-full min-w-0 shrink-0 flex-nowrap items-start justify-end gap-4 sm:ml-auto sm:max-w-md sm:gap-6 sm:pr-1">
+                  <div className="ml-auto flex w-auto shrink-0 flex-nowrap items-start justify-end gap-3 sm:gap-4 sm:pr-1">
                     <div className="flex shrink-0 flex-col items-center">
                       <Tooltip.Root>
                         <Tooltip.Trigger asChild>
