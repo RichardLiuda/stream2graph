@@ -115,12 +115,56 @@ export const annotationItemSchema = z.discriminatedUnion("kind", [
   annotationTextSchema,
 ]);
 
+export const annotationEraseMaskStrokeSchema = z.object({
+  id: z.string(),
+  points: z.array(annotationPointSchema),
+  width: z.number(),
+});
+
+export const annotationMaskStrokeSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["erase", "reveal"]),
+  points: z.array(annotationPointSchema),
+  width: z.number(),
+});
+
+const annotationCanvasPayloadSchema = z.object({
+  items: z.array(annotationItemSchema).default([]),
+  maskStrokes: z.array(annotationMaskStrokeSchema).optional().default([]),
+  eraseMaskPaths: z.array(annotationEraseMaskStrokeSchema).optional().default([]),
+});
+
+function maskStrokesFromCanvasPayload(p: z.infer<typeof annotationCanvasPayloadSchema>) {
+  const ms = p.maskStrokes ?? [];
+  const legacy = p.eraseMaskPaths ?? [];
+  if (ms.length > 0) return ms;
+  if (legacy.length > 0) {
+    return legacy.map((e) => ({
+      id: e.id,
+      kind: "erase" as const,
+      points: e.points,
+      width: e.width,
+    }));
+  }
+  return ms;
+}
+
+/** 新版：主图 + 结构双画布；旧版：仅顶层 items → 归入主图 */
+export const sessionAnnotationsPayloadSchema = z.union([
+  z.object({
+    mermaid: annotationCanvasPayloadSchema,
+    structure: annotationCanvasPayloadSchema,
+  }),
+  annotationCanvasPayloadSchema.transform((p) => ({
+    mermaid: { items: p.items, maskStrokes: maskStrokesFromCanvasPayload(p) },
+    structure: { items: [], maskStrokes: [] },
+  })),
+]);
+
 export const realtimeSessionAnnotationsSchema = z.object({
   session_id: z.string(),
   version: z.number().int().nonnegative().default(1),
-  payload: z.object({
-    items: z.array(annotationItemSchema).default([]),
-  }).default({ items: [] }),
+  payload: sessionAnnotationsPayloadSchema,
 });
 
 export const realtimeTranscriptTurnSchema = z.object({

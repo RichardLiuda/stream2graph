@@ -58,6 +58,11 @@ import {
   saveRuntimePreferences,
 } from "@/lib/runtime-preferences";
 import type { AnnotationDoc, AnnotationTool } from "@/components/annotation-layer";
+import { normalizeMaskStrokes } from "@/components/annotation-layer";
+import {
+  normalizeSessionAnnotationsPayload,
+  type SessionAnnotationsPayload,
+} from "@/lib/session-annotations-payload";
 import { AnnotationColorPopover } from "@/components/annotation-color-popover";
 import { AnnotationWidthSlider } from "@/components/annotation-width-slider";
 import { GraphStage } from "@/components/graph-stage";
@@ -636,8 +641,8 @@ function downloadCurrentMermaidSvg(exportRootId: string, filename: string) {
   downloadTextBlob(filename, svgSource, "image/svg+xml");
 }
 
-function downloadAnnotationsSvg(filename: string) {
-  const host = document.querySelector<HTMLElement>("#s2g-annotation-host");
+function downloadAnnotationsSvg(filename: string, exportHostId: string) {
+  const host = document.getElementById(exportHostId);
   const svg = host?.querySelector("svg");
   if (!(svg instanceof SVGSVGElement)) {
     throw new Error("当前没有可下载的批注。");
@@ -814,16 +819,21 @@ export function RealtimeStudio() {
   const [stageTab, setStageTab] = useState("mermaid");
   const [annotationsEnabled, setAnnotationsEnabled] = useState(false);
   const [annotationsTool, setAnnotationsTool] = useState<AnnotationTool>("pen");
-  const [activeAnnotationPanel, setActiveAnnotationPanel] = useState<"pen" | "rect" | "eraser" | null>(null);
+  const [activeAnnotationPanel, setActiveAnnotationPanel] = useState<"pen" | "rect" | "text" | "eraser" | null>(null);
   const [annotationPenWidth, setAnnotationPenWidth] = useState(2);
   const [annotationPenColor, setAnnotationPenColor] = useState<string>(DEFAULT_ANNOTATION_COLOR);
   const [annotationRectColor, setAnnotationRectColor] = useState<string>(DEFAULT_ANNOTATION_COLOR);
+  const [annotationRectStrokeWidth, setAnnotationRectStrokeWidth] = useState(2);
+  const [annotationTextColor, setAnnotationTextColor] = useState<string>(DEFAULT_ANNOTATION_COLOR);
   const [annotationEraserWidth, setAnnotationEraserWidth] = useState(12);
-  const [annotationsDoc, setAnnotationsDoc] = useState<AnnotationDoc>({
+  const [annotationsState, setAnnotationsState] = useState<{
+    version: number;
+    payload: SessionAnnotationsPayload;
+  }>({
     version: 1,
-    payload: { items: [] },
+    payload: normalizeSessionAnnotationsPayload(null),
   });
-  const annotationsUndoRef = useRef<AnnotationDoc[]>([]);
+  const annotationsUndoRef = useRef<Array<{ version: number; payload: SessionAnnotationsPayload }>>([]);
   const lastSavedAnnotationsRef = useRef<string>("");
   const lastLoadedSessionIdRef = useRef<string | null>(null);
   /** @description 工作台两页：第 1 页（输入来源 + 主图），第 2 页（会话与录音设置 + 默认设置） */
@@ -924,32 +934,33 @@ export function RealtimeStudio() {
     if (!annotationsQuery.isSuccess) return;
     if (lastLoadedSessionIdRef.current === currentSessionId) return;
 
-    const nextDoc: AnnotationDoc = {
+    const nextPayload = normalizeSessionAnnotationsPayload(annotationsQuery.data.payload);
+    const nextState = {
       version: typeof annotationsQuery.data.version === "number" ? annotationsQuery.data.version : 1,
-      payload:
-        (annotationsQuery.data.payload as any) && typeof annotationsQuery.data.payload === "object"
-          ? (annotationsQuery.data.payload as any)
-          : { items: [] },
+      payload: nextPayload,
     };
-    setAnnotationsDoc(nextDoc);
+    setAnnotationsState(nextState);
     annotationsUndoRef.current = [];
-    lastSavedAnnotationsRef.current = JSON.stringify(nextDoc.payload || {});
+    lastSavedAnnotationsRef.current = JSON.stringify(nextPayload);
     lastLoadedSessionIdRef.current = currentSessionId;
   }, [annotationsQuery.data, annotationsQuery.isSuccess, currentSessionId]);
 
   useEffect(() => {
     if (!currentSessionId) return;
-    const payloadKey = JSON.stringify(annotationsDoc.payload || {});
+    const payloadKey = JSON.stringify(annotationsState.payload || {});
     if (!payloadKey || payloadKey === lastSavedAnnotationsRef.current) return;
 
     const t = window.setTimeout(async () => {
       try {
-        const res = await saveAnnotationsMutation.mutateAsync({ sessionId: currentSessionId, doc: annotationsDoc });
-        lastSavedAnnotationsRef.current = JSON.stringify((res as any).payload || {});
-        setAnnotationsDoc((prev) => ({
-          ...prev,
+        const res = await saveAnnotationsMutation.mutateAsync({
+          sessionId: currentSessionId,
+          doc: { version: annotationsState.version, payload: annotationsState.payload } as unknown as AnnotationDoc,
+        });
+        const savedPayload = normalizeSessionAnnotationsPayload((res as any).payload);
+        lastSavedAnnotationsRef.current = JSON.stringify(savedPayload);
+        setAnnotationsState((prev) => ({
           version: typeof (res as any).version === "number" ? (res as any).version : prev.version,
-          payload: ((res as any).payload as any) || prev.payload,
+          payload: savedPayload,
         }));
       } catch {
         // keep local edits; error feedback is handled elsewhere
@@ -957,29 +968,72 @@ export function RealtimeStudio() {
     }, 900);
 
     return () => window.clearTimeout(t);
-  }, [annotationsDoc, currentSessionId, saveAnnotationsMutation]);
+  }, [annotationsState, currentSessionId, saveAnnotationsMutation]);
 
-  const onAnnotationsChange = (next: AnnotationDoc) => {
-    setAnnotationsDoc((prev) => {
-      annotationsUndoRef.current.push(prev);
+  const onMermaidAnnotationsChange = (next: AnnotationDoc) => {
+    setAnnotationsState((prev) => {
+      annotationsUndoRef.current.push(structuredClone(prev));
       if (annotationsUndoRef.current.length > 40) annotationsUndoRef.current.shift();
-      return { version: prev.version + 1, payload: next.payload };
+      return {
+        version: prev.version + 1,
+        payload: { ...prev.payload, mermaid: next.payload },
+      };
+    });
+  };
+
+  const onStructureAnnotationsChange = (next: AnnotationDoc) => {
+    setAnnotationsState((prev) => {
+      annotationsUndoRef.current.push(structuredClone(prev));
+      if (annotationsUndoRef.current.length > 40) annotationsUndoRef.current.shift();
+      return {
+        version: prev.version + 1,
+        payload: { ...prev.payload, structure: next.payload },
+      };
     });
   };
 
   const undoAnnotations = () => {
     const prev = annotationsUndoRef.current.pop();
     if (!prev) return;
-    setAnnotationsDoc({ version: prev.version + 1, payload: prev.payload });
+    setAnnotationsState({ version: prev.version + 1, payload: prev.payload });
   };
 
   const clearAnnotations = () => {
-    setAnnotationsDoc((prev) => {
-      annotationsUndoRef.current.push(prev);
+    setAnnotationsState((prev) => {
+      annotationsUndoRef.current.push(structuredClone(prev));
       if (annotationsUndoRef.current.length > 40) annotationsUndoRef.current.shift();
-      return { version: prev.version + 1, payload: { items: [] } };
+      const key = stageTab === "structure" ? "structure" : "mermaid";
+      return {
+        version: prev.version + 1,
+        payload: {
+          ...prev.payload,
+          [key]: { items: [], maskStrokes: [] },
+        },
+      };
     });
   };
+
+  const mermaidAnnotationsDoc = useMemo(
+    (): AnnotationDoc => ({
+      version: annotationsState.version,
+      payload: annotationsState.payload.mermaid,
+    }),
+    [annotationsState.version, annotationsState.payload.mermaid],
+  );
+
+  const structureAnnotationsDoc = useMemo(
+    (): AnnotationDoc => ({
+      version: annotationsState.version,
+      payload: annotationsState.payload.structure,
+    }),
+    [annotationsState.version, annotationsState.payload.structure],
+  );
+
+  const activeAnnotationPayload =
+    stageTab === "structure" ? annotationsState.payload.structure : annotationsState.payload.mermaid;
+  const activeAnnotationEmpty =
+    (activeAnnotationPayload.items?.length ?? 0) === 0 &&
+    normalizeMaskStrokes(activeAnnotationPayload).length === 0;
 
   const datasets = useQuery({
     queryKey: ["datasets"],
@@ -2484,11 +2538,30 @@ export function RealtimeStudio() {
       const base = sanitizeDownloadFileName(titleDisplay || currentSessionId);
       const fileName = `${base}_graph.svg`;
       downloadCurrentMermaidSvg(mermaidExportRootId, fileName);
-      const hasAnnotations = (annotationsDoc.payload?.items?.length ?? 0) > 0;
-      if (hasAnnotations) {
+      const p = annotationsState.payload;
+      const hasMermaidAnn =
+        (p.mermaid.items?.length ?? 0) > 0 || normalizeMaskStrokes(p.mermaid).length > 0;
+      const hasStructureAnn =
+        (p.structure.items?.length ?? 0) > 0 || normalizeMaskStrokes(p.structure).length > 0;
+      if (hasMermaidAnn || hasStructureAnn) {
         try {
-          downloadAnnotationsSvg(`${base}_annotations.svg`);
-          setNotice({ tone: "warning", text: "图表 SVG 已下载；批注已另存为 annotations.svg（需叠加查看）。" });
+          const parts: string[] = [];
+          if (hasMermaidAnn && document.getElementById("s2g-annotation-host-mermaid")) {
+            downloadAnnotationsSvg(`${base}_annotations_mermaid.svg`, "s2g-annotation-host-mermaid");
+            parts.push("主图批注");
+          }
+          if (hasStructureAnn && document.getElementById("s2g-annotation-host-structure")) {
+            downloadAnnotationsSvg(`${base}_annotations_structure.svg`, "s2g-annotation-host-structure");
+            parts.push("结构批注");
+          }
+          if (!parts.length) {
+            setNotice({ tone: "warning", text: "图表 SVG 已下载。批注层未挂载，未导出批注 SVG。" });
+          } else {
+            setNotice({
+              tone: "warning",
+              text: `图表 SVG 已下载；已另存 ${parts.join("、")}（SVG 需叠加查看）。`,
+            });
+          }
         } catch {
           setNotice({ tone: "warning", text: "图表 SVG 已下载。批注导出失败（可能当前页未启用批注层）。" });
         }
@@ -3310,7 +3383,16 @@ export function RealtimeStudio() {
                         }}
                         title={!currentSessionId ? "请先创建会话" : "画笔"}
                       >
-                        笔
+                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                          <path
+                            d="M2.2 11.8l2.7-.6 5.8-5.8-2.1-2.1-5.8 5.8-.6 2.7z"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                            strokeLinejoin="round"
+                          />
+                          <path d="M7.6 3.3l2.1 2.1" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                        </svg>
                       </button>
                       {activeAnnotationPanel === "pen" ? (
                         <>
@@ -3370,11 +3452,31 @@ export function RealtimeStudio() {
                         }}
                         title={!currentSessionId ? "请先创建会话" : "框"}
                       >
-                        框
+                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                          <rect
+                            x="2.25"
+                            y="2.25"
+                            width="9.5"
+                            height="9.5"
+                            rx="1.8"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                          />
+                        </svg>
                       </button>
                       {activeAnnotationPanel === "rect" ? (
                         <>
-                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-1.5 px-1.5">
+                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-x-1.5 px-1.5">
+                            <AnnotationWidthSlider
+                              min={1}
+                              max={16}
+                              value={annotationRectStrokeWidth}
+                              onChange={setAnnotationRectStrokeWidth}
+                              thumbMinPx={5}
+                              thumbMaxPx={14}
+                              aria-label="框线粗细"
+                            />
                             <AnnotationColorPopover
                               swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
                               value={annotationRectColor}
@@ -3395,23 +3497,64 @@ export function RealtimeStudio() {
                       ) : null}
                     </div>
 
-                    {/* 字：仍然是直接切换工具（无侧滑面板） */}
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className={`h-7 rounded-md px-2 text-[11px] font-semibold ${
-                        annotationsEnabled && annotationsTool === "text" ? "border-theme-strong bg-surface-3" : ""
+                    <div
+                      className={`inline-flex shrink-0 items-center rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[width] duration-200 ${
+                        activeAnnotationPanel === "text"
+                          ? "h-7 w-auto max-w-[calc(100vw-2rem)] overflow-hidden"
+                          : "h-7 w-[56px] overflow-hidden"
                       }`}
-                      onClick={() => {
-                        if (!currentSessionId) return;
-                        setAnnotationsEnabled(true);
-                        setAnnotationsTool("text");
-                        setActiveAnnotationPanel(null);
-                      }}
-                      disabled={!currentSessionId}
                     >
-                      字
-                    </Button>
+                      <button
+                        type="button"
+                        disabled={!currentSessionId}
+                        className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 border-r border-theme-default text-[11px] font-semibold ${
+                          annotationsEnabled && annotationsTool === "text" ? "bg-surface-3 text-theme-1" : "text-theme-2 hover:bg-surface-muted/40"
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                        onClick={() => {
+                          if (!currentSessionId) return;
+                          if (activeAnnotationPanel === "text") {
+                            setActiveAnnotationPanel(null);
+                            return;
+                          }
+                          setAnnotationsEnabled(true);
+                          setAnnotationsTool("text");
+                          setActiveAnnotationPanel("text");
+                        }}
+                        title={!currentSessionId ? "请先创建会话" : "文字批注"}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                          <path
+                            d="M2.5 3.2h9M7 3.2v7.6M4.6 10.8h4.8"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.35"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                      {activeAnnotationPanel === "text" ? (
+                        <>
+                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-1.5 px-1.5">
+                            <AnnotationColorPopover
+                              swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                              value={annotationTextColor}
+                              onChange={setAnnotationTextColor}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className="inline-flex h-7 min-w-[72px] shrink-0 items-center justify-center border-l border-theme-default px-2.5 text-[11px] font-semibold text-theme-2 hover:bg-surface-muted/40"
+                            onClick={() => {
+                              setAnnotationsEnabled(false);
+                              setActiveAnnotationPanel(null);
+                            }}
+                          >
+                            退出批注
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
 
                     {/* 橡皮：横向展开，宽度随内容 */}
                     <div
@@ -3445,7 +3588,16 @@ export function RealtimeStudio() {
                         }}
                         title={!currentSessionId ? "请先创建会话" : "橡皮"}
                       >
-                        橡皮
+                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                          <path
+                            d="M3.1 8.7l3.6-3.6a1.6 1.6 0 0 1 2.2 0l1.9 1.9a1.6 1.6 0 0 1 0 2.2L8.3 11.7H5.2z"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                            strokeLinejoin="round"
+                          />
+                          <path d="M4.2 11.7h6.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                        </svg>
                       </button>
                       {activeAnnotationPanel === "eraser" ? (
                         <>
@@ -3529,7 +3681,7 @@ export function RealtimeStudio() {
                       variant="ghost"
                       className="h-7 rounded-md px-2 text-[11px] font-semibold"
                       onClick={clearAnnotations}
-                      disabled={!currentSessionId || (annotationsDoc.payload?.items?.length ?? 0) === 0}
+                      disabled={!currentSessionId || activeAnnotationEmpty}
                     >
                       清空
                     </Button>
@@ -3655,9 +3807,11 @@ export function RealtimeStudio() {
                   annotationPenWidth={annotationPenWidth}
                   annotationPenColor={annotationPenColor}
                   annotationRectColor={annotationRectColor}
+                  annotationRectStrokeWidth={annotationRectStrokeWidth}
+                  annotationTextColor={annotationTextColor}
                   annotationEraserWidth={annotationEraserWidth}
-                  annotationsDoc={annotationsDoc}
-                  onAnnotationsChange={onAnnotationsChange}
+                  annotationsDoc={mermaidAnnotationsDoc}
+                  onAnnotationsChange={onMermaidAnnotationsChange}
                 />
               </div>
             </Tabs.Content>
@@ -3676,9 +3830,11 @@ export function RealtimeStudio() {
                   annotationPenWidth={annotationPenWidth}
                   annotationPenColor={annotationPenColor}
                   annotationRectColor={annotationRectColor}
+                  annotationRectStrokeWidth={annotationRectStrokeWidth}
+                  annotationTextColor={annotationTextColor}
                   annotationEraserWidth={annotationEraserWidth}
-                  annotationsDoc={annotationsDoc}
-                  onAnnotationsChange={onAnnotationsChange}
+                  annotationsDoc={structureAnnotationsDoc}
+                  onAnnotationsChange={onStructureAnnotationsChange}
                 />
               </div>
             </Tabs.Content>

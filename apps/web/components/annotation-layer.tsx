@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 type Point = { x: number; y: number };
 
@@ -44,7 +44,39 @@ export type AnnotationText = {
 
 export type AnnotationItem = AnnotationPen | AnnotationRect | AnnotationText;
 
-export type AnnotationPayload = { items: AnnotationItem[] };
+/** 精准橡皮：mask 内黑色描边（与画笔折线同源），切口由 stroke 形状决定，不拆笔路径 */
+export type AnnotationEraseMaskStroke = {
+  id: string;
+  points: Point[];
+  /** SVG 用户单位下的描边宽度（一般为 2× 擦除半径） */
+  width: number;
+};
+
+/** mask 时间序：erase 黑线挖洞，reveal 白线在同路径上恢复其后提交的墨迹可见 */
+export type AnnotationMaskStroke = {
+  id: string;
+  kind: "erase" | "reveal";
+  points: Point[];
+  width: number;
+};
+
+export type AnnotationPayload = {
+  items: AnnotationItem[];
+  maskStrokes?: AnnotationMaskStroke[];
+  /** @deprecated 旧版仅擦除；读取时并入 {@link maskStrokes}（kind: erase） */
+  eraseMaskPaths?: AnnotationEraseMaskStroke[];
+};
+
+export function normalizeMaskStrokes(payload: Partial<AnnotationPayload> | undefined): AnnotationMaskStroke[] {
+  if (!payload) return [];
+  const ms = Array.isArray(payload.maskStrokes) ? payload.maskStrokes : undefined;
+  const legacy = payload.eraseMaskPaths ?? [];
+  if (ms && ms.length > 0) return ms;
+  if (legacy.length > 0) {
+    return legacy.map((s) => ({ id: s.id, kind: "erase" as const, points: s.points, width: s.width }));
+  }
+  return ms ?? [];
+}
 
 export type AnnotationDoc = {
   version: number;
@@ -79,16 +111,27 @@ function normalizeRect(a: Point, b: Point) {
   return { x, y, w, h };
 }
 
+function pointsToMaskPathD(pts: Point[]): string {
+  if (!pts.length) return "";
+  if (pts.length === 1) {
+    const p = pts[0];
+    return `M ${p.x.toFixed(2)} ${p.y.toFixed(2)} l 0.02 0`;
+  }
+  return pts.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
+}
+
 export function AnnotationLayer({
   enabled,
   tool,
   doc,
   onChange,
+  exportHostId = "s2g-annotation-host",
   penColor = "rgba(229,231,235,0.92)",
   penWidth = 2,
   eraserWidth = 12,
   rectMode = "outline",
   rectColor = "rgba(229,231,235,0.92)",
+  rectStrokeWidth = 2,
   textColor = "rgba(229,231,235,0.92)",
   textSize = 14,
 }: {
@@ -96,12 +139,16 @@ export function AnnotationLayer({
   tool: AnnotationTool;
   doc: AnnotationDoc;
   onChange: (next: AnnotationDoc) => void;
+  /** @description 导出 SVG 时用于 `querySelector`；主图 / 结构须不同 id，避免并存时串台 */
+  exportHostId?: string;
   penColor?: string;
   penWidth?: number;
   /** @description 橡皮擦粗细（屏幕像素）。只作用于 `erase_precise` / `erase_object`。 */
   eraserWidth?: number;
   rectMode?: "highlight" | "outline";
   rectColor?: string;
+  /** @description 矩形描边宽度（与画笔 stroke 同语义，屏幕像素）。 */
+  rectStrokeWidth?: number;
   textColor?: string;
   textSize?: number;
 }) {
@@ -110,30 +157,52 @@ export function AnnotationLayer({
   const draftPenPointsRef = useRef<Point[] | null>(null);
   const draftRectRef = useRef<{ start: Point; end: Point } | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const dragTextRef = useRef<{ pointerId: number; id: string; start: Point; origin: Point } | null>(null);
   const erasePointerIdRef = useRef<number | null>(null);
   const lastEraseCommitAtRef = useRef<number>(0);
-  const lastEraserPointRef = useRef<Point | null>(null);
-  const lastEraserClientRef = useRef<Point | null>(null);
   const [eraserIndicator, setEraserIndicator] = useState<{ x: number; y: number; r: number } | null>(null);
-  const [pendingTextDelete, setPendingTextDelete] = useState<{ id: string; x: number; y: number } | null>(null);
+  const draftEraseMaskPointsRef = useRef<Point[] | null>(null);
+  const draftEraseMaskWidthRef = useRef<number>(0);
+  const [draftEraseMaskPoints, setDraftEraseMaskPoints] = useState<Point[] | null>(null);
+  const maskReactId = useId();
+  const maskDomId = useMemo(() => `s2g-ann-mask-${maskReactId.replace(/:/g, "")}`, [maskReactId]);
+  const eraserIndicatorRafRef = useRef<number | null>(null);
+  const eraserIndicatorPendingRef = useRef<{ x: number; y: number; r: number } | null>(null);
 
+  const scheduleEraserIndicator = (x: number, y: number, r: number) => {
+    eraserIndicatorPendingRef.current = { x, y, r };
+    if (eraserIndicatorRafRef.current !== null) return;
+    eraserIndicatorRafRef.current = requestAnimationFrame(() => {
+      eraserIndicatorRafRef.current = null;
+      const v = eraserIndicatorPendingRef.current;
+      if (v) setEraserIndicator(v);
+    });
+  };
   const [draftPenPoints, setDraftPenPoints] = useState<Point[] | null>(null);
   const [draftRect, setDraftRect] = useState<{ start: Point; end: Point } | null>(null);
   const [draftText, setDraftText] = useState<{ at: Point; value: string } | null>(null);
 
   const items = useMemo(() => doc.payload?.items ?? [], [doc.payload?.items]);
+  const maskStrokes = useMemo(() => normalizeMaskStrokes(doc.payload), [doc.payload]);
 
   useEffect(() => {
     if (!enabled) {
+      if (eraserIndicatorRafRef.current !== null) {
+        cancelAnimationFrame(eraserIndicatorRafRef.current);
+        eraserIndicatorRafRef.current = null;
+      }
+      eraserIndicatorPendingRef.current = null;
       setDraftPenPoints(null);
       setDraftRect(null);
       setDraftText(null);
       draftingRef.current = null;
+      dragTextRef.current = null;
       draftPenPointsRef.current = null;
       draftRectRef.current = null;
-      setPendingTextDelete(null);
-      lastEraserClientRef.current = null;
       setEraserIndicator(null);
+      draftEraseMaskPointsRef.current = null;
+      draftEraseMaskWidthRef.current = 0;
+      setDraftEraseMaskPoints(null);
     }
   }, [enabled]);
 
@@ -145,12 +214,17 @@ export function AnnotationLayer({
 
   useEffect(() => {
     if (!enabled || (tool !== "erase" && tool !== "erase_object" && tool !== "erase_precise")) {
-      setPendingTextDelete(null);
+      if (eraserIndicatorRafRef.current !== null) {
+        cancelAnimationFrame(eraserIndicatorRafRef.current);
+        eraserIndicatorRafRef.current = null;
+      }
+      eraserIndicatorPendingRef.current = null;
       setEraserIndicator(null);
+      draftEraseMaskPointsRef.current = null;
+      draftEraseMaskWidthRef.current = 0;
+      setDraftEraseMaskPoints(null);
     }
   }, [enabled, tool]);
-
-  const eraserMode: "object" | "precise" = tool === "erase_precise" ? "precise" : "object";
 
   const draftItem = useMemo<AnnotationItem | null>(() => {
     if (!enabled) return null;
@@ -176,20 +250,21 @@ export function AnnotationLayer({
         mode: rectMode,
         stroke: rectColor,
         fill: rectMode === "highlight" ? "rgba(148,163,184,0.18)" : "transparent",
-        strokeWidth: 2,
+        strokeWidth: clamp(rectStrokeWidth, 1, 16),
         opacity: 1,
         radius: 10,
       };
     }
     return null;
-  }, [draftPenPoints, draftRect, enabled, penColor, penWidth, rectColor, rectMode, tool]);
+  }, [draftPenPoints, draftRect, enabled, penColor, penWidth, rectColor, rectMode, rectStrokeWidth, tool]);
 
-  const displayItems = useMemo(() => (draftItem ? [...items, draftItem] : items), [draftItem, items]);
-
-  const commit = (nextItems: AnnotationItem[]) => {
+  const commit = (nextItems: AnnotationItem[], nextMaskStrokes?: AnnotationMaskStroke[]) => {
     onChange({
       version: Math.max(1, Number.isFinite(doc.version) ? doc.version : 1),
-      payload: { items: nextItems },
+      payload: {
+        items: nextItems,
+        maskStrokes: nextMaskStrokes ?? maskStrokes,
+      },
     });
   };
 
@@ -198,20 +273,6 @@ export function AnnotationLayer({
     const p1 = svgPointFromClient(svg, { x: client.x + 1, y: client.y });
     const worldPerPx = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
     return worldPerPx * pixelRadius;
-  };
-
-  const distPointToSegmentSq = (p: Point, a: Point, b: Point) => {
-    const abx = b.x - a.x;
-    const aby = b.y - a.y;
-    const apx = p.x - a.x;
-    const apy = p.y - a.y;
-    const ab2 = abx * abx + aby * aby;
-    const t = ab2 > 0 ? Math.max(0, Math.min(1, (apx * abx + apy * aby) / ab2)) : 0;
-    const cx = a.x + t * abx;
-    const cy = a.y + t * aby;
-    const dx = p.x - cx;
-    const dy = p.y - cy;
-    return dx * dx + dy * dy;
   };
 
   const hitTestPen = (p: Point, item: AnnotationPen, rWorld: number) => {
@@ -236,108 +297,6 @@ export function AnnotationLayer({
     return false;
   };
 
-  // "最强"精准橡皮：用橡皮拖动线段（胶囊）裁剪笔画，而不是按采样点删除
-  const erasePenPreciselyBySegment = (segA: Point, segB: Point, item: AnnotationPen, rWorld: number) => {
-    const pts = item.points || [];
-    if (pts.length < 2) return null;
-    const r2 = rWorld * rWorld;
-
-    // 先把笔画重采样到更均匀的点间距，避免“擦在线段中间但附近没点”
-    const step = Math.max(1.5, Math.min(3.0, rWorld * 0.55)); // world units
-    const dense: Point[] = [];
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1];
-      const b = pts[i];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const len = Math.hypot(dx, dy);
-      const n = Math.max(1, Math.ceil(len / step));
-      for (let k = 0; k < n; k++) {
-        const t = k / n;
-        dense.push({ x: a.x + dx * t, y: a.y + dy * t });
-      }
-    }
-    dense.push(pts[pts.length - 1]);
-
-    const keepMask = dense.map((p) => distPointToSegmentSq(p, segA, segB) > r2);
-    if (keepMask.every(Boolean)) return null;
-
-    // 边界补点：相邻 keep/erase 发生变化时，用二分插入一个更接近边界的点，让切口更干净
-    const refined: Point[] = [];
-    const refinedKeep: boolean[] = [];
-    for (let i = 0; i < dense.length; i++) {
-      refined.push(dense[i]);
-      refinedKeep.push(keepMask[i]);
-      if (i === 0) continue;
-      const prevKeep = keepMask[i - 1];
-      const curKeep = keepMask[i];
-      if (prevKeep === curKeep) continue;
-      const a = dense[i - 1];
-      const b = dense[i];
-      let lo = 0;
-      let hi = 1;
-      // find boundary where dist == r (approx)
-      for (let it = 0; it < 12; it++) {
-        const mid = (lo + hi) / 2;
-        const m: Point = { x: a.x + (b.x - a.x) * mid, y: a.y + (b.y - a.y) * mid };
-        const inside = distPointToSegmentSq(m, segA, segB) <= r2;
-        if (prevKeep) {
-          // keep -> erase : boundary near start where it becomes inside
-          if (inside) hi = mid;
-          else lo = mid;
-        } else {
-          // erase -> keep
-          if (inside) lo = mid;
-          else hi = mid;
-        }
-      }
-      const t = (lo + hi) / 2;
-      const boundary: Point = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-      refined.push(boundary);
-      refinedKeep.push(prevKeep); // keep-side boundary
-    }
-
-    const nextSegments: Point[][] = [];
-    let current: Point[] = [];
-    for (let i = 0; i < refined.length; i++) {
-      if (refinedKeep[i]) {
-        current.push(refined[i]);
-      } else if (current.length) {
-        nextSegments.push(current);
-        current = [];
-      }
-    }
-    if (current.length) nextSegments.push(current);
-
-    const nextPens: AnnotationPen[] = nextSegments
-      .map((seg) => {
-        // 轻度抽稀，避免 payload 过大
-        const decimated: Point[] = [];
-        for (const p of seg) {
-          const last = decimated[decimated.length - 1];
-          if (!last) {
-            decimated.push(p);
-            continue;
-          }
-          const dx = p.x - last.x;
-          const dy = p.y - last.y;
-          if (dx * dx + dy * dy >= 0.9) decimated.push(p);
-        }
-        return decimated;
-      })
-      .filter((seg) => seg.length >= 2)
-      .map((seg) => ({
-        kind: "pen",
-        id: id32(),
-        points: seg,
-        color: item.color,
-        width: item.width,
-        opacity: item.opacity,
-      }));
-
-    return nextPens;
-  };
-
   const hitTestRect = (p: Point, item: AnnotationRect, marginWorld: number) => {
     const margin = marginWorld;
     const x1 = item.x;
@@ -356,8 +315,10 @@ export function AnnotationLayer({
 
   const hitTestText = (p: Point, item: AnnotationText, marginWorld: number) => {
     const fontSize = clamp(item.fontSize, 10, 32);
-    const w = Math.max(22, item.text.length * fontSize * 0.62);
-    const h = fontSize * 1.4;
+    const lines = item.text.split(/\r?\n/);
+    const longest = lines.reduce((m, s) => Math.max(m, s.length), 0);
+    const w = Math.max(22, longest * fontSize * 0.62);
+    const h = Math.max(1, lines.length) * fontSize * 1.2;
     let x = item.x;
     if (item.align === "center") x = item.x - w / 2;
     if (item.align === "right") x = item.x - w;
@@ -366,113 +327,36 @@ export function AnnotationLayer({
     return p.x >= x - margin && p.x <= x + w + margin && p.y >= y - margin && p.y <= y + h + margin;
   };
 
-  const eraseAtPoint = (p: Point, client: Point, opts?: { isDown?: boolean }) => {
+  const eraseAtPoint = (p: Point, client: Point) => {
     if (!items.length) return;
+    if (tool !== "erase" && tool !== "erase_object") return;
     const svg = svgRef.current;
     if (!svg) return;
     const now = performance.now();
-    // avoid spamming commits when pointermove is very frequent
     if (now - lastEraseCommitAtRef.current < 35) return;
     const basePx = Math.max(4, Number.isFinite(eraserWidth) ? eraserWidth : 12);
-    const pixelRadius = (tool === "erase_object" || tool === "erase") ? basePx / 2 + 6 : basePx / 2;
+    const pixelRadius = tool === "erase_object" ? basePx / 2 + 6 : basePx / 2;
     const rWorld = worldRadiusFromPixels(svg, client, pixelRadius);
-    const marginWorld = worldRadiusFromPixels(svg, client, tool === "erase_object" || tool === "erase" ? 6 : 3);
+    const marginWorld = worldRadiusFromPixels(svg, client, tool === "erase_object" ? 6 : 3);
 
-    if (eraserMode === "object") {
-      for (let i = items.length - 1; i >= 0; i--) {
-        const item = items[i];
-        const hit =
-          item.kind === "pen"
-            ? hitTestPen(p, item, rWorld)
-            : item.kind === "rect"
-              ? hitTestRect(p, item, marginWorld)
-              : hitTestText(p, item, marginWorld);
-        if (!hit) continue;
-        // 框：直接删
-        if (item.kind === "rect") {
-          setPendingTextDelete(null);
-          lastEraseCommitAtRef.current = now;
-          commit(items.filter((x) => x.id !== item.id));
-          return;
-        }
-        // 字：点击命中才弹确认按钮
-        if (item.kind === "text") {
-          if (opts?.isDown) setPendingTextDelete({ id: item.id, x: item.x, y: item.y });
-          lastEraseCommitAtRef.current = now;
-          return;
-        }
-        // 其他：整对象删除
-        setPendingTextDelete(null);
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i];
+      if (item.kind === "text") continue;
+      const hit =
+        item.kind === "pen"
+          ? hitTestPen(p, item, rWorld)
+          : item.kind === "rect"
+            ? hitTestRect(p, item, marginWorld)
+            : false;
+      if (!hit) continue;
+      if (item.kind === "rect") {
         lastEraseCommitAtRef.current = now;
         commit(items.filter((x) => x.id !== item.id));
         return;
       }
-      return;
-    }
-
-    // precise: 使用拖动段（lastEraserPoint -> p）进行连续擦除
-    const last = lastEraserPointRef.current ?? p;
-    const segA = last;
-    const segB = p;
-    let changed = false;
-    let nextItems: AnnotationItem[] = items;
-
-    // 先处理“字”：只在点击时弹出确认按钮，拖动不弹
-    if (opts?.isDown) {
-      for (let i = nextItems.length - 1; i >= 0; i--) {
-        const it = nextItems[i];
-        if (it.kind !== "text") continue;
-        if (hitTestText(p, it, marginWorld)) {
-          setPendingTextDelete({ id: it.id, x: it.x, y: it.y });
-          lastEraseCommitAtRef.current = now;
-          lastEraserPointRef.current = p;
-          lastEraserClientRef.current = client;
-          return;
-        }
-      }
-    }
-
-    // 框：仍按“直接删除”逻辑（可以一次拖动删多个）
-    const remaining: AnnotationItem[] = [];
-    for (const it of nextItems) {
-      if (it.kind === "rect" && hitTestRect(p, it, marginWorld)) {
-        changed = true;
-        continue;
-      }
-      remaining.push(it);
-    }
-    nextItems = remaining;
-
-    // 笔画：对每条命中的笔画做胶囊裁剪（可分裂为多条）
-    const afterPens: AnnotationItem[] = [];
-    for (const it of nextItems) {
-      if (it.kind !== "pen") {
-        afterPens.push(it);
-        continue;
-      }
-      // 快速跳过：端点都离得很远且不可能命中时不处理
-      //（粗略：如果任一点到橡皮段距离很小才进一步裁剪）
-      const maybeHit = hitTestPen(p, it, rWorld) || hitTestPen(segA, it, rWorld);
-      if (!maybeHit) {
-        afterPens.push(it);
-        continue;
-      }
-      const nextPens = erasePenPreciselyBySegment(segA, segB, it, rWorld);
-      if (!nextPens) {
-        afterPens.push(it);
-        continue;
-      }
-      changed = true;
-      for (const np of nextPens) afterPens.push(np);
-    }
-    nextItems = afterPens;
-
-    lastEraserPointRef.current = p;
-    lastEraserClientRef.current = client;
-    if (changed) {
-      setPendingTextDelete(null);
       lastEraseCommitAtRef.current = now;
-      commit(nextItems);
+      commit(items.filter((x) => x.id !== item.id));
+      return;
     }
   };
 
@@ -485,16 +369,20 @@ export function AnnotationLayer({
     (event.currentTarget as SVGSVGElement).setPointerCapture(event.pointerId);
     const p = svgPointFromClient(svg, { x: event.clientX, y: event.clientY });
     draftingRef.current = { pointerId: event.pointerId, start: p, kind: tool };
-    if (enabled && tool === "erase_precise") {
-      const rWorld = worldRadiusFromPixels(svg, { x: event.clientX, y: event.clientY }, Math.max(4, eraserWidth) / 2);
+    if (tool === "erase_precise") {
+      const client = { x: event.clientX, y: event.clientY };
+      const rWorld = worldRadiusFromPixels(svg, client, Math.max(4, eraserWidth) / 2);
       setEraserIndicator({ x: p.x, y: p.y, r: rWorld });
+      erasePointerIdRef.current = event.pointerId;
+      draftEraseMaskWidthRef.current = Math.max(0.5, rWorld * 2);
+      draftEraseMaskPointsRef.current = [p];
+      setDraftEraseMaskPoints([p]);
+      return;
     }
 
-    if (tool === "erase" || tool === "erase_object" || tool === "erase_precise") {
+    if (tool === "erase" || tool === "erase_object") {
       erasePointerIdRef.current = event.pointerId;
-      lastEraserPointRef.current = p;
-      lastEraserClientRef.current = { x: event.clientX, y: event.clientY };
-      eraseAtPoint(p, { x: event.clientX, y: event.clientY }, { isDown: true });
+      eraseAtPoint(p, { x: event.clientX, y: event.clientY });
       return;
     }
     if (tool === "pen") {
@@ -518,20 +406,46 @@ export function AnnotationLayer({
     if (!svg) return;
     const p = svgPointFromClient(svg, { x: event.clientX, y: event.clientY });
 
-    // 指示器：即使未按下，也要随鼠标移动持续显示
+    const textDrag = dragTextRef.current;
+    if (textDrag && textDrag.pointerId === event.pointerId) {
+      const dx = p.x - textDrag.start.x;
+      const dy = p.y - textDrag.start.y;
+      commit(
+        items.map((it) =>
+          it.kind === "text" && it.id === textDrag.id ? { ...it, x: textDrag.origin.x + dx, y: textDrag.origin.y + dy } : it,
+        ),
+      );
+      return;
+    }
+
+    // 指示器：rAF 合并，避免每 pointermove 触发整层重绘
     if (enabled && tool === "erase_precise") {
       const rWorld = worldRadiusFromPixels(svg, { x: event.clientX, y: event.clientY }, Math.max(4, eraserWidth) / 2);
-      setEraserIndicator({ x: p.x, y: p.y, r: rWorld });
+      scheduleEraserIndicator(p.x, p.y, rWorld);
     }
 
     const draft = draftingRef.current;
     if (!draft || draft.pointerId !== event.pointerId) return;
 
+    if (draft.kind === "erase_precise" && erasePointerIdRef.current === event.pointerId) {
+      const current = draftEraseMaskPointsRef.current || [draft.start];
+      const next = [...current, p];
+      if (next.length > 1) {
+        const last = next[next.length - 1];
+        const prev = next[next.length - 2];
+        const dx = last.x - prev.x;
+        const dy = last.y - prev.y;
+        if (dx * dx + dy * dy < 0.6) return;
+      }
+      draftEraseMaskPointsRef.current = next;
+      setDraftEraseMaskPoints(next);
+      return;
+    }
     if (
-      (draft.kind === "erase" || draft.kind === "erase_object" || draft.kind === "erase_precise") &&
+      (draft.kind === "erase" || draft.kind === "erase_object") &&
       erasePointerIdRef.current === event.pointerId
     ) {
-      eraseAtPoint(p, { x: event.clientX, y: event.clientY }, { isDown: false });
+      eraseAtPoint(p, { x: event.clientX, y: event.clientY });
       return;
     }
     if (draft.kind === "pen") {
@@ -557,29 +471,59 @@ export function AnnotationLayer({
   };
 
   const endDraft = (event: React.PointerEvent) => {
+    const textDrag = dragTextRef.current;
+    if (textDrag && textDrag.pointerId === event.pointerId) {
+      dragTextRef.current = null;
+      return;
+    }
+
     const draft = draftingRef.current;
     if (!draft || draft.pointerId !== event.pointerId) return;
     draftingRef.current = null;
 
-    if (draft.kind === "erase" || draft.kind === "erase_object" || draft.kind === "erase_precise") {
+    if (draft.kind === "erase_precise") {
+      if (eraserIndicatorRafRef.current !== null) {
+        cancelAnimationFrame(eraserIndicatorRafRef.current);
+        eraserIndicatorRafRef.current = null;
+      }
+      eraserIndicatorPendingRef.current = null;
       erasePointerIdRef.current = null;
-      lastEraserPointRef.current = null;
-      lastEraserClientRef.current = null;
+      setEraserIndicator(null);
+      const pts = draftEraseMaskPointsRef.current;
+      const w = draftEraseMaskWidthRef.current;
+      draftEraseMaskPointsRef.current = null;
+      draftEraseMaskWidthRef.current = 0;
+      setDraftEraseMaskPoints(null);
+      if (pts?.length && w > 0) {
+        const stroke: AnnotationMaskStroke = { id: id32(), kind: "erase", points: pts, width: w };
+        commit(items, [...maskStrokes, stroke]);
+      }
+      return;
+    }
+    if (draft.kind === "erase" || draft.kind === "erase_object") {
+      if (eraserIndicatorRafRef.current !== null) {
+        cancelAnimationFrame(eraserIndicatorRafRef.current);
+        eraserIndicatorRafRef.current = null;
+      }
+      eraserIndicatorPendingRef.current = null;
+      erasePointerIdRef.current = null;
       setEraserIndicator(null);
       return;
     }
     if (draft.kind === "pen") {
       const usable = draftPenPointsRef.current && draftPenPointsRef.current.length >= 2 ? draftPenPointsRef.current : null;
       if (usable) {
+        const wPen = clamp(penWidth, 1, 24);
         const next: AnnotationPen = {
           kind: "pen",
           id: id32(),
           points: usable,
           color: penColor,
-          width: clamp(penWidth, 1, 24),
+          width: wPen,
           opacity: 1,
         };
-        commit([...items, next]);
+        const reveal: AnnotationMaskStroke = { id: id32(), kind: "reveal", points: usable, width: wPen };
+        commit([...items, next], [...maskStrokes, reveal]);
       }
       draftPenPointsRef.current = null;
       setDraftPenPoints(null);
@@ -601,7 +545,7 @@ export function AnnotationLayer({
             mode: rectMode,
             stroke: rectColor,
             fill: rectMode === "highlight" ? "rgba(148,163,184,0.18)" : "transparent",
-            strokeWidth: 2,
+            strokeWidth: clamp(rectStrokeWidth, 1, 16),
             opacity: 1,
             radius: 10,
           };
@@ -661,7 +605,11 @@ export function AnnotationLayer({
         dominantBaseline="hanging"
         textAnchor={item.align === "center" ? "middle" : item.align === "right" ? "end" : "start"}
       >
-        {item.text}
+        {item.text.split(/\r?\n/).map((line, idx) => (
+          <tspan key={`${item.id}-line-${idx}`} x={item.x} dy={idx === 0 ? 0 : "1.2em"}>
+            {line || "\u00A0"}
+          </tspan>
+        ))}
       </text>
     );
   };
@@ -687,8 +635,16 @@ export function AnnotationLayer({
     setDraftText(null);
   };
 
+  const updateTextItem = (id: string, updater: (item: AnnotationText) => AnnotationText) => {
+    commit(items.map((it) => (it.kind === "text" && it.id === id ? updater(it) : it)));
+  };
+
+  const deleteTextItem = (id: string) => {
+    commit(items.filter((it) => it.id !== id));
+  };
+
   return (
-    <div id="s2g-annotation-host" className="absolute inset-0 z-[4]">
+    <div id={exportHostId} className="absolute inset-0 z-[4]">
       <svg
         ref={svgRef}
         className={`absolute inset-0 h-full w-full ${
@@ -700,9 +656,41 @@ export function AnnotationLayer({
         onPointerUp={endDraft}
         onPointerCancel={endDraft}
       >
-        {/* 透明命中层：保证整块画布都可批注（含空白区域） */}
+        <defs>
+          <mask id={maskDomId} maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse">
+            <rect x="0" y="0" width="100%" height="100%" fill="white" />
+            {maskStrokes.map((s) => (
+              <path
+                key={s.id}
+                d={pointsToMaskPathD(s.points)}
+                fill="none"
+                stroke={s.kind === "erase" ? "black" : "white"}
+                strokeWidth={s.width}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+                shapeRendering="geometricPrecision"
+              />
+            ))}
+            {draftEraseMaskPoints && draftEraseMaskPoints.length ? (
+              <path
+                d={pointsToMaskPathD(draftEraseMaskPoints)}
+                fill="none"
+                stroke="black"
+                strokeWidth={Math.max(0.5, draftEraseMaskWidthRef.current)}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+                shapeRendering="geometricPrecision"
+              />
+            ) : null}
+          </mask>
+        </defs>
+        {/* 透明命中层：整块可点；置于底层，草稿笔在蒙版外以便在擦除区继续画 */}
         <rect x="0" y="0" width="100%" height="100%" fill="transparent" />
-        <g>{displayItems.map(renderItem)}</g>
+        <g mask={`url(#${maskDomId})`}>{items.map((item) => (item.kind === "text" ? null : renderItem(item)))}</g>
+        {enabled && tool === "text" ? null : <g>{items.map((item) => (item.kind === "text" ? renderItem(item) : null))}</g>}
+        {draftItem ? <g>{renderItem(draftItem)}</g> : null}
 
         {enabled && tool === "erase_precise" && eraserIndicator ? (
           <circle
@@ -717,41 +705,92 @@ export function AnnotationLayer({
           />
         ) : null}
 
-        {enabled && (tool === "erase" || tool === "erase_object" || tool === "erase_precise") && pendingTextDelete ? (
-          <foreignObject x={pendingTextDelete.x} y={pendingTextDelete.y} width="92" height="44">
-            <div style={{ padding: 0, margin: 0 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  const id = pendingTextDelete.id;
-                  setPendingTextDelete(null);
-                  commit(items.filter((x) => x.id !== id));
-                }}
-                onPointerDown={(e) => e.stopPropagation()}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: "34px",
-                  padding: "0 12px",
-                  borderRadius: "12px",
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(127, 29, 29, 0.85)",
-                  color: "rgba(255,255,255,0.92)",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-                  cursor: "pointer",
-                }}
-              >
-                删除
-              </button>
-            </div>
-          </foreignObject>
-        ) : null}
+        {enabled && tool === "text"
+          ? items
+              .filter((it): it is AnnotationText => it.kind === "text")
+              .map((it) => (
+                <foreignObject key={`text-editor-${it.id}`} x={it.x} y={it.y - 23} width="320" height="140">
+                  <div
+                    style={{
+                      padding: 0,
+                      margin: 0,
+                      width: "300px",
+                    }}
+                  >
+                    <div
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        const svg = svgRef.current;
+                        if (!svg) return;
+                        const p = svgPointFromClient(svg, { x: e.clientX, y: e.clientY });
+                        dragTextRef.current = { pointerId: e.pointerId, id: it.id, start: p, origin: { x: it.x, y: it.y } };
+                        svg.setPointerCapture(e.pointerId);
+                      }}
+                      style={{
+                        height: "20px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "0 8px",
+                        borderRadius: "10px 10px 0 0",
+                        border: "1px solid rgba(234,179,8,0.45)",
+                        borderBottom: "none",
+                        background: "rgba(254,249,195,0.92)",
+                        color: "rgba(113,63,18,0.88)",
+                        fontSize: "10px",
+                        cursor: "grab",
+                        userSelect: "none",
+                      }}
+                    >
+                      <span>拖动文本</span>
+                      <button
+                        type="button"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteTextItem(it.id);
+                        }}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          color: "rgba(185,28,28,0.92)",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        删除
+                      </button>
+                    </div>
+                    <textarea
+                      value={it.text}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      placeholder="输入批注…"
+                      onChange={(e) => updateTextItem(it.id, (cur) => ({ ...cur, text: e.target.value }))}
+                      style={{
+                        width: "300px",
+                        height: "88px",
+                        resize: "none",
+                        padding: "3px 0 0 0",
+                        borderRadius: "0 0 12px 12px",
+                        border: "1px solid rgba(234,179,8,0.45)",
+                        background: "rgba(254,252,232,0.95)",
+                        color: it.color || textColor,
+                        outline: "none",
+                        fontSize: `${clamp(it.fontSize ?? textSize, 10, 32)}px`,
+                        fontWeight: 600,
+                        lineHeight: "1.2",
+                        fontFamily: "inherit",
+                        boxShadow: "0 10px 24px rgba(161,98,7,0.2)",
+                      }}
+                    />
+                  </div>
+                </foreignObject>
+              ))
+          : null}
 
         {enabled && tool === "text" && draftText ? (
-          <foreignObject x={draftText.at.x} y={draftText.at.y} width="320" height="120">
+          <foreignObject x={draftText.at.x} y={draftText.at.y - 3} width="320" height="120">
             <div style={{ padding: 0, margin: 0 }}>
               <textarea
                 value={draftText.value}
@@ -773,18 +812,20 @@ export function AnnotationLayer({
                   width: "300px",
                   height: "88px",
                   resize: "none",
-                  padding: "10px 12px",
+                  padding: "3px 0 0 0",
                   borderRadius: "12px",
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(9, 9, 11, 0.78)",
-                  color: "rgba(255,255,255,0.92)",
+                  border: "1px solid rgba(234,179,8,0.45)",
+                  background: "rgba(254,252,232,0.95)",
+                  color: textColor,
                   outline: "none",
-                  fontSize: "12px",
-                  lineHeight: "18px",
-                  boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+                  fontSize: `${clamp(textSize, 10, 32)}px`,
+                  fontWeight: 600,
+                  lineHeight: "1.2",
+                  fontFamily: "inherit",
+                  boxShadow: "0 10px 24px rgba(161,98,7,0.2)",
                 }}
               />
-              <div style={{ marginTop: "6px", fontSize: "10px", color: "rgba(255,255,255,0.55)" }}>
+              <div style={{ marginTop: "6px", fontSize: "10px", color: "rgba(120,53,15,0.72)" }}>
                 Ctrl/⌘ + Enter 保存，Esc 取消
               </div>
             </div>

@@ -581,9 +581,12 @@ function MermaidCardBody({
   annotationPenWidth = 2,
   annotationPenColor = "rgba(229,231,235,0.92)",
   annotationRectColor = "rgba(229,231,235,0.92)",
+  annotationRectStrokeWidth = 2,
+  annotationTextColor = "rgba(229,231,235,0.92)",
   annotationEraserWidth = 12,
   annotationsDoc,
   onAnnotationsChange,
+  annotationExportHostId = "s2g-annotation-host-mermaid",
   /** @description Realtime 嵌入时固定浅色画布 token */
   fixedLightCanvas = false,
 }: {
@@ -613,9 +616,12 @@ function MermaidCardBody({
   annotationPenWidth?: number;
   annotationPenColor?: string;
   annotationRectColor?: string;
+  annotationRectStrokeWidth?: number;
+  annotationTextColor?: string;
   annotationEraserWidth?: number;
   annotationsDoc?: AnnotationDoc;
   onAnnotationsChange?: (next: AnnotationDoc) => void;
+  annotationExportHostId?: string;
   fixedLightCanvas?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
@@ -974,9 +980,12 @@ function MermaidCardBody({
                 <AnnotationLayer
                   enabled={annotationsEnabled}
                   tool={annotationsTool}
+                  exportHostId={annotationExportHostId}
                   penWidth={annotationPenWidth}
                   penColor={annotationPenColor}
                   rectColor={annotationRectColor}
+                  rectStrokeWidth={annotationRectStrokeWidth}
+                  textColor={annotationTextColor}
                   eraserWidth={annotationEraserWidth}
                   doc={annotationsDoc}
                   onChange={onAnnotationsChange}
@@ -1100,9 +1109,12 @@ export function MermaidCard(props: {
   annotationPenWidth?: number;
   annotationPenColor?: string;
   annotationRectColor?: string;
+  annotationRectStrokeWidth?: number;
+  annotationTextColor?: string;
   annotationEraserWidth?: number;
   annotationsDoc?: AnnotationDoc;
   onAnnotationsChange?: (next: AnnotationDoc) => void;
+  annotationExportHostId?: string;
   fixedLightCanvas?: boolean;
 }) {
   return (

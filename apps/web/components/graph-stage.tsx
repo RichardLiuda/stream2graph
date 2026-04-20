@@ -36,9 +36,12 @@ export function GraphStage({
   annotationPenWidth = 2,
   annotationPenColor = "rgba(229,231,235,0.92)",
   annotationRectColor = "rgba(229,231,235,0.92)",
+  annotationRectStrokeWidth = 2,
+  annotationTextColor = "rgba(229,231,235,0.92)",
   annotationEraserWidth = 12,
   annotationsDoc,
   onAnnotationsChange,
+  annotationExportHostId = "s2g-annotation-host-structure",
   /** @description 在 Realtime 中固定为浅底+浅色结构图 token，不随站点主题 */
   fixedLightCanvas = false,
 }: {
@@ -53,9 +56,12 @@ export function GraphStage({
   annotationPenWidth?: number;
   annotationPenColor?: string;
   annotationRectColor?: string;
+  annotationRectStrokeWidth?: number;
+  annotationTextColor?: string;
   annotationEraserWidth?: number;
   annotationsDoc?: AnnotationDoc;
   onAnnotationsChange?: (next: AnnotationDoc) => void;
+  annotationExportHostId?: string;
   fixedLightCanvas?: boolean;
 }) {
   const [zoomRebuildNonce, setZoomRebuildNonce] = useState(0);
@@ -187,9 +193,12 @@ export function GraphStage({
             <AnnotationLayer
               enabled={annotationsEnabled}
               tool={annotationsTool}
+              exportHostId={annotationExportHostId}
               penWidth={annotationPenWidth}
               penColor={annotationPenColor}
               rectColor={annotationRectColor}
+              rectStrokeWidth={annotationRectStrokeWidth}
+              textColor={annotationTextColor}
               eraserWidth={annotationEraserWidth}
               doc={annotationsDoc}
               onChange={onAnnotationsChange}
