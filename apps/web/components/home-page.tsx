@@ -24,6 +24,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge, Button, Card } from "@stream2graph/ui";
 import { BackgroundPathLayer } from "@/components/ui/background-paths";
+import { ScrollLinkedCardsBlockSection, type ScrollLinkedCardsBlock } from "@/components/scroll-linked-cards";
 import { api } from "@/lib/api";
 
 const navItems = [
@@ -143,14 +144,6 @@ function FlowPipelineOrnament() {
           <span className="h-1 w-1 shrink-0 rounded-full bg-[color:var(--accent)]/90" />
         </div>
       </div>
-    </div>
-  );
-}
-
-function SectionHairline() {
-  return (
-    <div className="mx-auto max-w-5xl px-6 md:px-10" aria-hidden>
-      <div className="h-px max-w-4xl bg-gradient-to-r from-transparent via-[color:var(--accent-muted)] to-transparent" />
     </div>
   );
 }
@@ -302,6 +295,227 @@ const FEATURE_SPOTS: Array<{
     title: "复现与归档",
     body: "固定样本与配置，保存报告，便于追溯与回归。",
     icon: Archive,
+  },
+];
+
+const LINKED_BLOCKS: ScrollLinkedCardsBlock[] = [
+  {
+    id: "block-input",
+    kicker: "Block · 输入",
+    title: "把原始语流整理成可计算输入",
+    description:
+      "先解决“喂什么”和“怎么喂”：同一条语流经过入口选择、清洗、切片与优先级排序，再进入后续结构化环节。",
+    direction: "right",
+    cards: [
+      {
+        id: "in-mic",
+        eyebrow: "Realtime",
+        title: "麦克风实时语流",
+        description: "边说边转写，输入流持续进入，最接近真实工作台节奏。",
+        tone: "chip",
+        meta: "低摩擦入口 · 适合 live session",
+        branches: [
+          { id: "in-mic-br1", label: "降噪", hint: "剔除口头填充词" },
+          { id: "in-mic-br2", label: "说话人", hint: "按 speaker 分段" },
+        ],
+      },
+      {
+        id: "in-transcript",
+        eyebrow: "Text",
+        title: "Transcript 粘贴",
+        description: "把历史对话按段输入，快速复跑同一路径做参数对照。",
+        tone: "paper",
+        meta: "适合对照 · 便于回放",
+      },
+      {
+        id: "in-sample",
+        eyebrow: "Dataset",
+        title: "固定样本",
+        description: "固定输入配合多组配置，差异能被清晰定位与量化。",
+        tone: "note",
+        meta: "研究友好 · 可重复",
+        branches: [
+          { id: "in-sample-br1", label: "A/B", hint: "同样本对比两套策略", side: "left" },
+          { id: "in-sample-br2", label: "回归", hint: "和历史版本对齐", side: "left" },
+        ],
+      },
+      {
+        id: "in-label",
+        eyebrow: "Annotation",
+        title: "期望意图与标签",
+        description: "提前给出目标语义，后续评测就有清晰锚点。",
+        tone: "paper",
+        meta: "用于准确率与边界评测",
+      },
+      {
+        id: "in-guard",
+        eyebrow: "Guardrail",
+        title: "输入清洗与规整",
+        description: "先把噪声挡在门外，再让有效内容进入结构化流程。",
+        tone: "chip",
+        meta: "更稳 · 更少抖动",
+      },
+      {
+        id: "in-window",
+        eyebrow: "Windowing",
+        title: "滑动窗口切片",
+        description: "在保留上下文的前提下控制单次处理体积，减少突发抖动。",
+        tone: "paper",
+        meta: "平衡上下文长度与延迟",
+      },
+      {
+        id: "in-priority",
+        eyebrow: "Priority",
+        title: "优先级队列",
+        description: "高价值语义优先进入后续环节，关键信息不会被淹没。",
+        tone: "note",
+        meta: "关键片段优先处理",
+      },
+    ],
+  },
+  {
+    id: "block-structure",
+    kicker: "Block · 结构",
+    title: "Gate → Planner → Renderer 的增量编排",
+    description:
+      "核心不是一次性生成，而是连续改图：筛选有效片段、规划变更、渲染结果，再即时校验一致性。",
+    direction: "left",
+    cards: [
+      {
+        id: "st-gate",
+        eyebrow: "Gate",
+        title: "过滤与归类",
+        description: "先筛出可结构化片段，避免 Planner 在噪声上浪费预算。",
+        tone: "paper",
+        meta: "减少幻觉 · 更可控",
+      },
+      {
+        id: "st-planner",
+        eyebrow: "Planner",
+        title: "增量改图",
+        description: "不重画全图，只修改必要节点和边，保持用户心理地图稳定。",
+        tone: "paper",
+        meta: "稳定性优先 · 低 flicker",
+        branches: [
+          { id: "st-planner-br1", label: "节点合并", hint: "重复语义自动收敛", side: "left" },
+          { id: "st-planner-br2", label: "边重定向", hint: "关系变化可追踪", side: "left" },
+        ],
+      },
+      {
+        id: "st-ops",
+        eyebrow: "Ops",
+        title: "操作序列",
+        description: "每次更新都写成 operations 序列，便于追踪、回放和解释。",
+        tone: "note",
+        meta: "可解释 · 可对照",
+      },
+      {
+        id: "st-render",
+        eyebrow: "Renderer",
+        title: "Mermaid + 结构视图",
+        description: "同一份语流同时输出可读图和结构节点，既能看也能算。",
+        tone: "chip",
+        meta: "阅读友好 · 评测友好",
+      },
+      {
+        id: "st-code",
+        eyebrow: "Diff",
+        title: "变更对照",
+        description: "每一步变化都可比对，能快速定位导致结构漂移的关键操作。",
+        tone: "code",
+        meta: "像看代码 diff 一样看图 diff",
+      },
+      {
+        id: "st-consistency",
+        eyebrow: "Consistency",
+        title: "一致性检查",
+        description: "每次更新后立刻检查语义和边关系，避免局部修复引发全局冲突。",
+        tone: "chip",
+        meta: "结构稳定 · 语义连贯",
+      },
+      {
+        id: "st-repair",
+        eyebrow: "Repair",
+        title: "轻量自动修复",
+        description: "对常见结构错误进行规则化修补，减少人工返工。",
+        tone: "paper",
+        meta: "先自动修，再人工确认",
+        branches: [
+          { id: "st-repair-br1", label: "冲突消解", hint: "同名异义做拆分" },
+          { id: "st-repair-br2", label: "孤点回连", hint: "补全断开的上下文" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "block-eval",
+    kicker: "Block · 对照与追踪",
+    title: "把“看起来更好”验证成“确实更好”",
+    description:
+      "最后收束为研究闭环：记录、摘要、指标、归档和告警，让每次优化都可追溯、可复现、可回归。",
+    direction: "right",
+    cards: [
+      {
+        id: "ev-trace",
+        eyebrow: "Trace",
+        title: "更新记录",
+        description: "每次结构变化都带来源信息：时间戳、意图、操作和耗时。",
+        tone: "paper",
+        meta: "可回溯 · 可解释",
+      },
+      {
+        id: "ev-summary",
+        eyebrow: "Summary",
+        title: "运行摘要",
+        description: "把一次 session 压缩为可读报告，快速看速度、延迟与分布。",
+        tone: "note",
+        meta: "研究报告式输出",
+      },
+      {
+        id: "ev-metrics",
+        eyebrow: "Metrics",
+        title: "延迟 / 准确率 / 抖动",
+        description: "不靠主观印象，用数据对比不同配置的边界与稳定性。",
+        tone: "chip",
+        meta: "P50/P95 · flicker · mental map",
+        branches: [
+          { id: "ev-metrics-br1", label: "时延带宽", hint: "P50/P95 变化趋势", side: "left" },
+          { id: "ev-metrics-br2", label: "稳定性", hint: "抖动与跳变次数", side: "left" },
+        ],
+      },
+      {
+        id: "ev-archive",
+        eyebrow: "Archive",
+        title: "归档复现",
+        description: "固定样本 + 固定配置 + 固定结果，任何一次对照都能复跑。",
+        tone: "paper",
+        meta: "可追溯 · 可回归",
+      },
+      {
+        id: "ev-share",
+        eyebrow: "Share",
+        title: "共享与对齐",
+        description: "把同一份实验链路共享给团队，让讨论更聚焦于差异本身。",
+        tone: "note",
+        meta: "更快达成共识",
+      },
+      {
+        id: "ev-baseline",
+        eyebrow: "Baseline",
+        title: "基线回归",
+        description: "持续把新配置和历史基线对比，避免性能慢性退化。",
+        tone: "chip",
+        meta: "持续对照 · 防回退",
+      },
+      {
+        id: "ev-alert",
+        eyebrow: "Alert",
+        title: "阈值告警",
+        description: "当延迟、抖动或准确率越界时自动标记并触发追查。",
+        tone: "paper",
+        meta: "异常早发现 · 早处理",
+      },
+    ],
   },
 ];
 
@@ -497,22 +711,11 @@ export function HomePage() {
           </Reveal>
         </section>
 
-        <SectionHairline />
-
-        {FLOW_STEPS.map((step) => (
-          <section
-            key={step.n}
-            className="relative mx-auto w-full max-w-5xl px-6 py-12 text-theme-2 md:px-10 md:py-14"
-          >
-            <Reveal rootRef={scrollRef} delayMs={0}>
-              <ShowcaseStepCard {...step} />
-            </Reveal>
-          </section>
+        {LINKED_BLOCKS.map((block) => (
+          <ScrollLinkedCardsBlockSection key={block.id} rootRef={scrollRef} block={block} />
         ))}
 
-        <div className="py-6 md:py-8">
-          <SectionHairline />
-        </div>
+        <div className="py-6 md:py-8" />
 
         <section className="relative mx-auto w-full max-w-5xl px-6 py-14 text-theme-2 md:px-10 md:py-16">
           <Reveal rootRef={scrollRef} delayMs={0}>
@@ -551,13 +754,7 @@ export function HomePage() {
           </Reveal>
         </section>
 
-        {FEATURE_SPOTS.map((f) => (
-          <section key={f.mark} className="relative mx-auto w-full max-w-5xl px-6 py-8 text-theme-2 md:px-10 md:py-10">
-            <Reveal rootRef={scrollRef} delayMs={0}>
-              <FeatureSpotlightCard {...f} />
-            </Reveal>
-          </section>
-        ))}
+        {/* 原本 FeatureSpotlightCard 是纵向 reveal；现在让 block 链表承担“分块叙事”，后续内容保持原节奏即可。 */}
 
         <section className="relative mx-auto w-full max-w-5xl px-6 py-10 text-theme-2 md:px-10 md:py-12">
           <Reveal rootRef={scrollRef} delayMs={0}>
