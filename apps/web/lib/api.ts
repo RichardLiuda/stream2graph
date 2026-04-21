@@ -8,6 +8,7 @@ import {
   reportDetailSchema,
   reportSummarySchema,
   realtimeAudioTranscriptionSchema,
+  realtimeSessionAnnotationsSchema,
   realtimeSessionCloseSchema,
   realtimeSessionSchema,
   realtimeSnapshotSchema,
@@ -397,6 +398,20 @@ export const api = {
     }),
   getRealtimeSession: async (sessionId: string) =>
     request(`/api/v1/realtime/sessions/${sessionId}`, realtimeSessionSchema),
+  getRealtimeSessionAnnotations: async (sessionId: string) =>
+    request(
+      `/api/v1/realtime/sessions/${sessionId}/annotations`,
+      realtimeSessionAnnotationsSchema,
+    ),
+  putRealtimeSessionAnnotations: async (sessionId: string, payload: { version: number; payload: Record<string, unknown> }) =>
+    request(
+      `/api/v1/realtime/sessions/${sessionId}/annotations`,
+      realtimeSessionAnnotationsSchema,
+      {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      },
+    ),
   /** 更新会话标题（后端提供 PUT，与 PATCH 等价；统一用 PUT 避免部分环境对 PATCH 支持异常） */
   patchRealtimeSession: async (sessionId: string, payload: { title: string }) =>
     request(`/api/v1/realtime/sessions/${sessionId}`, realtimeSessionSchema, {

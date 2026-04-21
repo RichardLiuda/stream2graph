@@ -68,6 +68,105 @@ export const realtimeSnapshotSchema = z.object({
   evaluation: z.record(z.any()).nullable().optional(),
 });
 
+// Realtime session annotations (canvas/world coordinates)
+export const annotationPointSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
+
+export const annotationPenPathSchema = z.object({
+  kind: z.literal("pen"),
+  id: z.string(),
+  points: z.array(annotationPointSchema),
+  color: z.string().optional().default("#e5e7eb"),
+  width: z.number().optional().default(2),
+  opacity: z.number().optional().default(1),
+});
+
+export const annotationRectSchema = z.object({
+  kind: z.literal("rect"),
+  id: z.string(),
+  x: z.number(),
+  y: z.number(),
+  w: z.number(),
+  h: z.number(),
+  mode: z.enum(["highlight", "outline"]).optional().default("outline"),
+  stroke: z.string().optional().default("#e5e7eb"),
+  fill: z.string().optional().default("transparent"),
+  strokeWidth: z.number().optional().default(2),
+  opacity: z.number().optional().default(1),
+  radius: z.number().optional().default(8),
+});
+
+export const annotationTextSchema = z.object({
+  kind: z.literal("text"),
+  id: z.string(),
+  x: z.number(),
+  y: z.number(),
+  text: z.string(),
+  fontSize: z.number().optional().default(14),
+  color: z.string().optional().default("#e5e7eb"),
+  align: z.enum(["left", "center", "right"]).optional().default("left"),
+});
+
+export const annotationItemSchema = z.discriminatedUnion("kind", [
+  annotationPenPathSchema,
+  annotationRectSchema,
+  annotationTextSchema,
+]);
+
+export const annotationEraseMaskStrokeSchema = z.object({
+  id: z.string(),
+  points: z.array(annotationPointSchema),
+  width: z.number(),
+});
+
+export const annotationMaskStrokeSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["erase", "reveal"]),
+  points: z.array(annotationPointSchema),
+  width: z.number(),
+});
+
+const annotationCanvasPayloadSchema = z.object({
+  items: z.array(annotationItemSchema).default([]),
+  maskStrokes: z.array(annotationMaskStrokeSchema).optional().default([]),
+  eraseMaskPaths: z.array(annotationEraseMaskStrokeSchema).optional().default([]),
+});
+
+function maskStrokesFromCanvasPayload(p: z.infer<typeof annotationCanvasPayloadSchema>) {
+  const ms = p.maskStrokes ?? [];
+  const legacy = p.eraseMaskPaths ?? [];
+  if (ms.length > 0) return ms;
+  if (legacy.length > 0) {
+    return legacy.map((e) => ({
+      id: e.id,
+      kind: "erase" as const,
+      points: e.points,
+      width: e.width,
+    }));
+  }
+  return ms;
+}
+
+/** 新版：主图 + 结构双画布；旧版：仅顶层 items → 归入主图 */
+export const sessionAnnotationsPayloadSchema = z.union([
+  z.object({
+    mermaid: annotationCanvasPayloadSchema,
+    structure: annotationCanvasPayloadSchema,
+  }),
+  annotationCanvasPayloadSchema.transform((p) => ({
+    mermaid: { items: p.items, maskStrokes: maskStrokesFromCanvasPayload(p) },
+    structure: { items: [], maskStrokes: [] },
+  })),
+]);
+
+export const realtimeSessionAnnotationsSchema = z.object({
+  session_id: z.string(),
+  version: z.number().int().nonnegative().default(1),
+  payload: sessionAnnotationsPayloadSchema,
+});
+
 export const realtimeTranscriptTurnSchema = z.object({
   speaker: z.string(),
   text: z.string(),

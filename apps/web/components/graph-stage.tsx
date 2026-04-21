@@ -1,7 +1,11 @@
 "use client";
 
+import { useState } from "react";
+
 import { Card } from "@stream2graph/ui";
 import { PanZoomCanvas } from "@/components/pan-zoom-canvas";
+import { AnnotationLayer, type AnnotationDoc, type AnnotationTool } from "@/components/annotation-layer";
+import { cn } from "@/lib/utils";
 
 type RendererNode = {
   id: string;
@@ -27,6 +31,19 @@ export function GraphStage({
   edges,
   groups = [],
   embedded = false,
+  annotationsEnabled = false,
+  annotationsTool = "none",
+  annotationPenWidth = 2,
+  annotationPenColor = "rgba(229,231,235,0.92)",
+  annotationRectColor = "rgba(229,231,235,0.92)",
+  annotationRectStrokeWidth = 2,
+  annotationTextColor = "rgba(229,231,235,0.92)",
+  annotationEraserWidth = 12,
+  annotationsDoc,
+  onAnnotationsChange,
+  annotationExportHostId = "s2g-annotation-host-structure",
+  /** @description 在 Realtime 中固定为浅底+浅色结构图 token，不随站点主题 */
+  fixedLightCanvas = false,
 }: {
   title: string;
   nodes: RendererNode[];
@@ -34,7 +51,20 @@ export function GraphStage({
   groups?: RendererGroup[];
   /** @description 为 true 时不渲染标题栏与外层 Card，由主舞台统一容器承载 */
   embedded?: boolean;
+  annotationsEnabled?: boolean;
+  annotationsTool?: AnnotationTool;
+  annotationPenWidth?: number;
+  annotationPenColor?: string;
+  annotationRectColor?: string;
+  annotationRectStrokeWidth?: number;
+  annotationTextColor?: string;
+  annotationEraserWidth?: number;
+  annotationsDoc?: AnnotationDoc;
+  onAnnotationsChange?: (next: AnnotationDoc) => void;
+  annotationExportHostId?: string;
+  fixedLightCanvas?: boolean;
 }) {
+  const [zoomRebuildNonce, setZoomRebuildNonce] = useState(0);
   const isEmpty = nodes.length === 0;
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   const groupBoxes = groups
@@ -62,17 +92,26 @@ export function GraphStage({
     .filter((group): group is NonNullable<typeof group> => Boolean(group));
 
   const inner = (
-      <div className="bg-transparent p-4">
+      <div className={embedded ? "flex h-full min-h-0 min-w-0 flex-col bg-transparent" : "bg-transparent p-4"}>
         <PanZoomCanvas
-          className="relative flex h-full min-h-[min(370px,51vh)] min-w-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-theme-default bg-[var(--mindmap-canvas-bg)] shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
+          className={cn(
+            embedded
+              ? "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-[var(--mindmap-canvas-bg)] p-2 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
+              : "relative flex h-full min-h-[min(370px,51vh)] min-w-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-theme-default bg-[var(--mindmap-canvas-bg)] p-3 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]",
+            fixedLightCanvas && "realtime-light-graph-surface",
+          )}
           contentClassName="min-h-0 flex-1"
+          onZoomEnd={() => setZoomRebuildNonce((n) => n + 1)}
+          interactionMode={annotationsEnabled && annotationsTool !== "none" ? "annotate" : "panzoom"}
           minScale={0.55}
           maxScale={2.6}
           initialScale={1}
           initialOffset={{ x: 0, y: 0 }}
         >
           <div
-            className="pointer-events-none absolute inset-3 rounded-md opacity-[var(--mindmap-grid-opacity)]"
+            className={`pointer-events-none absolute rounded-md opacity-[var(--mindmap-grid-opacity)] ${
+              embedded ? "inset-2" : "inset-3"
+            }`}
             aria-hidden
             style={{
               backgroundImage:
@@ -82,11 +121,19 @@ export function GraphStage({
             }}
           />
           {isEmpty ? (
-            <div className="absolute left-4 top-4 right-4 z-[2] rounded-lg border border-amber-900/55 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
-              画布已就绪，但当前会话还没有结构节点。发送 Transcript 或开始录音后，结构视图会自动更新。
+            <div className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center px-8 text-center">
+              <p className="max-w-[560px] text-[12px] leading-relaxed text-theme-4 opacity-80">
+                暂无结构节点，发送 Transcript 或开始录音后会自动更新。
+              </p>
             </div>
           ) : null}
-          <svg viewBox="-120 -120 1240 760" className="relative z-[1] h-full min-h-0 w-full flex-1">
+          <svg
+            key={zoomRebuildNonce}
+            viewBox="-120 -120 1240 760"
+            className="relative z-[1] h-full min-h-0 w-full flex-1"
+            shapeRendering="geometricPrecision"
+            textRendering="geometricPrecision"
+          >
           <defs>
             <marker id="arrowHead" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
               <path d="M0,0 L10,5 L0,10 Z" fill="var(--graph-svg-arrow)" />
@@ -142,6 +189,21 @@ export function GraphStage({
             </g>
           ))}
           </svg>
+          {annotationsDoc && onAnnotationsChange ? (
+            <AnnotationLayer
+              enabled={annotationsEnabled}
+              tool={annotationsTool}
+              exportHostId={annotationExportHostId}
+              penWidth={annotationPenWidth}
+              penColor={annotationPenColor}
+              rectColor={annotationRectColor}
+              rectStrokeWidth={annotationRectStrokeWidth}
+              textColor={annotationTextColor}
+              eraserWidth={annotationEraserWidth}
+              doc={annotationsDoc}
+              onChange={onAnnotationsChange}
+            />
+          ) : null}
         </PanZoomCanvas>
       </div>
   );
