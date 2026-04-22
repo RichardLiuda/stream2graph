@@ -66,6 +66,11 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function smoothstep01(value: number) {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
 function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -720,7 +725,10 @@ export function ScrollLinkedCardsBlockSection({
       progressive[i] = progressive[i - 1]! + cardGap * spacingMultiplier;
     }
     const mid = (cardCount - 1) / 2;
-    const center = progressive[Math.round(mid)] ?? 0;
+    // 偶数张卡时，中心应该落在“中间两张”的几何中点，避免整体偏移。
+    const lower = progressive[Math.floor(mid)] ?? 0;
+    const upper = progressive[Math.ceil(mid)] ?? lower;
+    const center = (lower + upper) / 2;
     return progressive.map((x) => x - center);
   }, [cardCount, cardGap]);
   const centerSpan = useMemo(() => {
@@ -935,20 +943,35 @@ export function ScrollLinkedCardsBlockSection({
                 // 收紧中心阅读带：只有更接近舞台中心的卡片才被认为是“主阅读卡”。
                 const centerDistance = stageW > 0 ? Math.abs(rawBaseX) / (stageW * 0.5) : 1;
                 const focus = 1 - clamp(centerDistance, 0, 1);
+                // 阅读锁定：主阅读卡在中心时“停住更久”，外围元素继续运动，形成阻尼感。
+                // 阅读卡进入更克制：更晚锁定、锁定爬升更慢，避免“冲进中心”撞车。
+                const readingHold = smoothstep01((focus - 0.58) / 0.34);
+                const heldBaseX = rawBaseX * (1 - readingHold * 0.94);
                 const orbit = Math.sin(stableProgress * Math.PI * 2 + index * 0.82);
-                const laneArcY = laneSign * (1 - focus) * 48 + orbit * (8 + (index % 3) * 4);
+                const laneArcY =
+                  laneSign * (1 - focus) * 48 * (1 - readingHold * 0.84) +
+                  orbit * (8 + (index % 3) * 4) * (1 - readingHold * 0.78);
                 // 中央阅读区强锁定：焦点高时几乎不施加额外逃逸。
-                const centerLock = focus > 0.58 ? 0 : 1;
-                const edgeFactor = Math.pow(1 - focus, 1.7) * centerLock;
+                const centerLock = focus > 0.68 ? 0 : 1;
+                const edgeFactor = Math.pow(1 - focus, 0.94) * centerLock;
+                const holdDampen = 1 - readingHold * 0.92;
                 // 边缘增强：不只左右离场，而是斜向/上下也参与。
                 const escapeXSign = block.direction === "right" ? (index % 3 === 0 ? 1 : -1) : (index % 3 === 0 ? -1 : 1);
-                const escapeX = escapeXSign * edgeFactor * (74 + (index % 4) * 30);
-                const escapeY = ((index % 5) - 2) * edgeFactor * 30 + laneSign * edgeFactor * 42;
+                const escapeX = escapeXSign * edgeFactor * (156 + (index % 4) * 46) * holdDampen;
+                const escapeY = (((index % 5) - 2) * edgeFactor * 48 + laneSign * edgeFactor * 72) * holdDampen;
                 // 非主阅读卡增加“快速离场”推进，减少在中心附近滞留导致的遮挡。
                 const awaySign = Math.sign(rawBaseX || (index % 2 === 0 ? -1 : 1));
-                const bypassX = awaySign * Math.pow(1 - focus, 1.15) * (96 + (index % 3) * 22);
-                const baseX = rawBaseX + escapeX + bypassX;
+                const firstCardBoost = index === 0 ? 1.42 : 1;
+                const bypassX = awaySign * Math.pow(1 - focus, 0.82) * (248 + (index % 3) * 44) * holdDampen * firstCardBoost;
+                const baseX = heldBaseX + escapeX + bypassX;
                 const baseY = (cardYs[index] ?? 0) + laneArcY + escapeY;
+                // 锁定态把卡片锚点拉回舞台中心，确保“停留位置”在正中。
+                // 验证用：锁定态把卡片拉到左上区域，方便肉眼确认“锁定插值”是否真的生效。
+                // 之后如果确认生效，再把 target 改回 (0,0) 实现居中停留。
+                const targetLockedX = -stageW * 0.19;
+                const targetLockedY = -stageH * 0.14;
+                const lockedBaseX = baseX * (1 - readingHold) + targetLockedX * readingHold;
+                const lockedBaseY = baseY * (1 - readingHold) + targetLockedY * readingHold;
                 const drag = dragOffsets[card.id] ?? { x: 0, y: 0 };
                 const sizeVariant: "sm" | "md" | "lg" = cardSizeVariants[index] ?? "sm";
                 const width = cardWidthPx(sizeVariant);
@@ -959,13 +982,31 @@ export function ScrollLinkedCardsBlockSection({
                 const centerTargetScale = clamp(Math.sqrt((stageArea * 0.35) / baseArea), 1, 2.05);
                 const visualScale = 0.62 + focus * (centerTargetScale - 0.62);
                 const visualRotate = 0;
-                // 边缘卡更快淡出，中心卡保持最高可读性。
-                const visualOpacity = 0.24 + Math.pow(focus, 1.25) * 0.76;
-                const centerX = stageCenterX + baseX + drag.x;
-                const centerY = stageCenterY + baseY + drag.y;
-                const anchorX = stageCenterX + baseX;
-                const anchorY = stageCenterY + baseY;
-                return { card, index, baseX, baseY, drag, sizeVariant, width, centerX, centerY, anchorX, anchorY, focus, visualScale, visualRotate, visualOpacity };
+                // 阅读停留带：主卡接近中心时更久保持完全不透明。
+                const opacityCurve = smoothstep01((focus - 0.2) / 0.68);
+                const fullOpacityHold = smoothstep01((focus - 0.54) / 0.24);
+                const visualOpacity = clamp(0.18 + opacityCurve * 0.68 + fullOpacityHold * 0.32, 0.18, 1);
+                const centerX = stageCenterX + lockedBaseX + drag.x;
+                const centerY = stageCenterY + lockedBaseY + drag.y;
+                const anchorX = stageCenterX + lockedBaseX;
+                const anchorY = stageCenterY + lockedBaseY;
+                return {
+                  card,
+                  index,
+                  baseX: lockedBaseX,
+                  baseY: lockedBaseY,
+                  drag,
+                  sizeVariant,
+                  width,
+                  centerX,
+                  centerY,
+                  anchorX,
+                  anchorY,
+                  focus,
+                  visualScale,
+                  visualRotate,
+                  visualOpacity,
+                };
               });
               const peakFocus = cardsLayout.reduce((max, item) => Math.max(max, item.focus), 0);
               // 没有主阅读卡时，收起连线，避免舞台中部出现“悬空横线”。
