@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.db import utc_now
-from app.models import RealtimeChunk, RealtimeSession, VoiceprintFeature, VoiceprintGroup
+from app.models import RealtimeChunk, RealtimeSession, RealtimeSessionAnnotations, VoiceprintFeature, VoiceprintGroup
 from app.services.realtime_coordination import GateDecision, PlannerDecision
 from app.services.runtime_sessions import drop_runtime
 from tools.incremental_dataset.schema import GraphGroup, GraphIR, GraphNode
@@ -242,6 +242,99 @@ def test_realtime_chunk_batch_runs_single_coordination_cycle(
     assert md_download.text.startswith("# batch session")
     assert "## Transcript" in md_download.text
     assert "### [00:00.450 - 00:00.450] expert" in md_download.text
+
+
+def test_realtime_timeline_preview_and_apply_rollback(admin_client: TestClient, session_factory, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._decide_gate",
+        lambda self, db, obj, pending_turns, force_emit=False: GateDecision(
+            action="EMIT_UPDATE",
+            reason="emit",
+            confidence=0.95,
+            metadata={"provider": "test-gate", "model_name": "test-gate-model", "latency_ms": 5.5},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._plan_update",
+        lambda self, db, obj, pending_turns: PlannerDecision(
+            delta_ops=[
+                {"op": "add_node", "node_id": f"Node_{self.update_index + 1}", "id": f"Node_{self.update_index + 1}", "label": "Node"}
+            ],
+            notes="timeline node",
+            metadata={"provider": "test-planner", "model_name": "test-planner-model", "latency_ms": 9.0},
+        ),
+    )
+
+    created = admin_client.post(
+        "/api/v1/realtime/sessions",
+        json={"title": "timeline rollback session", "client_context": {"input_source": "transcript", "capture_mode": "manual_text"}},
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    first = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/chunks",
+        json={"timestamp_ms": 0, "text": "first input", "speaker": "user", "is_final": True},
+    )
+    assert first.status_code == 200
+
+    ann = admin_client.put(
+        f"/api/v1/realtime/sessions/{session_id}/annotations",
+        json={
+            "version": 3,
+            "payload": {
+                "mermaid": {"items": [], "maskStrokes": []},
+                "structure": {"items": [], "maskStrokes": []},
+            },
+        },
+    )
+    assert ann.status_code == 200
+
+    snap = admin_client.post(f"/api/v1/realtime/sessions/{session_id}/snapshot")
+    assert snap.status_code == 200
+
+    second = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/chunks",
+        json={"timestamp_ms": 450, "text": "second input", "speaker": "user", "is_final": True},
+    )
+    assert second.status_code == 200
+
+    timeline = admin_client.get(f"/api/v1/realtime/sessions/{session_id}/timeline")
+    assert timeline.status_code == 200
+    nodes = timeline.json()["nodes"]
+    assert len(nodes) >= 2
+    preview_payload = None
+    target_snapshot_id = None
+    for row in nodes:
+        current_snapshot_id = row["snapshot_id"]
+        candidate_preview = admin_client.post(
+            f"/api/v1/realtime/sessions/{session_id}/rollback/preview",
+            json={"snapshot_id": current_snapshot_id},
+        )
+        assert candidate_preview.status_code == 200
+        payload = candidate_preview.json()
+        if payload.get("transcript_turn_count") == 1:
+            target_snapshot_id = current_snapshot_id
+            preview_payload = payload
+            break
+    assert target_snapshot_id is not None
+    assert preview_payload is not None
+    assert preview_payload["snapshot_id"] == target_snapshot_id
+
+    applied = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/rollback/apply",
+        json={"snapshot_id": target_snapshot_id},
+    )
+    assert applied.status_code == 200
+    assert applied.json()["restored_from_snapshot_id"] == target_snapshot_id
+
+    with session_factory() as db:
+        chunks = db.scalars(select(RealtimeChunk).where(RealtimeChunk.session_id == session_id).order_by(RealtimeChunk.sequence_no.asc())).all()
+        assert len(chunks) == 1
+        assert chunks[0].text == "first input"
+        ann_row = db.scalar(select(RealtimeSessionAnnotations).where(RealtimeSessionAnnotations.session_id == session_id))
+        assert ann_row is not None
+        assert int(ann_row.version) >= 1
 
 
 def test_realtime_transcript_state_merges_stt_chunks_by_speaker_and_gap(

@@ -8,10 +8,14 @@ import {
   reportDetailSchema,
   reportSummarySchema,
   realtimeAudioTranscriptionSchema,
+  realtimeRollbackApplySchema,
+  realtimeRollbackPreviewSchema,
+  realtimeRollbackRequestSchema,
   realtimeSessionAnnotationsSchema,
   realtimeSessionCloseSchema,
   realtimeSessionSchema,
   realtimeSnapshotSchema,
+  realtimeTimelineSchema,
   runtimeOptionsSchema,
   runArtifactSchema,
   runJobSchema,
@@ -158,7 +162,7 @@ const REALTIME_PIPELINE_TIMEOUT_MS = 240_000;
 function isRealtimePipelinePath(path: string) {
   return (
     /^\/api\/v1\/realtime\/sessions\/[^/]+\/chunks(?:\/batch)?$/.test(path) ||
-    /^\/api\/v1\/realtime\/sessions\/[^/]+\/(?:snapshot|flush|diagram-relayout)$/.test(path)
+    /^\/api\/v1\/realtime\/sessions\/[^/]+\/(?:snapshot|flush|diagram-relayout|rollback\/(?:preview|apply))$/.test(path)
   );
 }
 
@@ -476,6 +480,18 @@ export const api = {
     }),
   relayoutRealtimeDiagram: async (sessionId: string, payload: Record<string, unknown>) =>
     requestRealtime(`/api/v1/realtime/sessions/${sessionId}/diagram-relayout`, realtimeSnapshotSchema, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  listRealtimeTimeline: async (sessionId: string) =>
+    request(`/api/v1/realtime/sessions/${sessionId}/timeline`, realtimeTimelineSchema),
+  previewRealtimeRollback: async (sessionId: string, payload: z.infer<typeof realtimeRollbackRequestSchema>) =>
+    requestRealtime(`/api/v1/realtime/sessions/${sessionId}/rollback/preview`, realtimeRollbackPreviewSchema, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  applyRealtimeRollback: async (sessionId: string, payload: z.infer<typeof realtimeRollbackRequestSchema>) =>
+    requestRealtime(`/api/v1/realtime/sessions/${sessionId}/rollback/apply`, realtimeRollbackApplySchema, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

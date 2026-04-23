@@ -6,18 +6,21 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db, utc_now
 from app.legacy import evaluate_payload
-from app.models import RealtimeChunk, RealtimeSession, RealtimeSessionAnnotations
+from app.models import RealtimeChunk, RealtimeEvent, RealtimeSession, RealtimeSessionAnnotations, RealtimeSnapshot as RealtimeSnapshotModel
 from app.schemas import (
     RealtimeAudioTranscriptionRequest,
     RealtimeAudioTranscriptionResponse,
     RealtimeChunkBatchCreateRequest,
     RealtimeChunkCreateRequest,
     RealtimeDiagramRelayoutRequest,
+    RealtimeRollbackApplyResponse,
+    RealtimeRollbackPreviewResponse,
+    RealtimeRollbackRequest,
     RealtimeSessionCloseResponse,
     RealtimeSession as RealtimeSessionSchema,
     RealtimeSessionCreateRequest,
@@ -25,6 +28,8 @@ from app.schemas import (
     RealtimeSnapshot,
     RealtimeSessionAnnotations as RealtimeSessionAnnotationsSchema,
     RealtimeSessionAnnotationsUpdateRequest,
+    RealtimeTimelineNode,
+    RealtimeTimelineResponse,
 )
 from app.services.realtime_ai import detect_diagram_type_from_transcript, transcribe_audio_chunk
 from app.services.reports import create_report
@@ -216,6 +221,33 @@ def _role_split_voiceprint_summary(segments: list[dict[str, Any]]) -> dict[str, 
         ],
         "error_message": None,
     }
+
+
+def _timeline_checkpoint(snapshot: RealtimeSnapshotModel) -> dict[str, Any]:
+    summary = snapshot.summary_json if isinstance(snapshot.summary_json, dict) else {}
+    checkpoint = summary.get("timeline_checkpoint", {})
+    return checkpoint if isinstance(checkpoint, dict) else {}
+
+
+def _timeline_node_from_snapshot(snapshot: RealtimeSnapshotModel) -> RealtimeTimelineNode:
+    summary = snapshot.summary_json if isinstance(snapshot.summary_json, dict) else {}
+    checkpoint = _timeline_checkpoint(snapshot)
+    chunk_count = checkpoint.get("chunk_count")
+    if not isinstance(chunk_count, int):
+        chunks = checkpoint.get("chunks")
+        chunk_count = len(chunks) if isinstance(chunks, list) else 0
+    pipeline = snapshot.pipeline_payload if isinstance(snapshot.pipeline_payload, dict) else {}
+    events = pipeline.get("events")
+    event_count = len(events) if isinstance(events, list) else 0
+    label = summary.get("timeline_label")
+    return RealtimeTimelineNode(
+        snapshot_id=snapshot.id,
+        created_at=snapshot.created_at,
+        summary=summary,
+        event_count=event_count,
+        chunk_count=max(0, int(chunk_count)),
+        label=str(label) if isinstance(label, str) and label.strip() else None,
+    )
 
 
 @router.get("", response_model=list[RealtimeSessionSchema])
@@ -691,6 +723,140 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
         model=result["model"],
         latency_ms=result["latency_ms"],
         segments=normalized_segments or None,
+        pipeline=pipeline,
+        evaluation=evaluation,
+    )
+
+
+@router.get("/{session_id}/timeline", response_model=RealtimeTimelineResponse)
+def get_timeline(session_id: str, db: Session = Depends(get_db)) -> RealtimeTimelineResponse:
+    _get_session_or_404(db, session_id)
+    snapshots = db.scalars(
+        select(RealtimeSnapshotModel)
+        .where(RealtimeSnapshotModel.session_id == session_id)
+        .order_by(RealtimeSnapshotModel.created_at.desc())
+        .limit(120)
+    ).all()
+    return RealtimeTimelineResponse(
+        session_id=session_id,
+        nodes=[_timeline_node_from_snapshot(item) for item in snapshots],
+    )
+
+
+@router.post("/{session_id}/rollback/preview", response_model=RealtimeRollbackPreviewResponse)
+def rollback_preview(
+    session_id: str,
+    req: RealtimeRollbackRequest,
+    db: Session = Depends(get_db),
+) -> RealtimeRollbackPreviewResponse:
+    _get_session_or_404(db, session_id)
+    snapshot = db.scalar(
+        select(RealtimeSnapshotModel).where(
+            RealtimeSnapshotModel.session_id == session_id,
+            RealtimeSnapshotModel.id == req.snapshot_id,
+        )
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="timeline snapshot not found")
+    checkpoint = _timeline_checkpoint(snapshot)
+    chunks = checkpoint.get("chunks")
+    annotations = checkpoint.get("annotations")
+    transcript_turn_count = len(chunks) if isinstance(chunks, list) else 0
+    annotation_version = int(annotations.get("version") or 1) if isinstance(annotations, dict) else 1
+    return RealtimeRollbackPreviewResponse(
+        session_id=session_id,
+        snapshot_id=snapshot.id,
+        created_at=snapshot.created_at,
+        summary=snapshot.summary_json if isinstance(snapshot.summary_json, dict) else {},
+        pipeline=snapshot.pipeline_payload if isinstance(snapshot.pipeline_payload, dict) else {},
+        evaluation=snapshot.evaluation_payload if isinstance(snapshot.evaluation_payload, dict) else {},
+        transcript_turn_count=transcript_turn_count,
+        annotation_version=max(1, annotation_version),
+    )
+
+
+@router.post("/{session_id}/rollback/apply", response_model=RealtimeRollbackApplyResponse)
+def rollback_apply(
+    session_id: str,
+    req: RealtimeRollbackRequest,
+    db: Session = Depends(get_db),
+) -> RealtimeRollbackApplyResponse:
+    obj = _get_session_or_404(db, session_id)
+    if obj.status == "closed":
+        raise HTTPException(status_code=409, detail="closed session cannot rollback")
+    snapshot = db.scalar(
+        select(RealtimeSnapshotModel).where(
+            RealtimeSnapshotModel.session_id == session_id,
+            RealtimeSnapshotModel.id == req.snapshot_id,
+        )
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="timeline snapshot not found")
+
+    pipeline = snapshot.pipeline_payload if isinstance(snapshot.pipeline_payload, dict) else {}
+    evaluation = snapshot.evaluation_payload if isinstance(snapshot.evaluation_payload, dict) else {}
+    summary = snapshot.summary_json if isinstance(snapshot.summary_json, dict) else {}
+    checkpoint = _timeline_checkpoint(snapshot)
+
+    obj.pipeline_payload = pipeline
+    obj.evaluation_payload = evaluation
+    obj.summary_json = summary
+    obj.updated_at = utc_now()
+    db.add(obj)
+
+    chunks = checkpoint.get("chunks")
+    if isinstance(chunks, list):
+        db.execute(delete(RealtimeChunk).where(RealtimeChunk.session_id == session_id))
+        for index, item in enumerate(chunks):
+            if not isinstance(item, dict):
+                continue
+            db.add(
+                RealtimeChunk(
+                    session_id=session_id,
+                    sequence_no=int(item.get("sequence_no", index)),
+                    timestamp_ms=int(item.get("timestamp_ms", 0)),
+                    speaker=str(item.get("speaker", "speaker")),
+                    text=str(item.get("text", "")),
+                    is_final=bool(item.get("is_final", True)),
+                    expected_intent=item.get("expected_intent"),
+                    meta_json=item.get("metadata", {}) if isinstance(item.get("metadata"), dict) else {},
+                )
+            )
+
+    events = pipeline.get("events")
+    if isinstance(events, list):
+        replace_events(db, session_id, events)
+    else:
+        db.execute(delete(RealtimeEvent).where(RealtimeEvent.session_id == session_id))
+
+    annotations = checkpoint.get("annotations")
+    if isinstance(annotations, dict):
+        row = db.scalar(select(RealtimeSessionAnnotations).where(RealtimeSessionAnnotations.session_id == session_id))
+        next_version = max(1, int(annotations.get("version") or 1))
+        next_payload = annotations.get("payload", {})
+        normalized_payload = next_payload if isinstance(next_payload, dict) else {}
+        if row is None:
+            row = RealtimeSessionAnnotations(
+                session_id=session_id,
+                version=next_version,
+                payload_json=normalized_payload,
+                created_at=utc_now(),
+                updated_at=utc_now(),
+            )
+            db.add(row)
+        else:
+            row.version = next_version
+            row.payload_json = normalized_payload
+            row.updated_at = utc_now()
+            db.add(row)
+
+    drop_runtime(session_id)
+    runtime = restore_runtime_if_needed(db, obj)
+    pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
+    db.commit()
+    return RealtimeRollbackApplyResponse(
+        session_id=session_id,
+        restored_from_snapshot_id=snapshot.id,
         pipeline=pipeline,
         evaluation=evaluation,
     )

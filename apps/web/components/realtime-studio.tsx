@@ -29,7 +29,7 @@ import { createPortal } from "react-dom";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
 import { Badge, Button, Card, Input, StatCard, Textarea } from "@stream2graph/ui";
-import type { RealtimeSession, RealtimeTranscriptTurn } from "@stream2graph/contracts";
+import type { RealtimeSession, RealtimeTimelineNode, RealtimeTranscriptTurn } from "@stream2graph/contracts";
 
 import { ApiError, api, apiUrl } from "@/lib/api";
 import { encodeFloat32ToBase64Pcm16 } from "@/lib/audio";
@@ -73,6 +73,7 @@ const LOCAL_SESSION_KEY = "s2g:last-realtime-session";
 const DEFAULT_VOICEPRINT_BASE = "https://api.xf-yun.com";
 
 type AdminRuntimeOptionsPayload = Awaited<ReturnType<typeof api.getAdminRuntimeOptions>>;
+type RealtimeRollbackPreviewPayload = Awaited<ReturnType<typeof api.previewRealtimeRollback>>;
 
 /** 浅色画布上的笔触预设（原「浅」模式色板） */
 const ANNOTATION_SWATCHES_LIGHT_CANVAS = [
@@ -177,6 +178,15 @@ type TranscriptDisplayState = {
 };
 
 type NoticeTone = "info" | "success" | "warning";
+
+const DEFAULT_DEMO_TRANSCRIPT = [
+  "主持人A|我们先过一下今天的评审目标：确认实时转写、结构图联动和报告导出是否都稳定。|sequential",
+  "产品经理B|我重点关注历史转写的可读性，尤其是不同发言人能不能快速分辨。|structural",
+  "研究员C|我会补充一段第三视角的观察，看看三人交替时颜色识别是否仍然清晰。|structural",
+  "主持人A|好的，那我先补充上下文：这轮测试会包含三位说话人轮流发言。|sequential",
+  "产品经理B|如果颜色区分明显，我们就直接沿用到演示环境，并记录在发布检查清单里。|feedback_loop",
+  "研究员C|另外也要确认长句和短句混合时，色块层级不会影响可读性。|structural",
+].join("\n");
 
 const TRANSCRIPT_PRESETS: TranscriptPreset[] = [
   {
@@ -768,6 +778,57 @@ function capabilityBadgeTone(status: string) {
   return "";
 }
 
+function transcriptSpeakerCardTone(speaker: string | undefined) {
+  const key = (speaker || "speaker").toLowerCase().trim();
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) {
+    hash = (hash * 31 + key.charCodeAt(i)) % 9973;
+  }
+  const tones = [
+    {
+      card: "border-[#a7b3b0] bg-[#e8ecea]",
+      speaker: "text-[#55615e]",
+      body: "text-slate-800",
+      style: { borderColor: "rgb(167 179 176 / 0.92)", backgroundColor: "rgb(232 236 234 / 0.95)" },
+      contentStyle: { backgroundColor: "rgb(219 226 223 / 0.86)" },
+      speakerTagStyle: { backgroundColor: "rgb(209 218 214 / 0.94)", borderColor: "rgb(156 170 165 / 0.88)" },
+    },
+    {
+      card: "border-[#b7ad9f] bg-[#efe8dd]",
+      speaker: "text-[#6a6055]",
+      body: "text-slate-800",
+      style: { borderColor: "rgb(183 173 159 / 0.92)", backgroundColor: "rgb(239 232 221 / 0.95)" },
+      contentStyle: { backgroundColor: "rgb(229 220 206 / 0.86)" },
+      speakerTagStyle: { backgroundColor: "rgb(220 209 194 / 0.94)", borderColor: "rgb(170 158 143 / 0.88)" },
+    },
+    {
+      card: "border-[#aab0bf] bg-[#e7eaf1]",
+      speaker: "text-[#575f73]",
+      body: "text-slate-800",
+      style: { borderColor: "rgb(170 176 191 / 0.92)", backgroundColor: "rgb(231 234 241 / 0.95)" },
+      contentStyle: { backgroundColor: "rgb(218 223 235 / 0.86)" },
+      speakerTagStyle: { backgroundColor: "rgb(206 213 228 / 0.94)", borderColor: "rgb(158 166 184 / 0.88)" },
+    },
+    {
+      card: "border-[#b9a4aa] bg-[#efe5e8]",
+      speaker: "text-[#6c565c]",
+      body: "text-slate-800",
+      style: { borderColor: "rgb(185 164 170 / 0.92)", backgroundColor: "rgb(239 229 232 / 0.95)" },
+      contentStyle: { backgroundColor: "rgb(229 216 220 / 0.86)" },
+      speakerTagStyle: { backgroundColor: "rgb(220 204 209 / 0.94)", borderColor: "rgb(173 149 156 / 0.88)" },
+    },
+    {
+      card: "border-[#a9aba3] bg-[#eceee8]",
+      speaker: "text-[#5c5f57]",
+      body: "text-slate-800",
+      style: { borderColor: "rgb(169 171 163 / 0.92)", backgroundColor: "rgb(236 238 232 / 0.95)" },
+      contentStyle: { backgroundColor: "rgb(224 227 218 / 0.86)" },
+      speakerTagStyle: { backgroundColor: "rgb(213 217 207 / 0.94)", borderColor: "rgb(157 160 150 / 0.88)" },
+    },
+  ] as const;
+  return tones[hash % tones.length] ?? tones[0];
+}
+
 const STAGE_TABS: ReadonlyArray<readonly [string, string]> = [
   ["mermaid", "主图"],
   ["structure", "结构视图"],
@@ -782,7 +843,7 @@ export function RealtimeStudio() {
   const [isTitleEditing, setIsTitleEditing] = useState(false);
   const [datasetVersion, setDatasetVersion] = useState("");
   const [selectedTranscriptPresetId, setSelectedTranscriptPresetId] = useState("");
-  const [transcriptText, setTranscriptText] = useState("");
+  const [transcriptText, setTranscriptText] = useState(DEFAULT_DEMO_TRANSCRIPT);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Record<string, any> | null>(null);
   const [localCommittedTranscriptTurns, setLocalCommittedTranscriptTurns] = useState<TranscriptHistoryItem[]>([]);
@@ -817,6 +878,8 @@ export function RealtimeStudio() {
   const [detailDrawerPortalReady, setDetailDrawerPortalReady] = useState(false);
   /** @description 主舞台 Tab，用于顶栏与「主图」徽章联动 */
   const [stageTab, setStageTab] = useState("mermaid");
+  /** @description 实时转写面板内 Tab：当前字幕 / 历史转写 */
+  const [transcriptPanelTab, setTranscriptPanelTab] = useState<"live" | "history">("live");
   const [annotationsEnabled, setAnnotationsEnabled] = useState(false);
   const [annotationsTool, setAnnotationsTool] = useState<AnnotationTool>("pen");
   const [activeAnnotationPanel, setActiveAnnotationPanel] = useState<"pen" | "rect" | "text" | "eraser" | null>(null);
@@ -838,6 +901,9 @@ export function RealtimeStudio() {
   const lastLoadedSessionIdRef = useRef<string | null>(null);
   /** @description 工作台两页：第 1 页（输入来源 + 主图），第 2 页（会话与录音设置 + 默认设置） */
   const [studioPage] = useState<1 | 2>(1);
+  const [selectedTimelineSnapshotId, setSelectedTimelineSnapshotId] = useState<string | null>(null);
+  const [rollbackPreview, setRollbackPreview] = useState<RealtimeRollbackPreviewPayload | null>(null);
+  const timelinePreviewRequestRef = useRef<string | null>(null);
   const [listening, setListening] = useState(false);
   const [audioContext, setAudioContext] = useState<ClientAudioContext | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -1134,8 +1200,54 @@ export function RealtimeStudio() {
     () => sessions.data?.find((item) => item.session_id === currentSessionId) ?? null,
     [currentSessionId, sessions.data],
   );
+  const timelineQuery = useQuery({
+    queryKey: ["realtime-timeline", currentSessionId],
+    queryFn: () => api.listRealtimeTimeline(currentSessionId || ""),
+    enabled: Boolean(currentSessionId),
+    staleTime: 5_000,
+    retry: false,
+  });
+  const timelineNodes = timelineQuery.data?.nodes ?? [];
+  const orderedTimelineNodes = useMemo(() => [...timelineNodes].reverse(), [timelineNodes]);
+  const selectedTimelineNode = useMemo(
+    () => timelineNodes.find((node) => node.snapshot_id === selectedTimelineSnapshotId) ?? null,
+    [selectedTimelineSnapshotId, timelineNodes],
+  );
+  const selectedTimelineOrderedIndex = useMemo(
+    () => orderedTimelineNodes.findIndex((node) => node.snapshot_id === selectedTimelineSnapshotId),
+    [orderedTimelineNodes, selectedTimelineSnapshotId],
+  );
+  const rollbackPreviewMermaidCode = useMemo(() => {
+    if (!rollbackPreview?.pipeline || typeof rollbackPreview.pipeline !== "object") return "";
+    const mermaidState = rollbackPreview.pipeline.mermaid_state;
+    if (!mermaidState || typeof mermaidState !== "object") return "";
+    const code =
+      typeof (mermaidState as Record<string, unknown>).code === "string"
+        ? String((mermaidState as Record<string, unknown>).code)
+        : typeof (mermaidState as Record<string, unknown>).normalized_code === "string"
+          ? String((mermaidState as Record<string, unknown>).normalized_code)
+          : "";
+    return code.trim();
+  }, [rollbackPreview]);
   const currentSessionClosed =
     currentSession?.status === "closed" || closedSessionMeta?.sessionId === currentSessionId;
+
+  useEffect(() => {
+    if (!timelineNodes.length) {
+      setSelectedTimelineSnapshotId(null);
+      setRollbackPreview(null);
+      return;
+    }
+    if (selectedTimelineSnapshotId && timelineNodes.some((node) => node.snapshot_id === selectedTimelineSnapshotId)) {
+      return;
+    }
+    setSelectedTimelineSnapshotId(timelineNodes[0]?.snapshot_id ?? null);
+  }, [selectedTimelineSnapshotId, timelineNodes]);
+
+  useEffect(() => {
+    if (!currentSessionId || !selectedTimelineSnapshotId) return;
+    rollbackPreviewMutation.mutate({ sessionId: currentSessionId, snapshotId: selectedTimelineSnapshotId });
+  }, [currentSessionId, selectedTimelineSnapshotId]);
 
   useEffect(() => {
     if (!effectiveError) return;
@@ -1886,6 +1998,7 @@ export function RealtimeStudio() {
       historyFeedKeysRef.current = [];
       window.localStorage.setItem(LOCAL_SESSION_KEY, data.session_id);
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
     },
     onError: (err) => setError((err as Error).message),
   });
@@ -1916,6 +2029,7 @@ export function RealtimeStudio() {
       setError(null);
       syncPipelineStatus(data.pipeline);
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
     },
     onError: (err) => setError((err as Error).message),
   });
@@ -1943,6 +2057,7 @@ export function RealtimeStudio() {
         setError(null);
         syncPipelineStatus(data.pipeline);
         queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+        queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
       })
       .catch((err) => {
         logBrowserRuntime(
@@ -2060,6 +2175,7 @@ export function RealtimeStudio() {
     });
     syncPipelineStatus(data.pipeline);
     queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+    queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
   }
 
   const sendTranscript = useMutation({
@@ -2111,6 +2227,9 @@ export function RealtimeStudio() {
       syncPipelineStatus(data?.pipeline);
       setNotice({ tone: "success", text: "Transcript 已写入当前会话。" });
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      if (data?.session_id) {
+        queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
+      }
     },
     onError: (err) => {
       logBrowserRuntime("transcript send failed", { error: (err as Error).message }, "error");
@@ -2127,6 +2246,7 @@ export function RealtimeStudio() {
     onSuccess: (data) => {
       setSnapshot(data);
       syncPipelineStatus(data.pipeline);
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
     },
     onError: (err) => setError((err as Error).message),
   });
@@ -2142,11 +2262,51 @@ export function RealtimeStudio() {
       syncPipelineStatus(data.pipeline);
       setNotice({ tone: "success", text: "已按节点拖动结果重组 Mermaid 关系。" });
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
     },
     onError: (err) => {
       logBrowserRuntime("diagram relayout failed", { error: (err as Error).message }, "error");
       setError((err as Error).message);
     },
+  });
+
+  const rollbackPreviewMutation = useMutation({
+    mutationFn: ({ sessionId, snapshotId }: { sessionId: string; snapshotId: string }) =>
+      api.previewRealtimeRollback(sessionId, { snapshot_id: snapshotId }),
+    onMutate: ({ snapshotId }) => {
+      timelinePreviewRequestRef.current = snapshotId;
+    },
+    onSuccess: (data) => {
+      const requestedSnapshotId = timelinePreviewRequestRef.current;
+      if (!requestedSnapshotId || data.snapshot_id !== requestedSnapshotId) {
+        return;
+      }
+      setRollbackPreview(data);
+      setError(null);
+    },
+    onError: (err) => {
+      setRollbackPreview(null);
+      setError((err as Error).message);
+    },
+  });
+
+  const rollbackApplyMutation = useMutation({
+    mutationFn: ({ sessionId, snapshotId }: { sessionId: string; snapshotId: string }) =>
+      api.applyRealtimeRollback(sessionId, { snapshot_id: snapshotId }),
+    onSuccess: (data) => {
+      setSnapshot({
+        session_id: data.session_id,
+        pipeline: data.pipeline,
+        evaluation: data.evaluation || {},
+      });
+      syncPipelineStatus(data.pipeline);
+      setNotice({ tone: "success", text: "已回退到选中的时间节点。" });
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
+      queryClient.invalidateQueries({ queryKey: ["realtime-annotations", data.session_id] });
+    },
+    onError: (err) => setError((err as Error).message),
   });
 
   const closeMutation = useMutation({
@@ -2488,6 +2648,10 @@ export function RealtimeStudio() {
     return Array.isArray(activeSnapshot?.pipeline?.events) ? activeSnapshot.pipeline.events : [];
   }, [activeSnapshot?.pipeline?.events]);
   const mermaidState = activeSnapshot?.pipeline?.mermaid_state ?? null;
+  const isTimelinePreviewActive = Boolean(rollbackPreviewMermaidCode);
+  const displayedMermaidCode = isTimelinePreviewActive
+    ? rollbackPreviewMermaidCode
+    : mermaidState?.code || mermaidState?.normalized_code || "";
   const rendererGroups =
     rendererState.groups || activeSnapshot?.pipeline?.graph_state?.current_graph_ir?.groups || [];
   const currentGraphPayload = activeSnapshot?.pipeline?.graph_state?.current_graph_ir ?? null;
@@ -2523,6 +2687,30 @@ export function RealtimeStudio() {
   );
   const activeTranscriptTurn = transcriptDisplayState.activeTurn;
   const archivedTranscriptTurns = transcriptDisplayState.archivedTurns;
+  const previewArchivedTranscriptTurns = useMemo(() => {
+    if (selectedInputSource !== "transcript") return archivedTranscriptTurns;
+    const rows = parseTranscriptInput(transcriptText).filter((row) => row.text.trim());
+    const uniqueSpeakers = new Set(rows.map((row) => (row.speaker || "speaker").trim().toLowerCase()));
+    const shouldForceDraftPreview = uniqueSpeakers.size >= 2;
+    if (!rows.length) return archivedTranscriptTurns;
+    const now = Date.now();
+    const draftTurns = rows
+      .map((row, index) => ({
+        key: `draft_${index}`,
+        speaker: row.speaker || "speaker",
+        text: row.text.trim(),
+        start_ms: index * 450,
+        end_ms: index * 450,
+        is_final: true,
+        source: "transcript" as const,
+        capture_mode: "manual_text" as const,
+        origin: "local" as const,
+        observedAt: now - index,
+      }))
+      .reverse();
+    if (shouldForceDraftPreview) return draftTurns;
+    return archivedTranscriptTurns.length ? archivedTranscriptTurns : draftTurns;
+  }, [archivedTranscriptTurns, selectedInputSource, transcriptText]);
   const currentSubtitleText = useMemo(() => {
     const live = liveTranscript.trim();
     if (live) return live;
@@ -2973,7 +3161,7 @@ export function RealtimeStudio() {
             </div>
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-hidden pb-0 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(260px,2fr)_minmax(0,8fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
+        <div className="flex-1 min-h-0 overflow-hidden pb-0 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(300px,3fr)_minmax(0,7fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
         {studioPage === 1 ? (
           <Card className="soft-enter relative order-1 flex min-h-0 min-w-0 flex-col space-y-3 text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none">
           <div
@@ -3117,8 +3305,31 @@ export function RealtimeStudio() {
                 : "border-theme-subtle bg-gradient-to-b from-[color:var(--accent)]/[0.06] to-surface-muted"
             }`}
           >
-            <div className="flex shrink-0 items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-theme-1">实时转写</div>
+            <div className="flex shrink-0 items-end justify-between gap-2 border-b border-theme-subtle pb-1.5">
+              <div className="inline-flex items-center gap-5">
+                <button
+                  type="button"
+                  onClick={() => setTranscriptPanelTab("live")}
+                  className={`border-b-2 px-0.5 py-1 text-[12px] font-semibold tracking-[0.02em] transition ${
+                    transcriptPanelTab === "live"
+                      ? "border-[color:var(--accent)] text-theme-1"
+                      : "border-transparent text-theme-4 hover:text-theme-2"
+                  }`}
+                >
+                  当前字幕
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTranscriptPanelTab("history")}
+                  className={`border-b-2 px-0.5 py-1 text-[12px] font-semibold tracking-[0.02em] transition ${
+                    transcriptPanelTab === "history"
+                      ? "border-[color:var(--accent)] text-theme-1"
+                      : "border-transparent text-theme-4 hover:text-theme-2"
+                  }`}
+                >
+                  历史转写
+                </button>
+              </div>
               <div className="flex items-center gap-1.5">
                 {currentSessionClosed ? <Badge className="text-[9px]">已结束</Badge> : null}
                 <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
@@ -3143,49 +3354,87 @@ export function RealtimeStudio() {
                   : "本地预览用于当前字幕，服务端聚合后的最近轮次会保留在下方历史区。"}
             </p>
             <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-              <div className="shrink-0 rounded-xl border border-[color:var(--accent)]/25 bg-[color:var(--accent)]/[0.05] px-3 py-3">
-                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--accent-strong)]/90">
-                  当前字幕
-                </div>
-                <div className="max-h-[min(12rem,38vh)] min-h-[4.5rem] overflow-y-auto whitespace-pre-wrap text-[15px] leading-7 text-theme-1 sm:max-h-[min(18rem,42vh)] sm:min-h-[6.5rem] sm:text-[16px] md:max-h-none md:overflow-visible md:min-h-[7.5rem]">
-                  {currentSubtitleText}
-                </div>
-                <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-theme-4">
-                  <span>
-                    {liveTranscript.trim()
-                      ? "优先显示本地实时预览"
-                      : currentSessionClosed
-                        ? "当前会话已结束，可查看历史字幕与下载全文"
-                        : "最新一条稳定转写会先停留在这里，下一条到来后再转入历史区"}
-                  </span>
-                  {activeTranscriptTurn?.speaker ? (
-                    <span className="truncate">当前发言：{activeTranscriptTurn.speaker}</span>
-                  ) : null}
-                </div>
-              </div>
-
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-subtle bg-surface-muted/88">
-                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-theme-subtle px-3 py-2">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-theme-4">历史转写</div>
+                <div className="flex shrink-0 items-center justify-end gap-2 border-b border-theme-subtle px-3 py-2">
                   <div className="text-[10px] text-theme-4">
-                    {archivedTranscriptTurns.length ? `${archivedTranscriptTurns.length} / 10` : "等待归档"}
+                    {transcriptPanelTab === "history"
+                      ? previewArchivedTranscriptTurns.length
+                        ? `${previewArchivedTranscriptTurns.length} / 10`
+                        : "等待归档"
+                      : activeTranscriptTurn?.speaker
+                        ? `当前发言：${activeTranscriptTurn.speaker}`
+                        : "实时预览"}
                   </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
-                  {archivedTranscriptTurns.length ? (
-                    <div className="space-y-2.5">
-                      {archivedTranscriptTurns.map((turn, index) => (
-                        <div
-                          key={turn.key || `${turn.speaker}-${turn.start_ms}-${index}`}
-                          className="rounded-lg border border-theme-subtle bg-surface-1/70 px-3 py-2"
+                  {transcriptPanelTab === "live" ? (
+                    selectedInputSource === "transcript" ? (
+                      <div className="flex h-full min-h-[10rem] flex-col gap-2">
+                        <Textarea
+                          className="min-h-[8rem] flex-1 resize-y text-[12px] leading-relaxed"
+                          rows={8}
+                          value={transcriptText}
+                          disabled={currentSessionClosed}
+                          onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
+                            const next = event.target.value;
+                            setTranscriptText(next);
+                            studioSend({ type: "transcript.preview", text: next });
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="shrink-0 border-violet-900/50 bg-violet-950/45 py-2 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
+                          onClick={() => sendTranscript.mutate()}
+                          disabled={sendTranscript.isPending || !transcriptText.trim() || currentSessionClosed}
                         >
+                          <Send className="h-3.5 w-3.5" />
+                          {currentSessionClosed ? "会话已结束" : "发送文本"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-[color:var(--accent)]/25 bg-[color:var(--accent)]/[0.05] px-3 py-3">
+                        <div className="max-h-[min(12rem,38vh)] min-h-[4.5rem] overflow-y-auto whitespace-pre-wrap text-[15px] leading-7 text-theme-1 sm:max-h-[min(18rem,42vh)] sm:min-h-[6.5rem] sm:text-[16px] md:max-h-none md:overflow-visible md:min-h-[7.5rem]">
+                          {currentSubtitleText}
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-theme-4">
+                          <span>
+                            {liveTranscript.trim()
+                              ? "优先显示本地实时预览"
+                              : currentSessionClosed
+                                ? "当前会话已结束，可查看历史字幕与下载全文"
+                                : "最新一条稳定转写会先停留在这里，下一条到来后再转入历史区"}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  ) : previewArchivedTranscriptTurns.length ? (
+                    <div className="space-y-2.5">
+                      {previewArchivedTranscriptTurns.map((turn, index) => {
+                        const tone = transcriptSpeakerCardTone(turn.speaker);
+                        return (
+                          <div
+                            key={turn.key || `${turn.speaker}-${turn.start_ms}-${index}`}
+                            className={`rounded-lg border px-3 py-2 ${tone.card}`}
+                            style={tone.style}
+                          >
                           <div className="flex items-center justify-between gap-2 text-[10px] text-theme-4">
-                            <span className="truncate font-semibold text-theme-2">{turn.speaker || "speaker"}</span>
+                            <span
+                              className={`truncate rounded-md border px-1.5 py-0.5 font-semibold ${tone.speaker}`}
+                              style={tone.speakerTagStyle}
+                            >
+                              {turn.speaker || "speaker"}
+                            </span>
                             <span className="shrink-0">
                               {formatRelativeTranscriptTime(turn.start_ms)} - {formatRelativeTranscriptTime(turn.end_ms)}
                             </span>
                           </div>
-                          <div className="mt-1 whitespace-pre-wrap text-[12px] leading-6 text-theme-2">{turn.text}</div>
+                          <div
+                            className={`mt-1 rounded-md px-2 py-1.5 whitespace-pre-wrap text-[12px] leading-6 ${tone.body}`}
+                            style={tone.contentStyle}
+                          >
+                            {turn.text}
+                          </div>
                           <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-theme-4">
                             <span>
                               {turn.origin === "server"
@@ -3196,44 +3445,20 @@ export function RealtimeStudio() {
                             </span>
                             <span>{turn.is_final ? "final" : "pending"}</span>
                           </div>
-                        </div>
-                      ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="flex h-full min-h-[8rem] items-center justify-center rounded-lg border border-dashed border-[color:var(--accent)]/30 bg-[color:var(--accent)]/[0.04] px-3 py-3 text-center text-[12px] leading-relaxed text-theme-3">
                       {currentSessionClosed
                         ? "当前会话没有可回看的历史转写。"
-                        : "当前字幕会先显示在上方；当下一条出现或上方被实时预览替换后，它才会转入这里。"}
+                        : "当前字幕会先显示在当前字幕页；当下一条出现或被预览替换后，它会转入历史转写页。"}
                     </div>
                   )}
                 </div>
               </div>
 
-              {selectedInputSource === "transcript" ? (
-                <div className="flex shrink-0 flex-col gap-1.5">
-                  <Textarea
-                    className="min-h-[6.5rem] flex-1 resize-y text-[12px] leading-relaxed"
-                    rows={6}
-                    value={transcriptText}
-                    disabled={currentSessionClosed}
-                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
-                      const next = event.target.value;
-                      setTranscriptText(next);
-                      studioSend({ type: "transcript.preview", text: next });
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="shrink-0 border-violet-900/50 bg-violet-950/45 py-2 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
-                    onClick={() => sendTranscript.mutate()}
-                    disabled={sendTranscript.isPending || !transcriptText.trim() || currentSessionClosed}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    {currentSessionClosed ? "会话已结束" : "发送文本"}
-                  </Button>
-                </div>
-              ) : null}
             </div>
 
             <div
@@ -3796,7 +4021,7 @@ export function RealtimeStudio() {
                   title=""
                   embedded
                   fixedLightCanvas
-                  code={mermaidState?.code || mermaidState?.normalized_code || ""}
+                  code={displayedMermaidCode}
                   rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
                   repairRawOutputText={
                     typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
@@ -3849,54 +4074,246 @@ export function RealtimeStudio() {
 
             <Tabs.Content value="events" className="absolute inset-0 flex min-h-0 flex-col outline-none">
               <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <div className="mb-5 flex items-center justify-between gap-4">
+                <div className="mb-4 flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-sm font-semibold text-theme-1">更新记录</div>
-                    <p className="mt-1 text-xs leading-6 text-theme-2">只看最近几条，方便判断图有没有按预期变化。</p>
+                    <div className="text-sm font-semibold text-theme-1">更新时间轴</div>
+                    <p className="mt-1 text-xs leading-6 text-theme-2">选择节点后先预览，再确认回退到该时刻。</p>
                   </div>
-                  <Badge>{events.length} updates</Badge>
+                  <Badge>{timelineNodes.length} snapshots</Badge>
                 </div>
-                <div className="flex-1 min-h-0 space-y-3 overflow-auto pr-2">
-                  {events.length ? (
-                    events.slice(-12).map((event: Record<string, any>, index: number) => (
-                      <div
-                        key={`${event.update?.update_id}-${index}`}
-                        className="glass-panel p-4"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-theme-1">
-                            Update #{event.update?.update_id} · {event.gate?.action || event.update?.intent_type}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge>{event.e2e_latency_ms} ms</Badge>
-                            <Badge>{(event.planner?.delta_ops || []).length} delta ops</Badge>
+                <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.25fr)]">
+                  <div className="min-h-0 overflow-auto rounded-xl border border-theme-default bg-surface-2/70 p-2">
+                    {timelineNodes.length ? (
+                      <div className="space-y-2">
+                        {timelineNodes.map((node: RealtimeTimelineNode) => {
+                          const active = node.snapshot_id === selectedTimelineSnapshotId;
+                          return (
+                            <button
+                              key={node.snapshot_id}
+                              type="button"
+                              onClick={() => setSelectedTimelineSnapshotId(node.snapshot_id)}
+                              className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                                active
+                                  ? "border-[color:var(--accent)] bg-[color:var(--accent)]/[0.08]"
+                                  : "border-theme-default bg-surface-1 hover:border-theme-strong"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-xs font-semibold text-theme-1">{node.label || "关键节点"}</div>
+                                <div className="text-[10px] text-theme-4">
+                                  {new Date(node.created_at).toLocaleTimeString("zh-CN", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    second: "2-digit",
+                                  })}
+                                </div>
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-theme-3">
+                                <span>{node.chunk_count} chunks</span>
+                                <span>{node.event_count} events</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-theme-default px-3 py-4 text-xs text-theme-3">
+                        暂无可回退节点，先发送或采集内容生成快照。
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-h-0 overflow-auto rounded-xl border border-theme-default bg-surface-2/70 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs font-semibold text-theme-1">节点预览</div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() =>
+                            currentSessionId && selectedTimelineSnapshotId
+                              ? rollbackPreviewMutation.mutate({
+                                  sessionId: currentSessionId,
+                                  snapshotId: selectedTimelineSnapshotId,
+                                })
+                              : null
+                          }
+                          disabled={!currentSessionId || !selectedTimelineSnapshotId || rollbackPreviewMutation.isPending}
+                        >
+                          重新预览
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="danger"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() =>
+                            currentSessionId && selectedTimelineSnapshotId
+                              ? rollbackApplyMutation.mutate({
+                                  sessionId: currentSessionId,
+                                  snapshotId: selectedTimelineSnapshotId,
+                                })
+                              : null
+                          }
+                          disabled={
+                            !currentSessionId ||
+                            !selectedTimelineSnapshotId ||
+                            rollbackApplyMutation.isPending ||
+                            currentSessionClosed
+                          }
+                        >
+                          {rollbackApplyMutation.isPending ? "回退中..." : "确认回退"}
+                        </Button>
+                      </div>
+                    </div>
+                    {rollbackPreview ? (
+                      <div className="mt-3 space-y-2 text-xs text-theme-2">
+                        <div className="rounded-lg border border-theme-default bg-surface-1 px-3 py-2">
+                          <div className="font-medium text-theme-1">时间</div>
+                          <div className="mt-1 text-theme-3">{new Date(rollbackPreview.created_at).toLocaleString("zh-CN")}</div>
+                        </div>
+                        <div className="rounded-lg border border-theme-default bg-surface-1 px-3 py-2">
+                          <div className="font-medium text-theme-1">恢复范围</div>
+                          <div className="mt-1 text-theme-3">
+                            图状态 + 转写历史（{rollbackPreview.transcript_turn_count} turns）+ 批注 v{rollbackPreview.annotation_version}
                           </div>
                         </div>
-                        <div className="mt-2 text-xs leading-6 text-theme-2">
-                          {Array.isArray(event.pending_turns) && event.pending_turns.length
-                            ? event.pending_turns
-                                .map((turn: Record<string, any>) => `${turn.speaker || "speaker"}: ${turn.content || ""}`)
-                                .join("\n")
-                            : event.update?.transcript_text}
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-theme-2">
-                          <span>Gate: {event.gate?.reason || "-"}</span>
-                          <span>Planner: {event.planner?.notes || "-"}</span>
-                          <span>
-                            Graph: {event.graph_after?.node_count ?? 0} nodes / {event.graph_after?.edge_count ?? 0} edges
-                          </span>
+                        <div className="rounded-lg border border-theme-default bg-surface-1 px-3 py-2">
+                          <div className="font-medium text-theme-1">摘要</div>
+                          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-theme-3">
+                            {JSON.stringify(rollbackPreview.summary || {}, null, 2)}
+                          </pre>
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <div className="rounded-[22px] border border-dashed border-theme-default p-5 text-sm text-theme-2">
-                      还没有增量事件。创建会话后发送 transcript、启动浏览器麦克风，或接入增强模式。
+                    ) : (
+                      <div className="mt-3 rounded-lg border border-dashed border-theme-default px-3 py-4 text-xs text-theme-3">
+                        {selectedTimelineNode ? "正在加载该节点预览..." : "先在左侧选择一个时间节点。"}
+                      </div>
+                    )}
+                    <div className="mt-4 border-t border-theme-subtle pt-3">
+                      <div className="mb-2 text-xs font-semibold text-theme-1">最近更新记录</div>
+                      <div className="space-y-2">
+                        {events.length ? (
+                          events.slice(-6).map((event: Record<string, any>, index: number) => (
+                            <div key={`${event.update?.update_id}-${index}`} className="rounded-lg border border-theme-default bg-surface-1 px-3 py-2">
+                              <div className="text-xs font-semibold text-theme-1">
+                                Update #{event.update?.update_id} · {event.gate?.action || event.update?.intent_type}
+                              </div>
+                              <div className="mt-1 text-[11px] text-theme-3">
+                                {event.update?.transcript_text ||
+                                  (Array.isArray(event.pending_turns)
+                                    ? event.pending_turns
+                                        .map((turn: Record<string, any>) => `${turn.speaker || "speaker"}: ${turn.content || ""}`)
+                                        .join(" / ")
+                                    : "-")}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="rounded-lg border border-dashed border-theme-default px-3 py-3 text-xs text-theme-3">
+                            还没有增量事件。
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               </Card>
             </Tabs.Content>
 
+            </div>
+            <div className="shrink-0 border-t border-theme-subtle px-4 py-1.5">
+              <div className="px-1 py-0.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] font-semibold text-theme-1">时间轴</div>
+                  <div className="text-[10px] text-theme-4">{orderedTimelineNodes.length} snapshots</div>
+                </div>
+                <div className="relative mt-1.5 px-0.5">
+                  <div className="pointer-events-none absolute left-[6px] right-[6px] top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-[#d6ccf0]/85" />
+                  <div className="relative flex items-center justify-between gap-1">
+                    {orderedTimelineNodes.length ? (
+                      orderedTimelineNodes.map((node: RealtimeTimelineNode) => {
+                        const active = node.snapshot_id === selectedTimelineSnapshotId;
+                        const nodeName =
+                          node.label ||
+                          `快照 ${new Date(node.created_at).toLocaleTimeString("zh-CN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}`;
+                        return (
+                          <button
+                            key={node.snapshot_id}
+                            type="button"
+                            title={nodeName}
+                            onClick={() => {
+                              setSelectedTimelineSnapshotId(node.snapshot_id);
+                            }}
+                            className={`group relative z-[1] shrink-0 transition-all duration-300 ease-out ${
+                              active
+                                ? "h-3 w-8 rounded-full bg-[color:var(--accent)] shadow-[0_0_0_2px_rgba(167,139,250,0.16)]"
+                                : "h-3 w-3 rounded-full bg-[#b7bdd0] hover:bg-[#a58bd4]"
+                            }`}
+                            aria-label={nodeName}
+                          >
+                            <span className="pointer-events-none absolute left-1/2 top-[-1.45rem] hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-theme-default bg-surface-1 px-1.5 py-0.5 text-[10px] text-theme-2 shadow-sm group-hover:block">
+                              {nodeName}
+                            </span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="text-[10px] text-theme-3">暂无可用时间点</div>
+                    )}
+                  </div>
+                  {isTimelinePreviewActive && selectedTimelineOrderedIndex >= 0 ? (
+                    <div
+                      className="pointer-events-none absolute z-[3]"
+                      style={{
+                        left:
+                          orderedTimelineNodes.length > 1
+                            ? `calc(6px + ((100% - 12px) * ${selectedTimelineOrderedIndex}) / ${orderedTimelineNodes.length - 1})`
+                            : "50%",
+                        top: "-0.35rem",
+                        transform: "translate(-50%, -100%)",
+                      }}
+                    >
+                      <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-[color:var(--accent)]/35 bg-surface-1/95 px-2 py-1 shadow-sm backdrop-blur-sm whitespace-nowrap">
+                        <div className="flex flex-nowrap items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                            onClick={() => setRollbackPreview(null)}
+                          >
+                            取消
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="danger"
+                            className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                            onClick={() =>
+                              currentSessionId && selectedTimelineSnapshotId
+                                ? rollbackApplyMutation.mutate({
+                                    sessionId: currentSessionId,
+                                    snapshotId: selectedTimelineSnapshotId,
+                                  })
+                                : null
+                            }
+                            disabled={
+                              !currentSessionId ||
+                              !selectedTimelineSnapshotId ||
+                              rollbackApplyMutation.isPending ||
+                              currentSessionClosed
+                            }
+                          >
+                            {rollbackApplyMutation.isPending ? "回退中" : "回退"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             </div>
             <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 px-4 py-2.5">
               <div className="flex w-full max-w-[min(100%,30rem)] flex-wrap items-center gap-2">

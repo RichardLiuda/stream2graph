@@ -192,6 +192,42 @@ class RealtimeSnapshot(BaseModel):
     evaluation: dict[str, Any] | None = None
 
 
+class RealtimeTimelineNode(BaseModel):
+    snapshot_id: str
+    created_at: datetime
+    summary: dict[str, Any] = Field(default_factory=dict)
+    event_count: int = 0
+    chunk_count: int = 0
+    label: str | None = None
+
+
+class RealtimeTimelineResponse(BaseModel):
+    session_id: str
+    nodes: list[RealtimeTimelineNode] = Field(default_factory=list)
+
+
+class RealtimeRollbackRequest(BaseModel):
+    snapshot_id: str
+
+
+class RealtimeRollbackPreviewResponse(BaseModel):
+    session_id: str
+    snapshot_id: str
+    created_at: datetime
+    summary: dict[str, Any] = Field(default_factory=dict)
+    pipeline: dict[str, Any] = Field(default_factory=dict)
+    evaluation: dict[str, Any] | None = None
+    transcript_turn_count: int = 0
+    annotation_version: int = 1
+
+
+class RealtimeRollbackApplyResponse(BaseModel):
+    session_id: str
+    restored_from_snapshot_id: str
+    pipeline: dict[str, Any] = Field(default_factory=dict)
+    evaluation: dict[str, Any] | None = None
+
+
 class RealtimeSessionAnnotations(BaseModel):
     session_id: str
     version: int = 1

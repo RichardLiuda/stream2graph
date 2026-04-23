@@ -123,38 +123,38 @@ function ScrollZigzagHint({ className }: { className?: string }) {
 
 function FlowPipelineOrnament() {
   const labels = ["输入", "结构", "对照"];
-  const toneDots = ["bg-sky-300/90", "bg-emerald-300/90", "bg-amber-300/90"];
+  const toneDots = ["bg-[#aeb8c6]", "bg-[#a7b3ad]", "bg-[#c6b8a1]"];
   return (
     <div className="mx-auto w-full max-w-[17rem] shrink-0 md:mx-0" aria-hidden>
-      <div className="rounded-2xl border border-sky-400/48 bg-surface-1/95 p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md">
+      <div className="rounded-2xl border border-[#b3bbc7]/70 bg-surface-1/95 p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md">
         <div className="flex items-center gap-1.5">
           {labels.map((l, i) => (
             <Fragment key={l}>
                 <span
                   className={`grid min-h-[2.35rem] min-w-[2.75rem] place-items-center rounded-xl border bg-surface-2/95 px-2 text-center text-[11px] font-semibold uppercase tracking-wider text-theme-2 ${
-                    i === 0 ? "border-sky-300/60" : i === 1 ? "border-emerald-300/60" : "border-amber-300/62"
+                    i === 0 ? "border-[#aeb8c6]/80" : i === 1 ? "border-[#a7b3ad]/80" : "border-[#c6b8a1]/80"
                   }`}
                 >
                 <span className="mb-1 flex items-center justify-center">
-                  <span className={`h-1.5 w-1.5 rounded-full ${toneDots[i] ?? "bg-sky-100/95"}`} />
+                  <span className={`h-1.5 w-1.5 rounded-full ${toneDots[i] ?? "bg-[#d5dbe3]"}`} />
                 </span>
                 {l}
               </span>
               {i < labels.length - 1 ? (
-                <span className={`h-0.5 min-w-[0.75rem] flex-1 rounded-full ${i === 0 ? "bg-sky-300/55" : "bg-emerald-300/55"}`} />
+                <span className={`h-0.5 min-w-[0.75rem] flex-1 rounded-full ${i === 0 ? "bg-[#aeb8c6]/70" : "bg-[#a7b3ad]/70"}`} />
               ) : null}
             </Fragment>
           ))}
         </div>
         <div className="mt-4 flex items-center justify-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-theme-4">
-          <span className="h-1 w-1 shrink-0 rounded-full bg-sky-400/85" />
+          <span className="h-1 w-1 shrink-0 rounded-full bg-[#aeb8c6]" />
           语流 → 图
-          <span className="h-1 w-1 shrink-0 rounded-full bg-amber-400/85" />
+          <span className="h-1 w-1 shrink-0 rounded-full bg-[#c6b8a1]" />
         </div>
         <div className="mt-3 flex items-center justify-center gap-1.5">
-          <span className="h-1.5 w-4 rounded-full bg-sky-300/80" />
-          <span className="h-1.5 w-4 rounded-full bg-emerald-300/80" />
-          <span className="h-1.5 w-4 rounded-full bg-amber-300/82" />
+          <span className="h-1.5 w-4 rounded-full bg-[#aeb8c6]/85" />
+          <span className="h-1.5 w-4 rounded-full bg-[#a7b3ad]/85" />
+          <span className="h-1.5 w-4 rounded-full bg-[#c6b8a1]/85" />
         </div>
       </div>
     </div>
@@ -188,7 +188,7 @@ function ShowcaseStepCard({
       >
         {n}
       </div>
-      <div className="pointer-events-none absolute inset-0 bg-sky-50/35 opacity-85 transition-opacity group-hover:opacity-100" />
+      <div className="pointer-events-none absolute inset-0 bg-[#e8ebf1]/55 opacity-85 transition-opacity group-hover:opacity-100" />
       <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[color:var(--accent-muted)] bg-[color:var(--accent)]/14 text-[color:var(--accent-strong)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07)]">
           <Icon className="h-7 w-7" strokeWidth={1.65} />
@@ -499,15 +499,9 @@ export function HomePage() {
                   </Button>
                 </Link>
               )}
-              <div className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/56 bg-surface-muted px-2.5 py-1 text-[11px] text-theme-4">
-                <span className="inline-block h-1.5 w-1.5 rounded-sm bg-emerald-400/90" aria-hidden />
+              <div className="inline-flex items-center gap-1.5 rounded-md border border-[#a7b3ad]/75 bg-surface-muted px-2.5 py-1 text-[11px] text-theme-4">
+                <span className="inline-block h-1.5 w-1.5 rounded-sm bg-[#a7b3ad]" aria-hidden />
                 实时管线就绪
-              </div>
-              <div className="inline-flex items-center gap-2 rounded-md border border-sky-100/65 bg-surface-1/80 px-2.5 py-1 text-[11px] text-theme-4">
-                <span className="h-1.5 w-1.5 rounded-full bg-sky-100/95" aria-hidden />
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-100/95" aria-hidden />
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-100/95" aria-hidden />
-                低饱和配色
               </div>
             </div>
           </div>
@@ -547,7 +541,7 @@ export function HomePage() {
                     <span
                       key={t}
                       className={`rounded-full border bg-surface-2/78 px-3.5 py-1.5 text-xs font-medium text-theme-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] ${
-                        i === 0 ? "border-sky-300/58" : i === 1 ? "border-emerald-300/56" : "border-amber-300/58"
+                        i === 0 ? "border-[#aeb8c6]/80" : i === 1 ? "border-[#a7b3ad]/80" : "border-[#c6b8a1]/80"
                       }`}
                     >
                       {t}
@@ -593,20 +587,20 @@ export function HomePage() {
                       key={x.t}
                       className={`min-w-[5.5rem] rounded-xl border bg-surface-2/70 px-3 py-2 text-center shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] ${
                         i === 0
-                          ? "border-sky-100/60"
+                          ? "border-[#c8ced8]/75"
                           : i === 1
-                            ? "border-emerald-100/60"
-                            : "border-amber-100/65"
+                            ? "border-[#c3cbc5]/75"
+                            : "border-[#d3c7b5]/75"
                       }`}
                     >
                       <div className="flex items-center justify-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-theme-4">
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${
                             i === 0
-                              ? "bg-sky-100/90"
+                              ? "bg-[#c8ced8]"
                               : i === 1
-                                ? "bg-emerald-100/90"
-                                : "bg-amber-100/95"
+                                ? "bg-[#c3cbc5]"
+                                : "bg-[#d3c7b5]"
                           }`}
                           aria-hidden
                         />
@@ -638,10 +632,10 @@ export function HomePage() {
                     <span
                       className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-bold tabular-nums ${
                         i === 0
-                          ? "border-sky-300/65 bg-sky-100/55 text-sky-800/85"
+                          ? "border-[#aeb8c6]/85 bg-[#e7eaf0]/85 text-[#5d6775]"
                           : i === 1
-                            ? "border-emerald-300/65 bg-emerald-100/55 text-emerald-800/85"
-                            : "border-amber-300/68 bg-amber-100/55 text-amber-800/85"
+                            ? "border-[#a7b3ad]/85 bg-[#e6ebe7]/85 text-[#56625d]"
+                            : "border-[#c6b8a1]/85 bg-[#efe8dd]/85 text-[#6a6054]"
                       }`}
                     >
                       {i + 1}
@@ -668,12 +662,12 @@ export function HomePage() {
                   <div
                     key={row.k}
                     className={`rounded-2xl border bg-surface-2/60 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] ${
-                      i === 0 ? "border-sky-300/54" : i === 1 ? "border-emerald-300/52" : "border-amber-300/56"
+                      i === 0 ? "border-[#aeb8c6]/80" : i === 1 ? "border-[#a7b3ad]/80" : "border-[#c6b8a1]/80"
                     }`}
                   >
                     <div
                       className={`font-mono text-[11px] font-semibold uppercase tracking-wider ${
-                        i === 0 ? "text-sky-800/85" : i === 1 ? "text-emerald-800/85" : "text-amber-800/85"
+                        i === 0 ? "text-[#5d6775]" : i === 1 ? "text-[#56625d]" : "text-[#6a6054]"
                       }`}
                     >
                       {row.k}

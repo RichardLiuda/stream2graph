@@ -68,6 +68,42 @@ export const realtimeSnapshotSchema = z.object({
   evaluation: z.record(z.any()).nullable().optional(),
 });
 
+export const realtimeTimelineNodeSchema = z.object({
+  snapshot_id: z.string(),
+  created_at: z.string(),
+  summary: z.record(z.any()),
+  event_count: z.number().int().nonnegative().default(0),
+  chunk_count: z.number().int().nonnegative().default(0),
+  label: z.string().nullable().optional(),
+});
+
+export const realtimeTimelineSchema = z.object({
+  session_id: z.string(),
+  nodes: z.array(realtimeTimelineNodeSchema),
+});
+
+export const realtimeRollbackRequestSchema = z.object({
+  snapshot_id: z.string(),
+});
+
+export const realtimeRollbackPreviewSchema = z.object({
+  session_id: z.string(),
+  snapshot_id: z.string(),
+  created_at: z.string(),
+  summary: z.record(z.any()),
+  pipeline: z.record(z.any()),
+  evaluation: z.record(z.any()).nullable().optional(),
+  transcript_turn_count: z.number().int().nonnegative().default(0),
+  annotation_version: z.number().int().nonnegative().default(1),
+});
+
+export const realtimeRollbackApplySchema = z.object({
+  session_id: z.string(),
+  restored_from_snapshot_id: z.string(),
+  pipeline: z.record(z.any()),
+  evaluation: z.record(z.any()).nullable().optional(),
+});
+
 // Realtime session annotations (canvas/world coordinates)
 export const annotationPointSchema = z.object({
   x: z.number(),
@@ -321,6 +357,11 @@ export type SampleListItem = z.infer<typeof sampleListItemSchema>;
 export type SampleDetail = z.infer<typeof sampleDetailSchema>;
 export type RealtimeSession = z.infer<typeof realtimeSessionSchema>;
 export type RealtimeSnapshot = z.infer<typeof realtimeSnapshotSchema>;
+export type RealtimeTimelineNode = z.infer<typeof realtimeTimelineNodeSchema>;
+export type RealtimeTimeline = z.infer<typeof realtimeTimelineSchema>;
+export type RealtimeRollbackRequest = z.infer<typeof realtimeRollbackRequestSchema>;
+export type RealtimeRollbackPreview = z.infer<typeof realtimeRollbackPreviewSchema>;
+export type RealtimeRollbackApply = z.infer<typeof realtimeRollbackApplySchema>;
 export type RealtimeTranscriptTurn = z.infer<typeof realtimeTranscriptTurnSchema>;
 export type RealtimeSessionClose = z.infer<typeof realtimeSessionCloseSchema>;
 export type RealtimeAudioTranscription = z.infer<typeof realtimeAudioTranscriptionSchema>;

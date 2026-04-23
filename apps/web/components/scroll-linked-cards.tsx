@@ -99,14 +99,14 @@ function cardToneClasses(tone: LinkedCardTone | undefined) {
     case "note":
       return {
         shell:
-          "border-[rgb(182,146,84)] bg-[rgb(182,146,84)] shadow-[0_26px_90px_-40px_rgba(158,136,94,0.2)]",
-        accent: "bg-amber-400/82",
-        rail: "bg-amber-400/60",
+          "border-[rgb(183,173,159)] bg-[rgb(239,232,221)] shadow-[0_26px_90px_-40px_rgba(145,134,120,0.24)]",
+        accent: "bg-[rgb(183,173,159)]/82",
+        rail: "bg-[rgb(183,173,159)]/62",
         veil: "bg-transparent",
-        hoverBorder: "hover:border-[rgb(182,146,84)]",
-        eyebrow: "text-slate-900/68",
-        badge: "border-slate-900/28 bg-slate-950/10 text-slate-900/80",
-        iconRing: "border-amber-400/62 bg-amber-200/20",
+        hoverBorder: "hover:border-[rgb(170,158,143)]",
+        eyebrow: "text-slate-800/70",
+        badge: "border-slate-700/25 bg-slate-700/8 text-slate-800/82",
+        iconRing: "border-[rgb(183,173,159)]/62 bg-[rgb(220,209,194)]/38",
         titleText: "text-slate-950/92",
         bodyText: "text-slate-900/82",
         metaText: "text-slate-900/66",
@@ -114,14 +114,14 @@ function cardToneClasses(tone: LinkedCardTone | undefined) {
     case "code":
       return {
         shell:
-          "border-[rgb(98,146,179)] bg-[rgb(98,146,179)] shadow-[0_28px_100px_-44px_rgba(124,111,154,0.30)]",
-        accent: "bg-sky-400/84",
-        rail: "bg-sky-400/58",
+          "border-[rgb(170,176,191)] bg-[rgb(231,234,241)] shadow-[0_28px_100px_-44px_rgba(124,130,144,0.28)]",
+        accent: "bg-[rgb(170,176,191)]/84",
+        rail: "bg-[rgb(170,176,191)]/58",
         veil: "bg-transparent",
-        hoverBorder: "hover:border-[rgb(98,146,179)]",
-        eyebrow: "text-slate-900/68",
-        badge: "border-slate-900/28 bg-slate-950/10 text-slate-900/80",
-        iconRing: "border-sky-400/60 bg-sky-200/18",
+        hoverBorder: "hover:border-[rgb(158,166,184)]",
+        eyebrow: "text-slate-800/70",
+        badge: "border-slate-700/25 bg-slate-700/8 text-slate-800/82",
+        iconRing: "border-[rgb(170,176,191)]/62 bg-[rgb(206,213,228)]/38",
         titleText: "text-slate-950/92",
         bodyText: "text-slate-900/82",
         metaText: "text-slate-900/66",
@@ -129,14 +129,14 @@ function cardToneClasses(tone: LinkedCardTone | undefined) {
     case "chip":
       return {
         shell:
-          "border-[rgb(148,162,92)] bg-[rgb(148,162,92)] shadow-[0_26px_90px_-40px_rgba(120,132,82,0.24)]",
-        accent: "bg-lime-200/90",
-        rail: "bg-lime-200/72",
+          "border-[rgb(167,179,173)] bg-[rgb(232,236,234)] shadow-[0_26px_90px_-40px_rgba(118,130,124,0.24)]",
+        accent: "bg-[rgb(167,179,173)]/88",
+        rail: "bg-[rgb(167,179,173)]/68",
         veil: "bg-transparent",
-        hoverBorder: "hover:border-[rgb(148,162,92)]",
-        eyebrow: "text-slate-900/70",
-        badge: "border-slate-900/30 bg-slate-950/12 text-slate-900/82",
-        iconRing: "border-lime-200/80 bg-lime-100/30",
+        hoverBorder: "hover:border-[rgb(156,170,165)]",
+        eyebrow: "text-slate-800/70",
+        badge: "border-slate-700/25 bg-slate-700/8 text-slate-800/82",
+        iconRing: "border-[rgb(167,179,173)]/62 bg-[rgb(209,218,214)]/36",
         titleText: "text-slate-950/92",
         bodyText: "text-slate-900/82",
         metaText: "text-slate-900/66",
@@ -369,10 +369,10 @@ function BranchCardView({
 }) {
   const toneClass =
     toneVariant === "red"
-      ? "border-rose-700/70 bg-rose-900/20 hover:border-rose-700/85"
-      : "border-pink-300 bg-pink-100 hover:border-pink-400";
-  const titleTone = toneVariant === "red" ? "text-rose-900/86" : "text-pink-900/80";
-  const hintTone = toneVariant === "red" ? "text-rose-900/68" : "text-pink-900/60";
+      ? "border-[#b9a4aa]/85 bg-[#efe5e8]/95 hover:border-[#ad969d]"
+      : "border-[#a9aba3]/85 bg-[#eceee8]/95 hover:border-[#9da097]";
+  const titleTone = toneVariant === "red" ? "text-[#6c565c]" : "text-[#5c5f57]";
+  const hintTone = toneVariant === "red" ? "text-[#806a70]" : "text-[#707369]";
   return (
     <motion.div
       ref={nodeRef}
@@ -974,8 +974,8 @@ export function ScrollLinkedCardsBlockSection({
             className="relative left-1/2 h-[72vh] w-screen -translate-x-1/2 overflow-hidden bg-surface-1/70"
           >
             <div style={{ opacity: glow }} className="pointer-events-none absolute inset-0 z-0">
-              <div className="absolute inset-0 bg-violet-100/20" />
-              <div className="absolute inset-0 bg-sky-50/26" />
+              <div className="absolute inset-0 bg-[#e9e5ea]/28" />
+              <div className="absolute inset-0 bg-[#e7eaf1]/30" />
             </div>
 
             {(() => {
