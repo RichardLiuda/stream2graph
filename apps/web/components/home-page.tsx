@@ -123,25 +123,38 @@ function ScrollZigzagHint({ className }: { className?: string }) {
 
 function FlowPipelineOrnament() {
   const labels = ["输入", "结构", "对照"];
+  const toneDots = ["bg-sky-300/90", "bg-emerald-300/90", "bg-amber-300/90"];
   return (
     <div className="mx-auto w-full max-w-[17rem] shrink-0 md:mx-0" aria-hidden>
-      <div className="rounded-2xl border border-theme-default/90 bg-gradient-to-b from-surface-1/95 to-surface-2/40 p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md">
+      <div className="rounded-2xl border border-sky-400/48 bg-surface-1/95 p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md">
         <div className="flex items-center gap-1.5">
           {labels.map((l, i) => (
             <Fragment key={l}>
-              <span className="grid min-h-[2.35rem] min-w-[2.75rem] place-items-center rounded-xl border border-theme-subtle bg-surface-2/90 px-2 text-center text-[11px] font-semibold uppercase tracking-wider text-theme-2">
+                <span
+                  className={`grid min-h-[2.35rem] min-w-[2.75rem] place-items-center rounded-xl border bg-surface-2/95 px-2 text-center text-[11px] font-semibold uppercase tracking-wider text-theme-2 ${
+                    i === 0 ? "border-sky-300/60" : i === 1 ? "border-emerald-300/60" : "border-amber-300/62"
+                  }`}
+                >
+                <span className="mb-1 flex items-center justify-center">
+                  <span className={`h-1.5 w-1.5 rounded-full ${toneDots[i] ?? "bg-sky-100/95"}`} />
+                </span>
                 {l}
               </span>
               {i < labels.length - 1 ? (
-                <span className="h-0.5 min-w-[0.75rem] flex-1 rounded-full bg-gradient-to-r from-[color:var(--accent)]/55 to-[color:var(--accent)]/12" />
+                <span className={`h-0.5 min-w-[0.75rem] flex-1 rounded-full ${i === 0 ? "bg-sky-300/55" : "bg-emerald-300/55"}`} />
               ) : null}
             </Fragment>
           ))}
         </div>
         <div className="mt-4 flex items-center justify-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-theme-4">
-          <span className="h-1 w-1 shrink-0 rounded-full bg-[color:var(--accent)]/90" />
+          <span className="h-1 w-1 shrink-0 rounded-full bg-sky-400/85" />
           语流 → 图
-          <span className="h-1 w-1 shrink-0 rounded-full bg-[color:var(--accent)]/90" />
+          <span className="h-1 w-1 shrink-0 rounded-full bg-amber-400/85" />
+        </div>
+        <div className="mt-3 flex items-center justify-center gap-1.5">
+          <span className="h-1.5 w-4 rounded-full bg-sky-300/80" />
+          <span className="h-1.5 w-4 rounded-full bg-emerald-300/80" />
+          <span className="h-1.5 w-4 rounded-full bg-amber-300/82" />
         </div>
       </div>
     </div>
@@ -175,9 +188,9 @@ function ShowcaseStepCard({
       >
         {n}
       </div>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_45%_at_0%_0%,rgba(124,111,154,0.14),transparent_60%)] opacity-70 transition-opacity group-hover:opacity-100" />
+      <div className="pointer-events-none absolute inset-0 bg-sky-50/35 opacity-85 transition-opacity group-hover:opacity-100" />
       <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[color:var(--accent-muted)] bg-gradient-to-br from-[color:var(--accent)]/22 to-transparent text-[color:var(--accent-strong)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07)]">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[color:var(--accent-muted)] bg-[color:var(--accent)]/14 text-[color:var(--accent-strong)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07)]">
           <Icon className="h-7 w-7" strokeWidth={1.65} />
         </div>
         <div className="min-w-0 flex-1">
@@ -186,7 +199,7 @@ function ShowcaseStepCard({
           <p className="mt-3 text-base leading-relaxed text-theme-3 md:text-lg md:leading-relaxed">{body}</p>
         </div>
       </div>
-      <div className="pointer-events-none absolute bottom-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-[color:var(--accent)]/35 to-transparent opacity-80" />
+      <div className="pointer-events-none absolute bottom-0 left-6 right-6 h-px bg-theme-subtle opacity-80" />
     </div>
   );
 }
@@ -206,7 +219,7 @@ function FeatureSpotlightCard({
 }) {
   return (
     <div className="group relative overflow-hidden rounded-3xl border border-theme-default bg-surface-1/75 p-6 shadow-lg backdrop-blur-md transition-[transform,border-color] duration-300 hover:-translate-y-0.5 hover:border-theme-strong md:p-8">
-      <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-[color:var(--accent)]/55 via-[color:var(--accent)]/15 to-transparent opacity-90" aria-hidden />
+      <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[color:var(--accent)]/35 opacity-90" aria-hidden />
       <div
         className="pointer-events-none absolute bottom-4 right-3 font-display text-5xl font-bold tabular-nums text-theme-1/[0.05] sm:text-6xl"
         aria-hidden
@@ -300,220 +313,48 @@ const FEATURE_SPOTS: Array<{
 
 const LINKED_BLOCKS: ScrollLinkedCardsBlock[] = [
   {
-    id: "block-input",
-    kicker: "Block · 输入",
-    title: "把原始语流整理成可计算输入",
+    id: "block-core-flow",
+    kicker: "Block · 快速流程",
+    title: "把想法快速整理成清晰卡片图",
     description:
-      "先解决“喂什么”和“怎么喂”：同一条语流经过入口选择、清洗、切片与优先级排序，再进入后续结构化环节。",
+      "保留最核心四步：输入内容、整理重点、生成卡片图、保存分享。流程更短，上手更轻松。",
     direction: "right",
     cards: [
       {
-        id: "in-mic",
-        eyebrow: "Realtime",
-        title: "麦克风实时语流",
-        description: "边说边转写，输入流持续进入，最接近真实工作台节奏。",
+        id: "core-input",
+        eyebrow: "Step 1",
+        title: "输入内容",
+        description: "可以直接说，也可以粘贴文本，先把内容放进来。",
         tone: "chip",
-        meta: "低摩擦入口 · 适合 live session",
+        meta: "先输入，后处理",
         branches: [
-          { id: "in-mic-br1", label: "降噪", hint: "剔除口头填充词" },
-          { id: "in-mic-br2", label: "说话人", hint: "按 speaker 分段" },
+          { id: "core-input-br1", label: "语音", hint: "边说边记" },
+          { id: "core-input-br2", label: "文本", hint: "粘贴即用" },
         ],
       },
       {
-        id: "in-transcript",
-        eyebrow: "Text",
-        title: "Transcript 粘贴",
-        description: "把历史对话按段输入，快速复跑同一路径做参数对照。",
+        id: "core-clean",
+        eyebrow: "Step 2",
+        title: "整理重点",
+        description: "自动去重、分段，把长文本整理成更清楚的结构。",
         tone: "paper",
-        meta: "适合对照 · 便于回放",
+        meta: "重点一眼可见",
       },
       {
-        id: "in-sample",
-        eyebrow: "Dataset",
-        title: "固定样本",
-        description: "固定输入配合多组配置，差异能被清晰定位与量化。",
-        tone: "note",
-        meta: "研究友好 · 可重复",
-        branches: [
-          { id: "in-sample-br1", label: "A/B", hint: "同样本对比两套策略", side: "left" },
-          { id: "in-sample-br2", label: "回归", hint: "和历史版本对齐", side: "left" },
-        ],
-      },
-      {
-        id: "in-label",
-        eyebrow: "Annotation",
-        title: "期望意图与标签",
-        description: "提前给出目标语义，后续评测就有清晰锚点。",
-        tone: "paper",
-        meta: "用于准确率与边界评测",
-      },
-      {
-        id: "in-guard",
-        eyebrow: "Guardrail",
-        title: "输入清洗与规整",
-        description: "先把噪声挡在门外，再让有效内容进入结构化流程。",
-        tone: "chip",
-        meta: "更稳 · 更少抖动",
-      },
-      {
-        id: "in-window",
-        eyebrow: "Windowing",
-        title: "滑动窗口切片",
-        description: "在保留上下文的前提下控制单次处理体积，减少突发抖动。",
-        tone: "paper",
-        meta: "平衡上下文长度与延迟",
-      },
-      {
-        id: "in-priority",
-        eyebrow: "Priority",
-        title: "优先级队列",
-        description: "高价值语义优先进入后续环节，关键信息不会被淹没。",
-        tone: "note",
-        meta: "关键片段优先处理",
-      },
-    ],
-  },
-  {
-    id: "block-structure",
-    kicker: "Block · 结构",
-    title: "Gate → Planner → Renderer 的增量编排",
-    description:
-      "核心不是一次性生成，而是连续改图：筛选有效片段、规划变更、渲染结果，再即时校验一致性。",
-    direction: "left",
-    cards: [
-      {
-        id: "st-gate",
-        eyebrow: "Gate",
-        title: "过滤与归类",
-        description: "先筛出可结构化片段，避免 Planner 在噪声上浪费预算。",
-        tone: "paper",
-        meta: "减少幻觉 · 更可控",
-      },
-      {
-        id: "st-planner",
-        eyebrow: "Planner",
-        title: "增量改图",
-        description: "不重画全图，只修改必要节点和边，保持用户心理地图稳定。",
-        tone: "paper",
-        meta: "稳定性优先 · 低 flicker",
-        branches: [
-          { id: "st-planner-br1", label: "节点合并", hint: "重复语义自动收敛", side: "left" },
-          { id: "st-planner-br2", label: "边重定向", hint: "关系变化可追踪", side: "left" },
-        ],
-      },
-      {
-        id: "st-ops",
-        eyebrow: "Ops",
-        title: "操作序列",
-        description: "每次更新都写成 operations 序列，便于追踪、回放和解释。",
-        tone: "note",
-        meta: "可解释 · 可对照",
-      },
-      {
-        id: "st-render",
-        eyebrow: "Renderer",
-        title: "Mermaid + 结构视图",
-        description: "同一份语流同时输出可读图和结构节点，既能看也能算。",
-        tone: "chip",
-        meta: "阅读友好 · 评测友好",
-      },
-      {
-        id: "st-code",
-        eyebrow: "Diff",
-        title: "变更对照",
-        description: "每一步变化都可比对，能快速定位导致结构漂移的关键操作。",
+        id: "core-graph",
+        eyebrow: "Step 3",
+        title: "生成并微调",
+        description: "先出第一版卡片图，再拖拽调整到你满意为止。",
         tone: "code",
-        meta: "像看代码 diff 一样看图 diff",
+        meta: "边看边改",
       },
       {
-        id: "st-consistency",
-        eyebrow: "Consistency",
-        title: "一致性检查",
-        description: "每次更新后立刻检查语义和边关系，避免局部修复引发全局冲突。",
-        tone: "chip",
-        meta: "结构稳定 · 语义连贯",
-      },
-      {
-        id: "st-repair",
-        eyebrow: "Repair",
-        title: "轻量自动修复",
-        description: "对常见结构错误进行规则化修补，减少人工返工。",
-        tone: "paper",
-        meta: "先自动修，再人工确认",
-        branches: [
-          { id: "st-repair-br1", label: "冲突消解", hint: "同名异义做拆分" },
-          { id: "st-repair-br2", label: "孤点回连", hint: "补全断开的上下文" },
-        ],
-      },
-    ],
-  },
-  {
-    id: "block-eval",
-    kicker: "Block · 对照与追踪",
-    title: "把“看起来更好”验证成“确实更好”",
-    description:
-      "最后收束为研究闭环：记录、摘要、指标、归档和告警，让每次优化都可追溯、可复现、可回归。",
-    direction: "right",
-    cards: [
-      {
-        id: "ev-trace",
-        eyebrow: "Trace",
-        title: "更新记录",
-        description: "每次结构变化都带来源信息：时间戳、意图、操作和耗时。",
-        tone: "paper",
-        meta: "可回溯 · 可解释",
-      },
-      {
-        id: "ev-summary",
-        eyebrow: "Summary",
-        title: "运行摘要",
-        description: "把一次 session 压缩为可读报告，快速看速度、延迟与分布。",
+        id: "core-share",
+        eyebrow: "Step 4",
+        title: "保存与分享",
+        description: "一键保存当前版本，也可以直接发给团队一起看。",
         tone: "note",
-        meta: "研究报告式输出",
-      },
-      {
-        id: "ev-metrics",
-        eyebrow: "Metrics",
-        title: "延迟 / 准确率 / 抖动",
-        description: "不靠主观印象，用数据对比不同配置的边界与稳定性。",
-        tone: "chip",
-        meta: "P50/P95 · flicker · mental map",
-        branches: [
-          { id: "ev-metrics-br1", label: "时延带宽", hint: "P50/P95 变化趋势", side: "left" },
-          { id: "ev-metrics-br2", label: "稳定性", hint: "抖动与跳变次数", side: "left" },
-        ],
-      },
-      {
-        id: "ev-archive",
-        eyebrow: "Archive",
-        title: "归档复现",
-        description: "固定样本 + 固定配置 + 固定结果，任何一次对照都能复跑。",
-        tone: "paper",
-        meta: "可追溯 · 可回归",
-      },
-      {
-        id: "ev-share",
-        eyebrow: "Share",
-        title: "共享与对齐",
-        description: "把同一份实验链路共享给团队，让讨论更聚焦于差异本身。",
-        tone: "note",
-        meta: "更快达成共识",
-      },
-      {
-        id: "ev-baseline",
-        eyebrow: "Baseline",
-        title: "基线回归",
-        description: "持续把新配置和历史基线对比，避免性能慢性退化。",
-        tone: "chip",
-        meta: "持续对照 · 防回退",
-      },
-      {
-        id: "ev-alert",
-        eyebrow: "Alert",
-        title: "阈值告警",
-        description: "当延迟、抖动或准确率越界时自动标记并触发追查。",
-        tone: "paper",
-        meta: "异常早发现 · 早处理",
+        meta: "结果马上可用",
       },
     ],
   },
@@ -628,7 +469,7 @@ export function HomePage() {
       </aside>
 
       <div className="pointer-events-none fixed inset-0 z-0" aria-hidden>
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_0%,var(--hero-radial-glow),transparent_70%)]" />
+        <div className="absolute inset-0 bg-[var(--hero-radial-glow)]/20" />
         <BackgroundPathLayer />
       </div>
 
@@ -658,9 +499,15 @@ export function HomePage() {
                   </Button>
                 </Link>
               )}
-              <div className="inline-flex items-center gap-1.5 rounded-md border border-theme-subtle bg-surface-muted px-2.5 py-1 text-[11px] text-theme-4">
-                <span className="inline-block h-1.5 w-1.5 rounded-sm bg-emerald-600" aria-hidden />
+              <div className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/56 bg-surface-muted px-2.5 py-1 text-[11px] text-theme-4">
+                <span className="inline-block h-1.5 w-1.5 rounded-sm bg-emerald-400/90" aria-hidden />
                 实时管线就绪
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-md border border-sky-100/65 bg-surface-1/80 px-2.5 py-1 text-[11px] text-theme-4">
+                <span className="h-1.5 w-1.5 rounded-full bg-sky-100/95" aria-hidden />
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-100/95" aria-hidden />
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-100/95" aria-hidden />
+                低饱和配色
               </div>
             </div>
           </div>
@@ -685,7 +532,7 @@ export function HomePage() {
             <div className="grid gap-10 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-14 lg:gap-20">
               <div className="relative min-w-0">
                 <div
-                  className="absolute -left-4 top-1 hidden h-[4.5rem] w-1 rounded-full bg-gradient-to-b from-[color:var(--accent)]/80 via-[color:var(--accent)]/25 to-transparent md:block"
+                  className="absolute -left-4 top-1 hidden h-[4.5rem] w-1 rounded-full bg-[color:var(--accent)]/45 md:block"
                   aria-hidden
                 />
                 <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[color:var(--accent-strong)]">Pipeline</p>
@@ -696,10 +543,12 @@ export function HomePage() {
                   选择输入 → 生成与调整 → 对照与追踪。三步跑通实时管线，把口述内容落成可读的图与可追踪的变更。
                 </p>
                 <div className="mt-7 flex flex-wrap gap-2">
-                  {["实时语流", "增量 Planner", "报告归档"].map((t) => (
+                  {["实时语流", "增量 Planner", "报告归档"].map((t, i) => (
                     <span
                       key={t}
-                      className="rounded-full border border-theme-subtle bg-surface-2/70 px-3.5 py-1.5 text-xs font-medium text-theme-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
+                      className={`rounded-full border bg-surface-2/78 px-3.5 py-1.5 text-xs font-medium text-theme-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] ${
+                        i === 0 ? "border-sky-300/58" : i === 1 ? "border-emerald-300/56" : "border-amber-300/58"
+                      }`}
                     >
                       {t}
                     </span>
@@ -719,7 +568,7 @@ export function HomePage() {
 
         <section className="relative mx-auto w-full max-w-5xl px-6 py-14 text-theme-2 md:px-10 md:py-16">
           <Reveal rootRef={scrollRef} delayMs={0}>
-            <div className="relative overflow-hidden rounded-[2rem] border border-theme-default bg-gradient-to-br from-surface-1/90 via-surface-2/30 to-surface-1/80 p-7 shadow-[0_28px_100px_-40px_rgba(124,111,154,0.35)] backdrop-blur-md md:p-10">
+            <div className="relative overflow-hidden rounded-[2rem] border border-theme-default bg-surface-1/90 p-7 shadow-[0_28px_100px_-40px_rgba(124,111,154,0.35)] backdrop-blur-md md:p-10">
               <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-[color:var(--accent)]/12 blur-3xl" aria-hidden />
               <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                 <div className="min-w-0 max-w-2xl lg:max-w-none lg:flex-1 lg:pr-8">
@@ -739,12 +588,30 @@ export function HomePage() {
                     { t: "双视图", d: "主图 & 结构" },
                     { t: "可观测", d: "摘要与记录" },
                     { t: "可量化", d: "指标对照" },
-                  ].map((x) => (
+                  ].map((x, i) => (
                     <div
                       key={x.t}
-                      className="min-w-[5.5rem] rounded-xl border border-theme-subtle bg-surface-2/70 px-3 py-2 text-center shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
+                      className={`min-w-[5.5rem] rounded-xl border bg-surface-2/70 px-3 py-2 text-center shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] ${
+                        i === 0
+                          ? "border-sky-100/60"
+                          : i === 1
+                            ? "border-emerald-100/60"
+                            : "border-amber-100/65"
+                      }`}
                     >
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">{x.t}</div>
+                      <div className="flex items-center justify-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-theme-4">
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            i === 0
+                              ? "bg-sky-100/90"
+                              : i === 1
+                                ? "bg-emerald-100/90"
+                                : "bg-amber-100/95"
+                          }`}
+                          aria-hidden
+                        />
+                        {x.t}
+                      </div>
                       <div className="mt-0.5 text-xs font-medium text-theme-2">{x.d}</div>
                     </div>
                   ))}
@@ -768,7 +635,15 @@ export function HomePage() {
                   "用更新记录与运行摘要锁定每一次改动",
                 ].map((text, i) => (
                   <li key={text} className="flex gap-4">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:var(--accent-muted)] bg-[color:var(--accent)]/12 text-sm font-bold tabular-nums text-[color:var(--accent-strong)]">
+                    <span
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-bold tabular-nums ${
+                        i === 0
+                          ? "border-sky-300/65 bg-sky-100/55 text-sky-800/85"
+                          : i === 1
+                            ? "border-emerald-300/65 bg-emerald-100/55 text-emerald-800/85"
+                            : "border-amber-300/68 bg-amber-100/55 text-amber-800/85"
+                      }`}
+                    >
                       {i + 1}
                     </span>
                     <span className="pt-1.5 text-base leading-relaxed text-theme-3 md:text-lg">{text}</span>
@@ -789,12 +664,18 @@ export function HomePage() {
                   { k: "Gate", v: "过滤与归类输入片段" },
                   { k: "Planner", v: "增量修改图结构" },
                   { k: "Renderer", v: "Mermaid + 结构节点" },
-                ].map((row) => (
+                ].map((row, i) => (
                   <div
                     key={row.k}
-                    className="rounded-2xl border border-theme-subtle bg-surface-2/55 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
+                    className={`rounded-2xl border bg-surface-2/60 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] ${
+                      i === 0 ? "border-sky-300/54" : i === 1 ? "border-emerald-300/52" : "border-amber-300/56"
+                    }`}
                   >
-                    <div className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[color:var(--accent-strong)]">
+                    <div
+                      className={`font-mono text-[11px] font-semibold uppercase tracking-wider ${
+                        i === 0 ? "text-sky-800/85" : i === 1 ? "text-emerald-800/85" : "text-amber-800/85"
+                      }`}
+                    >
                       {row.k}
                     </div>
                     <div className="mt-1.5 text-sm leading-relaxed text-theme-2 md:text-base">{row.v}</div>
@@ -807,7 +688,7 @@ export function HomePage() {
 
         <section className="relative mx-auto w-full max-w-5xl px-6 pb-24 pt-6 text-theme-2 md:px-10 md:pb-28 md:pt-8">
           <Reveal rootRef={scrollRef} delayMs={0}>
-            <div className="relative overflow-hidden rounded-3xl border border-[color:var(--accent-muted)] bg-gradient-to-br from-[color:var(--accent)]/10 via-surface-muted to-surface-1/80 p-8 md:p-10">
+            <div className="relative overflow-hidden rounded-3xl border border-[color:var(--accent-muted)] bg-surface-muted p-8 md:p-10">
               <span
                 className="pointer-events-none absolute left-2 top-0 translate-y-2 font-display text-[6.5rem] leading-none text-[color:var(--accent)] opacity-20"
                 aria-hidden

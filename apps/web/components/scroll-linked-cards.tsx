@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion, useMotionValueEvent, useScroll } from "framer-motion";
 
 type LinkedCardTone = "paper" | "note" | "code" | "chip";
@@ -66,6 +66,11 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function smoothstep01(value: number) {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
 function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -94,27 +99,63 @@ function cardToneClasses(tone: LinkedCardTone | undefined) {
     case "note":
       return {
         shell:
-          "border-amber-200/30 bg-gradient-to-b from-amber-100/10 via-surface-1/70 to-surface-2/40 shadow-[0_26px_90px_-40px_rgba(251,191,36,0.25)]",
-        accent: "bg-amber-300/70",
+          "border-[rgb(182,146,84)] bg-[rgb(182,146,84)] shadow-[0_26px_90px_-40px_rgba(158,136,94,0.2)]",
+        accent: "bg-amber-400/82",
+        rail: "bg-amber-400/60",
+        veil: "bg-transparent",
+        hoverBorder: "hover:border-[rgb(182,146,84)]",
+        eyebrow: "text-slate-900/68",
+        badge: "border-slate-900/28 bg-slate-950/10 text-slate-900/80",
+        iconRing: "border-amber-400/62 bg-amber-200/20",
+        titleText: "text-slate-950/92",
+        bodyText: "text-slate-900/82",
+        metaText: "text-slate-900/66",
       };
     case "code":
       return {
         shell:
-          "border-theme-default bg-gradient-to-b from-surface-1/90 via-surface-2/35 to-surface-1/80 shadow-[0_28px_100px_-44px_rgba(124,111,154,0.30)]",
-        accent: "bg-[color:var(--accent)]/80",
+          "border-[rgb(98,146,179)] bg-[rgb(98,146,179)] shadow-[0_28px_100px_-44px_rgba(124,111,154,0.30)]",
+        accent: "bg-sky-400/84",
+        rail: "bg-sky-400/58",
+        veil: "bg-transparent",
+        hoverBorder: "hover:border-[rgb(98,146,179)]",
+        eyebrow: "text-slate-900/68",
+        badge: "border-slate-900/28 bg-slate-950/10 text-slate-900/80",
+        iconRing: "border-sky-400/60 bg-sky-200/18",
+        titleText: "text-slate-950/92",
+        bodyText: "text-slate-900/82",
+        metaText: "text-slate-900/66",
       };
     case "chip":
       return {
         shell:
-          "border-emerald-200/20 bg-gradient-to-b from-emerald-100/10 via-surface-1/70 to-surface-2/40 shadow-[0_26px_90px_-40px_rgba(16,185,129,0.22)]",
-        accent: "bg-emerald-300/70",
+          "border-[rgb(148,162,92)] bg-[rgb(148,162,92)] shadow-[0_26px_90px_-40px_rgba(120,132,82,0.24)]",
+        accent: "bg-lime-200/90",
+        rail: "bg-lime-200/72",
+        veil: "bg-transparent",
+        hoverBorder: "hover:border-[rgb(148,162,92)]",
+        eyebrow: "text-slate-900/70",
+        badge: "border-slate-900/30 bg-slate-950/12 text-slate-900/82",
+        iconRing: "border-lime-200/80 bg-lime-100/30",
+        titleText: "text-slate-950/92",
+        bodyText: "text-slate-900/82",
+        metaText: "text-slate-900/66",
       };
     case "paper":
     default:
       return {
         shell:
-          "border-theme-default bg-gradient-to-b from-surface-1/90 via-surface-2/35 to-surface-1/80 shadow-[0_28px_100px_-44px_rgba(124,111,154,0.30)]",
+          "border-theme-default bg-surface-1 shadow-[0_28px_100px_-44px_rgba(124,111,154,0.30)]",
         accent: "bg-[color:var(--accent)]/80",
+        rail: "bg-[color:var(--accent)]/25",
+        veil: "bg-transparent",
+        hoverBorder: "hover:border-theme-strong",
+        eyebrow: "text-theme-4",
+        badge: "border-theme-subtle bg-surface-muted/60 text-theme-3",
+        iconRing: "border-[color:var(--accent-muted)] bg-[color:var(--accent)]/14",
+        titleText: "text-theme-1",
+        bodyText: "text-theme-3",
+        metaText: "text-theme-4",
       };
   }
 }
@@ -143,12 +184,60 @@ function LinkedCardView({
   cardRef?: (node: HTMLDivElement | null) => void;
 }) {
   const tone = cardToneClasses(card.tone);
-  const cardSizeClass =
+  const statusLabel = index % 3 === 0 ? "Flow" : index % 3 === 1 ? "Sync" : "Trace";
+  const frameVariant: "windows" | "mac" | "workspace" =
+    card.id.includes("clean") || card.title.includes("整理")
+      ? "mac"
+      : card.id.includes("graph") || card.title.includes("微调")
+        ? "workspace"
+        : "windows";
+  const sizeBaseClass =
     sizeVariant === "lg"
-      ? "w-[min(34.5rem,90vw)] sm:w-[34.5rem] rounded-[2.2rem] p-8"
+      ? "w-[min(34.5rem,90vw)] sm:w-[34.5rem] p-8"
       : sizeVariant === "md"
-        ? "w-[min(30.5rem,86vw)] sm:w-[30.5rem] rounded-[2rem] p-7"
-        : "w-[min(26.5rem,82vw)] sm:w-[26.5rem] rounded-[1.8rem] p-6";
+        ? "w-[min(30.5rem,86vw)] sm:w-[30.5rem] p-7"
+        : "w-[min(26.5rem,82vw)] sm:w-[26.5rem] p-6";
+  const shapeClass =
+    frameVariant === "windows"
+      ? sizeVariant === "lg"
+        ? "rounded-[1rem]"
+        : sizeVariant === "md"
+          ? "rounded-[0.9rem]"
+          : "rounded-[0.8rem]"
+      : frameVariant === "mac"
+        ? sizeVariant === "lg"
+          ? "rounded-[2.35rem]"
+          : sizeVariant === "md"
+            ? "rounded-[2.05rem]"
+            : "rounded-[1.85rem]"
+        : "";
+  const contentTopPadding =
+    frameVariant === "windows"
+      ? sizeVariant === "lg"
+        ? "pt-[4rem]"
+        : sizeVariant === "md"
+          ? "pt-[3.7rem]"
+          : "pt-[3.5rem]"
+      : sizeVariant === "lg"
+        ? "pt-[4.9rem]"
+        : sizeVariant === "md"
+          ? "pt-[4.5rem]"
+          : "pt-[4.1rem]";
+  const cardSizeClass = `${sizeBaseClass} ${shapeClass} ${contentTopPadding}`;
+  const cardClipPath =
+    frameVariant !== "workspace"
+      ? undefined
+      : sizeVariant === "lg"
+        ? "polygon(0 0, calc(100% - 34px) 0, 100% 34px, 100% 100%, 26px 100%, 0 calc(100% - 26px))"
+        : sizeVariant === "md"
+          ? "polygon(0 0, calc(100% - 30px) 0, 100% 30px, 100% 100%, 22px 100%, 0 calc(100% - 22px))"
+          : "polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 18px 100%, 0 calc(100% - 18px))";
+  const toolbarClass =
+    frameVariant === "windows"
+      ? "pointer-events-none absolute left-3 right-3 top-2 flex items-center justify-between gap-3 rounded-md border border-black/15 bg-black/6 px-3 py-1.5"
+      : frameVariant === "mac"
+        ? "pointer-events-none absolute left-3 right-3 top-3 flex items-center justify-between gap-3 rounded-[1rem] border border-black/10 bg-black/5 px-3 py-2"
+        : "pointer-events-none absolute left-3 right-3 top-2.5 flex items-center justify-between gap-3 rounded-xl border border-black/12 bg-black/5 px-3 py-2";
   const titleSizeClass = sizeVariant === "lg" ? "mt-2.5 text-[2.05rem] sm:text-[2.2rem]" : sizeVariant === "md" ? "mt-2.5 text-[1.9rem] sm:text-[2.05rem]" : "mt-2 text-[1.65rem] sm:text-[1.8rem]";
   const bodySizeClass = sizeVariant === "lg" ? "mt-5 text-[17px] sm:text-[18px] md:text-[19px]" : sizeVariant === "md" ? "mt-5 text-[16px] sm:text-[17px] md:text-[18px]" : "mt-4 text-[15px] sm:text-[16px] md:text-[17px]";
   return (
@@ -166,35 +255,91 @@ function LinkedCardView({
         // 基座位置由 style.left/top 决定；x/y 只负责“拖拽偏移”，避免双重位移/松手跳动。
         x: dragOffset.x,
         y: dragOffset.y,
+        clipPath: cardClipPath,
+        WebkitClipPath: cardClipPath,
       }}
-      className={`group absolute -translate-x-1/2 -translate-y-1/2 cursor-grab border backdrop-blur-md transition-colors duration-200 hover:-translate-y-[calc(50%+2px)] hover:border-theme-strong active:cursor-grabbing ${cardSizeClass} ${tone.shell}`}
+      className={`group absolute -translate-x-1/2 -translate-y-1/2 cursor-grab border backdrop-blur-md transition-colors duration-200 hover:-translate-y-[calc(50%+2px)] active:cursor-grabbing ${cardSizeClass} ${tone.shell} ${tone.hoverBorder}`}
       data-card-index={index}
     >
+      <div className={`pointer-events-none absolute inset-0 ${tone.veil}`} aria-hidden />
+      <div className={toolbarClass} aria-hidden>
+        {frameVariant === "windows" ? (
+          <>
+            <div className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm bg-slate-950/30" />
+              <span className="h-2.5 w-2.5 rounded-sm bg-slate-950/20" />
+              <span className="h-2.5 w-2.5 rounded-sm bg-slate-950/15" />
+            </div>
+            <div className="h-1.5 w-20 rounded-full bg-slate-950/20" />
+            <div className="flex items-center gap-1.5">
+              <span className="relative h-4 w-4 rounded border border-slate-900/18 bg-slate-950/8">
+                <span className="absolute left-1 right-1 top-1/2 h-px -translate-y-1/2 bg-slate-900/58" />
+              </span>
+              <span className="relative h-4 w-4 rounded border border-slate-900/18 bg-slate-950/8">
+                <span className="absolute inset-[4px] border border-slate-900/52" />
+              </span>
+              <span className="relative h-4 w-4 rounded border border-slate-900/18 bg-slate-950/8">
+                <span className="absolute left-[4px] right-[4px] top-1/2 h-px -translate-y-1/2 rotate-45 bg-slate-900/56" />
+                <span className="absolute left-[4px] right-[4px] top-1/2 h-px -translate-y-1/2 -rotate-45 bg-slate-900/56" />
+              </span>
+            </div>
+          </>
+        ) : frameVariant === "mac" ? (
+          <>
+            <div className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-rose-400/80" />
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
+            </div>
+            <div className="h-1.5 w-24 rounded-full bg-slate-900/18" />
+            <div className="h-2.5 w-10 rounded-md border border-slate-900/20 bg-slate-950/5" />
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-1.5">
+              <span className={`h-2 w-2 rounded-full ${tone.accent}`} />
+              <span className={`h-2 w-2 rounded-full ${tone.rail}`} />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="h-1.5 w-10 rounded-full bg-slate-900/20" />
+              <span className="h-1.5 w-6 rounded-full bg-slate-900/12" />
+            </div>
+            <div className="rounded-md border border-slate-900/18 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-900/60">
+              Live
+            </div>
+          </>
+        )}
+      </div>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           {card.eyebrow ? (
-            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-theme-4">{card.eyebrow}</div>
+            <div className={`text-[10px] font-semibold uppercase tracking-[0.22em] ${tone.eyebrow}`}>{card.eyebrow}</div>
           ) : null}
-          <div className={`font-display font-semibold tracking-tight text-theme-1 ${titleSizeClass}`}>
+          <div className={`font-display font-semibold tracking-tight ${tone.titleText} ${titleSizeClass}`}>
             {card.title}
           </div>
         </div>
-        <span className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-[1.35rem] border border-theme-subtle bg-surface-muted/70">
+        <span className={`mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-[1.35rem] border ${tone.iconRing}`}>
           <span className={`h-3 w-3 rounded-full ${tone.accent}`} aria-hidden />
         </span>
       </div>
       {card.description ? (
-        <p className={`leading-relaxed text-theme-3 ${bodySizeClass}`}>
+        <p className={`leading-relaxed ${tone.bodyText} ${bodySizeClass}`}>
           {card.description}
         </p>
       ) : null}
       {card.meta ? (
-        <div className="mt-4 flex items-center justify-between gap-3 text-[11px] text-theme-4">
+        <div className={`mt-4 flex items-center justify-between gap-3 text-[11px] ${tone.metaText}`}>
           <span className="truncate">{card.meta}</span>
-          <span className="h-px flex-1 bg-gradient-to-r from-theme-subtle to-transparent" aria-hidden />
+          <span className={`h-px flex-1 ${tone.rail}`} aria-hidden />
         </div>
       ) : null}
-      <div className="pointer-events-none absolute inset-x-5 bottom-0 h-px bg-gradient-to-r from-transparent via-[color:var(--accent)]/30 to-transparent opacity-70" />
+      <div className="mt-4 flex items-center justify-end">
+        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${tone.badge}`}>
+          {statusLabel}
+        </span>
+      </div>
+      <div className={`pointer-events-none absolute inset-x-5 bottom-0 h-px ${tone.rail} opacity-80`} />
     </motion.div>
   );
 }
@@ -203,6 +348,7 @@ function BranchCardView({
   label,
   hint,
   style,
+  toneVariant,
   dragOffset,
   dragBounds,
   onDragStart,
@@ -213,6 +359,7 @@ function BranchCardView({
   label: string;
   hint?: string;
   style: React.CSSProperties;
+  toneVariant: "red" | "pink";
   dragOffset: { x: number; y: number };
   dragBounds: { left: number; right: number; top: number; bottom: number };
   onDragStart?: () => void;
@@ -220,6 +367,12 @@ function BranchCardView({
   onDragEnd: (delta: { x: number; y: number }) => void;
   nodeRef?: (node: HTMLDivElement | null) => void;
 }) {
+  const toneClass =
+    toneVariant === "red"
+      ? "border-rose-700/70 bg-rose-900/20 hover:border-rose-700/85"
+      : "border-pink-300 bg-pink-100 hover:border-pink-400";
+  const titleTone = toneVariant === "red" ? "text-rose-900/86" : "text-pink-900/80";
+  const hintTone = toneVariant === "red" ? "text-rose-900/68" : "text-pink-900/60";
   return (
     <motion.div
       ref={nodeRef}
@@ -231,10 +384,10 @@ function BranchCardView({
       onDrag={(_, info) => onDrag?.({ x: info.offset.x, y: info.offset.y })}
       onDragEnd={(_, info) => onDragEnd({ x: info.offset.x, y: info.offset.y })}
       style={{ ...style, x: dragOffset.x, y: dragOffset.y }}
-      className="absolute -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-xl border border-theme-subtle bg-surface-1/92 px-3 py-2 shadow-[0_14px_36px_-20px_rgba(88,74,130,0.42)] backdrop-blur-sm transition-colors hover:border-theme-strong active:cursor-grabbing min-w-[118px] max-w-[190px]"
+      className={`absolute -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-xl border px-3 py-2 shadow-[0_14px_36px_-20px_rgba(88,74,130,0.42)] backdrop-blur-sm transition-colors active:cursor-grabbing min-w-[118px] max-w-[190px] ${toneClass}`}
     >
-      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--accent-strong)] whitespace-nowrap">{label}</div>
-      {hint ? <div className="mt-0.5 text-[11px] leading-snug text-theme-4 break-keep">{hint}</div> : null}
+      <div className={`text-[10px] font-semibold uppercase tracking-[0.12em] whitespace-nowrap ${titleTone}`}>{label}</div>
+      {hint ? <div className={`mt-0.5 text-[11px] leading-snug break-keep ${hintTone}`}>{hint}</div> : null}
     </motion.div>
   );
 }
@@ -248,6 +401,7 @@ function ArrowOverlay({
   activeNodeId,
   interactionLevel,
   scrollProgress,
+  retreatProgressByCard,
 }: {
   blockId: string;
   segments: ArrowSegment[];
@@ -257,10 +411,10 @@ function ArrowOverlay({
   activeNodeId: string | null;
   interactionLevel: number;
   scrollProgress: number;
+  retreatProgressByCard: Record<string, number>;
 }) {
   if (segments.length === 0 || width <= 0 || height <= 0) return null;
   const markerId = `card-arrow-overlay-${blockId}-${direction}`;
-  const gradientId = `card-arrow-grad-${blockId}-${direction}`;
   return (
     <svg
       className="pointer-events-none absolute inset-0 z-40"
@@ -271,38 +425,41 @@ function ArrowOverlay({
       aria-hidden
       style={{ overflow: "visible" }}
     >
-      <defs>
-        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="rgba(76,65,118,0.28)" />
-          <stop offset="45%" stopColor="rgba(101,87,151,0.9)" />
-          <stop offset="100%" stopColor="rgba(66,55,104,0.38)" />
-          <animateTransform attributeName="gradientTransform" type="translate" values="-0.45 0;0.45 0;-0.45 0" dur="4.8s" repeatCount="indefinite" />
-        </linearGradient>
-        <marker
-          id={markerId}
-          viewBox="0 0 12 12"
-          refX="10"
-          refY="6"
-          markerWidth="7.6"
-          markerHeight="7.6"
-          orient="auto"
-        >
-          <path d="M 0 0 L 12 6 L 0 12 z" fill="rgba(68,57,106,1)" />
-        </marker>
-      </defs>
       {segments.map((seg, index) => {
-        const dx = seg.endX - seg.startX;
-        const dy = seg.endY - seg.startY;
+        const segFade = clamp(
+          Math.max(
+            retreatProgressByCard[seg.sourceId ?? ""] ?? 0,
+            retreatProgressByCard[seg.targetId ?? ""] ?? 0,
+          ),
+          0,
+          1,
+        );
+        const visibleRatio = clamp(1 - segFade, 0, 1);
+        if (visibleRatio <= 0.001) return null;
+        const liveEndX = seg.startX + (seg.endX - seg.startX) * visibleRatio;
+        const liveEndY = seg.startY + (seg.endY - seg.startY) * visibleRatio;
+        const dx = liveEndX - seg.startX;
+        const dy = liveEndY - seg.startY;
         const span = Math.abs(dx);
         const curvature = clamp(span * 0.23, 38, 152);
         const sway = clamp(Math.abs(dy) * 0.22, 0, 32) * (dy >= 0 ? 1 : -1);
         const c1x = seg.startX + (dx >= 0 ? curvature : -curvature);
-        const c2x = seg.endX - (dx >= 0 ? curvature : -curvature);
+        const c2x = liveEndX - (dx >= 0 ? curvature : -curvature);
         const c1y = seg.startY + sway * 0.5;
-        const c2y = seg.endY - sway * 0.5;
-        const d = `M ${seg.startX.toFixed(2)} ${seg.startY.toFixed(2)} C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${seg.endX.toFixed(2)} ${seg.endY.toFixed(2)}`;
+        const c2y = liveEndY - sway * 0.5;
+        const d = `M ${seg.startX.toFixed(2)} ${seg.startY.toFixed(2)} C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${liveEndX.toFixed(2)} ${liveEndY.toFixed(2)}`;
         const scrollBin = Math.floor(scrollProgress * 6);
         const styleGroup = (Math.floor(index / 2) + scrollBin) % 6;
+        const hueGroup = index % 4;
+        const palette =
+          hueGroup === 0
+            ? { base: "rgba(67,94,129,0.42)", core: "rgba(104,136,178,0.9)", glow: "rgba(160,199,232,0.74)", dash: "rgba(227,241,252,0.95)" }
+            : hueGroup === 1
+              ? { base: "rgba(91,78,122,0.42)", core: "rgba(137,119,171,0.9)", glow: "rgba(196,181,230,0.74)", dash: "rgba(236,230,252,0.95)" }
+              : hueGroup === 2
+                ? { base: "rgba(108,89,61,0.42)", core: "rgba(162,136,95,0.9)", glow: "rgba(222,198,154,0.74)", dash: "rgba(246,235,209,0.95)" }
+                : { base: "rgba(68,102,87,0.42)", core: "rgba(106,154,132,0.9)", glow: "rgba(163,211,189,0.74)", dash: "rgba(227,246,237,0.95)" };
+        const markerIdForSeg = `${markerId}-${index}`;
         const related = !!activeNodeId && (seg.sourceId === activeNodeId || seg.targetId === activeNodeId || seg.id.includes(activeNodeId));
         const focusBoost = related ? 1 : 0;
         const attenuate = activeNodeId && !related ? 0.34 : 1;
@@ -319,20 +476,24 @@ function ArrowOverlay({
         const wheelPulseOffsetB = -((scrollProgress * 380 + index * 35) % 340);
         return (
           <g key={seg.id}>
-            <path d={d} stroke="rgba(68,57,106,0.42)" strokeWidth={5.8 + focusBoost * 1.4} strokeLinecap="round" opacity={0.2 + overlayOpacity * 0.58} />
-            <path d={d} stroke={`url(#${gradientId})`} strokeWidth={coreStroke + focusBoost * 0.7} strokeLinecap="round" markerEnd={`url(#${markerId})`} opacity={0.62 + focusBoost * 0.36} />
-            <path d={d} stroke="rgba(164,150,234,0.72)" strokeWidth="2" strokeLinecap="round" opacity="0.45">
+            <defs>
+              <marker id={markerIdForSeg} viewBox="0 0 12 12" refX="10" refY="6" markerWidth="7.6" markerHeight="7.6" orient="auto">
+                <path d="M 0 0 L 12 6 L 0 12 z" fill={palette.core} />
+              </marker>
+            </defs>
+            <path d={d} stroke={palette.base} strokeWidth={5.8 + focusBoost * 1.4} strokeLinecap="round" opacity={0.2 + overlayOpacity * 0.58} />
+            <path d={d} stroke={palette.core} strokeWidth={coreStroke + focusBoost * 0.7} strokeLinecap="round" opacity={0.62 + focusBoost * 0.36} />
+            <path d={d} stroke={palette.glow} strokeWidth="2" strokeLinecap="round" opacity="0.45">
               <animate attributeName="opacity" values={related ? "0.45;1;0.45" : "0.18;0.58;0.18"} dur={`${pulseDuration}s`} repeatCount="indefinite" />
               <animate attributeName="stroke-width" values={related ? "2;3.2;2" : "1.4;2.2;1.4"} dur={`${pulseDuration}s`} repeatCount="indefinite" />
             </path>
             <path
               d={d}
-              stroke="rgba(235,231,255,0.95)"
+              stroke={palette.dash}
               strokeWidth={1.65 + focusBoost * 0.9}
               strokeLinecap="round"
               strokeDasharray={dashPattern}
               strokeDashoffset="0"
-              markerEnd={`url(#${markerId})`}
               opacity={overlayOpacity}
             >
               <animate attributeName="stroke-dashoffset" values={`0;${dashDrift}`} dur={`${Math.max(0.38, flowDuration)}s`} repeatCount="indefinite" />
@@ -340,13 +501,14 @@ function ArrowOverlay({
             </path>
             <path
               d={d}
-              stroke="rgba(255,255,255,0.92)"
+              stroke="rgba(255,255,255,0.88)"
               strokeWidth={1 + focusBoost * 0.45}
               strokeLinecap="round"
               strokeDasharray="14 280"
               strokeDashoffset={wheelPulseOffset}
               opacity={(0.2 + scrollProgress * 0.45 + focusBoost * 0.18) * attenuate}
             />
+            <path d={d} stroke="rgba(0,0,0,0)" strokeWidth={Math.max(coreStroke + 0.8 + focusBoost * 0.4, 2.8)} strokeLinecap="round" markerEnd={`url(#${markerIdForSeg})`} />
           </g>
         );
       })}
@@ -362,6 +524,7 @@ function BranchArrowOverlay({
   activeNodeId,
   interactionLevel,
   scrollProgress,
+  retreatProgressByCard,
 }: {
   blockId: string;
   segments: ArrowSegment[];
@@ -370,10 +533,10 @@ function BranchArrowOverlay({
   activeNodeId: string | null;
   interactionLevel: number;
   scrollProgress: number;
+  retreatProgressByCard: Record<string, number>;
 }) {
   if (segments.length === 0 || width <= 0 || height <= 0) return null;
   const markerId = `branch-arrow-overlay-${blockId}`;
-  const gradientId = `branch-arrow-grad-${blockId}`;
   return (
     <svg
       className="pointer-events-none absolute inset-0 z-50"
@@ -384,27 +547,28 @@ function BranchArrowOverlay({
       aria-hidden
       style={{ overflow: "visible" }}
     >
-      <defs>
-        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="rgba(125,108,182,0.12)" />
-          <stop offset="38%" stopColor="rgba(121,99,198,0.88)" />
-          <stop offset="100%" stopColor="rgba(94,75,160,0.28)" />
-          <animateTransform attributeName="gradientTransform" type="translate" values="-0.55 0;0.55 0;-0.55 0" dur="3.9s" repeatCount="indefinite" />
-        </linearGradient>
-        <marker id={markerId} viewBox="0 0 12 12" refX="10" refY="6" markerWidth="6.6" markerHeight="6.6" orient="auto">
-          <path d="M 0 0 L 12 6 L 0 12 z" fill="rgba(88,74,130,0.96)" />
-        </marker>
-      </defs>
       {segments.map((seg, index) => {
-        const dx = seg.endX - seg.startX;
-        const dy = seg.endY - seg.startY;
+        const segFade = clamp(
+          Math.max(
+            retreatProgressByCard[seg.sourceId ?? ""] ?? 0,
+            retreatProgressByCard[seg.targetId ?? ""] ?? 0,
+          ),
+          0,
+          1,
+        );
+        const visibleRatio = clamp(1 - segFade, 0, 1);
+        if (visibleRatio <= 0.001) return null;
+        const liveEndX = seg.startX + (seg.endX - seg.startX) * visibleRatio;
+        const liveEndY = seg.startY + (seg.endY - seg.startY) * visibleRatio;
+        const dx = liveEndX - seg.startX;
+        const dy = liveEndY - seg.startY;
         const curve = clamp(Math.abs(dx) * 0.24, 20, 70);
         const twist = clamp(Math.abs(dy) * 0.16, 0, 16) * (dy >= 0 ? 1 : -1);
         const c1x = seg.startX + (dx >= 0 ? curve : -curve);
-        const c2x = seg.endX - (dx >= 0 ? curve : -curve);
+        const c2x = liveEndX - (dx >= 0 ? curve : -curve);
         const c1y = seg.startY + twist * 0.45;
-        const c2y = seg.endY - twist * 0.45;
-        const d = `M ${seg.startX.toFixed(2)} ${seg.startY.toFixed(2)} C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${seg.endX.toFixed(2)} ${seg.endY.toFixed(2)}`;
+        const c2y = liveEndY - twist * 0.45;
+        const d = `M ${seg.startX.toFixed(2)} ${seg.startY.toFixed(2)} C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${liveEndX.toFixed(2)} ${liveEndY.toFixed(2)}`;
         const scrollBin = Math.floor(scrollProgress * 5);
         const styleGroup = (Math.floor(index / 3) + scrollBin) % 5;
         const related = !!activeNodeId && (seg.sourceId === activeNodeId || seg.targetId === activeNodeId || seg.id.includes(activeNodeId));
@@ -413,23 +577,30 @@ function BranchArrowOverlay({
         const dashPattern = styleGroup === 0 ? "8 11" : styleGroup === 1 ? "3 8" : styleGroup === 2 ? "10 8 3 8" : styleGroup === 3 ? "2 7" : "14 9";
         const dashDrift = styleGroup === 1 || styleGroup === 3 ? 64 : -72;
         const wheelPulseOffset = -((scrollProgress * 200 + index * 19) % 250);
+        const markerIdForSeg = `${markerId}-${index}`;
         return (
           <g key={seg.id}>
-            <path d={d} stroke="rgba(88,74,130,0.3)" strokeWidth={3.1 + (related ? 1.2 : 0)} strokeLinecap="round" opacity={0.4 * attenuate} />
-            <path d={d} stroke={`url(#${gradientId})`} strokeWidth={2.15 + (related ? 0.5 : 0)} strokeLinecap="round" markerEnd={`url(#${markerId})`} opacity={0.65 + (related ? 0.3 : 0)} />
-            <path d={d} stroke="rgba(228,220,255,0.92)" strokeWidth={1.05 + (related ? 0.45 : 0)} strokeLinecap="round" strokeDasharray={dashPattern} markerEnd={`url(#${markerId})`} opacity={attenuate}>
+            <defs>
+              <marker id={markerIdForSeg} viewBox="0 0 12 12" refX="10" refY="6" markerWidth="6.6" markerHeight="6.6" orient="auto">
+                <path d="M 0 0 L 12 6 L 0 12 z" fill="rgba(161,112,101,0.9)" />
+              </marker>
+            </defs>
+            <path d={d} stroke="rgba(116,77,70,0.32)" strokeWidth={3.1 + (related ? 1.2 : 0)} strokeLinecap="round" opacity={0.4 * attenuate} />
+            <path d={d} stroke="rgba(161,112,101,0.9)" strokeWidth={2.15 + (related ? 0.5 : 0)} strokeLinecap="round" opacity={0.65 + (related ? 0.3 : 0)} />
+            <path d={d} stroke="rgba(242,221,216,0.92)" strokeWidth={1.05 + (related ? 0.45 : 0)} strokeLinecap="round" strokeDasharray={dashPattern} opacity={attenuate}>
               <animate attributeName="stroke-dashoffset" values={`0;${dashDrift}`} dur={`${Math.max(0.34, branchFlow)}s`} repeatCount="indefinite" />
               <animate attributeName="opacity" values={related ? "0.35;1;0.35" : "0.1;0.72;0.1"} dur={styleGroup === 2 ? "0.72s" : styleGroup === 4 ? "0.62s" : "0.95s"} repeatCount="indefinite" />
             </path>
             <path
               d={d}
-              stroke="rgba(255,244,214,0.95)"
+              stroke="rgba(245,228,196,0.96)"
               strokeWidth="0.8"
               strokeLinecap="round"
               strokeDasharray="10 260"
               strokeDashoffset={wheelPulseOffset}
               opacity={(0.16 + scrollProgress * 0.42) * attenuate}
             />
+            <path d={d} stroke="rgba(0,0,0,0)" strokeWidth={2.6 + (related ? 0.5 : 0)} strokeLinecap="round" markerEnd={`url(#${markerIdForSeg})`} />
           </g>
         );
       })}
@@ -495,11 +666,6 @@ function ConnectorLayer({
       aria-hidden
     >
       <defs>
-        <linearGradient id={`${markerId}-stroke`} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="rgba(90,76,127,0.40)" />
-          <stop offset="45%" stopColor="rgba(90,76,127,0.78)" />
-          <stop offset="100%" stopColor="rgba(90,76,127,1)" />
-        </linearGradient>
         <marker
           id={markerId}
           viewBox="0 0 12 12"
@@ -516,7 +682,7 @@ function ConnectorLayer({
         <g key={seg.id}>
           <path
             d={seg.d}
-            stroke={`url(#${markerId}-stroke)`}
+            stroke="rgba(90,76,127,0.78)"
             strokeWidth="3.6"
             strokeLinecap="round"
             markerEnd={`url(#${markerId})`}
@@ -537,17 +703,8 @@ export function ScrollLinkedCardsBlockSection({
   const sectionRef = useRef<HTMLElement | null>(null);
   const stageSize = useElementSize<HTMLDivElement>();
   const [dragOffsets, setDragOffsets] = useState<Record<string, { x: number; y: number }>>({});
-  const [branchDragOffsets, setBranchDragOffsets] = useState<Record<string, { x: number; y: number }>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const raw = window.localStorage.getItem(`s2g-branch-offsets:${block.id}`);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw) as Record<string, { x: number; y: number }>;
-      return parsed ?? {};
-    } catch {
-      return {};
-    }
-  });
+  const [branchDragOffsets, setBranchDragOffsets] = useState<Record<string, { x: number; y: number }>>({});
+  const [branchOffsetsReady, setBranchOffsetsReady] = useState(false);
   const dragStartOffsetsRef = useRef<Record<string, { x: number; y: number }>>({});
   const branchDragStartOffsetsRef = useRef<Record<string, { x: number; y: number }>>({});
   const cardNodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -556,16 +713,37 @@ export function ScrollLinkedCardsBlockSection({
   const [branchRects, setBranchRects] = useState<Record<string, NodeRect>>({});
   const [activeDragNodeId, setActiveDragNodeId] = useState<string | null>(null);
   const [rawProgress, setRawProgress] = useState(0);
+  const [progressVelocity, setProgressVelocity] = useState(0);
   const lockedProgressRef = useRef(0);
+  const prevProgressRef = useRef<number | null>(null);
+  const prevProgressTsRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(`s2g-branch-offsets:${block.id}`);
+      if (!raw) {
+        setBranchDragOffsets({});
+        setBranchOffsetsReady(true);
+        return;
+      }
+      const parsed = JSON.parse(raw) as Record<string, { x: number; y: number }>;
+      setBranchDragOffsets(parsed ?? {});
+    } catch {
+      setBranchDragOffsets({});
+    } finally {
+      setBranchOffsetsReady(true);
+    }
+  }, [block.id]);
 
   useLayoutEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !branchOffsetsReady) return;
     try {
       window.localStorage.setItem(`s2g-branch-offsets:${block.id}`, JSON.stringify(branchDragOffsets));
     } catch {
       // ignore write failures (private mode / quota)
     }
-  }, [block.id, branchDragOffsets]);
+  }, [block.id, branchDragOffsets, branchOffsetsReady]);
 
   const { scrollYProgress } = useScroll({
     container: rootRef,
@@ -577,7 +755,7 @@ export function ScrollLinkedCardsBlockSection({
   const directionSign = block.direction === "left" ? -1 : 1;
   const cardCount = block.cards.length;
   const expectedArrowCount = Math.max(0, cardCount - 1);
-  const cardGap = 560;
+  const cardGap = 750;
   const cardOffsets = useMemo(() => {
     if (cardCount <= 0) return [];
     const progressive: number[] = new Array(cardCount).fill(0);
@@ -587,7 +765,10 @@ export function ScrollLinkedCardsBlockSection({
       progressive[i] = progressive[i - 1]! + cardGap * spacingMultiplier;
     }
     const mid = (cardCount - 1) / 2;
-    const center = progressive[Math.round(mid)] ?? 0;
+    // 偶数张卡时，中心应该落在“中间两张”的几何中点，避免整体偏移。
+    const lower = progressive[Math.floor(mid)] ?? 0;
+    const upper = progressive[Math.ceil(mid)] ?? lower;
+    const center = (lower + upper) / 2;
     return progressive.map((x) => x - center);
   }, [cardCount, cardGap]);
   const centerSpan = useMemo(() => {
@@ -597,6 +778,16 @@ export function ScrollLinkedCardsBlockSection({
     return Math.max(Math.abs(first), Math.abs(last));
   }, [cardOffsets]);
   useMotionValueEvent(scrollYProgress, "change", (value) => {
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const prevValue = prevProgressRef.current;
+    const prevTs = prevProgressTsRef.current;
+    if (prevValue != null && prevTs != null) {
+      const dt = Math.max(1, now - prevTs);
+      const v = (value - prevValue) / dt;
+      setProgressVelocity((old) => old * 0.72 + v * 0.28);
+    }
+    prevProgressRef.current = value;
+    prevProgressTsRef.current = now;
     setRawProgress(value);
   });
   const progress = clamp(rawProgress, 0, 1);
@@ -649,12 +840,9 @@ export function ScrollLinkedCardsBlockSection({
     });
   }, [block.cards]);
   const cardSizeVariants = useMemo(() => {
-    const mid = (cardCount - 1) / 2;
-    return block.cards.map((_, index) => {
-      const distanceFromCenter = Math.abs(index - Math.round(mid));
-      return distanceFromCenter === 0 ? "lg" : distanceFromCenter === 1 ? "md" : "sm";
-    });
-  }, [block.cards, cardCount]);
+    // 统一最大尺寸：所有主卡都用 lg，避免滚动过程中出现大小层级变化。
+    return block.cards.map(() => "lg");
+  }, [block.cards]);
   const cardWidthPx = (variant: "sm" | "md" | "lg") => {
     const viewportWidth = stageSize.size.width > 0 ? stageSize.size.width : 1440;
     if (variant === "lg") return Math.min(34.5 * 16, viewportWidth * 0.9);
@@ -763,26 +951,18 @@ export function ScrollLinkedCardsBlockSection({
                   {block.title}
                 </h2>
                 <span
-                  className="hidden h-px w-10 shrink-0 bg-gradient-to-r from-[color:var(--accent)]/55 to-transparent md:block"
+                  className="hidden h-px w-10 shrink-0 bg-[color:var(--accent)]/55 md:block"
                   aria-hidden
                 />
-                <p className="min-w-0 flex-1 text-sm leading-relaxed text-theme-3 md:truncate md:text-base">
+                <p className="min-w-0 flex-1 text-sm leading-relaxed text-theme-3 md:text-base">
                   {block.description}
                 </p>
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
               <span className="rounded-full border border-theme-subtle bg-surface-2/70 px-3 py-1.5 text-xs font-medium text-theme-3">
-                {cardCount} cards / {expectedArrowCount} arrows
+                {cardCount} steps
               </span>
-              {block.cards.slice(0, 3).map((c) => (
-                <span
-                  key={c.id}
-                  className="rounded-full border border-theme-subtle bg-surface-2/70 px-3 py-1.5 text-xs font-medium text-theme-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
-                >
-                  {c.title}
-                </span>
-              ))}
             </div>
           </div>
         </div>
@@ -791,11 +971,11 @@ export function ScrollLinkedCardsBlockSection({
         <div className="relative mt-8">
           <div
             ref={stageSize.register}
-            className="relative left-1/2 h-[72vh] w-screen -translate-x-1/2 overflow-hidden bg-[radial-gradient(ellipse_70%_55%_at_50%_40%,rgba(124,111,154,0.12),transparent_62%)]"
+            className="relative left-1/2 h-[72vh] w-screen -translate-x-1/2 overflow-hidden bg-surface-1/70"
           >
             <div style={{ opacity: glow }} className="pointer-events-none absolute inset-0 z-0">
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_55%_60%_at_60%_40%,rgba(124,111,154,0.18),transparent_70%)]" />
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_40%_55%_at_15%_60%,rgba(56,189,248,0.10),transparent_60%)]" />
+              <div className="absolute inset-0 bg-violet-100/20" />
+              <div className="absolute inset-0 bg-sky-50/26" />
             </div>
 
             {(() => {
@@ -803,45 +983,86 @@ export function ScrollLinkedCardsBlockSection({
               const stageH = stageSize.size.height;
               const stageCenterX = stageW * 0.5;
               const stageCenterY = stageH * 0.5;
+              const stageShiftX = -96;
+              const stageShiftY = -140;
+              const retreatStart = 0.58;
+              const retreatT = clamp((stableProgress - retreatStart) / 0.32, 0, 1);
+              const retreatEase = smoothstep01(retreatT);
               const cardsLayout = block.cards.map((card, index) => {
                 const mid = (cardCount - 1) / 2;
+                const isLastCard = index === cardCount - 1;
                 const rawBaseX = (cardOffsets[index] ?? (index - mid) * cardGap) + scrollShift;
-                const laneSign = index % 2 === 0 ? -1 : 1;
-                // 收紧中心阅读带：只有更接近舞台中心的卡片才被认为是“主阅读卡”。
+                // 轮播模型：所有卡片保持相对间距，只做整组平移。
                 const centerDistance = stageW > 0 ? Math.abs(rawBaseX) / (stageW * 0.5) : 1;
                 const focus = 1 - clamp(centerDistance, 0, 1);
-                const orbit = Math.sin(stableProgress * Math.PI * 2 + index * 0.82);
-                const laneArcY = laneSign * (1 - focus) * 48 + orbit * (8 + (index % 3) * 4);
-                // 中央阅读区强锁定：焦点高时几乎不施加额外逃逸。
-                const centerLock = focus > 0.58 ? 0 : 1;
-                const edgeFactor = Math.pow(1 - focus, 1.7) * centerLock;
-                // 边缘增强：不只左右离场，而是斜向/上下也参与。
-                const escapeXSign = block.direction === "right" ? (index % 3 === 0 ? 1 : -1) : (index % 3 === 0 ? -1 : 1);
-                const escapeX = escapeXSign * edgeFactor * (74 + (index % 4) * 30);
-                const escapeY = ((index % 5) - 2) * edgeFactor * 30 + laneSign * edgeFactor * 42;
-                // 非主阅读卡增加“快速离场”推进，减少在中心附近滞留导致的遮挡。
-                const awaySign = Math.sign(rawBaseX || (index % 2 === 0 ? -1 : 1));
-                const bypassX = awaySign * Math.pow(1 - focus, 1.15) * (96 + (index % 3) * 22);
-                const baseX = rawBaseX + escapeX + bypassX;
-                const baseY = (cardYs[index] ?? 0) + laneArcY + escapeY;
-                const drag = dragOffsets[card.id] ?? { x: 0, y: 0 };
+                const baseX = isLastCard ? rawBaseX * (1 - retreatEase) : rawBaseX;
+                const baseY = 0;
+                const renderBaseX = baseX + stageShiftX;
                 const sizeVariant: "sm" | "md" | "lg" = cardSizeVariants[index] ?? "sm";
                 const width = cardWidthPx(sizeVariant);
+                const isSecondCard = index === 1 || card.id.includes("clean");
+                const isThirdCard = index === 2 || card.id.includes("graph");
+                // 几何触发：当卡片右边缘到达屏幕中线时开始退场。
+                // rightEdgeX = stageCenterX + renderBaseX + width/2
+                // 触发条件：rightEdgeX <= stageCenterX  <=>  renderBaseX + width/2 <= 0
+                const edgeCross = -(renderBaseX + width * 0.5);
+                const edgeRetreatT = clamp(edgeCross / (stageW * 0.58), 0, 1);
+                const edgeRetreatEase = smoothstep01(edgeRetreatT);
+                // 每张卡独立计算第二阶段门控，避免全局都被“第二张卡的时机”绑死。
+                const localTriggerRaw = edgeCross / Math.max(1, stageW * 0.2);
+                // 阶段1：箭头先缩短到 0。
+                const arrowShrinkRaw = (localTriggerRaw - 1.44) / 0.62;
+                const localArrowShrink = clamp(arrowShrinkRaw, 0, 1);
+                // 阶段2：严格在阶段1完成后才启动（arrowShrinkRaw >= 1）。
+                const localPhase2T = clamp((arrowShrinkRaw - 1) / 0.86, 0, 1);
+                const localPhase2Ease = smoothstep01(localPhase2T);
+                const verticalExitProgress = edgeRetreatEase * localPhase2Ease;
+                const exitY =
+                  cardCount >= 4
+                    ? isSecondCard
+                      ? -stageH * 1.45 * verticalExitProgress
+                      : isThirdCard
+                        ? stageH * 1.2 * verticalExitProgress
+                        : 0
+                    : 0;
+                const renderBaseY = baseY + stageShiftY + exitY;
+                const drag = dragOffsets[card.id] ?? { x: 0, y: 0 };
                 const approxHeight = sizeVariant === "lg" ? 300 : sizeVariant === "md" ? 276 : 252;
                 const baseArea = Math.max(1, width * approxHeight);
                 const stageArea = Math.max(1, stageW * stageH);
                 // 主要阅读卡在中心时目标占据舞台约 35% 面积。
                 const centerTargetScale = clamp(Math.sqrt((stageArea * 0.35) / baseArea), 1, 2.05);
-                const visualScale = 0.62 + focus * (centerTargetScale - 0.62);
+                const visualScale = 1;
                 const visualRotate = 0;
-                // 边缘卡更快淡出，中心卡保持最高可读性。
-                const visualOpacity = 0.24 + Math.pow(focus, 1.25) * 0.76;
-                const centerX = stageCenterX + baseX + drag.x;
-                const centerY = stageCenterY + baseY + drag.y;
-                const anchorX = stageCenterX + baseX;
-                const anchorY = stageCenterY + baseY;
-                return { card, index, baseX, baseY, drag, sizeVariant, width, centerX, centerY, anchorX, anchorY, focus, visualScale, visualRotate, visualOpacity };
+                // 只保留轻量聚焦透明度，不影响相对位置与速度关系。
+                const visualOpacity = clamp(0.22 + focus * 0.78, 0.22, 1);
+                const centerX = stageCenterX + renderBaseX + drag.x;
+                const centerY = stageCenterY + renderBaseY + drag.y;
+                const anchorX = stageCenterX + renderBaseX;
+                const anchorY = stageCenterY + renderBaseY;
+                return {
+                  card,
+                  index,
+                  baseX: renderBaseX,
+                  baseY: renderBaseY,
+                  drag,
+                  sizeVariant,
+                  width,
+                  centerX,
+                  centerY,
+                  anchorX,
+                  anchorY,
+                  focus,
+                  retreatProgress: localArrowShrink,
+                  visualScale,
+                  visualRotate,
+                  visualOpacity,
+                };
               });
+              const retreatProgressByCard = cardsLayout.reduce<Record<string, number>>((acc, item) => {
+                acc[item.card.id] = item.retreatProgress;
+                return acc;
+              }, {});
               const peakFocus = cardsLayout.reduce((max, item) => Math.max(max, item.focus), 0);
               // 没有主阅读卡时，收起连线，避免舞台中部出现“悬空横线”。
               const showConnectors = peakFocus > 0.12;
@@ -1023,6 +1244,7 @@ export function ScrollLinkedCardsBlockSection({
                     activeNodeId={activeDragNodeId}
                     interactionLevel={interactionLevel}
                     scrollProgress={stableProgress}
+                    retreatProgressByCard={retreatProgressByCard}
                   />
                   <BranchArrowOverlay
                     blockId={block.id}
@@ -1032,6 +1254,7 @@ export function ScrollLinkedCardsBlockSection({
                     activeNodeId={activeDragNodeId}
                     interactionLevel={interactionLevel}
                     scrollProgress={stableProgress}
+                    retreatProgressByCard={retreatProgressByCard}
                   />
                   <div className="absolute inset-0 z-20">
                     {cardsLayout.map((item) => (
@@ -1057,11 +1280,17 @@ export function ScrollLinkedCardsBlockSection({
                           rotate: item.visualRotate,
                         }}
                         dragBounds={{
-                          // 允许拖到视口外一部分（大约 42% 卡宽 + 一点上下余量）
+                          // 横向仍保留部分越界余量；纵向下界放开到贴近屏幕底端。
                           left: -(item.width * 0.42),
                           right: item.width * 0.42,
                           top: -180,
-                          bottom: 180,
+                          bottom: Math.max(
+                            180,
+                            stageH * 0.5 -
+                              item.baseY -
+                              (item.sizeVariant === "lg" ? 150 : item.sizeVariant === "md" ? 138 : 126) * item.visualScale -
+                              4,
+                          ),
                         }}
                         dragOffset={item.drag}
                         onDragStart={() => {
@@ -1090,11 +1319,12 @@ export function ScrollLinkedCardsBlockSection({
                         }}
                       />
                     ))}
-                    {branchLayouts.map((branchNode) => (
+                    {branchLayouts.map((branchNode, branchIndex) => (
                       <BranchCardView
                         key={branchNode.key}
                         label={branchNode.branch.label}
                         hint={branchNode.branch.hint}
+                        toneVariant={branchIndex % 2 === 0 ? "red" : "pink"}
                         nodeRef={(node) => {
                           branchNodeRefs.current[branchNode.key] = node;
                         }}
@@ -1143,10 +1373,10 @@ export function ScrollLinkedCardsBlockSection({
             })()}
 
             {/* 边缘遮罩：保留“从边缘拉出来”的质感 */}
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-20 bg-gradient-to-b from-[var(--page-bg)] via-[var(--page-bg)]/60 to-transparent" />
-            <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-[min(12vw,7rem)] bg-gradient-to-r from-[var(--page-bg)] via-[var(--page-bg)]/55 to-transparent" />
-            <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-[min(12vw,7rem)] bg-gradient-to-l from-[var(--page-bg)] via-[var(--page-bg)]/55 to-transparent" />
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-44 bg-gradient-to-t from-[var(--page-bg)] via-[var(--page-bg)]/55 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-20 bg-[var(--page-bg)]/70" />
+            <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-[min(12vw,7rem)] bg-[var(--page-bg)]/65" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-[min(12vw,7rem)] bg-[var(--page-bg)]/65" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-44 bg-[var(--page-bg)]/65" />
           </div>
         </div>
       </div>
