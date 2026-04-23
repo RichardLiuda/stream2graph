@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion, useMotionValueEvent, useScroll } from "framer-motion";
 
 type LinkedCardTone = "paper" | "note" | "code" | "chip";
@@ -401,6 +401,7 @@ function ArrowOverlay({
   activeNodeId,
   interactionLevel,
   scrollProgress,
+  retreatProgressByCard,
 }: {
   blockId: string;
   segments: ArrowSegment[];
@@ -410,6 +411,7 @@ function ArrowOverlay({
   activeNodeId: string | null;
   interactionLevel: number;
   scrollProgress: number;
+  retreatProgressByCard: Record<string, number>;
 }) {
   if (segments.length === 0 || width <= 0 || height <= 0) return null;
   const markerId = `card-arrow-overlay-${blockId}-${direction}`;
@@ -424,16 +426,28 @@ function ArrowOverlay({
       style={{ overflow: "visible" }}
     >
       {segments.map((seg, index) => {
-        const dx = seg.endX - seg.startX;
-        const dy = seg.endY - seg.startY;
+        const segFade = clamp(
+          Math.max(
+            retreatProgressByCard[seg.sourceId ?? ""] ?? 0,
+            retreatProgressByCard[seg.targetId ?? ""] ?? 0,
+          ),
+          0,
+          1,
+        );
+        const visibleRatio = clamp(1 - segFade, 0, 1);
+        if (visibleRatio <= 0.001) return null;
+        const liveEndX = seg.startX + (seg.endX - seg.startX) * visibleRatio;
+        const liveEndY = seg.startY + (seg.endY - seg.startY) * visibleRatio;
+        const dx = liveEndX - seg.startX;
+        const dy = liveEndY - seg.startY;
         const span = Math.abs(dx);
         const curvature = clamp(span * 0.23, 38, 152);
         const sway = clamp(Math.abs(dy) * 0.22, 0, 32) * (dy >= 0 ? 1 : -1);
         const c1x = seg.startX + (dx >= 0 ? curvature : -curvature);
-        const c2x = seg.endX - (dx >= 0 ? curvature : -curvature);
+        const c2x = liveEndX - (dx >= 0 ? curvature : -curvature);
         const c1y = seg.startY + sway * 0.5;
-        const c2y = seg.endY - sway * 0.5;
-        const d = `M ${seg.startX.toFixed(2)} ${seg.startY.toFixed(2)} C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${seg.endX.toFixed(2)} ${seg.endY.toFixed(2)}`;
+        const c2y = liveEndY - sway * 0.5;
+        const d = `M ${seg.startX.toFixed(2)} ${seg.startY.toFixed(2)} C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${liveEndX.toFixed(2)} ${liveEndY.toFixed(2)}`;
         const scrollBin = Math.floor(scrollProgress * 6);
         const styleGroup = (Math.floor(index / 2) + scrollBin) % 6;
         const hueGroup = index % 4;
@@ -510,6 +524,7 @@ function BranchArrowOverlay({
   activeNodeId,
   interactionLevel,
   scrollProgress,
+  retreatProgressByCard,
 }: {
   blockId: string;
   segments: ArrowSegment[];
@@ -518,6 +533,7 @@ function BranchArrowOverlay({
   activeNodeId: string | null;
   interactionLevel: number;
   scrollProgress: number;
+  retreatProgressByCard: Record<string, number>;
 }) {
   if (segments.length === 0 || width <= 0 || height <= 0) return null;
   const markerId = `branch-arrow-overlay-${blockId}`;
@@ -532,15 +548,27 @@ function BranchArrowOverlay({
       style={{ overflow: "visible" }}
     >
       {segments.map((seg, index) => {
-        const dx = seg.endX - seg.startX;
-        const dy = seg.endY - seg.startY;
+        const segFade = clamp(
+          Math.max(
+            retreatProgressByCard[seg.sourceId ?? ""] ?? 0,
+            retreatProgressByCard[seg.targetId ?? ""] ?? 0,
+          ),
+          0,
+          1,
+        );
+        const visibleRatio = clamp(1 - segFade, 0, 1);
+        if (visibleRatio <= 0.001) return null;
+        const liveEndX = seg.startX + (seg.endX - seg.startX) * visibleRatio;
+        const liveEndY = seg.startY + (seg.endY - seg.startY) * visibleRatio;
+        const dx = liveEndX - seg.startX;
+        const dy = liveEndY - seg.startY;
         const curve = clamp(Math.abs(dx) * 0.24, 20, 70);
         const twist = clamp(Math.abs(dy) * 0.16, 0, 16) * (dy >= 0 ? 1 : -1);
         const c1x = seg.startX + (dx >= 0 ? curve : -curve);
-        const c2x = seg.endX - (dx >= 0 ? curve : -curve);
+        const c2x = liveEndX - (dx >= 0 ? curve : -curve);
         const c1y = seg.startY + twist * 0.45;
-        const c2y = seg.endY - twist * 0.45;
-        const d = `M ${seg.startX.toFixed(2)} ${seg.startY.toFixed(2)} C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${seg.endX.toFixed(2)} ${seg.endY.toFixed(2)}`;
+        const c2y = liveEndY - twist * 0.45;
+        const d = `M ${seg.startX.toFixed(2)} ${seg.startY.toFixed(2)} C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${liveEndX.toFixed(2)} ${liveEndY.toFixed(2)}`;
         const scrollBin = Math.floor(scrollProgress * 5);
         const styleGroup = (Math.floor(index / 3) + scrollBin) % 5;
         const related = !!activeNodeId && (seg.sourceId === activeNodeId || seg.targetId === activeNodeId || seg.id.includes(activeNodeId));
@@ -675,17 +703,8 @@ export function ScrollLinkedCardsBlockSection({
   const sectionRef = useRef<HTMLElement | null>(null);
   const stageSize = useElementSize<HTMLDivElement>();
   const [dragOffsets, setDragOffsets] = useState<Record<string, { x: number; y: number }>>({});
-  const [branchDragOffsets, setBranchDragOffsets] = useState<Record<string, { x: number; y: number }>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const raw = window.localStorage.getItem(`s2g-branch-offsets:${block.id}`);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw) as Record<string, { x: number; y: number }>;
-      return parsed ?? {};
-    } catch {
-      return {};
-    }
-  });
+  const [branchDragOffsets, setBranchDragOffsets] = useState<Record<string, { x: number; y: number }>>({});
+  const [branchOffsetsReady, setBranchOffsetsReady] = useState(false);
   const dragStartOffsetsRef = useRef<Record<string, { x: number; y: number }>>({});
   const branchDragStartOffsetsRef = useRef<Record<string, { x: number; y: number }>>({});
   const cardNodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -694,16 +713,37 @@ export function ScrollLinkedCardsBlockSection({
   const [branchRects, setBranchRects] = useState<Record<string, NodeRect>>({});
   const [activeDragNodeId, setActiveDragNodeId] = useState<string | null>(null);
   const [rawProgress, setRawProgress] = useState(0);
+  const [progressVelocity, setProgressVelocity] = useState(0);
   const lockedProgressRef = useRef(0);
+  const prevProgressRef = useRef<number | null>(null);
+  const prevProgressTsRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(`s2g-branch-offsets:${block.id}`);
+      if (!raw) {
+        setBranchDragOffsets({});
+        setBranchOffsetsReady(true);
+        return;
+      }
+      const parsed = JSON.parse(raw) as Record<string, { x: number; y: number }>;
+      setBranchDragOffsets(parsed ?? {});
+    } catch {
+      setBranchDragOffsets({});
+    } finally {
+      setBranchOffsetsReady(true);
+    }
+  }, [block.id]);
 
   useLayoutEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !branchOffsetsReady) return;
     try {
       window.localStorage.setItem(`s2g-branch-offsets:${block.id}`, JSON.stringify(branchDragOffsets));
     } catch {
       // ignore write failures (private mode / quota)
     }
-  }, [block.id, branchDragOffsets]);
+  }, [block.id, branchDragOffsets, branchOffsetsReady]);
 
   const { scrollYProgress } = useScroll({
     container: rootRef,
@@ -715,7 +755,7 @@ export function ScrollLinkedCardsBlockSection({
   const directionSign = block.direction === "left" ? -1 : 1;
   const cardCount = block.cards.length;
   const expectedArrowCount = Math.max(0, cardCount - 1);
-  const cardGap = 560;
+  const cardGap = 750;
   const cardOffsets = useMemo(() => {
     if (cardCount <= 0) return [];
     const progressive: number[] = new Array(cardCount).fill(0);
@@ -738,6 +778,16 @@ export function ScrollLinkedCardsBlockSection({
     return Math.max(Math.abs(first), Math.abs(last));
   }, [cardOffsets]);
   useMotionValueEvent(scrollYProgress, "change", (value) => {
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const prevValue = prevProgressRef.current;
+    const prevTs = prevProgressTsRef.current;
+    if (prevValue != null && prevTs != null) {
+      const dt = Math.max(1, now - prevTs);
+      const v = (value - prevValue) / dt;
+      setProgressVelocity((old) => old * 0.72 + v * 0.28);
+    }
+    prevProgressRef.current = value;
+    prevProgressTsRef.current = now;
     setRawProgress(value);
   });
   const progress = clamp(rawProgress, 0, 1);
@@ -790,12 +840,9 @@ export function ScrollLinkedCardsBlockSection({
     });
   }, [block.cards]);
   const cardSizeVariants = useMemo(() => {
-    const mid = (cardCount - 1) / 2;
-    return block.cards.map((_, index) => {
-      const distanceFromCenter = Math.abs(index - Math.round(mid));
-      return distanceFromCenter === 0 ? "lg" : distanceFromCenter === 1 ? "md" : "sm";
-    });
-  }, [block.cards, cardCount]);
+    // 统一最大尺寸：所有主卡都用 lg，避免滚动过程中出现大小层级变化。
+    return block.cards.map(() => "lg");
+  }, [block.cards]);
   const cardWidthPx = (variant: "sm" | "md" | "lg") => {
     const viewportWidth = stageSize.size.width > 0 ? stageSize.size.width : 1440;
     if (variant === "lg") return Math.min(34.5 * 16, viewportWidth * 0.9);
@@ -936,65 +983,68 @@ export function ScrollLinkedCardsBlockSection({
               const stageH = stageSize.size.height;
               const stageCenterX = stageW * 0.5;
               const stageCenterY = stageH * 0.5;
+              const stageShiftX = -96;
+              const stageShiftY = -140;
+              const retreatStart = 0.58;
+              const retreatT = clamp((stableProgress - retreatStart) / 0.32, 0, 1);
+              const retreatEase = smoothstep01(retreatT);
               const cardsLayout = block.cards.map((card, index) => {
                 const mid = (cardCount - 1) / 2;
+                const isLastCard = index === cardCount - 1;
                 const rawBaseX = (cardOffsets[index] ?? (index - mid) * cardGap) + scrollShift;
-                const laneSign = index % 2 === 0 ? -1 : 1;
-                // 收紧中心阅读带：只有更接近舞台中心的卡片才被认为是“主阅读卡”。
+                // 轮播模型：所有卡片保持相对间距，只做整组平移。
                 const centerDistance = stageW > 0 ? Math.abs(rawBaseX) / (stageW * 0.5) : 1;
                 const focus = 1 - clamp(centerDistance, 0, 1);
-                // 阅读锁定：主阅读卡在中心时“停住更久”，外围元素继续运动，形成阻尼感。
-                // 阅读卡进入更克制：更晚锁定、锁定爬升更慢，避免“冲进中心”撞车。
-                const readingHold = smoothstep01((focus - 0.58) / 0.34);
-                const heldBaseX = rawBaseX * (1 - readingHold * 0.94);
-                const orbit = Math.sin(stableProgress * Math.PI * 2 + index * 0.82);
-                const laneArcY =
-                  laneSign * (1 - focus) * 48 * (1 - readingHold * 0.84) +
-                  orbit * (8 + (index % 3) * 4) * (1 - readingHold * 0.78);
-                // 中央阅读区强锁定：焦点高时几乎不施加额外逃逸。
-                const centerLock = focus > 0.68 ? 0 : 1;
-                const edgeFactor = Math.pow(1 - focus, 0.94) * centerLock;
-                const holdDampen = 1 - readingHold * 0.92;
-                // 边缘增强：不只左右离场，而是斜向/上下也参与。
-                const escapeXSign = block.direction === "right" ? (index % 3 === 0 ? 1 : -1) : (index % 3 === 0 ? -1 : 1);
-                const escapeX = escapeXSign * edgeFactor * (156 + (index % 4) * 46) * holdDampen;
-                const escapeY = (((index % 5) - 2) * edgeFactor * 48 + laneSign * edgeFactor * 72) * holdDampen;
-                // 非主阅读卡增加“快速离场”推进，减少在中心附近滞留导致的遮挡。
-                const awaySign = Math.sign(rawBaseX || (index % 2 === 0 ? -1 : 1));
-                const firstCardBoost = index === 0 ? 1.42 : 1;
-                const bypassX = awaySign * Math.pow(1 - focus, 0.82) * (248 + (index % 3) * 44) * holdDampen * firstCardBoost;
-                const baseX = heldBaseX + escapeX + bypassX;
-                const baseY = (cardYs[index] ?? 0) + laneArcY + escapeY;
-                // 锁定态把卡片锚点拉回舞台中心，确保“停留位置”在正中。
-                // 验证用：锁定态把卡片拉到左上区域，方便肉眼确认“锁定插值”是否真的生效。
-                // 之后如果确认生效，再把 target 改回 (0,0) 实现居中停留。
-                const targetLockedX = -stageW * 0.19;
-                const targetLockedY = -stageH * 0.14;
-                const lockedBaseX = baseX * (1 - readingHold) + targetLockedX * readingHold;
-                const lockedBaseY = baseY * (1 - readingHold) + targetLockedY * readingHold;
-                const drag = dragOffsets[card.id] ?? { x: 0, y: 0 };
+                const baseX = isLastCard ? rawBaseX * (1 - retreatEase) : rawBaseX;
+                const baseY = 0;
+                const renderBaseX = baseX + stageShiftX;
                 const sizeVariant: "sm" | "md" | "lg" = cardSizeVariants[index] ?? "sm";
                 const width = cardWidthPx(sizeVariant);
+                const isSecondCard = index === 1 || card.id.includes("clean");
+                const isThirdCard = index === 2 || card.id.includes("graph");
+                // 几何触发：当卡片右边缘到达屏幕中线时开始退场。
+                // rightEdgeX = stageCenterX + renderBaseX + width/2
+                // 触发条件：rightEdgeX <= stageCenterX  <=>  renderBaseX + width/2 <= 0
+                const edgeCross = -(renderBaseX + width * 0.5);
+                const edgeRetreatT = clamp(edgeCross / (stageW * 0.58), 0, 1);
+                const edgeRetreatEase = smoothstep01(edgeRetreatT);
+                // 每张卡独立计算第二阶段门控，避免全局都被“第二张卡的时机”绑死。
+                const localTriggerRaw = edgeCross / Math.max(1, stageW * 0.2);
+                // 阶段1：箭头先缩短到 0。
+                const arrowShrinkRaw = (localTriggerRaw - 1.44) / 0.62;
+                const localArrowShrink = clamp(arrowShrinkRaw, 0, 1);
+                // 阶段2：严格在阶段1完成后才启动（arrowShrinkRaw >= 1）。
+                const localPhase2T = clamp((arrowShrinkRaw - 1) / 0.86, 0, 1);
+                const localPhase2Ease = smoothstep01(localPhase2T);
+                const verticalExitProgress = edgeRetreatEase * localPhase2Ease;
+                const exitY =
+                  cardCount >= 4
+                    ? isSecondCard
+                      ? -stageH * 1.45 * verticalExitProgress
+                      : isThirdCard
+                        ? stageH * 1.2 * verticalExitProgress
+                        : 0
+                    : 0;
+                const renderBaseY = baseY + stageShiftY + exitY;
+                const drag = dragOffsets[card.id] ?? { x: 0, y: 0 };
                 const approxHeight = sizeVariant === "lg" ? 300 : sizeVariant === "md" ? 276 : 252;
                 const baseArea = Math.max(1, width * approxHeight);
                 const stageArea = Math.max(1, stageW * stageH);
                 // 主要阅读卡在中心时目标占据舞台约 35% 面积。
                 const centerTargetScale = clamp(Math.sqrt((stageArea * 0.35) / baseArea), 1, 2.05);
-                const visualScale = 0.62 + focus * (centerTargetScale - 0.62);
+                const visualScale = 1;
                 const visualRotate = 0;
-                // 阅读停留带：主卡接近中心时更久保持完全不透明。
-                const opacityCurve = smoothstep01((focus - 0.2) / 0.68);
-                const fullOpacityHold = smoothstep01((focus - 0.54) / 0.24);
-                const visualOpacity = clamp(0.18 + opacityCurve * 0.68 + fullOpacityHold * 0.32, 0.18, 1);
-                const centerX = stageCenterX + lockedBaseX + drag.x;
-                const centerY = stageCenterY + lockedBaseY + drag.y;
-                const anchorX = stageCenterX + lockedBaseX;
-                const anchorY = stageCenterY + lockedBaseY;
+                // 只保留轻量聚焦透明度，不影响相对位置与速度关系。
+                const visualOpacity = clamp(0.22 + focus * 0.78, 0.22, 1);
+                const centerX = stageCenterX + renderBaseX + drag.x;
+                const centerY = stageCenterY + renderBaseY + drag.y;
+                const anchorX = stageCenterX + renderBaseX;
+                const anchorY = stageCenterY + renderBaseY;
                 return {
                   card,
                   index,
-                  baseX: lockedBaseX,
-                  baseY: lockedBaseY,
+                  baseX: renderBaseX,
+                  baseY: renderBaseY,
                   drag,
                   sizeVariant,
                   width,
@@ -1003,11 +1053,16 @@ export function ScrollLinkedCardsBlockSection({
                   anchorX,
                   anchorY,
                   focus,
+                  retreatProgress: localArrowShrink,
                   visualScale,
                   visualRotate,
                   visualOpacity,
                 };
               });
+              const retreatProgressByCard = cardsLayout.reduce<Record<string, number>>((acc, item) => {
+                acc[item.card.id] = item.retreatProgress;
+                return acc;
+              }, {});
               const peakFocus = cardsLayout.reduce((max, item) => Math.max(max, item.focus), 0);
               // 没有主阅读卡时，收起连线，避免舞台中部出现“悬空横线”。
               const showConnectors = peakFocus > 0.12;
@@ -1189,6 +1244,7 @@ export function ScrollLinkedCardsBlockSection({
                     activeNodeId={activeDragNodeId}
                     interactionLevel={interactionLevel}
                     scrollProgress={stableProgress}
+                    retreatProgressByCard={retreatProgressByCard}
                   />
                   <BranchArrowOverlay
                     blockId={block.id}
@@ -1198,6 +1254,7 @@ export function ScrollLinkedCardsBlockSection({
                     activeNodeId={activeDragNodeId}
                     interactionLevel={interactionLevel}
                     scrollProgress={stableProgress}
+                    retreatProgressByCard={retreatProgressByCard}
                   />
                   <div className="absolute inset-0 z-20">
                     {cardsLayout.map((item) => (
