@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -18,7 +19,6 @@ ROOT = Path(__file__).resolve().parents[1]
 RUN_ROOT = ROOT / "reports" / "evaluation" / "runs" / "incremental_system"
 OUTPUT_ROOT = ROOT / "artifacts" / "evaluation" / "localhf_incremental_analysis"
 DATA_DIR = OUTPUT_ROOT / "data"
-CHART_DIR = OUTPUT_ROOT / "charts"
 
 
 ABLATION_RUNS = [
@@ -29,15 +29,15 @@ ABLATION_RUNS = [
 ]
 
 TEST_RUNS = [
-    {"id": "localhf_final_combo", "模型": "LocalHF 最终组合", "dir": "incremental_localhf_qwen35_27b_planner_qwen35_4b_gate_test_full_public_clean"},
+    {"id": "localhf_final_combo", "模型": "Stream2Graph Local", "dir": "incremental_localhf_qwen35_27b_planner_qwen35_4b_gate_test_full_public_clean"},
     {"id": "claude_sonnet45", "模型": "Claude Sonnet 4.5", "dir": "incremental_claude_sonnet45_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
-    {"id": "gemini3flash_rerun2", "模型": "Gemini 3 Flash r2", "dir": "incremental_gemini3flash_google_siliconflow_qwen35_4b_gate_test_full_public_clean_rerun2_official"},
-    {"id": "gpt54_gateway", "模型": "GPT-5.4 gateway", "dir": "incremental_gpt54_gateway_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
+    {"id": "gemini3flash_rerun2", "模型": "Gemini 3 Flash", "dir": "incremental_gemini3flash_google_siliconflow_qwen35_4b_gate_test_full_public_clean_rerun2_official"},
+    {"id": "gpt54_gateway", "模型": "GPT-5.4", "dir": "incremental_gpt54_gateway_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
     {"id": "minimax_m27", "模型": "MiniMax M2.7", "dir": "incremental_minimax_m27_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
     {"id": "moonshot_k25", "模型": "Moonshot K2.5", "dir": "incremental_moonshot_k25_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
     {"id": "qwen35plus", "模型": "Qwen3.5-Plus", "dir": "incremental_qwen35plus_dashscope_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
-    {"id": "qwen35plus_thinking_on", "模型": "Qwen3.5-Plus Thinking", "dir": "incremental_qwen35plus_dashscope_thinking_on_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
-    {"id": "qwen35_27b_dashscope", "模型": "Qwen3.5-27B DashScope", "dir": "incremental_qwen35_27b_dashscope_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
+    {"id": "qwen35plus_thinking_on", "模型": "Qwen3.5-Plus (thinking)", "dir": "incremental_qwen35plus_dashscope_thinking_on_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
+    {"id": "qwen35_27b_dashscope", "模型": "Qwen3.5-27B", "dir": "incremental_qwen35_27b_dashscope_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
 ]
 
 OVERALL_METRICS = [
@@ -73,22 +73,85 @@ LATENCY_LABELS = {
     "total_model_latency_ms": "总模型时延",
 }
 
+ABLATION_LABELS_EN = {
+    "小模型微调 + 大模型微调": "Gate FT + Planner FT",
+    "小模型微调 + 大模型基座": "Gate FT + Planner Base",
+    "小模型基座 + 大模型微调": "Gate Base + Planner FT",
+    "小模型基座 + 大模型基座": "Gate Base + Planner Base",
+}
 
-def ensure_dirs() -> None:
+TEST_MODEL_EN = {
+    "LocalHF 最终组合": "Stream2Graph Local",
+    "Claude Sonnet 4.5": "Claude Sonnet 4.5",
+    "Gemini 3 Flash": "Gemini 3 Flash",
+    "GPT-5.4": "GPT-5.4",
+    "MiniMax M2.7": "MiniMax M2.7",
+    "Moonshot K2.5": "Moonshot K2.5",
+    "Qwen3.5-Plus": "Qwen3.5-Plus",
+    "Qwen3.5-Plus (thinking)": "Qwen3.5-Plus (thinking)",
+    "Qwen3.5-27B": "Qwen3.5-27B",
+    "最强通用基线": "Best General Baseline",
+}
+
+QUALITY_LABELS_EN = {
+    "final_matches_reference": "Strict Final Match",
+    "canonicalized_match": "Canonicalized Match",
+    "entity_semantic_f1": "Entity Semantic F1",
+    "node_semantic_f1": "Node Semantic F1",
+    "group_semantic_f1": "Group Semantic F1",
+    "attachment_semantic_f1": "Attachment Semantic F1",
+}
+
+LATENCY_LABELS_EN = {
+    "gate_latency_mean_ms": "Gate Latency",
+    "planner_latency_mean_ms": "Planner Latency",
+    "total_model_latency_ms": "Total Model Latency",
+}
+
+TYPE_LABELS_EN = {
+    "architecture": "Architecture",
+    "er": "ER",
+    "flowchart": "Flowchart",
+    "mindmap": "Mindmap",
+    "sequence": "Sequence",
+    "statediagram": "State Diagram",
+}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate LocalHF incremental analysis charts.")
+    parser.add_argument("--lang", choices=["zh", "en"], default="zh")
+    parser.add_argument("--output-root", default=str(OUTPUT_ROOT))
+    return parser.parse_args()
+
+
+def chart_dir_for(lang: str) -> Path:
+    return OUTPUT_ROOT / "charts"
+
+
+def chart_name_for(name: str, lang: str) -> str:
+    return f"{name}_en" if lang == "en" else name
+
+
+def manifest_path_for(lang: str) -> Path:
+    return OUTPUT_ROOT / ("analysis_manifest_matplotlib_en.json" if lang == "en" else "analysis_manifest_matplotlib.json")
+
+
+def ensure_dirs(lang: str) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    CHART_DIR.mkdir(parents=True, exist_ok=True)
+    chart_dir_for(lang).mkdir(parents=True, exist_ok=True)
 
 
-def setup_style() -> None:
+def setup_style(lang: str) -> None:
     available_fonts = {f.name for f in font_manager.fontManager.ttflist}
     preferred = ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "Source Han Sans SC", "Arial Unicode MS"]
     selected = [f for f in preferred if f in available_fonts]
     sns.set_theme(style="whitegrid", context="talk")
-    primary_font = selected[0] if selected else "DejaVu Sans"
+    primary_font = selected[0] if (lang == "zh" and selected) else "DejaVu Sans"
     plt.rcParams.update(
         {
             "font.family": primary_font,
-            "font.sans-serif": selected + ["DejaVu Sans"],
+            "font.sans-serif": (selected + ["DejaVu Sans"]) if lang == "zh" else ["DejaVu Sans"],
             "axes.unicode_minus": False,
             "figure.facecolor": "white",
             "axes.facecolor": "#fbfbfd",
@@ -129,10 +192,32 @@ def save_csv(df: pd.DataFrame, name: str) -> None:
     df.to_csv(DATA_DIR / name, index=False, encoding="utf-8-sig")
 
 
-def save_fig(fig: plt.Figure, name: str) -> None:
-    fig.savefig(CHART_DIR / f"{name}.svg", bbox_inches="tight")
-    fig.savefig(CHART_DIR / f"{name}.png", dpi=220, bbox_inches="tight")
+def save_fig(fig: plt.Figure, name: str, lang: str) -> None:
+    chart_dir = chart_dir_for(lang)
+    output_name = chart_name_for(name, lang)
+    fig.savefig(chart_dir / f"{output_name}.svg", bbox_inches="tight")
+    fig.savefig(chart_dir / f"{output_name}.png", dpi=220, bbox_inches="tight")
     plt.close(fig)
+
+
+def localize_ablation_label(value: str, lang: str) -> str:
+    return ABLATION_LABELS_EN.get(value, value) if lang == "en" else value
+
+
+def localize_model_label(value: str, lang: str) -> str:
+    return TEST_MODEL_EN.get(value, value) if lang == "en" else value
+
+
+def localize_metric_label(metric: str, lang: str) -> str:
+    return QUALITY_LABELS_EN.get(metric, QUALITY_LABELS.get(metric, metric)) if lang == "en" else QUALITY_LABELS.get(metric, metric)
+
+
+def localize_latency_label(metric: str, lang: str) -> str:
+    return LATENCY_LABELS_EN.get(metric, LATENCY_LABELS.get(metric, metric)) if lang == "en" else LATENCY_LABELS.get(metric, metric)
+
+
+def localize_type(value: str, lang: str) -> str:
+    return TYPE_LABELS_EN.get(value, value) if lang == "en" else value
 
 
 def build_ablation_data() -> dict[str, pd.DataFrame]:
@@ -311,27 +396,35 @@ def build_test_data() -> dict[str, pd.DataFrame]:
     }
 
 
-def draw_ablation_charts(data: dict[str, pd.DataFrame]) -> None:
+def draw_ablation_charts(data: dict[str, pd.DataFrame], lang: str) -> None:
     palette = sns.color_palette("Set2", 4)
-    order = list(data["overall"]["标签"])
+    overall = data["overall"].copy()
+    overall["display_label"] = overall["标签"].map(lambda value: localize_ablation_label(value, lang))
+    order = list(overall["display_label"])
+    long_quality = data["long_quality"].copy()
+    long_quality["display_label"] = long_quality["标签"].map(lambda value: localize_ablation_label(value, lang))
+    long_quality["display_metric"] = long_quality["metric"].map(lambda metric: localize_metric_label(metric, lang))
+    long_latency = data["long_latency"].copy()
+    long_latency["display_label"] = long_latency["标签"].map(lambda value: localize_ablation_label(value, lang))
+    long_latency["display_metric"] = long_latency["metric"].map(lambda metric: localize_latency_label(metric, lang))
 
     fig, ax = plt.subplots(figsize=(11, 6))
-    sns.barplot(data=data["long_quality"], x="指标", y="value", hue="标签", hue_order=order, palette=palette, ax=ax)
-    ax.set_title("消融实验整体质量对比")
+    sns.barplot(data=long_quality, x="display_metric", y="value", hue="display_label", hue_order=order, palette=palette, ax=ax)
+    ax.set_title("Ablation: Overall Quality Comparison" if lang == "en" else "消融实验整体质量对比")
     ax.set_xlabel("")
-    ax.set_ylabel("指标值")
-    ax.legend(title="实验设置", bbox_to_anchor=(1.02, 1), loc="upper left")
+    ax.set_ylabel("Metric Value" if lang == "en" else "指标值")
+    ax.legend(title="Setting" if lang == "en" else "实验设置", bbox_to_anchor=(1.02, 1), loc="upper left")
     plt.xticks(rotation=0)
-    save_fig(fig, "ablation_quality_overall")
+    save_fig(fig, "ablation_quality_overall", lang)
 
     fig, ax = plt.subplots(figsize=(11, 6))
-    sns.barplot(data=data["long_latency"], x="指标", y="value_sec", hue="标签", hue_order=order, palette=palette, ax=ax)
-    ax.set_title("消融实验整体时延对比")
+    sns.barplot(data=long_latency, x="display_metric", y="value_sec", hue="display_label", hue_order=order, palette=palette, ax=ax)
+    ax.set_title("Ablation: Overall Latency Comparison" if lang == "en" else "消融实验整体时延对比")
     ax.set_xlabel("")
-    ax.set_ylabel("秒")
-    ax.legend(title="实验设置", bbox_to_anchor=(1.02, 1), loc="upper left")
+    ax.set_ylabel("Seconds" if lang == "en" else "秒")
+    ax.legend(title="Setting" if lang == "en" else "实验设置", bbox_to_anchor=(1.02, 1), loc="upper left")
     plt.xticks(rotation=0)
-    save_fig(fig, "ablation_latency_overall_sec")
+    save_fig(fig, "ablation_latency_overall_sec", lang)
 
     effect_quality = data["effects"].copy()
     effect_quality = effect_quality[effect_quality["metric"].isin(["completed_all_stages", "final_matches_reference", "canonicalized_match", "stage_coverage_rate", "entity_semantic_f1"])]
@@ -342,16 +435,26 @@ def draw_ablation_charts(data: dict[str, pd.DataFrame]) -> None:
         "stage_coverage_rate": "阶段覆盖率",
         "entity_semantic_f1": "实体语义 F1",
     })
+    if lang == "en":
+        effect_quality["指标"] = effect_quality["metric"].map({
+            "completed_all_stages": "Completed All Stages",
+            "final_matches_reference": "Strict Final Match",
+            "canonicalized_match": "Canonicalized Match",
+            "stage_coverage_rate": "Stage Coverage",
+            "entity_semantic_f1": "Entity Semantic F1",
+        })
     effect_quality = effect_quality.melt(id_vars=["指标"], value_vars=["planner_ft_minus_base", "gate_ft_minus_base"], var_name="效应", value_name="变化量")
-    effect_quality["效应"] = effect_quality["效应"].map({"planner_ft_minus_base": "大模型微调主效应", "gate_ft_minus_base": "小模型微调主效应"})
+    effect_quality["效应"] = effect_quality["效应"].map(
+        {"planner_ft_minus_base": "Planner FT Main Effect" if lang == "en" else "大模型微调主效应", "gate_ft_minus_base": "Gate FT Main Effect" if lang == "en" else "小模型微调主效应"}
+    )
     fig, ax = plt.subplots(figsize=(11, 6))
     sns.barplot(data=effect_quality, y="指标", x="变化量", hue="效应", palette=["#dc2626", "#2563eb"], ax=ax)
     ax.axvline(0, color="#111827", linewidth=1)
-    ax.set_title("消融实验主效应：质量指标")
-    ax.set_xlabel("变化量")
+    ax.set_title("Ablation Main Effects: Quality" if lang == "en" else "消融实验主效应：质量指标")
+    ax.set_xlabel("Delta" if lang == "en" else "变化量")
     ax.set_ylabel("")
     ax.legend(title="")
-    save_fig(fig, "ablation_main_effects_quality")
+    save_fig(fig, "ablation_main_effects_quality", lang)
 
     effect_latency = data["effects"].copy()
     effect_latency = effect_latency[effect_latency["metric"].isin(["gate_latency_mean_ms", "planner_latency_mean_ms", "total_model_latency_ms"])]
@@ -360,55 +463,72 @@ def draw_ablation_charts(data: dict[str, pd.DataFrame]) -> None:
         "planner_latency_mean_ms": "Planner 时延",
         "total_model_latency_ms": "总模型时延",
     })
+    if lang == "en":
+        effect_latency["指标"] = effect_latency["metric"].map({
+            "gate_latency_mean_ms": "Gate Latency",
+            "planner_latency_mean_ms": "Planner Latency",
+            "total_model_latency_ms": "Total Model Latency",
+        })
     effect_latency["planner_ft_minus_base"] = effect_latency["planner_ft_minus_base"] / 1000.0
     effect_latency["gate_ft_minus_base"] = effect_latency["gate_ft_minus_base"] / 1000.0
     effect_latency = effect_latency.melt(id_vars=["指标"], value_vars=["planner_ft_minus_base", "gate_ft_minus_base"], var_name="效应", value_name="变化量")
-    effect_latency["效应"] = effect_latency["效应"].map({"planner_ft_minus_base": "大模型微调主效应", "gate_ft_minus_base": "小模型微调主效应"})
+    effect_latency["效应"] = effect_latency["效应"].map(
+        {"planner_ft_minus_base": "Planner FT Main Effect" if lang == "en" else "大模型微调主效应", "gate_ft_minus_base": "Gate FT Main Effect" if lang == "en" else "小模型微调主效应"}
+    )
     fig, ax = plt.subplots(figsize=(11, 6))
     sns.barplot(data=effect_latency, y="指标", x="变化量", hue="效应", palette=["#dc2626", "#2563eb"], ax=ax)
     ax.axvline(0, color="#111827", linewidth=1)
-    ax.set_title("消融实验主效应：时延指标")
-    ax.set_xlabel("秒")
+    ax.set_title("Ablation Main Effects: Latency" if lang == "en" else "消融实验主效应：时延指标")
+    ax.set_xlabel("Seconds" if lang == "en" else "秒")
     ax.set_ylabel("")
     ax.legend(title="")
-    save_fig(fig, "ablation_main_effects_latency_sec")
+    save_fig(fig, "ablation_main_effects_latency_sec", lang)
 
-    heat_final = data["by_type_final"].set_index("diagram_type").rename(columns={item["id"]: item["标签"] for item in ABLATION_RUNS})
+    heat_final = data["by_type_final"].copy()
+    heat_final["diagram_type"] = heat_final["diagram_type"].map(lambda value: localize_type(value, lang))
+    heat_final = heat_final.set_index("diagram_type").rename(columns={item["id"]: localize_ablation_label(item["标签"], lang) for item in ABLATION_RUNS})
     fig, ax = plt.subplots(figsize=(10, 5))
     sns.heatmap(heat_final, annot=True, fmt=".4f", cmap="YlGnBu", ax=ax)
-    ax.set_title("按图类型的消融对比：严格最终匹配率")
+    ax.set_title("Ablation by Diagram Type: Strict Final Match" if lang == "en" else "按图类型的消融对比：严格最终匹配率")
     ax.set_xlabel("")
-    ax.set_ylabel("图类型")
-    save_fig(fig, "ablation_by_type_final_match_heatmap")
+    ax.set_ylabel("Diagram Type" if lang == "en" else "图类型")
+    save_fig(fig, "ablation_by_type_final_match_heatmap", lang)
 
-    heat_entity = data["by_type_entity"].set_index("diagram_type").rename(columns={item["id"]: item["标签"] for item in ABLATION_RUNS})
+    heat_entity = data["by_type_entity"].copy()
+    heat_entity["diagram_type"] = heat_entity["diagram_type"].map(lambda value: localize_type(value, lang))
+    heat_entity = heat_entity.set_index("diagram_type").rename(columns={item["id"]: localize_ablation_label(item["标签"], lang) for item in ABLATION_RUNS})
     fig, ax = plt.subplots(figsize=(10, 5))
     sns.heatmap(heat_entity, annot=True, fmt=".4f", cmap="YlOrRd", ax=ax)
-    ax.set_title("按图类型的消融对比：实体语义 F1")
+    ax.set_title("Ablation by Diagram Type: Entity Semantic F1" if lang == "en" else "按图类型的消融对比：实体语义 F1")
     ax.set_xlabel("")
-    ax.set_ylabel("图类型")
-    save_fig(fig, "ablation_by_type_entity_f1_heatmap")
+    ax.set_ylabel("Diagram Type" if lang == "en" else "图类型")
+    save_fig(fig, "ablation_by_type_entity_f1_heatmap", lang)
 
-    heat_latency = data["by_type_latency"].set_index("diagram_type").rename(columns={item["id"]: item["标签"] for item in ABLATION_RUNS})
+    heat_latency = data["by_type_latency"].copy()
+    heat_latency["diagram_type"] = heat_latency["diagram_type"].map(lambda value: localize_type(value, lang))
+    heat_latency = heat_latency.set_index("diagram_type").rename(columns={item["id"]: localize_ablation_label(item["标签"], lang) for item in ABLATION_RUNS})
     fig, ax = plt.subplots(figsize=(10, 5))
     sns.heatmap(heat_latency, annot=True, fmt=".2f", cmap="PuBuGn", ax=ax)
-    ax.set_title("按图类型的消融对比：Planner 时延（秒）")
+    ax.set_title("Ablation by Diagram Type: Planner Latency (sec)" if lang == "en" else "按图类型的消融对比：Planner 时延（秒）")
     ax.set_xlabel("")
-    ax.set_ylabel("图类型")
-    save_fig(fig, "ablation_by_type_planner_latency_sec_heatmap")
+    ax.set_ylabel("Diagram Type" if lang == "en" else "图类型")
+    save_fig(fig, "ablation_by_type_planner_latency_sec_heatmap", lang)
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    count_df = data["overall"][["标签", "final_match_count_est", "canonicalized_count_est"]].melt(id_vars=["标签"], var_name="metric", value_name="count")
-    count_df["metric"] = count_df["metric"].map({"final_match_count_est": "严格匹配条数估计", "canonicalized_count_est": "规范化匹配条数估计"})
-    sns.barplot(data=count_df, y="标签", x="count", hue="metric", ax=ax, palette=["#2563eb", "#0f766e"])
-    ax.set_title("消融实验命中样本条数估计")
-    ax.set_xlabel("条数")
+    count_df = data["overall"][["标签", "final_match_count_est", "canonicalized_count_est"]].copy()
+    count_df["display_label"] = count_df["标签"].map(lambda value: localize_ablation_label(value, lang))
+    count_df = count_df.melt(id_vars=["display_label"], value_vars=["final_match_count_est", "canonicalized_count_est"], var_name="metric", value_name="count")
+    count_df["metric"] = count_df["metric"].map({"final_match_count_est": "Estimated Strict-Match Count" if lang == "en" else "严格匹配条数估计", "canonicalized_count_est": "Estimated Canonical-Match Count" if lang == "en" else "规范化匹配条数估计"})
+    sns.barplot(data=count_df, y="display_label", x="count", hue="metric", ax=ax, palette=["#2563eb", "#0f766e"])
+    ax.set_title("Estimated Exact-Match Counts in Ablation" if lang == "en" else "消融实验命中样本条数估计")
+    ax.set_xlabel("Count" if lang == "en" else "条数")
     ax.set_ylabel("")
     ax.legend(title="")
-    save_fig(fig, "ablation_exact_count_bar")
+    save_fig(fig, "ablation_exact_count_bar", lang)
 
     radar_df = data["overall"][["标签", "final_matches_reference", "canonicalized_match", "entity_semantic_f1", "node_semantic_f1", "group_semantic_f1"]].copy()
-    metrics = ["严格匹配", "规范化匹配", "实体F1", "节点F1", "分组F1"]
+    radar_df["display_label"] = radar_df["标签"].map(lambda value: localize_ablation_label(value, lang))
+    metrics = ["Strict Match", "Canonical Match", "Entity F1", "Node F1", "Group F1"] if lang == "en" else ["严格匹配", "规范化匹配", "实体F1", "节点F1", "分组F1"]
     angles = np.linspace(0, 2 * np.pi, len(metrics), endpoint=False).tolist()
     angles += angles[:1]
     fig = plt.figure(figsize=(8, 8))
@@ -416,184 +536,209 @@ def draw_ablation_charts(data: dict[str, pd.DataFrame]) -> None:
     for _, row in radar_df.iterrows():
         values = [row["final_matches_reference"], row["canonicalized_match"], row["entity_semantic_f1"], row["node_semantic_f1"], row["group_semantic_f1"]]
         values += values[:1]
-        ax.plot(angles, values, linewidth=2, label=row["标签"])
+        ax.plot(angles, values, linewidth=2, label=row["display_label"])
         ax.fill(angles, values, alpha=0.08)
     ax.set_thetagrids(np.degrees(angles[:-1]), metrics)
-    ax.set_title("消融实验质量雷达图", pad=28)
+    ax.set_title("Ablation Quality Radar" if lang == "en" else "消融实验质量雷达图", pad=28)
     ax.legend(loc="upper right", bbox_to_anchor=(1.4, 1.1), frameon=False)
-    save_fig(fig, "ablation_radar_quality")
+    save_fig(fig, "ablation_radar_quality", lang)
 
     point_df = data["by_type_entity"].melt(id_vars=["diagram_type"], var_name="setting", value_name="value")
     label_map = {item["id"]: item["标签"] for item in ABLATION_RUNS}
-    point_df["设置"] = point_df["setting"].map(label_map)
+    point_df["diagram_type"] = point_df["diagram_type"].map(lambda value: localize_type(value, lang))
+    point_df["设置"] = point_df["setting"].map(label_map).map(lambda value: localize_ablation_label(value, lang))
     fig, ax = plt.subplots(figsize=(11, 6))
     sns.pointplot(data=point_df, x="diagram_type", y="value", hue="设置", dodge=0.3, markers="o", linestyles="-", ax=ax)
-    ax.set_title("各图类型上的实体语义 F1 变化趋势")
-    ax.set_xlabel("图类型")
-    ax.set_ylabel("实体语义 F1")
-    ax.legend(title="实验设置", bbox_to_anchor=(1.02, 1), loc="upper left")
-    save_fig(fig, "ablation_entity_f1_pointplot")
+    ax.set_title("Entity Semantic F1 Across Diagram Types" if lang == "en" else "各图类型上的实体语义 F1 变化趋势")
+    ax.set_xlabel("Diagram Type" if lang == "en" else "图类型")
+    ax.set_ylabel("Entity Semantic F1" if lang == "en" else "实体语义 F1")
+    ax.legend(title="Setting" if lang == "en" else "实验设置", bbox_to_anchor=(1.02, 1), loc="upper left")
+    save_fig(fig, "ablation_entity_f1_pointplot", lang)
 
     point_df2 = data["by_type_final"].melt(id_vars=["diagram_type"], var_name="setting", value_name="value")
-    point_df2["设置"] = point_df2["setting"].map(label_map)
+    point_df2["diagram_type"] = point_df2["diagram_type"].map(lambda value: localize_type(value, lang))
+    point_df2["设置"] = point_df2["setting"].map(label_map).map(lambda value: localize_ablation_label(value, lang))
     fig, ax = plt.subplots(figsize=(11, 6))
     sns.pointplot(data=point_df2, x="diagram_type", y="value", hue="设置", dodge=0.3, markers="D", linestyles="-", ax=ax)
-    ax.set_title("各图类型上的严格最终匹配率变化趋势")
-    ax.set_xlabel("图类型")
-    ax.set_ylabel("严格最终匹配率")
-    ax.legend(title="实验设置", bbox_to_anchor=(1.02, 1), loc="upper left")
-    save_fig(fig, "ablation_final_match_pointplot")
+    ax.set_title("Strict Final Match Across Diagram Types" if lang == "en" else "各图类型上的严格最终匹配率变化趋势")
+    ax.set_xlabel("Diagram Type" if lang == "en" else "图类型")
+    ax.set_ylabel("Strict Final Match" if lang == "en" else "严格最终匹配率")
+    ax.legend(title="Setting" if lang == "en" else "实验设置", bbox_to_anchor=(1.02, 1), loc="upper left")
+    save_fig(fig, "ablation_final_match_pointplot", lang)
 
 
-def draw_test_charts(data: dict[str, pd.DataFrame]) -> None:
+def draw_test_charts(data: dict[str, pd.DataFrame], lang: str) -> None:
     overall = data["overall"].copy()
+    overall["display_model"] = overall["模型"].map(lambda value: localize_model_label(value, lang))
     overall = overall.sort_values("final_matches_reference", ascending=False)
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    sns.barplot(data=overall, y="模型", x="final_matches_reference", hue="模型", palette="Blues_r", dodge=False, legend=False, ax=ax)
-    ax.set_title("全量测试：严格最终匹配率排名")
-    ax.set_xlabel("严格最终匹配率")
+    sns.barplot(data=overall, y="display_model", x="final_matches_reference", hue="display_model", palette="Blues_r", dodge=False, ax=ax)
+    if ax.legend_ is not None:
+        ax.legend_.remove()
+    ax.set_title("Full Test: Strict Final Match Ranking" if lang == "en" else "全量测试：严格最终匹配率排名")
+    ax.set_xlabel("Strict Final Match" if lang == "en" else "严格最终匹配率")
     ax.set_ylabel("")
-    save_fig(fig, "test_final_match_rank")
+    save_fig(fig, "test_final_match_rank", lang)
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    entity_sorted = data["overall"].sort_values("entity_semantic_f1", ascending=False)
-    sns.barplot(data=entity_sorted, y="模型", x="entity_semantic_f1", hue="模型", palette="Reds_r", dodge=False, legend=False, ax=ax)
-    ax.set_title("全量测试：实体语义 F1 排名")
-    ax.set_xlabel("实体语义 F1")
+    entity_sorted = data["overall"].copy().sort_values("entity_semantic_f1", ascending=False)
+    entity_sorted["display_model"] = entity_sorted["模型"].map(lambda value: localize_model_label(value, lang))
+    sns.barplot(data=entity_sorted, y="display_model", x="entity_semantic_f1", hue="display_model", palette="Reds_r", dodge=False, ax=ax)
+    if ax.legend_ is not None:
+        ax.legend_.remove()
+    ax.set_title("Full Test: Entity Semantic F1 Ranking" if lang == "en" else "全量测试：实体语义 F1 排名")
+    ax.set_xlabel("Entity Semantic F1" if lang == "en" else "实体语义 F1")
     ax.set_ylabel("")
-    save_fig(fig, "test_entity_f1_rank")
+    save_fig(fig, "test_entity_f1_rank", lang)
 
     fig, ax = plt.subplots(figsize=(13, 7))
-    sns.barplot(data=data["long_quality"], x="模型", y="value", hue="指标", ax=ax, palette=["#2563eb", "#0f766e", "#dc2626"])
-    ax.set_title("全量测试：核心质量指标对比")
+    long_quality = data["long_quality"].copy()
+    long_quality["display_model"] = long_quality["模型"].map(lambda value: localize_model_label(value, lang))
+    long_quality["display_metric"] = long_quality["metric"].map(lambda metric: localize_metric_label(metric, lang))
+    sns.barplot(data=long_quality, x="display_model", y="value", hue="display_metric", ax=ax, palette=["#2563eb", "#0f766e", "#dc2626"])
+    ax.set_title("Full Test: Core Quality Metrics" if lang == "en" else "全量测试：核心质量指标对比")
     ax.set_xlabel("")
-    ax.set_ylabel("指标值")
+    ax.set_ylabel("Metric Value" if lang == "en" else "指标值")
     ax.tick_params(axis="x", rotation=25)
     ax.legend(title="")
-    save_fig(fig, "test_topline_quality")
+    save_fig(fig, "test_topline_quality", lang)
 
     fig, ax = plt.subplots(figsize=(13, 7))
-    sns.barplot(data=data["long_latency"], x="模型", y="value_sec", hue="指标", ax=ax, palette=["#2563eb", "#f59e0b", "#dc2626"])
-    ax.set_title("全量测试：核心时延指标对比")
+    long_latency = data["long_latency"].copy()
+    long_latency["display_model"] = long_latency["模型"].map(lambda value: localize_model_label(value, lang))
+    long_latency["display_metric"] = long_latency["metric"].map(lambda metric: localize_latency_label(metric, lang))
+    sns.barplot(data=long_latency, x="display_model", y="value_sec", hue="display_metric", ax=ax, palette=["#2563eb", "#f59e0b", "#dc2626"])
+    ax.set_title("Full Test: Core Latency Metrics" if lang == "en" else "全量测试：核心时延指标对比")
     ax.set_xlabel("")
-    ax.set_ylabel("秒")
+    ax.set_ylabel("Seconds" if lang == "en" else "秒")
     ax.tick_params(axis="x", rotation=25)
     ax.legend(title="")
-    save_fig(fig, "test_topline_latency_sec")
+    save_fig(fig, "test_topline_latency_sec", lang)
 
     fig, ax = plt.subplots(figsize=(11, 7))
     scatter = data["overall"].copy()
-    sns.scatterplot(data=scatter, x="total_model_latency_ms", y="final_matches_reference", hue="模型", style="模型", s=180, ax=ax)
-    ax.set_title("全量测试：严格最终匹配率与总时延")
-    ax.set_xlabel("总模型时延（毫秒）")
-    ax.set_ylabel("严格最终匹配率")
+    scatter["display_model"] = scatter["模型"].map(lambda value: localize_model_label(value, lang))
+    sns.scatterplot(data=scatter, x="total_model_latency_ms", y="final_matches_reference", hue="display_model", style="display_model", s=180, ax=ax)
+    ax.set_title("Full Test: Strict Final Match vs Total Latency" if lang == "en" else "全量测试：严格最终匹配率与总时延")
+    ax.set_xlabel("Total Model Latency (ms)" if lang == "en" else "总模型时延（毫秒）")
+    ax.set_ylabel("Strict Final Match" if lang == "en" else "严格最终匹配率")
     ax.legend(title="", bbox_to_anchor=(1.02, 1), loc="upper left")
-    save_fig(fig, "test_quality_latency_scatter_final_match")
+    save_fig(fig, "test_quality_latency_scatter_final_match", lang)
 
     fig, ax = plt.subplots(figsize=(11, 7))
-    sns.scatterplot(data=scatter, x="total_model_latency_ms", y="entity_semantic_f1", hue="模型", style="模型", s=180, ax=ax)
-    ax.set_title("全量测试：实体语义 F1 与总时延")
-    ax.set_xlabel("总模型时延（毫秒）")
-    ax.set_ylabel("实体语义 F1")
+    sns.scatterplot(data=scatter, x="total_model_latency_ms", y="entity_semantic_f1", hue="display_model", style="display_model", s=180, ax=ax)
+    ax.set_title("Full Test: Entity Semantic F1 vs Total Latency" if lang == "en" else "全量测试：实体语义 F1 与总时延")
+    ax.set_xlabel("Total Model Latency (ms)" if lang == "en" else "总模型时延（毫秒）")
+    ax.set_ylabel("Entity Semantic F1" if lang == "en" else "实体语义 F1")
     ax.legend(title="", bbox_to_anchor=(1.02, 1), loc="upper left")
-    save_fig(fig, "test_quality_latency_scatter_entity_f1")
+    save_fig(fig, "test_quality_latency_scatter_entity_f1", lang)
 
-    heat_final = data["by_type_final"].set_index("diagram_type").rename(columns={item["id"]: item["模型"] for item in TEST_RUNS})
+    heat_final = data["by_type_final"].copy()
+    heat_final["diagram_type"] = heat_final["diagram_type"].map(lambda value: localize_type(value, lang))
+    heat_final = heat_final.set_index("diagram_type").rename(columns={item["id"]: localize_model_label(item["模型"], lang) for item in TEST_RUNS})
     fig, ax = plt.subplots(figsize=(14, 5.5))
     sns.heatmap(heat_final, annot=True, fmt=".4f", cmap="YlGnBu", ax=ax)
-    ax.set_title("全量测试：按图类型的严格最终匹配率")
+    ax.set_title("Full Test: Strict Final Match by Diagram Type" if lang == "en" else "全量测试：按图类型的严格最终匹配率")
     ax.set_xlabel("")
-    ax.set_ylabel("图类型")
-    save_fig(fig, "test_by_type_final_match_heatmap")
+    ax.set_ylabel("Diagram Type" if lang == "en" else "图类型")
+    save_fig(fig, "test_by_type_final_match_heatmap", lang)
 
-    heat_entity = data["by_type_entity"].set_index("diagram_type").rename(columns={item["id"]: item["模型"] for item in TEST_RUNS})
+    heat_entity = data["by_type_entity"].copy()
+    heat_entity["diagram_type"] = heat_entity["diagram_type"].map(lambda value: localize_type(value, lang))
+    heat_entity = heat_entity.set_index("diagram_type").rename(columns={item["id"]: localize_model_label(item["模型"], lang) for item in TEST_RUNS})
     fig, ax = plt.subplots(figsize=(14, 5.5))
     sns.heatmap(heat_entity, annot=True, fmt=".4f", cmap="YlOrRd", ax=ax)
-    ax.set_title("全量测试：按图类型的实体语义 F1")
+    ax.set_title("Full Test: Entity Semantic F1 by Diagram Type" if lang == "en" else "全量测试：按图类型的实体语义 F1")
     ax.set_xlabel("")
-    ax.set_ylabel("图类型")
-    save_fig(fig, "test_by_type_entity_f1_heatmap")
+    ax.set_ylabel("Diagram Type" if lang == "en" else "图类型")
+    save_fig(fig, "test_by_type_entity_f1_heatmap", lang)
 
     metric_heatmap = data["overall"][["模型", "final_matches_reference", "canonicalized_match", "entity_semantic_f1", "node_semantic_f1", "group_semantic_f1", "attachment_semantic_f1"]].set_index("模型")
+    metric_heatmap.index = [localize_model_label(value, lang) for value in metric_heatmap.index]
     metric_heatmap = metric_heatmap.rename(columns={
-        "final_matches_reference": "严格匹配",
-        "canonicalized_match": "规范化匹配",
-        "entity_semantic_f1": "实体F1",
-        "node_semantic_f1": "节点F1",
-        "group_semantic_f1": "分组F1",
-        "attachment_semantic_f1": "挂载F1",
+        "final_matches_reference": "Strict Match" if lang == "en" else "严格匹配",
+        "canonicalized_match": "Canonical Match" if lang == "en" else "规范化匹配",
+        "entity_semantic_f1": "Entity F1" if lang == "en" else "实体F1",
+        "node_semantic_f1": "Node F1" if lang == "en" else "节点F1",
+        "group_semantic_f1": "Group F1" if lang == "en" else "分组F1",
+        "attachment_semantic_f1": "Attachment F1" if lang == "en" else "挂载F1",
     })
     fig, ax = plt.subplots(figsize=(10, 7))
     sns.heatmap(metric_heatmap, annot=True, fmt=".4f", cmap="crest", ax=ax)
-    ax.set_title("全量测试：总体质量指标热力图")
+    ax.set_title("Full Test: Overall Quality Heatmap" if lang == "en" else "全量测试：总体质量指标热力图")
     ax.set_xlabel("")
     ax.set_ylabel("")
-    save_fig(fig, "test_quality_metric_heatmap")
+    save_fig(fig, "test_quality_metric_heatmap", lang)
 
     gain_df = data["gain"].copy()
     gain_df["指标"] = gain_df["metric"].map({
-        "final_matches_reference": "严格最终匹配率",
-        "canonicalized_match": "规范化匹配率",
-        "entity_semantic_f1": "实体语义 F1",
-        "node_semantic_f1": "节点语义 F1",
-        "group_semantic_f1": "分组语义 F1",
-        "attachment_semantic_f1": "挂载语义 F1",
+        "final_matches_reference": "Strict Final Match" if lang == "en" else "严格最终匹配率",
+        "canonicalized_match": "Canonicalized Match" if lang == "en" else "规范化匹配率",
+        "entity_semantic_f1": "Entity Semantic F1" if lang == "en" else "实体语义 F1",
+        "node_semantic_f1": "Node Semantic F1" if lang == "en" else "节点语义 F1",
+        "group_semantic_f1": "Group Semantic F1" if lang == "en" else "分组语义 F1",
+        "attachment_semantic_f1": "Attachment Semantic F1" if lang == "en" else "挂载语义 F1",
     })
     fig, ax = plt.subplots(figsize=(11, 6))
-    sns.barplot(data=gain_df, y="指标", x="absolute_gain", hue="指标", palette="viridis", dodge=False, legend=False, ax=ax)
-    ax.set_title("最终模型相对最强基线的绝对增益")
-    ax.set_xlabel("绝对增益")
+    sns.barplot(data=gain_df, y="指标", x="absolute_gain", hue="指标", palette="viridis", dodge=False, ax=ax)
+    if ax.legend_ is not None:
+        ax.legend_.remove()
+    ax.set_title("Absolute Gains over the Best Baseline" if lang == "en" else "最终模型相对最强基线的绝对增益")
+    ax.set_xlabel("Absolute Gain" if lang == "en" else "绝对增益")
     ax.set_ylabel("")
-    save_fig(fig, "test_gain_vs_best_baseline")
+    save_fig(fig, "test_gain_vs_best_baseline", lang)
 
     latency_stack = data["overall"][["模型", "gate_latency_mean_ms", "planner_latency_mean_ms"]].copy()
+    latency_stack["display_model"] = latency_stack["模型"].map(lambda value: localize_model_label(value, lang))
     latency_stack["Gate 时延"] = latency_stack["gate_latency_mean_ms"] / 1000.0
     latency_stack["Planner 时延"] = latency_stack["planner_latency_mean_ms"] / 1000.0
     latency_stack = latency_stack.sort_values("Gate 时延" if False else "Planner 时延", ascending=False)
     fig, ax = plt.subplots(figsize=(13, 7))
-    ax.bar(latency_stack["模型"], latency_stack["Gate 时延"], label="Gate 时延", color="#2563eb")
-    ax.bar(latency_stack["模型"], latency_stack["Planner 时延"], bottom=latency_stack["Gate 时延"], label="Planner 时延", color="#f59e0b")
-    ax.set_title("全量测试：Gate / Planner 时延组成")
-    ax.set_ylabel("秒")
+    ax.bar(latency_stack["display_model"], latency_stack["Gate 时延"], label="Gate Latency" if lang == "en" else "Gate 时延", color="#2563eb")
+    ax.bar(latency_stack["display_model"], latency_stack["Planner 时延"], bottom=latency_stack["Gate 时延"], label="Planner Latency" if lang == "en" else "Planner 时延", color="#f59e0b")
+    ax.set_title("Full Test: Gate / Planner Latency Composition" if lang == "en" else "全量测试：Gate / Planner 时延组成")
+    ax.set_ylabel("Seconds" if lang == "en" else "秒")
     ax.set_xlabel("")
     ax.tick_params(axis="x", rotation=25)
     ax.legend()
-    save_fig(fig, "test_latency_stacked")
+    save_fig(fig, "test_latency_stacked", lang)
 
     frontier = data["frontier"].copy().sort_values("total_model_latency_ms")
     fig, ax = plt.subplots(figsize=(11, 6.5))
     sns.lineplot(data=frontier, x="total_model_latency_ms", y="final_matches_reference", marker="o", ax=ax, color="#2563eb")
     pareto = frontier[frontier["pareto_exact_latency"]]
-    ax.scatter(pareto["total_model_latency_ms"], pareto["final_matches_reference"], s=180, color="#dc2626", label="Pareto 前沿")
+    ax.scatter(pareto["total_model_latency_ms"], pareto["final_matches_reference"], s=180, color="#dc2626", label="Pareto Frontier" if lang == "en" else "Pareto 前沿")
     for _, row in frontier.iterrows():
-        ax.text(row["total_model_latency_ms"] * 1.005, row["final_matches_reference"] + 0.001, row["模型"], fontsize=10)
-    ax.set_title("全量测试：严格匹配率 - 时延 Pareto 前沿")
-    ax.set_xlabel("总模型时延（毫秒）")
-    ax.set_ylabel("严格最终匹配率")
+        ax.text(row["total_model_latency_ms"] * 1.005, row["final_matches_reference"] + 0.001, localize_model_label(row["模型"], lang), fontsize=10)
+    ax.set_title("Full Test: Strict Match / Latency Pareto Frontier" if lang == "en" else "全量测试：严格匹配率 - 时延 Pareto 前沿")
+    ax.set_xlabel("Total Model Latency (ms)" if lang == "en" else "总模型时延（毫秒）")
+    ax.set_ylabel("Strict Final Match" if lang == "en" else "严格最终匹配率")
     ax.legend()
-    save_fig(fig, "test_pareto_frontier")
+    save_fig(fig, "test_pareto_frontier", lang)
 
     compare = data["localhf_vs_best"].copy()
+    compare["diagram_type"] = compare["diagram_type"].map(lambda value: localize_type(value, lang))
     fig, axes = plt.subplots(1, 2, figsize=(15, 5.8), sharey=True)
     x = np.arange(len(compare))
     width = 0.38
-    axes[0].bar(x - width / 2, compare["localhf_final_match"], width, label="LocalHF 最终组合", color="#dc2626")
-    axes[0].bar(x + width / 2, compare["best_baseline_final_match"], width, label="最强通用基线", color="#2563eb")
-    axes[0].set_title("按图类型：严格最终匹配率")
+    axes[0].bar(x - width / 2, compare["localhf_final_match"], width, label=localize_model_label("Stream2Graph Local", lang), color="#dc2626")
+    axes[0].bar(x + width / 2, compare["best_baseline_final_match"], width, label=localize_model_label("最强通用基线", lang), color="#2563eb")
+    axes[0].set_title("By Diagram Type: Strict Final Match" if lang == "en" else "按图类型：严格最终匹配率")
     axes[0].set_xticks(x)
     axes[0].set_xticklabels(compare["diagram_type"], rotation=25)
-    axes[0].set_ylabel("匹配率")
+    axes[0].set_ylabel("Match Rate" if lang == "en" else "匹配率")
     axes[0].legend()
-    axes[1].bar(x - width / 2, compare["localhf_entity_f1"], width, label="LocalHF 最终组合", color="#dc2626")
-    axes[1].bar(x + width / 2, compare["best_baseline_entity_f1"], width, label="最强通用基线", color="#2563eb")
-    axes[1].set_title("按图类型：实体语义 F1")
+    axes[1].bar(x - width / 2, compare["localhf_entity_f1"], width, label=localize_model_label("Stream2Graph Local", lang), color="#dc2626")
+    axes[1].bar(x + width / 2, compare["best_baseline_entity_f1"], width, label=localize_model_label("最强通用基线", lang), color="#2563eb")
+    axes[1].set_title("By Diagram Type: Entity Semantic F1" if lang == "en" else "按图类型：实体语义 F1")
     axes[1].set_xticks(x)
     axes[1].set_xticklabels(compare["diagram_type"], rotation=25)
-    save_fig(fig, "test_localhf_vs_best_by_type")
+    save_fig(fig, "test_localhf_vs_best_by_type", lang)
 
     radar_df = data["overall"][["模型", "final_matches_reference", "canonicalized_match", "entity_semantic_f1", "node_semantic_f1", "group_semantic_f1"]].copy()
-    metrics = ["严格匹配", "规范化匹配", "实体F1", "节点F1", "分组F1"]
+    radar_df["display_model"] = radar_df["模型"].map(lambda value: localize_model_label(value, lang))
+    metrics = ["Strict Match", "Canonical Match", "Entity F1", "Node F1", "Group F1"] if lang == "en" else ["严格匹配", "规范化匹配", "实体F1", "节点F1", "分组F1"]
     angles = np.linspace(0, 2 * np.pi, len(metrics), endpoint=False).tolist()
     angles += angles[:1]
     fig = plt.figure(figsize=(9, 9))
@@ -601,34 +746,52 @@ def draw_test_charts(data: dict[str, pd.DataFrame]) -> None:
     for _, row in radar_df.iterrows():
         values = [row["final_matches_reference"], row["canonicalized_match"], row["entity_semantic_f1"], row["node_semantic_f1"], row["group_semantic_f1"]]
         values += values[:1]
-        ax.plot(angles, values, linewidth=2, label=row["模型"])
+        ax.plot(angles, values, linewidth=2, label=row["display_model"])
     ax.set_thetagrids(np.degrees(angles[:-1]), metrics)
-    ax.set_title("全量测试：核心质量指标雷达图", pad=28)
+    ax.set_title("Full Test: Core Quality Radar" if lang == "en" else "全量测试：核心质量指标雷达图", pad=28)
     ax.legend(loc="upper right", bbox_to_anchor=(1.5, 1.15), frameon=False)
-    save_fig(fig, "test_quality_radar")
+    save_fig(fig, "test_quality_radar", lang)
 
 
-def write_manifest(ablation: dict[str, pd.DataFrame], test: dict[str, pd.DataFrame]) -> None:
+def write_manifest(ablation: dict[str, pd.DataFrame], test: dict[str, pd.DataFrame], lang: str) -> None:
+    chart_dir = chart_dir_for(lang)
+    try:
+        charts_dir_value = str(chart_dir.relative_to(ROOT))
+    except ValueError:
+        charts_dir_value = str(chart_dir)
+    try:
+        data_dir_value = str(DATA_DIR.relative_to(ROOT))
+    except ValueError:
+        data_dir_value = str(DATA_DIR)
     manifest = {
-        "charts_dir": str(CHART_DIR.relative_to(ROOT)),
-        "data_dir": str(DATA_DIR.relative_to(ROOT)),
+        "charts_dir": charts_dir_value,
+        "data_dir": data_dir_value,
         "ablation_rows": int(len(ablation["overall"])),
         "test_rows": int(len(test["overall"])),
-        "note": "Generated with pandas + matplotlib + seaborn using Chinese labels.",
+        "language": lang,
+        "note": (
+            "Generated with pandas + matplotlib + seaborn using English labels."
+            if lang == "en"
+            else "Generated with pandas + matplotlib + seaborn using Chinese labels."
+        ),
     }
-    (OUTPUT_ROOT / "analysis_manifest_matplotlib.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    manifest_path_for(lang).write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def main() -> None:
-    ensure_dirs()
-    setup_style()
+    args = parse_args()
+    global OUTPUT_ROOT, DATA_DIR
+    OUTPUT_ROOT = Path(args.output_root).resolve()
+    DATA_DIR = OUTPUT_ROOT / "data"
+    ensure_dirs(args.lang)
+    setup_style(args.lang)
     ablation = build_ablation_data()
     test = build_test_data()
-    draw_ablation_charts(ablation)
-    draw_test_charts(test)
-    write_manifest(ablation, test)
+    draw_ablation_charts(ablation, args.lang)
+    draw_test_charts(test, args.lang)
+    write_manifest(ablation, test, args.lang)
     print(f"Data written to: {DATA_DIR}")
-    print(f"Charts written to: {CHART_DIR}")
+    print(f"Charts written to: {chart_dir_for(args.lang)}")
 
 
 if __name__ == "__main__":
