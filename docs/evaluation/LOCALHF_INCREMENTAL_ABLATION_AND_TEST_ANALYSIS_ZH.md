@@ -13,13 +13,13 @@
   - `incremental_localhf_qwen35_27b_planner_qwen35_4b_gate_test_full_public_clean`
 - 现有工作区中的通用强基线：
   - Claude Sonnet 4.5
-  - Gemini 3 Flash rerun2
-  - GPT-5.4 gateway
+  - Gemini 3 Flash
+  - GPT-5.4
   - MiniMax M2.7
   - Moonshot K2.5
   - Qwen3.5-Plus
-  - Qwen3.5-Plus thinking on
-  - Qwen3.5-27B DashScope
+  - Qwen3.5-Plus (thinking)
+  - Qwen3.5-27B
 
 注意：Gemini 的 `public_clean_official` 原始目录在当前工作区里是失效跑次，因此这里统一采用有效的 `incremental_gemini3flash_google_siliconflow_qwen35_4b_gate_test_full_public_clean_rerun2_official`。
 
@@ -283,8 +283,8 @@
 从 `total_model_latency_ms` 看，最终组合明显慢于：
 
 - `Qwen3.5-Plus`
-- `Qwen3.5-27B DashScope`
-- `GPT-5.4 gateway`
+- `Qwen3.5-27B`
+- `GPT-5.4`
 
 所以主文中不应该把你们包装成“质量和速度都第一”。更稳妥的说法是：
 
@@ -334,8 +334,8 @@
 
 比较稳的表述方式是：
 
-- 如果目标是最低成本批量跑数，`Qwen3.5-Plus` 和 `Qwen3.5-27B DashScope` 更快。
-- 如果目标是增量 graph generation 的严格正确性和语义质量，LocalHF 最终组合明显更强。
+- 如果目标是最低成本批量跑数，`Qwen3.5-Plus` 和 `Qwen3.5-27B` 更快。
+- 如果目标是增量 graph generation 的严格正确性和语义质量，Stream2Graph local 明显更强。
 - 因此，本文方法建立的是一个新的任务特定质量上限，而不是单纯的通用低延迟方案。
 
 这套说法比“我们全面优于所有模型”更可信，也更安全。
