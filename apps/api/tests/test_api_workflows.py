@@ -336,6 +336,36 @@ def test_realtime_timeline_preview_and_apply_rollback(admin_client: TestClient, 
         assert ann_row is not None
         assert int(ann_row.version) >= 1
 
+    edited = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/rollback/edit_apply",
+        json={
+            "snapshot_id": target_snapshot_id,
+            "turns": [
+                {"speaker": "user", "text": "first input edited", "is_final": True},
+            ],
+        },
+    )
+    assert edited.status_code == 200
+    assert edited.json()["restored_from_snapshot_id"] == target_snapshot_id
+
+    with session_factory() as db:
+        chunks = db.scalars(select(RealtimeChunk).where(RealtimeChunk.session_id == session_id).order_by(RealtimeChunk.sequence_no.asc())).all()
+        assert len(chunks) == 1
+        assert chunks[0].text == "first input edited"
+
+    timeline_after = admin_client.get(f"/api/v1/realtime/sessions/{session_id}/timeline")
+    assert timeline_after.status_code == 200
+    nodes_after = timeline_after.json()["nodes"]
+    assert len(nodes_after) >= 1
+    for row in nodes_after:
+        snapshot_id = row["snapshot_id"]
+        preview = admin_client.post(
+            f"/api/v1/realtime/sessions/{session_id}/rollback/preview",
+            json={"snapshot_id": snapshot_id},
+        )
+        assert preview.status_code == 200
+        assert preview.json().get("transcript_turn_count") != 2
+
 
 def test_realtime_transcript_state_merges_stt_chunks_by_speaker_and_gap(
     admin_client: TestClient,

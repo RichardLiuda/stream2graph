@@ -19,6 +19,8 @@ from app.schemas import (
     RealtimeChunkCreateRequest,
     RealtimeDiagramRelayoutRequest,
     RealtimeRollbackApplyResponse,
+    RealtimeRollbackEditApplyResponse,
+    RealtimeRollbackEditRequest,
     RealtimeRollbackPreviewResponse,
     RealtimeRollbackRequest,
     RealtimeSessionCloseResponse,
@@ -248,6 +250,145 @@ def _timeline_node_from_snapshot(snapshot: RealtimeSnapshotModel) -> RealtimeTim
         chunk_count=max(0, int(chunk_count)),
         label=str(label) if isinstance(label, str) and label.strip() else None,
     )
+
+
+def _coerce_turn_from_payload(item: dict[str, Any]) -> dict[str, Any] | None:
+    speaker = str(item.get("speaker") or "speaker").strip() or "speaker"
+    text = str(item.get("text") or item.get("content") or "").strip()
+    if not text:
+        return None
+    start_ms = int(item.get("start_ms", item.get("timestamp_ms", 0)) or 0)
+    end_ms = int(item.get("end_ms", item.get("timestamp_ms", start_ms)) or start_ms)
+    return {
+        "speaker": speaker,
+        "text": text,
+        "start_ms": max(0, start_ms),
+        "end_ms": max(0, end_ms),
+        "is_final": bool(item.get("is_final", True)),
+        "source": str(item.get("source") or "timeline_fallback"),
+        "capture_mode": str(item.get("capture_mode") or "snapshot"),
+    }
+
+
+def _speaker_priority(value: str) -> int:
+    speaker = str(value or "").strip().lower()
+    if not speaker or speaker == "speaker":
+        return 0
+    if speaker == "user":
+        return 1
+    return 2
+
+
+def _merge_turns_dedup(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[tuple[str, int, int], dict[str, Any]] = {}
+    for turn in rows:
+        text = str(turn.get("text") or "").strip()
+        if not text:
+            continue
+        start_ms = int(turn.get("start_ms", 0) or 0)
+        end_ms = int(turn.get("end_ms", start_ms) or start_ms)
+        key = (text, start_ms, end_ms)
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = dict(turn)
+            continue
+        next_priority = _speaker_priority(str(turn.get("speaker") or ""))
+        existing_priority = _speaker_priority(str(existing.get("speaker") or ""))
+        if next_priority > existing_priority:
+            merged[key] = {**existing, **turn}
+    return sorted(merged.values(), key=lambda item: (int(item.get("start_ms", 0)), int(item.get("end_ms", 0))))
+
+
+def _timeline_preview_turns(snapshot: RealtimeSnapshotModel, *, session_id: str, chunks: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if isinstance(chunks, list) and chunks:
+        rows = []
+        for index, item in enumerate(chunks):
+            if not isinstance(item, dict):
+                continue
+            rows.append(
+                RealtimeChunk(
+                    session_id=session_id,
+                    sequence_no=int(item.get("sequence_no", index)),
+                    timestamp_ms=int(item.get("timestamp_ms", 0)),
+                    speaker=str(item.get("speaker", "speaker")),
+                    text=str(item.get("text", "")),
+                    is_final=bool(item.get("is_final", True)),
+                    expected_intent=item.get("expected_intent"),
+                    meta_json=item.get("metadata", {}) if isinstance(item.get("metadata"), dict) else {},
+                )
+            )
+        return build_transcript_turns(rows)
+
+    pipeline = snapshot.pipeline_payload if isinstance(snapshot.pipeline_payload, dict) else {}
+    transcript_state = pipeline.get("transcript_state") if isinstance(pipeline.get("transcript_state"), dict) else {}
+    turns: list[dict[str, Any]] = []
+    for key in ("current_turn", "latest_final_turn"):
+        item = transcript_state.get(key)
+        if isinstance(item, dict):
+            turn = _coerce_turn_from_payload(item)
+            if turn is not None:
+                turns.append(turn)
+    for key in ("archived_recent_turns", "recent_turns"):
+        rows = transcript_state.get(key)
+        if isinstance(rows, list):
+            for item in rows:
+                if not isinstance(item, dict):
+                    continue
+                turn = _coerce_turn_from_payload(item)
+                if turn is None:
+                    continue
+                turns.append(turn)
+    if turns:
+        return _merge_turns_dedup(turns)
+
+    events = pipeline.get("events")
+    if isinstance(events, list):
+        fallback_turns: list[dict[str, Any]] = []
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            pending_turns = event.get("pending_turns")
+            if isinstance(pending_turns, list):
+                for turn_payload in pending_turns:
+                    if not isinstance(turn_payload, dict):
+                        continue
+                    turn = _coerce_turn_from_payload(turn_payload)
+                    if turn is not None:
+                        fallback_turns.append(turn)
+            update = event.get("update")
+            if isinstance(update, dict):
+                turn = _coerce_turn_from_payload(
+                    {
+                        "speaker": update.get("speaker", "speaker"),
+                        "text": update.get("transcript_text"),
+                        "start_ms": update.get("start_ms", 0),
+                        "end_ms": update.get("end_ms", update.get("start_ms", 0)),
+                        "is_final": True,
+                        "source": "timeline_event",
+                        "capture_mode": "event",
+                    }
+                )
+                if turn is not None:
+                    fallback_turns.append(turn)
+        if fallback_turns:
+            return _merge_turns_dedup(fallback_turns)[-24:]
+    return []
+
+
+def _has_mermaid_render_issue(pipeline: dict[str, Any] | None) -> bool:
+    if not isinstance(pipeline, dict):
+        return True
+    mermaid_state = pipeline.get("mermaid_state")
+    if not isinstance(mermaid_state, dict):
+        return True
+    if mermaid_state.get("error_message"):
+        return True
+    if mermaid_state.get("compile_ok") is False:
+        return True
+    if mermaid_state.get("render_ok") is False:
+        return True
+    code = str(mermaid_state.get("code") or mermaid_state.get("normalized_code") or "").strip()
+    return not bool(code)
 
 
 @router.get("", response_model=list[RealtimeSessionSchema])
@@ -761,7 +902,8 @@ def rollback_preview(
     checkpoint = _timeline_checkpoint(snapshot)
     chunks = checkpoint.get("chunks")
     annotations = checkpoint.get("annotations")
-    transcript_turn_count = len(chunks) if isinstance(chunks, list) else 0
+    turns = _timeline_preview_turns(snapshot, session_id=session_id, chunks=chunks if isinstance(chunks, list) else None)
+    transcript_turn_count = len(chunks) if isinstance(chunks, list) and chunks else len(turns)
     annotation_version = int(annotations.get("version") or 1) if isinstance(annotations, dict) else 1
     return RealtimeRollbackPreviewResponse(
         session_id=session_id,
@@ -772,6 +914,7 @@ def rollback_preview(
         evaluation=snapshot.evaluation_payload if isinstance(snapshot.evaluation_payload, dict) else {},
         transcript_turn_count=transcript_turn_count,
         annotation_version=max(1, annotation_version),
+        turns=turns,
     )
 
 
@@ -855,6 +998,105 @@ def rollback_apply(
     pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
     db.commit()
     return RealtimeRollbackApplyResponse(
+        session_id=session_id,
+        restored_from_snapshot_id=snapshot.id,
+        pipeline=pipeline,
+        evaluation=evaluation,
+    )
+
+
+@router.post("/{session_id}/rollback/edit_apply", response_model=RealtimeRollbackEditApplyResponse)
+def rollback_edit_apply(
+    session_id: str,
+    req: RealtimeRollbackEditRequest,
+    db: Session = Depends(get_db),
+) -> RealtimeRollbackEditApplyResponse:
+    obj = _get_session_or_404(db, session_id)
+    if obj.status == "closed":
+        raise HTTPException(status_code=409, detail="closed session cannot rollback")
+    snapshot = db.scalar(
+        select(RealtimeSnapshotModel).where(
+            RealtimeSnapshotModel.session_id == session_id,
+            RealtimeSnapshotModel.id == req.snapshot_id,
+        )
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="timeline snapshot not found")
+
+    # Overwrite-future semantics: drop snapshots created after the selected node.
+    db.execute(
+        delete(RealtimeSnapshotModel).where(
+            RealtimeSnapshotModel.session_id == session_id,
+            RealtimeSnapshotModel.created_at > snapshot.created_at,
+        )
+    )
+
+    pipeline = snapshot.pipeline_payload if isinstance(snapshot.pipeline_payload, dict) else {}
+    evaluation = snapshot.evaluation_payload if isinstance(snapshot.evaluation_payload, dict) else {}
+    summary = snapshot.summary_json if isinstance(snapshot.summary_json, dict) else {}
+    graph_state = pipeline.get("graph_state", {}) if isinstance(pipeline.get("graph_state"), dict) else {}
+    recompute_seed_pipeline = {
+        **pipeline,
+        "events": [],
+        "graph_state": {
+            **graph_state,
+            # Force edited turns to be pending so coordination/planner runs again.
+            "last_consumed_turn_id": 0,
+            "pending_turn_ids": [],
+        },
+    }
+
+    obj.pipeline_payload = recompute_seed_pipeline
+    obj.evaluation_payload = evaluation
+    obj.summary_json = summary
+    obj.updated_at = utc_now()
+    db.add(obj)
+
+    # Replace chunks with manual transcript turns to prevent server-side merging.
+    db.execute(delete(RealtimeChunk).where(RealtimeChunk.session_id == session_id))
+    base_ts = 0
+    for index, turn in enumerate(req.turns):
+        speaker = str(turn.speaker or "speaker")
+        text = str(turn.text or "").strip()
+        if not text:
+            continue
+        start_ms = turn.start_ms if turn.start_ms is not None else base_ts + index * 450
+        is_final = True if turn.is_final is None else bool(turn.is_final)
+        db.add(
+            RealtimeChunk(
+                session_id=session_id,
+                sequence_no=index,
+                timestamp_ms=int(start_ms),
+                speaker=speaker,
+                text=text,
+                is_final=is_final,
+                expected_intent=None,
+                meta_json={"input_source": "transcript", "capture_mode": "manual_text"},
+            )
+        )
+    db.flush()
+
+    # Reset runtime + recompute from the restored graph state + edited turns.
+    db.execute(delete(RealtimeEvent).where(RealtimeEvent.session_id == session_id))
+    drop_runtime(session_id)
+    runtime = restore_runtime_if_needed(db, obj)
+    # Ensure edited turns are treated as pending input for forced recompute.
+    runtime.last_consumed_turn_id = 0
+    runtime.pending_turn_ids = [turn.turn_id for turn in runtime.turns]
+    runtime.flush(db, obj)
+    pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
+    if _has_mermaid_render_issue(pipeline):
+        # Retry once to reduce occasional unstable render/model failures.
+        drop_runtime(session_id)
+        runtime = restore_runtime_if_needed(db, obj)
+        runtime.last_consumed_turn_id = 0
+        runtime.pending_turn_ids = [turn.turn_id for turn in runtime.turns]
+        runtime.flush(db, obj)
+        pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
+    if _has_mermaid_render_issue(pipeline):
+        raise HTTPException(status_code=409, detail="rollback recompute produced unstable mermaid output; kept previous state")
+    db.commit()
+    return RealtimeRollbackEditApplyResponse(
         session_id=session_id,
         restored_from_snapshot_id=snapshot.id,
         pipeline=pipeline,

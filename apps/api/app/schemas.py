@@ -219,9 +219,30 @@ class RealtimeRollbackPreviewResponse(BaseModel):
     evaluation: dict[str, Any] | None = None
     transcript_turn_count: int = 0
     annotation_version: int = 1
+    turns: list["RealtimeTranscriptTurn"] = Field(default_factory=list)
 
 
 class RealtimeRollbackApplyResponse(BaseModel):
+    session_id: str
+    restored_from_snapshot_id: str
+    pipeline: dict[str, Any] = Field(default_factory=dict)
+    evaluation: dict[str, Any] | None = None
+
+
+class RealtimeTranscriptTurnEditable(BaseModel):
+    speaker: str
+    text: str
+    start_ms: int | None = None
+    end_ms: int | None = None
+    is_final: bool | None = None
+
+
+class RealtimeRollbackEditRequest(BaseModel):
+    snapshot_id: str
+    turns: list[RealtimeTranscriptTurnEditable] = Field(default_factory=list)
+
+
+class RealtimeRollbackEditApplyResponse(BaseModel):
     session_id: str
     restored_from_snapshot_id: str
     pipeline: dict[str, Any] = Field(default_factory=dict)

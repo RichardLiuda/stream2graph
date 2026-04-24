@@ -29,7 +29,12 @@ import { createPortal } from "react-dom";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
 import { Badge, Button, Card, Input, StatCard, Textarea } from "@stream2graph/ui";
-import type { RealtimeSession, RealtimeTimelineNode, RealtimeTranscriptTurn } from "@stream2graph/contracts";
+import type {
+  RealtimeSession,
+  RealtimeTimelineNode,
+  RealtimeTranscriptTurn,
+  RealtimeTranscriptTurnEditable,
+} from "@stream2graph/contracts";
 
 import { ApiError, api, apiUrl } from "@/lib/api";
 import { encodeFloat32ToBase64Pcm16 } from "@/lib/audio";
@@ -903,6 +908,16 @@ export function RealtimeStudio() {
   const [studioPage] = useState<1 | 2>(1);
   const [selectedTimelineSnapshotId, setSelectedTimelineSnapshotId] = useState<string | null>(null);
   const [rollbackPreview, setRollbackPreview] = useState<RealtimeRollbackPreviewPayload | null>(null);
+  const [autoFollowLatestTimelineNode, setAutoFollowLatestTimelineNode] = useState(true);
+  const lastTimelineHeadSnapshotIdRef = useRef<string | null>(null);
+  const timelineScrollViewportRef = useRef<HTMLDivElement | null>(null);
+  const [timelineViewportWidth, setTimelineViewportWidth] = useState(0);
+  const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
+  const [timelineHoverTooltip, setTimelineHoverTooltip] = useState<{
+    text: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const timelinePreviewRequestRef = useRef<string | null>(null);
   const [listening, setListening] = useState(false);
   const [audioContext, setAudioContext] = useState<ClientAudioContext | null>(null);
@@ -1217,6 +1232,19 @@ export function RealtimeStudio() {
     () => orderedTimelineNodes.findIndex((node) => node.snapshot_id === selectedTimelineSnapshotId),
     [orderedTimelineNodes, selectedTimelineSnapshotId],
   );
+  const TIMELINE_MAX_VISIBLE_NODES = 7;
+  const TIMELINE_DRAG_THRESHOLD = 8;
+  const isTimelineScrollable = orderedTimelineNodes.length >= TIMELINE_DRAG_THRESHOLD;
+  const timelineScrollStep =
+    timelineViewportWidth > 0
+      ? Math.max(34, (timelineViewportWidth - 12) / Math.max(1, TIMELINE_MAX_VISIBLE_NODES - 1))
+      : 42;
+  const timelineScrollableTrackWidth = Math.max(
+    timelineViewportWidth,
+    12 + timelineScrollStep * Math.max(0, orderedTimelineNodes.length - 1),
+  );
+  const timelineScrollableSelectedLeft =
+    selectedTimelineOrderedIndex >= 0 ? 6 + selectedTimelineOrderedIndex * timelineScrollStep : null;
   const rollbackPreviewMermaidCode = useMemo(() => {
     if (!rollbackPreview?.pipeline || typeof rollbackPreview.pipeline !== "object") return "";
     const mermaidState = rollbackPreview.pipeline.mermaid_state;
@@ -1233,21 +1261,49 @@ export function RealtimeStudio() {
     currentSession?.status === "closed" || closedSessionMeta?.sessionId === currentSessionId;
 
   useEffect(() => {
-    if (!timelineNodes.length) {
+    const latestSnapshotId = timelineNodes[0]?.snapshot_id ?? null;
+    if (!latestSnapshotId) {
       setSelectedTimelineSnapshotId(null);
       setRollbackPreview(null);
+      lastTimelineHeadSnapshotIdRef.current = null;
       return;
     }
-    if (selectedTimelineSnapshotId && timelineNodes.some((node) => node.snapshot_id === selectedTimelineSnapshotId)) {
+    const latestChanged = latestSnapshotId !== lastTimelineHeadSnapshotIdRef.current;
+    lastTimelineHeadSnapshotIdRef.current = latestSnapshotId;
+    if (!selectedTimelineSnapshotId || !timelineNodes.some((node) => node.snapshot_id === selectedTimelineSnapshotId)) {
+      setSelectedTimelineSnapshotId(latestSnapshotId);
+      setAutoFollowLatestTimelineNode(true);
       return;
     }
-    setSelectedTimelineSnapshotId(timelineNodes[0]?.snapshot_id ?? null);
-  }, [selectedTimelineSnapshotId, timelineNodes]);
+    if (autoFollowLatestTimelineNode && latestChanged && selectedTimelineSnapshotId !== latestSnapshotId) {
+      setSelectedTimelineSnapshotId(latestSnapshotId);
+    }
+  }, [autoFollowLatestTimelineNode, selectedTimelineSnapshotId, timelineNodes]);
 
   useEffect(() => {
     if (!currentSessionId || !selectedTimelineSnapshotId) return;
     rollbackPreviewMutation.mutate({ sessionId: currentSessionId, snapshotId: selectedTimelineSnapshotId });
   }, [currentSessionId, selectedTimelineSnapshotId]);
+
+  useEffect(() => {
+    const target = timelineScrollViewportRef.current;
+    if (!target) return;
+    const update = () => setTimelineViewportWidth(target.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [isTimelineScrollable]);
+
+  useEffect(() => {
+    if (!isTimelineScrollable) return;
+    const target = timelineScrollViewportRef.current;
+    if (!target) return;
+    const onScroll = () => setTimelineScrollLeft(target.scrollLeft);
+    onScroll();
+    target.addEventListener("scroll", onScroll, { passive: true });
+    return () => target.removeEventListener("scroll", onScroll);
+  }, [isTimelineScrollable]);
 
   useEffect(() => {
     if (!effectiveError) return;
@@ -2080,12 +2136,15 @@ export function RealtimeStudio() {
   }
 
   useEffect(() => {
-    if (currentSessionId) {
-      snapshotMutation.mutate(currentSessionId);
-    }
-    // `useMutation()` returns a new object identity per render; only auto-snapshot when session changes.
+    if (!currentSessionId) return;
+    // Avoid creating a new timeline node on every page refresh.
+    // Only bootstrap a snapshot when timeline data has loaded and is truly empty.
+    if (!timelineQuery.isSuccess) return;
+    if (timelineNodes.length > 0) return;
+    snapshotMutation.mutate(currentSessionId);
+    // `useMutation()` returns a new object identity per render; this effect is driven by timeline state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSessionId]);
+  }, [currentSessionId, timelineNodes.length, timelineQuery.isSuccess]);
 
   useEffect(() => {
     setLocalCommittedTranscriptTurns([]);
@@ -2307,6 +2366,65 @@ export function RealtimeStudio() {
       queryClient.invalidateQueries({ queryKey: ["realtime-annotations", data.session_id] });
     },
     onError: (err) => setError((err as Error).message),
+  });
+
+  const [rollbackEditOpen, setRollbackEditOpen] = useState(false);
+  const [rollbackEditTurns, setRollbackEditTurns] = useState<RealtimeTranscriptTurnEditable[]>([]);
+
+  const rollbackEditApplyMutation = useMutation({
+    mutationFn: ({
+      sessionId,
+      snapshotId,
+      turns,
+    }: {
+      sessionId: string;
+      snapshotId: string;
+      turns: RealtimeTranscriptTurnEditable[];
+    }) =>
+      api.editApplyRealtimeRollback(sessionId, {
+        snapshot_id: snapshotId,
+        turns,
+      }),
+    onMutate: () => {
+      // Close editor immediately so users are not blocked while recompute runs.
+      setRollbackEditOpen(false);
+      setNotice({ tone: "info", text: "已提交重算请求，正在后台更新主图…" });
+    },
+    onSuccess: (data) => {
+      const mermaidState =
+        data.pipeline?.mermaid_state && typeof data.pipeline.mermaid_state === "object"
+          ? (data.pipeline.mermaid_state as Record<string, unknown>)
+          : null;
+      const hasRenderIssue = Boolean(
+        mermaidState &&
+          (mermaidState.error_message ||
+            mermaidState.compile_ok === false ||
+            mermaidState.render_ok === false),
+      );
+      if (!hasRenderIssue) {
+        setSnapshot({
+          session_id: data.session_id,
+          pipeline: data.pipeline,
+          evaluation: data.evaluation || {},
+        });
+        syncPipelineStatus(data.pipeline);
+      }
+      setRollbackPreview(null);
+      setRollbackEditOpen(false);
+      setNotice(
+        hasRenderIssue
+          ? { tone: "warning", text: "重算已执行，但本次 Mermaid 渲染异常，已保留当前主图。可调整输入后重试。" }
+          : { tone: "success", text: "已保存编辑内容，并从该节点重新生成后续状态。" },
+      );
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
+      queryClient.invalidateQueries({ queryKey: ["realtime-annotations", data.session_id] });
+    },
+    onError: (err) => {
+      setError((err as Error).message);
+      setNotice({ tone: "warning", text: "重算失败，请稍后重试或调整输入内容。" });
+    },
   });
 
   const closeMutation = useMutation({
@@ -2570,7 +2688,7 @@ export function RealtimeStudio() {
 
     helperEventSourceRef.current?.close();
     helperEventSourceRef.current = subscribeAudioHelperEvents(
-      (payload) => {
+      (payload: any) => {
         if (payload.error_message) {
           studioSend({ type: "stt.error", message: payload.error_message });
           setError(payload.error_message);
@@ -2648,7 +2766,12 @@ export function RealtimeStudio() {
     return Array.isArray(activeSnapshot?.pipeline?.events) ? activeSnapshot.pipeline.events : [];
   }, [activeSnapshot?.pipeline?.events]);
   const mermaidState = activeSnapshot?.pipeline?.mermaid_state ?? null;
-  const isTimelinePreviewActive = Boolean(rollbackPreviewMermaidCode);
+  const isSelectedTimelinePreviewReady = Boolean(
+    rollbackPreviewMermaidCode &&
+      selectedTimelineSnapshotId &&
+      rollbackPreview?.snapshot_id === selectedTimelineSnapshotId,
+  );
+  const isTimelinePreviewActive = isSelectedTimelinePreviewReady;
   const displayedMermaidCode = isTimelinePreviewActive
     ? rollbackPreviewMermaidCode
     : mermaidState?.code || mermaidState?.normalized_code || "";
@@ -3080,6 +3203,151 @@ export function RealtimeStudio() {
           {notice.text}
         </div>
       ) : null}
+      {timelineHoverTooltip && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="pointer-events-none fixed z-[24050] -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md border border-theme-default bg-surface-1 px-1.5 py-0.5 text-[10px] text-theme-2 shadow-sm"
+              style={{
+                left: `${timelineHoverTooltip.x}px`,
+                top: `${timelineHoverTooltip.y}px`,
+              }}
+            >
+              {timelineHoverTooltip.text}
+            </div>,
+            document.body,
+          )
+        : null}
+      {rollbackEditOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[22000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]">
+              <Card className="w-full max-w-[min(920px,96vw)] overflow-hidden rounded-[22px] border border-theme-default bg-surface-1 p-0 shadow-2xl">
+                <div className="flex items-center justify-between gap-3 border-b border-theme-subtle px-5 py-4">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-theme-1">编辑回溯节点的历史输入</div>
+                    <div className="mt-1 text-[11px] text-theme-4">
+                      保存后会覆盖该节点之后的时间轴，并从这里重新生成。
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-8 shrink-0 px-3 text-xs font-semibold"
+                    onClick={() => setRollbackEditOpen(false)}
+                    disabled={rollbackEditApplyMutation.isPending}
+                  >
+                    关闭
+                  </Button>
+                </div>
+                <div className="max-h-[min(70vh,560px)] overflow-auto px-5 py-4">
+                  <div className="flex flex-col gap-2">
+                    {rollbackEditTurns.length ? (
+                      rollbackEditTurns.map((turn, index) => (
+                        (() => {
+                          const tone = transcriptSpeakerCardTone(turn.speaker);
+                          return (
+                        <div
+                          key={index}
+                          className={`grid grid-cols-[140px_minmax(0,1fr)_auto] items-start gap-2 rounded-xl border p-3 ${tone.card}`}
+                          style={tone.style}
+                        >
+                          <Input
+                            value={turn.speaker}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              setRollbackEditTurns((prev) =>
+                                prev.map((t, i) => (i === index ? { ...t, speaker: next } : t)),
+                              );
+                            }}
+                            className={`h-8 rounded-lg border text-xs ${tone.speaker} ${tone.body}`}
+                            style={tone.speakerTagStyle}
+                            placeholder="speaker"
+                          />
+                          <Textarea
+                            value={turn.text}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              setRollbackEditTurns((prev) =>
+                                prev.map((t, i) => (i === index ? { ...t, text: next } : t)),
+                              );
+                            }}
+                            className={`min-h-[2.5rem] resize-y rounded-lg border text-xs ${tone.body}`}
+                            style={{ ...tone.contentStyle, ...tone.style }}
+                            placeholder="输入这一轮的内容…"
+                          />
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="h-8 shrink-0 px-2 text-xs"
+                            onClick={() => setRollbackEditTurns((prev) => prev.filter((_, i) => i !== index))}
+                            disabled={rollbackEditApplyMutation.isPending}
+                            title="删除这一条"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                          );
+                        })()
+                      ))
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-theme-default bg-surface-2 px-4 py-6 text-center text-xs text-theme-3">
+                        这个节点没有可编辑的 turns（或还未加载）。你可以先新增一条。
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-8 px-3 text-xs font-semibold"
+                      onClick={() =>
+                        setRollbackEditTurns((prev) => [...prev, { speaker: "speaker", text: "" }])
+                      }
+                      disabled={rollbackEditApplyMutation.isPending}
+                    >
+                      新增一条
+                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-8 px-3 text-xs font-semibold"
+                        onClick={() => setRollbackEditOpen(false)}
+                        disabled={rollbackEditApplyMutation.isPending}
+                      >
+                        取消
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        className="h-8 px-3 text-xs font-semibold"
+                        onClick={() => {
+                          if (!currentSessionId || !selectedTimelineSnapshotId) return;
+                          setRollbackEditOpen(false);
+                          rollbackEditApplyMutation.mutate({
+                            sessionId: currentSessionId,
+                            snapshotId: selectedTimelineSnapshotId,
+                            turns: rollbackEditTurns
+                              .map((t) => ({ speaker: String(t.speaker || "speaker"), text: String(t.text || "") }))
+                              .filter((t) => t.text.trim().length > 0),
+                          });
+                        }}
+                        disabled={
+                          !currentSessionId ||
+                          !selectedTimelineSnapshotId ||
+                          rollbackEditApplyMutation.isPending ||
+                          currentSessionClosed
+                        }
+                      >
+                        {rollbackEditApplyMutation.isPending ? "保存中…" : "保存并重算"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </div>,
+            document.body,
+          )
+        : null}
 
       <div className="flex h-full flex-col overflow-hidden space-y-4">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
@@ -4221,98 +4489,284 @@ export function RealtimeStudio() {
             </Tabs.Content>
 
             </div>
-            <div className="shrink-0 border-t border-theme-subtle px-4 py-1.5">
+            <div className="relative z-0 shrink-0 border-t border-theme-subtle px-4 py-1.5">
               <div className="px-1 py-0.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-[11px] font-semibold text-theme-1">时间轴</div>
                   <div className="text-[10px] text-theme-4">{orderedTimelineNodes.length} snapshots</div>
                 </div>
-                <div className="relative mt-1.5 px-0.5">
-                  <div className="pointer-events-none absolute left-[6px] right-[6px] top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-[#d6ccf0]/85" />
-                  <div className="relative flex items-center justify-between gap-1">
-                    {orderedTimelineNodes.length ? (
-                      orderedTimelineNodes.map((node: RealtimeTimelineNode) => {
-                        const active = node.snapshot_id === selectedTimelineSnapshotId;
-                        const nodeName =
-                          node.label ||
-                          `快照 ${new Date(node.created_at).toLocaleTimeString("zh-CN", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                          })}`;
-                        return (
-                          <button
-                            key={node.snapshot_id}
-                            type="button"
-                            title={nodeName}
-                            onClick={() => {
-                              setSelectedTimelineSnapshotId(node.snapshot_id);
-                            }}
-                            className={`group relative z-[1] shrink-0 transition-all duration-300 ease-out ${
-                              active
-                                ? "h-3 w-8 rounded-full bg-[color:var(--accent)] shadow-[0_0_0_2px_rgba(167,139,250,0.16)]"
-                                : "h-3 w-3 rounded-full bg-[#b7bdd0] hover:bg-[#a58bd4]"
-                            }`}
-                            aria-label={nodeName}
-                          >
-                            <span className="pointer-events-none absolute left-1/2 top-[-1.45rem] hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-theme-default bg-surface-1 px-1.5 py-0.5 text-[10px] text-theme-2 shadow-sm group-hover:block">
-                              {nodeName}
-                            </span>
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <div className="text-[10px] text-theme-3">暂无可用时间点</div>
-                    )}
-                  </div>
-                  {isTimelinePreviewActive && selectedTimelineOrderedIndex >= 0 ? (
-                    <div
-                      className="pointer-events-none absolute z-[3]"
-                      style={{
-                        left:
-                          orderedTimelineNodes.length > 1
-                            ? `calc(6px + ((100% - 12px) * ${selectedTimelineOrderedIndex}) / ${orderedTimelineNodes.length - 1})`
-                            : "50%",
-                        top: "-0.35rem",
-                        transform: "translate(-50%, -100%)",
-                      }}
-                    >
-                      <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-[color:var(--accent)]/35 bg-surface-1/95 px-2 py-1 shadow-sm backdrop-blur-sm whitespace-nowrap">
-                        <div className="flex flex-nowrap items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
-                            onClick={() => setRollbackPreview(null)}
-                          >
-                            取消
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="danger"
-                            className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
-                            onClick={() =>
-                              currentSessionId && selectedTimelineSnapshotId
-                                ? rollbackApplyMutation.mutate({
-                                    sessionId: currentSessionId,
-                                    snapshotId: selectedTimelineSnapshotId,
-                                  })
-                                : null
-                            }
-                            disabled={
-                              !currentSessionId ||
-                              !selectedTimelineSnapshotId ||
-                              rollbackApplyMutation.isPending ||
-                              currentSessionClosed
-                            }
-                          >
-                            {rollbackApplyMutation.isPending ? "回退中" : "回退"}
-                          </Button>
+                {isTimelineScrollable ? (
+                  <div className="mt-1.5">
+                    <div className="relative">
+                      <div ref={timelineScrollViewportRef} className="overflow-x-auto pb-1 [scrollbar-width:thin]">
+                        <div
+                          className="relative mx-1 h-8 px-2 py-1"
+                          style={{ width: `${timelineScrollableTrackWidth}px` }}
+                        >
+                          <div className="pointer-events-none absolute left-2 right-2 top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-[#d6ccf0]/85" />
+                          <div className="relative h-full">
+                            {orderedTimelineNodes.length ? (
+                              orderedTimelineNodes.map((node: RealtimeTimelineNode, index: number) => {
+                                const active = node.snapshot_id === selectedTimelineSnapshotId;
+                                const nodeName =
+                                  node.label ||
+                                  `快照 ${new Date(node.created_at).toLocaleTimeString("zh-CN", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    second: "2-digit",
+                                  })}`;
+                                return (
+                                  <button
+                                    key={node.snapshot_id}
+                                    type="button"
+                                    title={nodeName}
+                                    onClick={() => {
+                                      setSelectedTimelineSnapshotId(node.snapshot_id);
+                                      setAutoFollowLatestTimelineNode(node.snapshot_id === timelineNodes[0]?.snapshot_id);
+                                    }}
+                                  onMouseEnter={(e) => {
+                                    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                    setTimelineHoverTooltip({
+                                      text: nodeName,
+                                      x: rect.left + rect.width / 2,
+                                      y: rect.top - 6,
+                                    });
+                                  }}
+                                  onMouseMove={(e) => {
+                                    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                    setTimelineHoverTooltip({
+                                      text: nodeName,
+                                      x: rect.left + rect.width / 2,
+                                      y: rect.top - 6,
+                                    });
+                                  }}
+                                  onMouseLeave={() => setTimelineHoverTooltip(null)}
+                                    className={`group absolute top-1/2 z-[0] -translate-y-1/2 transition-all duration-300 ease-out ${
+                                      active
+                                        ? "h-3 w-8 rounded-full bg-[color:var(--accent)] shadow-[0_0_0_2px_rgba(167,139,250,0.16)]"
+                                        : "h-3 w-3 rounded-full bg-[#b7bdd0] hover:bg-[#a58bd4]"
+                                    }`}
+                                    style={{ left: `${6 + index * timelineScrollStep}px` }}
+                                    aria-label={nodeName}
+                                  >
+                                    <span className="hidden">{nodeName}</span>
+                                  </button>
+                                );
+                              })
+                            ) : (
+                              <div className="text-[10px] text-theme-3">暂无可用时间点</div>
+                            )}
+                          </div>
                         </div>
                       </div>
+                      {isTimelinePreviewActive && timelineScrollableSelectedLeft != null ? (
+                        <div
+                          className="pointer-events-none absolute z-[3]"
+                          style={{
+                            left: `${timelineScrollableSelectedLeft - timelineScrollLeft + 8}px`,
+                            top: "-0.35rem",
+                            transform: "translate(-50%, -100%)",
+                          }}
+                        >
+                          <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-[color:var(--accent)]/35 bg-surface-1/95 px-2 py-1 shadow-sm backdrop-blur-sm whitespace-nowrap">
+                            <div className="flex flex-nowrap items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                                onClick={() => setRollbackPreview(null)}
+                              >
+                                取消
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                                onClick={() => {
+                                  if (!selectedTimelineSnapshotId || rollbackPreview?.snapshot_id !== selectedTimelineSnapshotId) {
+                                    setNotice({ tone: "info", text: "正在加载该节点内容，请稍后再编辑。" });
+                                    return;
+                                  }
+                                  const turns = rollbackPreview?.turns;
+                                  if (!Array.isArray(turns) || !turns.length) {
+                                    setRollbackEditTurns([]);
+                                  } else {
+                                    setRollbackEditTurns(
+                                      turns.map((t: RealtimeTranscriptTurn) => ({
+                                        speaker: String(t.speaker || "speaker"),
+                                        text: String(t.text || ""),
+                                      })),
+                                    );
+                                  }
+                                  setRollbackEditOpen(true);
+                                }}
+                                disabled={!currentSessionId || !selectedTimelineSnapshotId || currentSessionClosed}
+                              >
+                                编辑
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="danger"
+                                className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                                onClick={() =>
+                                  currentSessionId && selectedTimelineSnapshotId
+                                    ? rollbackApplyMutation.mutate({
+                                        sessionId: currentSessionId,
+                                        snapshotId: selectedTimelineSnapshotId,
+                                      })
+                                    : null
+                                }
+                                disabled={
+                                  !currentSessionId ||
+                                  !selectedTimelineSnapshotId ||
+                                  rollbackPreview?.snapshot_id !== selectedTimelineSnapshotId ||
+                                  rollbackApplyMutation.isPending ||
+                                  currentSessionClosed
+                                }
+                              >
+                                {rollbackApplyMutation.isPending ? "回退中" : "回退"}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
+                    <div className="text-[10px] text-theme-4">节点较多，可左右拖动时间轴查看</div>
+                  </div>
+                ) : (
+                  <div className="relative mt-1.5 px-0.5">
+                    <div className="pointer-events-none absolute left-[6px] right-[6px] top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-[#d6ccf0]/85" />
+                    <div className="relative flex items-center justify-between gap-1">
+                      {orderedTimelineNodes.length ? (
+                        orderedTimelineNodes.map((node: RealtimeTimelineNode) => {
+                          const active = node.snapshot_id === selectedTimelineSnapshotId;
+                          const nodeName =
+                            node.label ||
+                            `快照 ${new Date(node.created_at).toLocaleTimeString("zh-CN", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit",
+                            })}`;
+                          return (
+                            <button
+                              key={node.snapshot_id}
+                              type="button"
+                              title={nodeName}
+                              onClick={() => {
+                                setSelectedTimelineSnapshotId(node.snapshot_id);
+                                setAutoFollowLatestTimelineNode(node.snapshot_id === timelineNodes[0]?.snapshot_id);
+                              }}
+                              onMouseEnter={(e) => {
+                                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                setTimelineHoverTooltip({
+                                  text: nodeName,
+                                  x: rect.left + rect.width / 2,
+                                  y: rect.top - 6,
+                                });
+                              }}
+                              onMouseMove={(e) => {
+                                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                setTimelineHoverTooltip({
+                                  text: nodeName,
+                                  x: rect.left + rect.width / 2,
+                                  y: rect.top - 6,
+                                });
+                              }}
+                              onMouseLeave={() => setTimelineHoverTooltip(null)}
+                              className={`group relative z-[1] shrink-0 transition-all duration-300 ease-out ${
+                                active
+                                  ? "h-3 w-8 rounded-full bg-[color:var(--accent)] shadow-[0_0_0_2px_rgba(167,139,250,0.16)]"
+                                  : "h-3 w-3 rounded-full bg-[#b7bdd0] hover:bg-[#a58bd4]"
+                              }`}
+                              aria-label={nodeName}
+                            >
+                              <span className="hidden">{nodeName}</span>
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="text-[10px] text-theme-3">暂无可用时间点</div>
+                      )}
+                    </div>
+                    {isTimelinePreviewActive && selectedTimelineOrderedIndex >= 0 ? (
+                      <div
+                        className="pointer-events-none absolute z-[3]"
+                        style={{
+                          left:
+                            orderedTimelineNodes.length > 1
+                              ? `calc(6px + ((100% - 12px) * ${selectedTimelineOrderedIndex}) / ${orderedTimelineNodes.length - 1})`
+                              : "50%",
+                          top: "-0.35rem",
+                          transform: "translate(-50%, -100%)",
+                        }}
+                      >
+                        <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-[color:var(--accent)]/35 bg-surface-1/95 px-2 py-1 shadow-sm backdrop-blur-sm whitespace-nowrap">
+                          <div className="flex flex-nowrap items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                              onClick={() => setRollbackPreview(null)}
+                            >
+                              取消
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                              onClick={() => {
+                                if (
+                                  !selectedTimelineSnapshotId ||
+                                  rollbackPreview?.snapshot_id !== selectedTimelineSnapshotId
+                                ) {
+                                  setNotice({ tone: "info", text: "正在加载该节点内容，请稍后再编辑。" });
+                                  return;
+                                }
+                                const turns = rollbackPreview?.turns;
+                                if (!Array.isArray(turns) || !turns.length) {
+                                  setRollbackEditTurns([]);
+                                } else {
+                                  setRollbackEditTurns(
+                                    turns.map((t: RealtimeTranscriptTurn) => ({
+                                      speaker: String(t.speaker || "speaker"),
+                                      text: String(t.text || ""),
+                                    })),
+                                  );
+                                }
+                                setRollbackEditOpen(true);
+                              }}
+                              disabled={!currentSessionId || !selectedTimelineSnapshotId || currentSessionClosed}
+                            >
+                              编辑
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="danger"
+                              className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                              onClick={() =>
+                                currentSessionId && selectedTimelineSnapshotId
+                                  ? rollbackApplyMutation.mutate({
+                                      sessionId: currentSessionId,
+                                      snapshotId: selectedTimelineSnapshotId,
+                                    })
+                                  : null
+                              }
+                              disabled={
+                                !currentSessionId ||
+                                !selectedTimelineSnapshotId ||
+                                rollbackPreview?.snapshot_id !== selectedTimelineSnapshotId ||
+                                rollbackApplyMutation.isPending ||
+                                currentSessionClosed
+                              }
+                            >
+                              {rollbackApplyMutation.isPending ? "回退中" : "回退"}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 px-4 py-2.5">

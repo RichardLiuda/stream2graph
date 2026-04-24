@@ -9,6 +9,8 @@ import {
   reportSummarySchema,
   realtimeAudioTranscriptionSchema,
   realtimeRollbackApplySchema,
+  realtimeRollbackEditApplySchema,
+  realtimeRollbackEditRequestSchema,
   realtimeRollbackPreviewSchema,
   realtimeRollbackRequestSchema,
   realtimeSessionAnnotationsSchema,
@@ -257,7 +259,7 @@ async function requestRealtime<TSchema extends z.ZodTypeAny>(
   const timeoutMs = REALTIME_PIPELINE_TIMEOUT_MS;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  const requestUrl = directApiUrl(path);
+  const requestUrl = apiUrl(path);
   try {
     const response = await fetch(requestUrl, {
       credentials: "include",
@@ -300,7 +302,7 @@ async function requestRealtime<TSchema extends z.ZodTypeAny>(
     if (e instanceof TypeError) {
       throw new ApiError(
         0,
-        `无法直连实时 API（请求：${requestUrl}）。请确认：① API 已在 8000 端口运行；② 浏览器可直接访问 ${requestUrl}; ③ 后端 CORS 允许当前页面来源。`,
+        `无法访问实时 API（请求：${requestUrl}）。请确认：① 前端同源代理已启用（默认）或 API 地址可达；② API 服务在目标地址正常运行；③ 若跨域直连则后端 CORS 允许当前页面来源。`,
         {},
       );
     }
@@ -492,6 +494,14 @@ export const api = {
     }),
   applyRealtimeRollback: async (sessionId: string, payload: z.infer<typeof realtimeRollbackRequestSchema>) =>
     requestRealtime(`/api/v1/realtime/sessions/${sessionId}/rollback/apply`, realtimeRollbackApplySchema, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  editApplyRealtimeRollback: async (
+    sessionId: string,
+    payload: z.infer<typeof realtimeRollbackEditRequestSchema>,
+  ) =>
+    requestRealtime(`/api/v1/realtime/sessions/${sessionId}/rollback/edit_apply`, realtimeRollbackEditApplySchema, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
