@@ -3781,8 +3781,8 @@ export function RealtimeStudio() {
                 className="pointer-events-none h-px w-full shrink-0 bg-gradient-to-r from-transparent via-[color:var(--accent)]/30 to-transparent"
                 aria-hidden
               />
-              <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-2 pt-3">
-                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <div className="relative flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-0 pt-0.5">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <Tabs.List className="workspace-tab-list w-full max-w-[460px] grid-cols-3 self-start">
               <span
                 aria-hidden
@@ -3849,7 +3849,7 @@ export function RealtimeStudio() {
                       ))}
                     </div>
                   </Tooltip.Provider>
-                  <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pt-1 pr-1">
+                  <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pt-1 pr-1 xl:absolute xl:right-4 xl:top-[3.45rem] xl:z-10 xl:max-w-[min(680px,calc(100%_-_30rem))] xl:justify-end xl:overflow-visible xl:pr-0 xl:pt-0">
                     {/* 笔：横向展开，宽度随内容；高度固定一行 h-7 */}
                     <div
                       className={`inline-flex h-7 w-auto shrink-0 items-center overflow-hidden rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[max-width] duration-300 ease-out will-change-[max-width] ${
@@ -4196,7 +4196,7 @@ export function RealtimeStudio() {
                   </div>
                 </div>
                 <Tooltip.Provider delayDuration={200}>
-                  <div className="ml-auto flex w-auto shrink-0 flex-nowrap items-start justify-end gap-3 sm:gap-4 sm:pr-1">
+                  <div className="ml-auto flex w-auto shrink-0 flex-nowrap items-start justify-end gap-2 sm:gap-3 xl:-mt-2">
                     <div className="flex shrink-0 flex-col items-center">
                       <Tooltip.Root>
                         <Tooltip.Trigger asChild>
@@ -4205,14 +4205,14 @@ export function RealtimeStudio() {
                               type="button"
                               onClick={() => void stageStartCapture()}
                               disabled={!canStartStageCapture}
-                              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
+                              className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-12 sm:w-12 ${
                                 canStartStageCapture
-                                  ? "border-violet-200/90 bg-violet-700/70 text-violet-50 shadow-[0_0_0_1px_rgba(139,92,246,0.32)_inset,0_10px_22px_rgba(109,40,217,0.36)] hover:border-violet-200/95 hover:bg-violet-700/75 focus-visible:ring-violet-200/80"
+                                  ? "border-[rgb(76_29_149_/_0.5)] bg-[rgb(46_16_100_/_0.45)] text-white shadow-[0_1px_0_rgb(255_255_255_/_0.42)_inset,0_10px_22px_rgb(109_40_217_/_0.24)] hover:border-[rgb(76_29_149_/_0.62)] hover:bg-[rgb(46_16_100_/_0.55)] focus-visible:ring-[rgb(167_139_250_/_0.45)]"
                                   : "border-violet-900/50 bg-violet-950/45 text-violet-200 focus-visible:ring-violet-700"
                               }`}
                               aria-label="开始录音"
                             >
-                              <Mic className="h-6 w-6 sm:h-7 sm:w-7" />
+                              <Mic className="h-5 w-5 sm:h-6 sm:w-6" />
                             </button>
                           </span>
                         </Tooltip.Trigger>
@@ -4240,14 +4240,14 @@ export function RealtimeStudio() {
                               type="button"
                               onClick={() => void stageStopCapture()}
                               disabled={!canStopStageCapture}
-                              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
+                              className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-12 sm:w-12 ${
                                 canStopStageCapture
                                   ? "border-red-200/90 bg-red-700/70 text-red-50 shadow-[0_0_0_1px_rgba(239,68,68,0.30)_inset,0_10px_22px_rgba(220,38,38,0.32)] hover:border-red-200/95 hover:bg-red-700/75 focus-visible:ring-red-200/80"
                                   : "border-red-900/50 bg-red-950/40 text-red-200 focus-visible:ring-red-800"
                               }`}
                               aria-label="停止录音"
                             >
-                              <Pause className="h-6 w-6 sm:h-7 sm:w-7" />
+                              <Pause className="h-5 w-5 sm:h-6 sm:w-6" />
                             </button>
                           </span>
                         </Tooltip.Trigger>
@@ -4271,7 +4271,7 @@ export function RealtimeStudio() {
                       <Button
                         type="button"
                         variant="secondary"
-                        className="inline-flex h-12 shrink-0 gap-2 rounded-xl px-3 text-xs shadow-sm sm:h-14 sm:px-3.5 sm:text-sm"
+                        className="inline-flex h-10 shrink-0 gap-2 rounded-xl px-3 text-xs shadow-sm sm:h-12 sm:px-3.5 sm:text-sm"
                         onClick={() => setDetailDrawerOpen(true)}
                       >
                         <PanelRight className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
@@ -4284,7 +4284,7 @@ export function RealtimeStudio() {
 
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <Tabs.Content value="mermaid" className="absolute inset-0 flex min-h-0 flex-col outline-none">
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-3 pt-1 sm:px-3">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-0 pt-3.5 sm:px-3">
                 <MermaidCard
                   title=""
                   embedded
@@ -4318,7 +4318,7 @@ export function RealtimeStudio() {
             </Tabs.Content>
 
             <Tabs.Content value="structure" className="absolute inset-0 flex min-h-0 flex-col outline-none">
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-3 pt-1 sm:px-3">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-0 pt-3.5 sm:px-3">
                 <GraphStage
                   embedded
                   fixedLightCanvas
@@ -4489,7 +4489,7 @@ export function RealtimeStudio() {
             </Tabs.Content>
 
             </div>
-            <div className="relative z-0 shrink-0 border-t border-theme-subtle px-4 py-1.5">
+            <div className="relative z-0 shrink-0 translate-y-3.5 border-t border-theme-subtle px-4 py-1.5">
               <div className="px-1 py-0.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-[11px] font-semibold text-theme-1">时间轴</div>
@@ -4769,16 +4769,12 @@ export function RealtimeStudio() {
                 )}
               </div>
             </div>
-            <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 px-4 py-2.5">
+            <div className="flex shrink-0 translate-y-3.5 flex-wrap items-end justify-between gap-3 px-4 py-2.5">
               <div className="flex w-full max-w-[min(100%,30rem)] flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   variant={currentSessionId ? "secondary" : "primary"}
-                  className={
-                    currentSessionId
-                      ? "h-8 shrink-0 gap-1 px-3 text-xs font-semibold"
-                      : "s2g-cta-create-session h-8 shrink-0 gap-1 px-3 text-xs font-semibold shadow-none"
-                  }
+                  className="s2g-cta-create-session h-8 shrink-0 gap-1 px-3 text-xs font-semibold shadow-none"
                   onClick={() => createSession.mutate()}
                   disabled={createSession.isPending}
                 >

@@ -904,7 +904,7 @@ function MermaidCardBody({
         embedded ? "flex h-full min-h-0 min-w-0 flex-col bg-transparent" : "bg-surface-muted p-4"
       }
     >
-        {error ? (
+        {error && !embedded ? (
           <div
             className={`rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2.5 text-xs leading-relaxed text-amber-100 ${
               embedded ? "mx-1 mb-2 shrink-0 sm:mx-2" : "mb-3"
@@ -954,10 +954,20 @@ function MermaidCardBody({
                   backgroundPosition: "10px 10px",
                 }}
               />
+              {embedded && error && error !== "暂无 Mermaid 内容" ? (
+                <div className="absolute left-2 right-2 top-2 z-[3] rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
+                  渲染错误：{error}
+                  {lastSuccessfulSvg ? " 已保留最近一次可用图。" : ""}
+                </div>
+              ) : null}
               {!svg ? (
                 <div
                   className={`absolute z-[2] rounded-lg border border-amber-900/55 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100 ${
-                    embedded ? "left-2 right-2 top-2" : "left-3 right-3 top-3"
+                    embedded
+                      ? error && error !== "暂无 Mermaid 内容"
+                        ? "left-2 right-2 top-12"
+                        : "left-2 right-2 top-2"
+                      : "left-3 right-3 top-3"
                   }`}
                 >
                   画布已就绪，但目前没有可渲染的 Mermaid。
