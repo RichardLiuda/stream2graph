@@ -31,6 +31,7 @@ export function PanZoomCanvas({
   maxScale = 2.4,
   initialScale = 1,
   initialOffset = { x: 0, y: 0 },
+  controlsOffsetTop = 12,
   children,
 }: PropsWithChildren<{
   className?: string;
@@ -49,6 +50,8 @@ export function PanZoomCanvas({
   maxScale?: number;
   initialScale?: number;
   initialOffset?: Point;
+  /** 顶部缩放工具条距离画布上边缘像素值 */
+  controlsOffsetTop?: number;
 }>) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(() => clamp(initialScale, minScale, maxScale));
@@ -211,7 +214,8 @@ export function PanZoomCanvas({
       style={{ touchAction: "none", ...styleProp }}
     >
       <div
-        className={`absolute right-3 top-3 z-[5] flex items-center gap-1.5 rounded-lg border border-[color:var(--panzoom-chrome-border)] bg-[var(--panzoom-chrome-bg)] p-1.5 shadow-lg`}
+        className={`absolute right-3 z-[5] flex items-center gap-1.5 rounded-lg border border-[color:var(--panzoom-chrome-border)] bg-[var(--panzoom-chrome-bg)] p-1.5 shadow-lg`}
+        style={{ top: `${controlsOffsetTop}px` }}
         data-panzoom-controls
       >
         <Button

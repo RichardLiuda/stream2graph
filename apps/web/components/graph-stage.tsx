@@ -58,6 +58,7 @@ export function GraphStage({
   fixedLightCanvas = false,
   incrementalStages = [],
   activeIncrementalStageIndex = null,
+  panZoomControlsOffsetTop = 12,
 }: {
   title: string;
   nodes: RendererNode[];
@@ -79,6 +80,7 @@ export function GraphStage({
   fixedLightCanvas?: boolean;
   incrementalStages?: IncrementalStageSummary[];
   activeIncrementalStageIndex?: number | null;
+  panZoomControlsOffsetTop?: number;
 }) {
   const [zoomRebuildNonce, setZoomRebuildNonce] = useState(0);
   const isEmpty = nodes.length === 0;
@@ -150,6 +152,7 @@ export function GraphStage({
           maxScale={2.6}
           initialScale={1}
           initialOffset={{ x: 0, y: 0 }}
+          controlsOffsetTop={panZoomControlsOffsetTop}
         >
           <div
             className={`pointer-events-none absolute rounded-md opacity-[var(--mindmap-grid-opacity)] ${

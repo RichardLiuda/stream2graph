@@ -1,5 +1,7 @@
 "use client";
 
+// AI辅助生成：豆包（IDE智能编程辅助），2026-04-02
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowRight, Plus, RefreshCcw, Save, Settings2, Trash2 } from "lucide-react";
@@ -43,11 +45,11 @@ type ProfileDraft = {
   voiceprint: VoiceprintDraft;
 };
 
-const DEFAULT_OPENAI_BASE = "https://api.openai.com";
+const DEFAULT_COMPAT_BASE = "";
 const DEFAULT_XFYUN_ASR_ENDPOINT = "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1";
 const DEFAULT_XFYUN_ASR_MODELS = ["rtasr_llm"];
 const MODEL_PROVIDER_KIND_OPTIONS: Array<{ value: ProviderKind; label: string }> = [
-  { value: "openai_compatible", label: "OpenAI Compatible" },
+  { value: "openai_compatible", label: "兼容接口（国内网关/厂商）" },
   { value: "xfyun_asr", label: "讯飞 RTASR LLM" },
 ];
 const DEFAULT_VOICEPRINT_BASE = "https://office-api-personal-dx.iflyaisol.com";
@@ -77,7 +79,7 @@ function blankProfile(prefix: "gate" | "planner" | "stt", index: number): Profil
   return {
     id: `${prefix}-${index}`,
     label: "",
-    endpointBase: prefix === "stt" ? DEFAULT_XFYUN_ASR_ENDPOINT : DEFAULT_OPENAI_BASE,
+    endpointBase: prefix === "stt" ? DEFAULT_XFYUN_ASR_ENDPOINT : DEFAULT_COMPAT_BASE,
     endpointRouteMode: prefix === "stt" ? "custom" : "chat_completions",
     customEndpointPath: "",
     disableThinking,
@@ -122,8 +124,8 @@ function shouldDisableThinking(kind: "gate" | "planner" | "stt", extraBodyJson: 
 
 function normalizeEndpointBase(value: string) {
   const trimmed = value.trim().replace(/\/$/, "");
-  if (!trimmed) return DEFAULT_OPENAI_BASE;
-  return trimmed.replace(/\/v1$/i, "") || DEFAULT_OPENAI_BASE;
+  if (!trimmed) return DEFAULT_COMPAT_BASE;
+  return trimmed.replace(/\/v1$/i, "") || DEFAULT_COMPAT_BASE;
 }
 
 function normalizeCustomEndpointPath(value: string) {
@@ -804,7 +806,7 @@ export function PlatformSettings() {
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateDraft(group.kind, index, { label: event.target.value })
                           }
-                          placeholder="例如 OpenAI Primary"
+                          placeholder="例如 Domestic Primary"
                         />
                       </div>
                       {isXfyunStt ? (
@@ -833,10 +835,10 @@ export function PlatformSettings() {
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                 updateDraft(group.kind, index, { endpointBase: event.target.value })
                               }
-                              placeholder={DEFAULT_OPENAI_BASE}
+                              placeholder={DEFAULT_COMPAT_BASE || "http://127.0.0.1:9000"}
                             />
                             <p className="text-xs leading-6 text-theme-4">
-                              默认使用 OpenAI 基座地址，`/v1` 之后的路径由下方选项自动补全。
+                              填写兼容接口的基座地址（不含 `/v1`），`/v1` 之后的路径由下方选项自动补全。
                             </p>
                           </div>
                           <div className="space-y-2">
@@ -934,7 +936,7 @@ export function PlatformSettings() {
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateDraft(group.kind, index, { apiKeyEnv: event.target.value })
                           }
-                          placeholder={isXfyunStt ? "可选，例如 XFYUN_API_KEY" : "可选，例如 OPENAI_API_KEY"}
+                          placeholder={isXfyunStt ? "可选，例如 XFYUN_API_KEY" : "可选，例如 S2G_DOMESTIC_LLM_API_KEY"}
                         />
                       </div>
                       {isXfyunStt ? (

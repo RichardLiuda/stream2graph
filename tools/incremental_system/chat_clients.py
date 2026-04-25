@@ -79,7 +79,7 @@ class OpenAICompatibleChatClient:
         endpoint: str,
         model: str,
         api_key: str = "",
-        api_key_env: str = "OPENAI_API_KEY",
+        api_key_env: str = "S2G_DOMESTIC_LLM_API_KEY",
         timeout_sec: int = 180,
         max_retries: int = 5,
         retry_backoff_sec: float = 3.0,
@@ -221,7 +221,7 @@ class LocalHFChatClient:
         endpoint: str,
         model: str,
         api_key: str = "",
-        api_key_env: str = "OPENAI_API_KEY",
+        api_key_env: str = "S2G_DOMESTIC_LLM_API_KEY",
         timeout_sec: int = 180,
         max_retries: int = 5,
         retry_backoff_sec: float = 3.0,
@@ -350,165 +350,3 @@ class LocalHFChatClient:
             )
 
 
-class GeminiGenerateContentChatClient:
-    def __init__(
-        self,
-        endpoint: str,
-        model: str,
-        api_key: str = "",
-        api_key_env: str = "GOOGLE_API_KEY",
-        timeout_sec: int = 180,
-        max_retries: int = 5,
-        retry_backoff_sec: float = 3.0,
-        request_interval_sec: float = 0.0,
-        extra_body: dict[str, Any] | None = None,
-        omit_temperature: bool = False,
-        temperature: float = 0.0,
-    ) -> None:
-        self.model = model
-        self.api_key_env = api_key_env
-        self.api_key = api_key or _resolve_api_key(api_key_env)
-        self.endpoint = endpoint.strip() or f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        self.timeout_sec = timeout_sec
-        self.max_retries = max_retries
-        self.retry_backoff_sec = retry_backoff_sec
-        self.request_interval_sec = request_interval_sec
-        self.extra_body = dict(extra_body or {})
-        self.omit_temperature = omit_temperature
-        self.temperature = temperature
-        self._last_request_started_at = 0.0
-        self._rate_limited_until = 0.0
-        self._request_gate = threading.Lock()
-
-    def _wait_for_request_slot(self) -> None:
-        with self._request_gate:
-            now = time.time()
-            provider_wait_sec = self._rate_limited_until - now
-            request_wait_sec = self.request_interval_sec - (now - self._last_request_started_at)
-            wait_sec = max(provider_wait_sec, request_wait_sec)
-            if wait_sec > 0:
-                time.sleep(wait_sec)
-            self._last_request_started_at = time.time()
-
-    def _set_rate_limit_pause(self, wait_sec: float) -> None:
-        if wait_sec <= 0:
-            return
-        with self._request_gate:
-            self._rate_limited_until = max(self._rate_limited_until, time.time() + wait_sec)
-
-    def _retry_after_seconds(self, exc: urllib.error.HTTPError, detail: str, attempt: int) -> float:
-        retry_after = exc.headers.get("Retry-After") if exc.headers else None
-        if retry_after:
-            try:
-                return max(float(retry_after), 0.0)
-            except ValueError:
-                pass
-        if "TPM limit reached" in detail:
-            return max(self.retry_backoff_sec * attempt * 6.0, 30.0)
-        if exc.code == 429:
-            match = re.search(r"retry after[:\\s]+([0-9]+(?:\\.[0-9]+)?)", detail, flags=re.IGNORECASE)
-            if match:
-                return max(float(match.group(1)), 0.0)
-            return max(self.retry_backoff_sec * attempt * 3.0, 15.0)
-        return self.retry_backoff_sec * attempt
-
-    def _endpoint_has_key(self) -> bool:
-        try:
-            parsed = urllib.parse.urlparse(self.endpoint)
-            return bool(urllib.parse.parse_qs(parsed.query).get("key", [""])[0])
-        except Exception:
-            return False
-
-    def _request_headers(self, api_key: str) -> dict[str, str]:
-        headers = {"Content-Type": "application/json"}
-        if api_key and not self._endpoint_has_key():
-            headers["x-goog-api-key"] = api_key
-        return headers
-
-    def _build_payload(self, messages: list[dict[str, str]]) -> dict[str, Any]:
-        system_parts: list[dict[str, str]] = []
-        contents: list[dict[str, Any]] = []
-        for message in messages:
-            role = str(message.get("role", "user")).strip().lower()
-            text = _extract_text(message.get("content"))
-            if not text:
-                continue
-            if role == "system":
-                system_parts.append({"text": text})
-                continue
-            gemini_role = "model" if role == "assistant" else "user"
-            contents.append({"role": gemini_role, "parts": [{"text": text}]})
-        if not contents:
-            contents = [{"role": "user", "parts": [{"text": ""}]}]
-
-        payload: dict[str, Any] = {"contents": contents}
-        if system_parts:
-            payload["systemInstruction"] = {"parts": system_parts}
-        if not self.omit_temperature:
-            payload["generationConfig"] = {"temperature": self.temperature}
-        return _deep_merge_dicts(payload, self.extra_body)
-
-    def _extract_text(self, response: dict[str, Any]) -> str:
-        chunks: list[str] = []
-        for candidate in response.get("candidates", []):
-            for part in candidate.get("content", {}).get("parts", []):
-                text = part.get("text")
-                if isinstance(text, str):
-                    chunks.append(text)
-        return "\n".join(chunks).strip()
-
-    def chat(self, messages: list[dict[str, str]]) -> ChatResult:
-        api_key = self.api_key or _resolve_api_key(self.api_key_env)
-        if not api_key and not self._endpoint_has_key():
-            raise RuntimeError(f"Missing API key for Gemini generateContent client: {self.api_key_env}")
-
-        body = json.dumps(self._build_payload(messages)).encode("utf-8")
-        request = urllib.request.Request(
-            self.endpoint,
-            data=body,
-            headers=self._request_headers(api_key),
-            method="POST",
-        )
-        retryable_status_codes = {408, 429, 500, 502, 503, 504}
-        last_error: Exception | None = None
-
-        for attempt in range(1, self.max_retries + 1):
-            self._wait_for_request_slot()
-            started_at = time.time()
-            try:
-                with urllib.request.urlopen(request, timeout=self.timeout_sec) as response:
-                    payload = json.loads(response.read().decode("utf-8"))
-                latency_ms = (time.time() - started_at) * 1000.0
-                finish_reason = None
-                if isinstance(payload.get("candidates"), list) and payload.get("candidates"):
-                    finish_reason = payload["candidates"][0].get("finishReason")
-                return ChatResult(
-                    text=self._extract_text(payload),
-                    latency_ms=round(latency_ms, 4),
-                    finish_reason=str(finish_reason or ""),
-                    usage=payload.get("usageMetadata", {}) if isinstance(payload.get("usageMetadata"), dict) else {},
-                    raw_response=payload,
-                )
-            except urllib.error.HTTPError as exc:
-                detail = exc.read().decode("utf-8", errors="replace")
-                last_error = RuntimeError(f"HTTP {exc.code}: {detail}")
-                if exc.code in retryable_status_codes and attempt < self.max_retries:
-                    wait_sec = self._retry_after_seconds(exc, detail, attempt)
-                    self._set_rate_limit_pause(wait_sec)
-                    time.sleep(wait_sec)
-                    continue
-                raise last_error from exc
-            except urllib.error.URLError as exc:
-                last_error = RuntimeError(f"URL error: {exc.reason}")
-                if attempt < self.max_retries:
-                    time.sleep(self.retry_backoff_sec * attempt)
-                    continue
-                raise last_error from exc
-            except (TimeoutError, socket.timeout) as exc:
-                last_error = RuntimeError("The read operation timed out")
-                if attempt < self.max_retries:
-                    time.sleep(self.retry_backoff_sec * attempt)
-                    continue
-                raise last_error from exc
-
-        raise RuntimeError(str(last_error) if last_error else "Gemini generateContent request failed.")

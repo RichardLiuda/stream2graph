@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# AI辅助生成：豆包（IDE智能编程辅助），2026-04-05
+
 import json
 import logging
 import os
@@ -21,7 +23,7 @@ from tools.eval.common import strip_think_traces
 from tools.eval.metrics import canonical_diagram_type
 from tools.incremental_dataset.schema import GraphEdge, GraphGroup, GraphIR, GraphNode
 from tools.incremental_dataset.staging import prepare_graph_for_mermaid_display, render_preview_mermaid
-from tools.incremental_system.chat_clients import LocalHFChatClient, OpenAICompatibleChatClient
+from tools.incremental_system.chat_clients import LocalHFChatClient, OpenAICompatibleChatClient as CompatibleChatClient
 from tools.incremental_system.loader import _graph_ir_from_payload
 from tools.incremental_system.models import (
     _build_recent_dialogue_snapshot,
@@ -1100,7 +1102,7 @@ def build_chat_client(profile: dict[str, Any], model: str, *, timeout_sec: int =
         "endpoint": str(profile.get("endpoint", "")),
         "model": model,
         "api_key": api_key,
-        "api_key_env": api_key_env or "OPENAI_API_KEY",
+        "api_key_env": api_key_env or "S2G_DOMESTIC_LLM_API_KEY",
         "timeout_sec": timeout_sec,
         "max_retries": REALTIME_LLM_MAX_RETRIES,
         "retry_backoff_sec": REALTIME_LLM_RETRY_BACKOFF_SEC,
@@ -1112,7 +1114,7 @@ def build_chat_client(profile: dict[str, Any], model: str, *, timeout_sec: int =
         return LocalHFChatClient(**common_kwargs)
     if provider_kind != "openai_compatible":
         raise RuntimeError(f"unsupported provider_kind: {provider_kind}")
-    return OpenAICompatibleChatClient(
+    return CompatibleChatClient(
         **common_kwargs,
         ssl_context=_build_ssl_context(),
         disable_proxy=True,

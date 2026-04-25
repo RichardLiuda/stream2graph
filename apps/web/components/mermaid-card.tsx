@@ -699,20 +699,7 @@ export function MermaidCompileStatusBadge({
       </Badge>
     );
   }
-  if (updatedAt) {
-    return (
-      <Badge className="border-emerald-900/55 bg-emerald-950/35 text-emerald-200/90 normal-case tracking-normal">
-        <CheckCircle2 className="mr-1 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-        已就绪
-      </Badge>
-    );
-  }
-  return (
-    <Badge className="normal-case tracking-normal text-theme-3">
-      <Clock3 className="mr-1 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-      等待内容
-    </Badge>
-  );
+  return null;
 }
 
 function MermaidCardBody({
@@ -748,6 +735,7 @@ function MermaidCardBody({
   annotationExportHostId = "s2g-annotation-host-mermaid",
   /** @description Realtime 嵌入时固定浅色画布 token */
   fixedLightCanvas = false,
+  panZoomControlsOffsetTop = 12,
 }: {
   title: string;
   code: string;
@@ -783,6 +771,7 @@ function MermaidCardBody({
   onAnnotationsChange?: (next: AnnotationDoc) => void;
   annotationExportHostId?: string;
   fixedLightCanvas?: boolean;
+  panZoomControlsOffsetTop?: number;
 }) {
   const id = useId().replace(/:/g, "");
   const [diagramExpanded, setDiagramExpanded] = useState(defaultDiagramExpanded);
@@ -790,6 +779,7 @@ function MermaidCardBody({
   const [lastSuccessfulSvg, setLastSuccessfulSvg] = useState("");
   const [zoomRebuildNonce, setZoomRebuildNonce] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [canvasEmpty, setCanvasEmpty] = useState(true);
   const lastLoggedRawOutputRef = useRef("");
   const lastLoggedRepairRawOutputRef = useRef("");
   const lastSuccessfulSvgRef = useRef("");
@@ -821,7 +811,8 @@ function MermaidCardBody({
       console.debug("[MermaidCard] render candidate", summarizeMermaid(candidate));
       if (!candidate) {
         setSvg("");
-        setError("暂无 Mermaid 内容");
+        setError(null);
+        setCanvasEmpty(true);
         console.info("[MermaidCard] skipped: empty Mermaid content");
         console.groupEnd();
         return;
@@ -842,6 +833,7 @@ function MermaidCardBody({
         lastSuccessfulSvgRef.current = renderedSvg;
         setLastSuccessfulSvg(renderedSvg);
         setError(null);
+        setCanvasEmpty(false);
         console.info("[MermaidCard] render success", {
           candidateLength: candidate.length,
           svgLength: renderedSvg.length,
@@ -851,6 +843,7 @@ function MermaidCardBody({
         if (!active) return;
         setSvg(lastSuccessfulSvgRef.current);
         setError(err instanceof Error ? err.message : "渲染失败");
+        setCanvasEmpty(false);
         console.warn("[MermaidCard] render failed", err);
         console.groupEnd();
       }
@@ -1361,6 +1354,7 @@ function MermaidCardBody({
               maxScale={2.6}
               initialScale={1}
               initialOffset={{ x: 0, y: 0 }}
+              controlsOffsetTop={panZoomControlsOffsetTop}
               overlay={
                 interactiveRelayoutEnabled ? (
                   <div className="rounded-md border border-theme-default bg-surface-muted px-2.5 py-1.5 text-[11px] leading-snug text-theme-3 shadow-lg backdrop-blur-[2px]">
@@ -1382,27 +1376,20 @@ function MermaidCardBody({
                   backgroundPosition: "10px 10px",
                 }}
               />
-              {embedded && error && error !== "暂无 Mermaid 内容" ? (
+              {embedded && error ? (
                 <div className="absolute left-2 right-2 top-2 z-[3] rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
                   渲染错误：{error}
                   {lastSuccessfulSvg ? " 已保留最近一次可用图。" : ""}
                 </div>
               ) : null}
-              {!svg ? (
+              {!svg && !canvasEmpty ? (
                 <div
                   className={`absolute z-[2] rounded-lg border border-amber-900/55 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100 ${
-                    embedded
-                      ? error && error !== "暂无 Mermaid 内容"
-                        ? "left-2 right-2 top-12"
-                        : "left-2 right-2 top-2"
-                      : "left-3 right-3 top-3"
+                    embedded ? "left-2 right-2 top-12" : "left-3 right-3 top-3"
                   }`}
                 >
-                  画布已就绪，但目前没有可渲染的 Mermaid。
-                  <span className="text-amber-200/80">
-                    {" "}
-                    你可以：左侧发送 Transcript / 开始录音；会话建立后这里会自动更新。
-                  </span>
+                  渲染错误：{error || "渲染失败"}
+                  {lastSuccessfulSvg ? " 已保留最近一次可用图。" : ""}
                 </div>
               ) : null}
               {svg ? (
@@ -1555,6 +1542,7 @@ export function MermaidCard(props: {
   onAnnotationsChange?: (next: AnnotationDoc) => void;
   annotationExportHostId?: string;
   fixedLightCanvas?: boolean;
+  panZoomControlsOffsetTop?: number;
 }) {
   return (
     <ErrorBoundary
