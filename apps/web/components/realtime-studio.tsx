@@ -4103,316 +4103,278 @@ export function RealtimeStudio() {
                       ))}
                     </div>
                   </Tooltip.Provider>
-                  <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pt-1 pr-1 xl:absolute xl:right-4 xl:top-[3.45rem] xl:z-10 xl:max-w-[min(680px,calc(100%_-_30rem))] xl:justify-end xl:overflow-visible xl:pr-0 xl:pt-0">
-                    {/* 笔：横向展开，宽度随内容；高度固定一行 h-7 */}
-                    <div
-                      className={`inline-flex h-7 w-auto shrink-0 items-center overflow-hidden rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[max-width] duration-300 ease-out will-change-[max-width] ${
+                  <div className="min-w-0 overflow-x-auto pt-1 pr-1 xl:absolute xl:right-4 xl:top-[3.2rem] xl:z-10 xl:max-w-[min(680px,calc(100%_-_31rem))] xl:overflow-visible xl:pr-0 xl:pt-0">
+                    <div className="relative inline-flex items-center rounded-2xl border border-[#4f3a86]/90 bg-[#d9d0ef]/95 px-2 py-0.5 shadow-[0_12px_26px_-18px_rgba(83,67,126,0.55)] backdrop-blur-sm">
+                      <div className="flex min-w-0 flex-nowrap items-center gap-1.5">
+
+                    <button
+                      type="button"
+                      disabled={!currentSessionId}
+                      className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#8fa79b] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "pen"
-                          ? "max-w-[min(420px,calc(100vw-2rem))]"
-                          : "max-w-[56px]"
+                          ? "bg-[#c1d3c8] text-[#2f4b42]"
+                          : "bg-[#d7e3dc] text-[#36524a] hover:bg-[#cddad3]"
                       }`}
+                      onClick={() => {
+                        if (!currentSessionId) return;
+                        if (activeAnnotationPanel === "pen") {
+                          setActiveAnnotationPanel(null);
+                          return;
+                        }
+                        setAnnotationsEnabled(true);
+                        setAnnotationsTool("pen");
+                        setActiveAnnotationPanel("pen");
+                      }}
+                      title={!currentSessionId ? "请先创建会话" : "画笔"}
                     >
-                      <button
-                        type="button"
-                        disabled={!currentSessionId}
-                        className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 border-r border-theme-default text-[11px] font-semibold ${
-                          annotationsEnabled && annotationsTool === "pen" ? "bg-surface-3 text-theme-1" : "text-theme-2 hover:bg-surface-muted/40"
-                        } disabled:cursor-not-allowed disabled:opacity-60`}
-                        onClick={() => {
-                          if (!currentSessionId) return;
-                          if (activeAnnotationPanel === "pen") {
-                            setActiveAnnotationPanel(null);
-                            return;
-                          }
-                          setAnnotationsEnabled(true);
-                          setAnnotationsTool("pen");
-                          setActiveAnnotationPanel("pen");
-                        }}
-                        title={!currentSessionId ? "请先创建会话" : "画笔"}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                          <path
-                            d="M2.2 11.8l2.7-.6 5.8-5.8-2.1-2.1-5.8 5.8-.6 2.7z"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.3"
-                            strokeLinejoin="round"
-                          />
-                          <path d="M7.6 3.3l2.1 2.1" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                        </svg>
-                      </button>
-                      <div
-                        className={`flex min-w-0 flex-nowrap items-center overflow-hidden transition-[max-width,opacity] duration-300 ease-out ${
-                          activeAnnotationPanel === "pen" ? "max-w-[360px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
-                        }`}
-                      >
-                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-x-1.5 px-1.5">
-                            <AnnotationWidthSlider
-                              min={1}
-                              max={24}
-                              value={annotationPenWidth}
-                              onChange={setAnnotationPenWidth}
-                              thumbMinPx={5}
-                              thumbMaxPx={15}
-                              aria-label="画笔粗细"
-                            />
-                            <AnnotationColorPopover
-                              swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
-                              value={annotationPenColor}
-                              onChange={setAnnotationPenColor}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            className="inline-flex h-7 min-w-[72px] shrink-0 items-center justify-center border-l border-theme-default px-2.5 text-[11px] font-semibold text-theme-2 hover:bg-surface-muted/40"
-                            onClick={() => {
-                              setAnnotationsEnabled(false);
-                              setActiveAnnotationPanel(null);
-                            }}
-                          >
-                            退出批注
-                          </button>
-                      </div>
-                    </div>
+                      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                        <path
+                          d="M2.2 11.8l2.7-.6 5.8-5.8-2.1-2.1-5.8 5.8-.6 2.7z"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.3"
+                          strokeLinejoin="round"
+                        />
+                        <path d="M7.6 3.3l2.1 2.1" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                      </svg>
+                    </button>
 
-                    {/* 框：横向展开，宽度随内容 */}
-                    <div
-                      className={`inline-flex h-7 w-auto shrink-0 items-center overflow-hidden rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[max-width] duration-300 ease-out will-change-[max-width] ${
+                    <button
+                      type="button"
+                      disabled={!currentSessionId}
+                      className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#bba98d] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "rect"
-                          ? "max-w-[min(420px,calc(100vw-2rem))]"
-                          : "max-w-[56px]"
+                          ? "bg-[#d8cbb1] text-[#514530]"
+                          : "bg-[#e8e1d2] text-[#5a4f3c] hover:bg-[#ded4bf]"
                       }`}
+                      onClick={() => {
+                        if (!currentSessionId) return;
+                        if (activeAnnotationPanel === "rect") {
+                          setActiveAnnotationPanel(null);
+                          return;
+                        }
+                        setAnnotationsEnabled(true);
+                        setAnnotationsTool("rect");
+                        setActiveAnnotationPanel("rect");
+                      }}
+                      title={!currentSessionId ? "请先创建会话" : "框"}
                     >
-                      <button
-                        type="button"
-                        disabled={!currentSessionId}
-                        className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 border-r border-theme-default text-[11px] font-semibold ${
-                          annotationsEnabled && annotationsTool === "rect" ? "bg-surface-3 text-theme-1" : "text-theme-2 hover:bg-surface-muted/40"
-                        } disabled:cursor-not-allowed disabled:opacity-60`}
-                        onClick={() => {
-                          if (!currentSessionId) return;
-                          if (activeAnnotationPanel === "rect") {
-                            setActiveAnnotationPanel(null);
-                            return;
-                          }
-                          setAnnotationsEnabled(true);
-                          setAnnotationsTool("rect");
-                          setActiveAnnotationPanel("rect");
-                        }}
-                        title={!currentSessionId ? "请先创建会话" : "框"}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                          <rect
-                            x="2.25"
-                            y="2.25"
-                            width="9.5"
-                            height="9.5"
-                            rx="1.8"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.3"
-                          />
-                        </svg>
-                      </button>
-                      <div
-                        className={`flex min-w-0 flex-nowrap items-center overflow-hidden transition-[max-width,opacity] duration-300 ease-out ${
-                          activeAnnotationPanel === "rect" ? "max-w-[360px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
-                        }`}
-                      >
-                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-x-1.5 px-1.5">
-                            <AnnotationWidthSlider
-                              min={1}
-                              max={16}
-                              value={annotationRectStrokeWidth}
-                              onChange={setAnnotationRectStrokeWidth}
-                              thumbMinPx={5}
-                              thumbMaxPx={14}
-                              aria-label="框线粗细"
-                            />
-                            <AnnotationColorPopover
-                              swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
-                              value={annotationRectColor}
-                              onChange={setAnnotationRectColor}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            className="inline-flex h-7 min-w-[72px] shrink-0 items-center justify-center border-l border-theme-default px-2.5 text-[11px] font-semibold text-theme-2 hover:bg-surface-muted/40"
-                            onClick={() => {
-                              setAnnotationsEnabled(false);
-                              setActiveAnnotationPanel(null);
-                            }}
-                          >
-                            退出批注
-                          </button>
-                      </div>
-                    </div>
+                      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                        <rect
+                          x="2.25"
+                          y="2.25"
+                          width="9.5"
+                          height="9.5"
+                          rx="1.8"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.3"
+                        />
+                      </svg>
+                    </button>
 
-                    <div
-                      className={`inline-flex h-7 w-auto shrink-0 items-center overflow-hidden rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[max-width] duration-300 ease-out will-change-[max-width] ${
+                    <button
+                      type="button"
+                      disabled={!currentSessionId}
+                      className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#9fb2c4] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "text"
-                          ? "max-w-[min(320px,calc(100vw-2rem))]"
-                          : "max-w-[56px]"
+                          ? "bg-[#cbd9e6] text-[#334556]"
+                          : "bg-[#dde6ef] text-[#3d4e61] hover:bg-[#d2deea]"
                       }`}
+                      onClick={() => {
+                        if (!currentSessionId) return;
+                        if (activeAnnotationPanel === "text") {
+                          setActiveAnnotationPanel(null);
+                          return;
+                        }
+                        setAnnotationsEnabled(true);
+                        setAnnotationsTool("text");
+                        setActiveAnnotationPanel("text");
+                      }}
+                      title={!currentSessionId ? "请先创建会话" : "文字批注"}
                     >
-                      <button
-                        type="button"
-                        disabled={!currentSessionId}
-                        className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 border-r border-theme-default text-[11px] font-semibold ${
-                          annotationsEnabled && annotationsTool === "text" ? "bg-surface-3 text-theme-1" : "text-theme-2 hover:bg-surface-muted/40"
-                        } disabled:cursor-not-allowed disabled:opacity-60`}
-                        onClick={() => {
-                          if (!currentSessionId) return;
-                          if (activeAnnotationPanel === "text") {
-                            setActiveAnnotationPanel(null);
-                            return;
-                          }
-                          setAnnotationsEnabled(true);
-                          setAnnotationsTool("text");
-                          setActiveAnnotationPanel("text");
-                        }}
-                        title={!currentSessionId ? "请先创建会话" : "文字批注"}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                          <path
-                            d="M2.5 3.2h9M7 3.2v7.6M4.6 10.8h4.8"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.35"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </button>
-                      <div
-                        className={`flex min-w-0 flex-nowrap items-center overflow-hidden transition-[max-width,opacity] duration-300 ease-out ${
-                          activeAnnotationPanel === "text" ? "max-w-[240px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
-                        }`}
-                      >
-                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-1.5 px-1.5">
-                            <AnnotationColorPopover
-                              swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
-                              value={annotationTextColor}
-                              onChange={setAnnotationTextColor}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            className="inline-flex h-7 min-w-[72px] shrink-0 items-center justify-center border-l border-theme-default px-2.5 text-[11px] font-semibold text-theme-2 hover:bg-surface-muted/40"
-                            onClick={() => {
-                              setAnnotationsEnabled(false);
-                              setActiveAnnotationPanel(null);
-                            }}
-                          >
-                            退出批注
-                          </button>
-                      </div>
-                    </div>
+                      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                        <path
+                          d="M2.5 3.2h9M7 3.2v7.6M4.6 10.8h4.8"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.35"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
 
-                    {/* 橡皮：横向展开，宽度随内容 */}
-                    <div
-                      className={`inline-flex h-7 w-auto shrink-0 items-center overflow-hidden rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[max-width] duration-300 ease-out will-change-[max-width] ${
+                    <button
+                      type="button"
+                      disabled={!currentSessionId}
+                      className={`inline-flex h-7 w-[72px] shrink-0 items-center justify-center rounded-md border border-[#b7aba1] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "eraser"
-                          ? "max-w-[min(360px,calc(100vw-2rem))]"
-                          : "max-w-[72px]"
+                          ? "bg-[#d7d0c9] text-[#3f3832]"
+                          : "bg-[#e7e2dd] text-[#564d46] hover:bg-[#ddd6cf]"
                       }`}
+                      onClick={() => {
+                        if (!currentSessionId) return;
+                        if (activeAnnotationPanel === "eraser") {
+                          setActiveAnnotationPanel(null);
+                          return;
+                        }
+                        setAnnotationsEnabled(true);
+                        setAnnotationsTool(
+                          annotationsTool === "erase_object" || annotationsTool === "erase_precise"
+                            ? annotationsTool
+                            : "erase_object",
+                        );
+                        setActiveAnnotationPanel("eraser");
+                      }}
+                      title={!currentSessionId ? "请先创建会话" : "橡皮"}
                     >
-                      <button
-                        type="button"
-                        disabled={!currentSessionId}
-                        className={`inline-flex h-7 w-[72px] shrink-0 items-center justify-center border-r border-theme-default text-[11px] font-semibold ${
-                          annotationsEnabled && (annotationsTool === "erase_object" || annotationsTool === "erase_precise")
-                            ? "bg-surface-3 text-theme-1"
-                            : "text-theme-2 hover:bg-surface-muted/40"
-                        } disabled:cursor-not-allowed disabled:opacity-60`}
-                        onClick={() => {
-                          if (!currentSessionId) return;
-                          if (activeAnnotationPanel === "eraser") {
-                            setActiveAnnotationPanel(null);
-                            return;
-                          }
-                          setAnnotationsEnabled(true);
-                          setAnnotationsTool(
-                            annotationsTool === "erase_object" || annotationsTool === "erase_precise"
-                              ? annotationsTool
-                              : "erase_object",
-                          );
-                          setActiveAnnotationPanel("eraser");
-                        }}
-                        title={!currentSessionId ? "请先创建会话" : "橡皮"}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                          <path
-                            d="M3.1 8.7l3.6-3.6a1.6 1.6 0 0 1 2.2 0l1.9 1.9a1.6 1.6 0 0 1 0 2.2L8.3 11.7H5.2z"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.3"
-                            strokeLinejoin="round"
-                          />
-                          <path d="M4.2 11.7h6.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                        </svg>
-                      </button>
+                      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                        <path
+                          d="M3.1 8.7l3.6-3.6a1.6 1.6 0 0 1 2.2 0l1.9 1.9a1.6 1.6 0 0 1 0 2.2L8.3 11.7H5.2z"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.3"
+                          strokeLinejoin="round"
+                        />
+                        <path d="M4.2 11.7h6.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                      </svg>
+                    </button>
+
+                    {activeAnnotationPanel ? (
                       <div
-                        className={`flex min-w-0 flex-nowrap items-center overflow-hidden transition-[max-width,opacity] duration-300 ease-out ${
-                          activeAnnotationPanel === "eraser" ? "max-w-[300px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
+                        className={`absolute left-2 right-2 top-full z-30 mt-2 rounded-2xl border px-3 py-2 shadow-lg backdrop-blur-sm ${
+                          activeAnnotationPanel === "pen"
+                            ? "border-[#8fa79b] bg-[#d7e3dc]/95"
+                            : activeAnnotationPanel === "rect"
+                              ? "border-[#bba98d] bg-[#e8e1d2]/95"
+                              : activeAnnotationPanel === "text"
+                                ? "border-[#9fb2c4] bg-[#dde6ef]/95"
+                                : "border-[#b7aba1] bg-[#e7e2dd]/95"
                         }`}
                       >
-                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-0.5 px-1">
-                            {ERASER_WIDTH_PRESETS.map(({ w, dot }) => {
-                              const active =
-                                annotationsTool === "erase_precise" &&
-                                nearestEraserPresetWidth(annotationEraserWidth) === w;
-                              return (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                            {activeAnnotationPanel === "pen" ? (
+                              <>
+                                <div className="flex min-w-[220px] flex-1 items-center gap-2">
+                                  <AnnotationWidthSlider
+                                    min={1}
+                                    max={24}
+                                    value={annotationPenWidth}
+                                    onChange={setAnnotationPenWidth}
+                                    thumbMinPx={5}
+                                    thumbMaxPx={15}
+                                    aria-label="画笔粗细"
+                                  />
+                                  <AnnotationColorPopover
+                                    swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                                    value={annotationPenColor}
+                                    onChange={setAnnotationPenColor}
+                                  />
+                                </div>
+                              </>
+                            ) : null}
+
+                            {activeAnnotationPanel === "rect" ? (
+                              <div className="flex min-w-[220px] flex-1 items-center gap-2">
+                                <AnnotationWidthSlider
+                                  min={1}
+                                  max={16}
+                                  value={annotationRectStrokeWidth}
+                                  onChange={setAnnotationRectStrokeWidth}
+                                  thumbMinPx={5}
+                                  thumbMaxPx={14}
+                                  aria-label="框线粗细"
+                                />
+                                <AnnotationColorPopover
+                                  swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                                  value={annotationRectColor}
+                                  onChange={setAnnotationRectColor}
+                                />
+                              </div>
+                            ) : null}
+
+                            {activeAnnotationPanel === "text" ? (
+                              <div className="flex items-center gap-2">
+                                <AnnotationColorPopover
+                                  swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                                  value={annotationTextColor}
+                                  onChange={setAnnotationTextColor}
+                                />
+                                <span className="text-[10px] font-medium text-theme-3">文字颜色</span>
+                              </div>
+                            ) : null}
+
+                            {activeAnnotationPanel === "eraser" ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {ERASER_WIDTH_PRESETS.map(({ w, dot }) => {
+                                  const active =
+                                    annotationsTool === "erase_precise" &&
+                                    nearestEraserPresetWidth(annotationEraserWidth) === w;
+                                  return (
+                                    <button
+                                      key={w}
+                                      type="button"
+                                      title={`精准擦 ${w}px`}
+                                      aria-label={`精准橡皮，宽度 ${w}`}
+                                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                                        active
+                                          ? "border-[#b7aba1] bg-[#d7d0c9] text-[#3f3832]"
+                                          : "border-[#c7bdb5] bg-[#efeae6] text-[#564d46] hover:bg-[#e5dfda]"
+                                      }`}
+                                      onClick={() => {
+                                        setAnnotationsEnabled(true);
+                                        setAnnotationsTool("erase_precise");
+                                        setAnnotationEraserWidth(w);
+                                      }}
+                                    >
+                                      <span
+                                        className="shrink-0 rounded-full bg-current opacity-90"
+                                        style={{ width: dot, height: dot }}
+                                        aria-hidden
+                                      />
+                                    </button>
+                                  );
+                                })}
                                 <button
-                                  key={w}
                                   type="button"
-                                  title={`精准擦 ${w}px`}
-                                  aria-label={`精准橡皮，宽度 ${w}`}
-                                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-sm transition-colors ${
-                                    active ? "bg-surface-3 text-theme-1" : "text-theme-3 hover:bg-surface-muted/40"
+                                  title="对象擦：整段笔画 / 整框"
+                                  aria-label="对象橡皮"
+                                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                                    annotationsTool === "erase_object"
+                                      ? "border-[#b7aba1] bg-[#d7d0c9] text-[#3f3832]"
+                                      : "border-[#c7bdb5] bg-[#efeae6] text-[#564d46] hover:bg-[#e5dfda]"
                                   }`}
                                   onClick={() => {
                                     setAnnotationsEnabled(true);
-                                    setAnnotationsTool("erase_precise");
-                                    setAnnotationEraserWidth(w);
+                                    setAnnotationsTool("erase_object");
                                   }}
                                 >
-                                  <span
-                                    className="shrink-0 rounded-full bg-current opacity-90"
-                                    style={{ width: dot, height: dot }}
-                                    aria-hidden
-                                  />
+                                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                                    <path
+                                      d="M3.5 3.5l7 7M10.5 3.5l-7 7"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.75"
+                                      strokeLinecap="round"
+                                    />
+                                  </svg>
                                 </button>
-                              );
-                            })}
-                            <button
-                              type="button"
-                              title="对象擦：整段笔画 / 整框"
-                              aria-label="对象橡皮"
-                              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-theme-3 transition-colors ${
-                                annotationsTool === "erase_object"
-                                  ? "bg-surface-3 text-theme-1"
-                                  : "hover:bg-surface-muted/40"
-                              }`}
-                              onClick={() => {
-                                setAnnotationsEnabled(true);
-                                setAnnotationsTool("erase_object");
-                              }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                                <path
-                                  d="M3.5 3.5l7 7M10.5 3.5l-7 7"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.75"
-                                  strokeLinecap="round"
-                                />
-                              </svg>
-                            </button>
+                              </div>
+                            ) : null}
                           </div>
                           <button
                             type="button"
-                            className="inline-flex h-7 min-w-[72px] shrink-0 items-center justify-center border-l border-theme-default px-2.5 text-[11px] font-semibold text-theme-2 hover:bg-surface-muted/40"
+                            className={`inline-flex h-7 shrink-0 items-center justify-center rounded-md border px-2 text-[11px] font-semibold ${
+                              activeAnnotationPanel === "pen"
+                                ? "border-[#8fa79b] bg-[#c1d3c8] text-[#2f4b42] hover:bg-[#b4c9bd]"
+                                : activeAnnotationPanel === "rect"
+                                  ? "border-[#bba98d] bg-[#d8cbb1] text-[#514530] hover:bg-[#cfbe9f]"
+                                  : activeAnnotationPanel === "text"
+                                    ? "border-[#9fb2c4] bg-[#cbd9e6] text-[#334556] hover:bg-[#bfd1df]"
+                                    : "border-[#b7aba1] bg-[#d7d0c9] text-[#3f3832] hover:bg-[#cbc2bb]"
+                            }`}
                             onClick={() => {
                               setAnnotationsEnabled(false);
                               setActiveAnnotationPanel(null);
@@ -4420,12 +4382,13 @@ export function RealtimeStudio() {
                           >
                             退出批注
                           </button>
+                        </div>
                       </div>
-                    </div>
+                    ) : null}
                     <Button
                       type="button"
                       variant="ghost"
-                      className="h-7 rounded-md px-2 text-[11px] font-semibold"
+                      className="h-7 min-w-[54px] whitespace-nowrap rounded-md border border-[#887bb1] bg-[#d9d2ea] px-2 text-[11px] font-semibold text-[#111827] shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] hover:bg-[#cec6e5]"
                       onClick={undoAnnotations}
                       disabled={!currentSessionId || annotationsUndoRef.current.length === 0}
                     >
@@ -4434,19 +4397,19 @@ export function RealtimeStudio() {
                     <Button
                       type="button"
                       variant="ghost"
-                      className="h-7 rounded-md px-2 text-[11px] font-semibold"
+                      className="h-7 min-w-[54px] whitespace-nowrap rounded-md border border-[#b0737d] bg-[#e6c8ce] px-2 text-[11px] font-semibold text-[#111827] shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] hover:bg-[#ddb7bf]"
                       onClick={clearAnnotations}
                       disabled={!currentSessionId || activeAnnotationEmpty}
                     >
                       清空
                     </Button>
-                    <span className="ml-1 text-[10px] text-theme-4">
-                      {!currentSessionId
-                        ? "未建会话"
-                        : saveAnnotationsMutation.isPending
-                          ? "保存中…"
-                          : "已就绪"}
-                    </span>
+                    {!currentSessionId || saveAnnotationsMutation.isPending ? (
+                      <span className="ml-1 text-[10px] text-[#6a627b]">
+                        {!currentSessionId ? "未建会话" : "保存中…"}
+                      </span>
+                    ) : null}
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <Tooltip.Provider delayDuration={200}>

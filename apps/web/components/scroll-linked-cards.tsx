@@ -704,7 +704,7 @@ export function ScrollLinkedCardsBlockSection({
   const stageSize = useElementSize<HTMLDivElement>();
   const [dragOffsets, setDragOffsets] = useState<Record<string, { x: number; y: number }>>({});
   const [branchDragOffsets, setBranchDragOffsets] = useState<Record<string, { x: number; y: number }>>({});
-  const [branchOffsetsReady, setBranchOffsetsReady] = useState(false);
+  const branchOffsetsReady = true;
   const dragStartOffsetsRef = useRef<Record<string, { x: number; y: number }>>({});
   const branchDragStartOffsetsRef = useRef<Record<string, { x: number; y: number }>>({});
   const cardNodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -718,32 +718,7 @@ export function ScrollLinkedCardsBlockSection({
   const prevProgressRef = useRef<number | null>(null);
   const prevProgressTsRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(`s2g-branch-offsets:${block.id}`);
-      if (!raw) {
-        setBranchDragOffsets({});
-        setBranchOffsetsReady(true);
-        return;
-      }
-      const parsed = JSON.parse(raw) as Record<string, { x: number; y: number }>;
-      setBranchDragOffsets(parsed ?? {});
-    } catch {
-      setBranchDragOffsets({});
-    } finally {
-      setBranchOffsetsReady(true);
-    }
-  }, [block.id]);
-
-  useLayoutEffect(() => {
-    if (typeof window === "undefined" || !branchOffsetsReady) return;
-    try {
-      window.localStorage.setItem(`s2g-branch-offsets:${block.id}`, JSON.stringify(branchDragOffsets));
-    } catch {
-      // ignore write failures (private mode / quota)
-    }
-  }, [block.id, branchDragOffsets, branchOffsetsReady]);
+  // 临时关闭小卡拖拽位置记忆：不读写 localStorage，只使用当前会话内状态。
 
   const { scrollYProgress } = useScroll({
     container: rootRef,
@@ -1074,10 +1049,16 @@ export function ScrollLinkedCardsBlockSection({
                 return branches.map((branch, branchIndex) => {
                   const anchorSide: "left" | "right" = branch.side ?? defaultSide;
                   const dir = anchorSide === "right" ? 1 : -1;
-                  const spreadX = parent.sizeVariant === "lg" ? 168 : parent.sizeVariant === "md" ? 154 : 142;
+                  const spreadX = parent.sizeVariant === "lg" ? 182 : parent.sizeVariant === "md" ? 168 : 156;
                   const orbitX = parentHalfW + spreadX + Math.floor(branchIndex / 2) * 36;
                   const fan = branchIndex % 2 === 0 ? -1 : 1;
                   let orbitY = fan * (94 + Math.floor(branchIndex / 2) * 42);
+                  if (fan < 0) {
+                    orbitY += 122;
+                  }
+                  if (parent.card.id === "core-input" && branch.id === "core-input-br1") {
+                    orbitY -= 28;
+                  }
                   const key = `${parent.card.id}::${branch.id}`;
                   const drag = branchDragOffsets[key] ?? { x: 0, y: 0 };
                   const branchW = 132;
@@ -1087,7 +1068,7 @@ export function ScrollLinkedCardsBlockSection({
                     orbitY = (orbitY >= 0 ? 1 : -1) * safeY;
                   }
                   // 分支基座跟随滚动轨道，但不跟随大卡拖拽偏移，避免“拖大卡带着小卡跑”。
-                  const baseX = parent.anchorX + dir * orbitX;
+                  const baseX = parent.anchorX + dir * orbitX + 158;
                   const baseY = parent.anchorY + orbitY;
                   return {
                     key,
@@ -1130,6 +1111,8 @@ export function ScrollLinkedCardsBlockSection({
                   let x = node.baseX;
                   let y = node.baseY;
                   const parent = parentById.get(node.parentCardId);
+                  const alignVoiceTopEdge = node.parentCardId === "core-input" && node.branch.id === "core-input-br1";
+                  const alignedVoiceCenterY = parent ? parent.centerY - parent.halfH + node.branchH * 0.5 : y;
                   if (parent) {
                     const forbiddenHalfW = parent.halfW + node.branchW * 0.62 + 26;
                     const forbiddenHalfH = parent.halfH + node.branchH * 0.64 + 22;
@@ -1154,6 +1137,9 @@ export function ScrollLinkedCardsBlockSection({
                       }
                     }
                     if (!nudged) break;
+                  }
+                  if (alignVoiceTopEdge) {
+                    y = alignedVoiceCenterY;
                   }
                   placed.push({ ...node, baseX: x, baseY: y });
                 }
@@ -1204,9 +1190,14 @@ export function ScrollLinkedCardsBlockSection({
                 const isBranchRight = branchNode.anchorSide === "right";
                 // 锁定默认方向和锚点侧，避免拖拽穿越中心时箭头起止点反跳。
                 const nodeDirection = branchNode.branch.direction ?? (isBranchRight ? "outbound" : "inbound");
-                const parentPoint = parentRect
+                let parentPoint = parentRect
                   ? edgePointToward(parentRect, currentBranchX, currentBranchY)
                   : { x: parentCenterX + (isBranchRight ? 120 : -120), y: parentCenterY };
+                if (branchNode.parentCardId === "core-input" && branchNode.branch.id === "core-input-br1") {
+                  parentPoint = parentRect
+                    ? { x: parentRect.right - 6, y: parentRect.top + 6 }
+                    : { x: parentCenterX + 126, y: parentCenterY - 92 };
+                }
                 const branchPoint = branchRect
                   ? edgePointToward(branchRect, parentCenterX, parentCenterY)
                   : { x: currentBranchX + (isBranchRight ? -56 : 56), y: currentBranchY };
