@@ -4104,7 +4104,7 @@ export function RealtimeStudio() {
                     </div>
                   </Tooltip.Provider>
                   <div className="min-w-0 overflow-x-auto pt-1 pr-1 xl:absolute xl:right-4 xl:top-[3.2rem] xl:z-10 xl:max-w-[min(680px,calc(100%_-_31rem))] xl:overflow-visible xl:pr-0 xl:pt-0">
-                    <div className="relative inline-flex items-center rounded-2xl border border-[#4f3a86]/90 bg-[#d9d0ef]/95 px-2 py-0.5 shadow-[0_12px_26px_-18px_rgba(83,67,126,0.55)] backdrop-blur-sm">
+                    <div className="relative inline-flex items-center rounded-lg border border-[#4f3a86]/90 bg-[#d9d0ef]/95 px-2 py-0.5 shadow-[0_12px_26px_-18px_rgba(83,67,126,0.55)] backdrop-blur-sm">
                       <div className="flex min-w-0 flex-nowrap items-center gap-1.5">
 
                     <button
@@ -4112,8 +4112,8 @@ export function RealtimeStudio() {
                       disabled={!currentSessionId}
                       className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#8fa79b] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "pen"
-                          ? "bg-[#c1d3c8] text-[#2f4b42]"
-                          : "bg-[#d7e3dc] text-[#36524a] hover:bg-[#cddad3]"
+                          ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(143,167,155,0.22)]"
+                          : "bg-white text-[#111827] hover:bg-white/95"
                       }`}
                       onClick={() => {
                         if (!currentSessionId) return;
@@ -4144,8 +4144,8 @@ export function RealtimeStudio() {
                       disabled={!currentSessionId}
                       className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#bba98d] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "rect"
-                          ? "bg-[#d8cbb1] text-[#514530]"
-                          : "bg-[#e8e1d2] text-[#5a4f3c] hover:bg-[#ded4bf]"
+                          ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(187,169,141,0.22)]"
+                          : "bg-white text-[#111827] hover:bg-white/95"
                       }`}
                       onClick={() => {
                         if (!currentSessionId) return;
@@ -4178,8 +4178,8 @@ export function RealtimeStudio() {
                       disabled={!currentSessionId}
                       className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#9fb2c4] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "text"
-                          ? "bg-[#cbd9e6] text-[#334556]"
-                          : "bg-[#dde6ef] text-[#3d4e61] hover:bg-[#d2deea]"
+                          ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(159,178,196,0.22)]"
+                          : "bg-white text-[#111827] hover:bg-white/95"
                       }`}
                       onClick={() => {
                         if (!currentSessionId) return;
@@ -4210,8 +4210,8 @@ export function RealtimeStudio() {
                       disabled={!currentSessionId}
                       className={`inline-flex h-7 w-[72px] shrink-0 items-center justify-center rounded-md border border-[#b7aba1] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "eraser"
-                          ? "bg-[#d7d0c9] text-[#3f3832]"
-                          : "bg-[#e7e2dd] text-[#564d46] hover:bg-[#ddd6cf]"
+                          ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(183,171,161,0.22)]"
+                          : "bg-white text-[#111827] hover:bg-white/95"
                       }`}
                       onClick={() => {
                         if (!currentSessionId) return;
