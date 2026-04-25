@@ -5141,57 +5141,6 @@ export function RealtimeStudio() {
                   </Button>
                 </div>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-2 pb-2 pt-3">
-              <div className="rounded-lg border border-theme-default bg-surface-muted px-3 py-3">
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-theme-4">运行详情</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {mermaidState?.provider || selectedPlannerProfile?.label ? (
-                    <Badge>{mermaidState?.provider || selectedPlannerProfile?.label}</Badge>
-            ) : null}
-                  {mermaidState?.model || plannerModel ? <Badge>{mermaidState?.model || plannerModel}</Badge> : null}
-                  {typeof mermaidState?.latency_ms === "number" ? <Badge>{mermaidState.latency_ms.toFixed(1)} ms</Badge> : null}
-                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                    出图：
-                    {typeof mermaidState?.compile_ok === "boolean"
-                      ? mermaidState.compile_ok
-                        ? "编译通过"
-                        : "编译失败"
-                      : "等待中"}
-                        </Badge>
-                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                    来源：{getSourceBadgeLabel(activeCaptureSource)}
-                  </Badge>
-                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                    转写：{backendLabel(selectedRecognitionBackend)}
-                  </Badge>
-                  {snapshot?.evaluation?.realtime_eval_pass === true ? (
-                    <Badge className="border-emerald-900/55 bg-emerald-950/40 text-[10px] font-normal normal-case tracking-normal text-emerald-200">
-                      评测通过
-                    </Badge>
-                  ) : null}
-                      </div>
-                      </div>
-              <div className="rounded-lg border border-theme-default bg-surface-muted px-3 py-3">
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-theme-4">评测指标</div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {summaryCards.map((item) => (
-                    <StatCard key={item.label} label={item.label} value={String(item.value)} />
-                  ))}
-                </div>
-                <div className="mt-2 overflow-hidden rounded-lg border border-theme-subtle bg-surface-1">
-                  <div className="border-b border-theme-subtle px-3 py-2 text-xs font-medium text-theme-2">效果数据</div>
-                  <pre className="max-h-56 overflow-auto px-3 py-2 text-xs leading-6 text-theme-1">
-                    {JSON.stringify(snapshot?.evaluation || {}, null, 2)}
-                  </pre>
-                </div>
-              </div>
-              <div className="rounded-lg border border-theme-default bg-surface-muted px-3 py-3">
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-theme-4">运行摘要</div>
-                <div className="overflow-hidden rounded-lg border border-theme-subtle bg-surface-1">
-                  <pre className="max-h-56 overflow-auto px-3 py-2 text-xs leading-6 text-theme-1">
-                    {JSON.stringify(snapshot?.pipeline?.summary || {}, null, 2)}
-                  </pre>
-                </div>
-              </div>
               {sessions.data?.map((item) => {
                 const sessionSelected = currentSessionId === item.session_id;
                 return (
