@@ -296,11 +296,10 @@ function getBrowserFamilyLabel(context: ClientAudioContext | null) {
 type HelperCapabilities = typeof helperCapabilitiesSchema._type;
 type RuntimeOptions = Awaited<ReturnType<typeof api.listRuntimeOptions>>;
 const HELPER_TARGET_SAMPLE_RATE = 16_000;
-const AUDIO_SEGMENT_MAX_MS = 2_800;
-const AUDIO_SEGMENT_END_SILENCE_MS = 380;
-const AUDIO_SEGMENT_MIN_SPEECH_MS = 280;
+const AUDIO_SEGMENT_MAX_MS = 6_000;
+const AUDIO_SEGMENT_END_SILENCE_MS = 520;
+const AUDIO_SEGMENT_MIN_SPEECH_MS = 320;
 const AUDIO_SEGMENT_PREROLL_MS = 180;
-const AUDIO_CAPTURE_BUFFER_SIZE = 2_048;
 const AUDIO_LEVEL_START_THRESHOLD = 0.08;
 const AUDIO_LEVEL_CONTINUE_THRESHOLD = 0.045;
 const ASR_DIAG_HEARTBEAT_MS = 5_000;
@@ -1731,7 +1730,7 @@ export function RealtimeStudio() {
 
     const audioContext = new window.AudioContext({ sampleRate: HELPER_TARGET_SAMPLE_RATE });
     const sourceNode = audioContext.createMediaStreamSource(stream);
-    const processor = audioContext.createScriptProcessor(AUDIO_CAPTURE_BUFFER_SIZE, sourceNode.channelCount || 2, 1);
+    const processor = audioContext.createScriptProcessor(4096, sourceNode.channelCount || 2, 1);
     const muteNode = audioContext.createGain();
     muteNode.gain.value = 0;
 
@@ -2073,7 +2072,7 @@ export function RealtimeStudio() {
 
     const audioContext = new window.AudioContext({ sampleRate: HELPER_TARGET_SAMPLE_RATE });
     const sourceNode = audioContext.createMediaStreamSource(stream);
-    const processor = audioContext.createScriptProcessor(AUDIO_CAPTURE_BUFFER_SIZE, sourceNode.channelCount || 2, 1);
+    const processor = audioContext.createScriptProcessor(4096, sourceNode.channelCount || 2, 1);
     const muteNode = audioContext.createGain();
     muteNode.gain.value = 0;
     logAsrDiag("capture bridge started", {

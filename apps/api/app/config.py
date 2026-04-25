@@ -77,7 +77,6 @@ class Settings(BaseSettings):
     planner_profiles_raw: str = Field("", alias="S2G_PLANNER_PROFILES_JSON")
     llm_profiles_raw: str = Field("[]", alias="S2G_LLM_PROFILES_JSON")
     stt_profiles_raw: str = Field("[]", alias="S2G_STT_PROFILES_JSON")
-    xfyun_asr_frame_interval_sec: float = Field(0.02, alias="S2G_XFYUN_ASR_FRAME_INTERVAL_SEC")
 
     @property
     def repo_root(self) -> Path:
