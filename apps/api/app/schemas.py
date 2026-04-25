@@ -335,6 +335,7 @@ class RealtimeAudioTranscriptionResponse(BaseModel):
     provider: str
     model: str
     latency_ms: float
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
     pipeline: dict[str, Any]
     evaluation: dict[str, Any] | None = None
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -703,6 +704,16 @@ def add_chunk_batch(session_id: str, payload: RealtimeChunkBatchCreateRequest, d
 
 @router.post("/{session_id}/audio/transcriptions", response_model=RealtimeAudioTranscriptionResponse)
 def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest, db: Session = Depends(get_db)) -> RealtimeAudioTranscriptionResponse:
+    request_started_at = time.perf_counter()
+    stt_started_at = request_started_at
+    stt_finished_at = request_started_at
+    post_stt_started_at = request_started_at
+    voiceprint_started_at = request_started_at
+    voiceprint_finished_at = request_started_at
+    ingest_started_at = request_started_at
+    ingest_finished_at = request_started_at
+    commit_started_at = request_started_at
+    commit_finished_at = request_started_at
     obj = _get_session_or_404(db, session_id)
     runtime_options = obj.config_snapshot.get("runtime_options", {}) if isinstance(obj.config_snapshot, dict) else {}
     stt_profile = resolve_profile(db, "stt", runtime_options.get("stt_profile_id"))
@@ -719,6 +730,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
         },
     )
     try:
+        stt_started_at = time.perf_counter()
         result = transcribe_audio_chunk(
             db,
             obj,
@@ -730,6 +742,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
                 "speaker": payload.speaker,
             },
         )
+        stt_finished_at = time.perf_counter()
     except Exception as exc:
         logger.exception(
             "Realtime audio transcription failed for session=%s stt_profile_id=%s stt_model=%s",
@@ -739,6 +752,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
         )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    post_stt_started_at = time.perf_counter()
     pipeline = attach_transcript_state(db, obj.id, obj.pipeline_payload if isinstance(obj.pipeline_payload, dict) else {})
     evaluation = obj.evaluation_payload if isinstance(obj.evaluation_payload, dict) else {}
     recognized_speaker = str(result.get("speaker", payload.speaker) or payload.speaker)
@@ -755,6 +769,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
         base_metadata["rtasr_sid"] = str(result.get("sid", "")).strip()
     should_defer_coordination = not bool(payload.is_final)
 
+    ingest_started_at = time.perf_counter()
     if normalized_segments:
         base_timestamp_ms = _timestamp_for_chunk(db, obj, payload.timestamp_ms)
         for index, segment in enumerate(normalized_segments):
@@ -789,7 +804,10 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
                     expected_intent=None,
                     metadata=merged_metadata,
                 )
+        commit_started_at = time.perf_counter()
+        commit_started_at = time.perf_counter()
         db.commit()
+        commit_finished_at = time.perf_counter()
         unique_speakers = {
             str(segment.get("speaker", "")).strip()
             for segment in normalized_segments
@@ -801,18 +819,20 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
             recognized_speaker = "multi_speaker"
         voiceprint_result = _role_split_voiceprint_summary(normalized_segments)
     else:
-        voiceprint_result = blind_recognize_speaker(
-            db,
-            stt_profile_id=str((stt_profile or {}).get("id", runtime_options.get("stt_profile_id") or "")),
-            profile=stt_profile,
-            pcm_s16le_base64=payload.pcm_s16le_base64,
-            sample_rate=payload.sample_rate,
-            channel_count=payload.channel_count,
-            fallback_speaker=payload.speaker,
-        )
-        if isinstance(voiceprint_result, dict) and voiceprint_result.get("matched"):
-            recognized_speaker = str(voiceprint_result.get("speaker_label", payload.speaker) or payload.speaker)
         if result["text"]:
+            voiceprint_started_at = time.perf_counter()
+            voiceprint_result = blind_recognize_speaker(
+                db,
+                stt_profile_id=str((stt_profile or {}).get("id", runtime_options.get("stt_profile_id") or "")),
+                profile=stt_profile,
+                pcm_s16le_base64=payload.pcm_s16le_base64,
+                sample_rate=payload.sample_rate,
+                channel_count=payload.channel_count,
+                fallback_speaker=payload.speaker,
+            )
+            voiceprint_finished_at = time.perf_counter()
+            if isinstance(voiceprint_result, dict) and voiceprint_result.get("matched"):
+                recognized_speaker = str(voiceprint_result.get("speaker_label", payload.speaker) or payload.speaker)
             merged_metadata = dict(base_metadata)
             if voiceprint_result is not None:
                 merged_metadata["voiceprint_result"] = voiceprint_result
@@ -838,7 +858,30 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
                     expected_intent=None,
                     metadata=merged_metadata,
                 )
+            commit_started_at = time.perf_counter()
             db.commit()
+            commit_finished_at = time.perf_counter()
+        else:
+            voiceprint_started_at = time.perf_counter()
+            voiceprint_finished_at = voiceprint_started_at
+    ingest_finished_at = time.perf_counter()
+    response_started_at = time.perf_counter()
+    diagnostics = {
+        "request_total_ms": round((response_started_at - request_started_at) * 1000.0, 3),
+        "stt_wall_ms": round((stt_finished_at - stt_started_at) * 1000.0, 3),
+        "stt_reported_latency_ms": float(result.get("latency_ms", 0.0) or 0.0),
+        "pre_response_post_stt_ms": round((response_started_at - post_stt_started_at) * 1000.0, 3),
+        "voiceprint_ms": round(max(0.0, voiceprint_finished_at - voiceprint_started_at) * 1000.0, 3),
+        "ingest_ms": round((ingest_finished_at - ingest_started_at) * 1000.0, 3),
+        "commit_ms": round(max(0.0, commit_finished_at - commit_started_at) * 1000.0, 3),
+        "payload_audio_ms": round((len(payload.pcm_s16le_base64) * 3 / 4 / 2 / max(1, payload.sample_rate)) * 1000.0, 3),
+        "payload_base64_chars": len(payload.pcm_s16le_base64),
+        "is_final": payload.is_final,
+        "stream_final": bool((payload.metadata or {}).get("api_stt_stream_final", payload.is_final)),
+        "result_text_chars": len(result.get("text", "") or ""),
+        "result_segment_count": len(normalized_segments),
+        "deferred_coordination": should_defer_coordination,
+    }
     _log_runtime_event(
         "Realtime audio transcription completed",
         {
@@ -852,6 +895,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
             "voiceprint_matched": bool((voiceprint_result or {}).get("matched")) if isinstance(voiceprint_result, dict) else False,
             "gate_state": pipeline.get("gate_state") if isinstance(pipeline, dict) else None,
             "planner_state": pipeline.get("planner_state") if isinstance(pipeline, dict) else None,
+            "diagnostics": diagnostics,
         },
     )
     return RealtimeAudioTranscriptionResponse(
@@ -863,6 +907,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
         provider=result["provider"],
         model=result["model"],
         latency_ms=result["latency_ms"],
+        diagnostics=diagnostics,
         segments=normalized_segments or None,
         pipeline=pipeline,
         evaluation=evaluation,

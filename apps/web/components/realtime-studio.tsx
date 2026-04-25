@@ -302,6 +302,7 @@ const AUDIO_SEGMENT_MIN_SPEECH_MS = 320;
 const AUDIO_SEGMENT_PREROLL_MS = 180;
 const AUDIO_LEVEL_START_THRESHOLD = 0.08;
 const AUDIO_LEVEL_CONTINUE_THRESHOLD = 0.045;
+const ASR_DIAG_HEARTBEAT_MS = 5_000;
 
 type AudioSegmentState = {
   activeFrames: Float32Array[];
@@ -416,6 +417,17 @@ function calculateAudioLevel(samples: Float32Array) {
   }
   const rms = Math.sqrt(squareSum / samples.length);
   return Math.max(0, Math.min(1, rms * 5));
+}
+
+function audioSegmentDiag(state: AudioSegmentState, sampleRate: number) {
+  return {
+    has_speech: state.hasSpeech,
+    active_ms: Math.round((state.activeSampleCount / sampleRate) * 1000),
+    speech_ms: Math.round((state.speechSampleCount / sampleRate) * 1000),
+    silence_ms: Math.round((state.silenceSampleCount / sampleRate) * 1000),
+    preroll_ms: Math.round((state.preRollSampleCount / sampleRate) * 1000),
+    active_frame_count: state.activeFrames.length,
+  };
 }
 
 function formatLiveTranscript(text: string) {
@@ -746,6 +758,40 @@ function logBrowserRuntime(label: string, payload: Record<string, unknown>, leve
   method(`[S2G][Realtime] ${label}`, payload);
 }
 
+function logAsrDiag(label: string, payload: Record<string, unknown>, level: "info" | "warn" | "error" = "info") {
+  if (typeof window === "undefined") return;
+  const method = level === "error" ? console.error : level === "warn" ? console.warn : console.info;
+  method(`[S2G][ASR_DIAG] ${label}`, {
+    at: new Date().toISOString(),
+    ...payload,
+  });
+}
+
+function summarizeAsrDiagnostics(diagnostics: Record<string, unknown> | null | undefined) {
+  const diag = diagnostics && typeof diagnostics === "object" ? diagnostics : {};
+  const requestTotalMs = Number(diag.request_total_ms ?? 0) || 0;
+  const sttWallMs = Number(diag.stt_wall_ms ?? 0) || 0;
+  const sttReportedLatencyMs = Number(diag.stt_reported_latency_ms ?? 0) || 0;
+  const postSttMs = Number(diag.pre_response_post_stt_ms ?? 0) || 0;
+  const voiceprintMs = Number(diag.voiceprint_ms ?? 0) || 0;
+  const ingestMs = Number(diag.ingest_ms ?? 0) || 0;
+  const commitMs = Number(diag.commit_ms ?? 0) || 0;
+  return {
+    request_total_ms: requestTotalMs,
+    stt_wall_ms: sttWallMs,
+    stt_reported_latency_ms: sttReportedLatencyMs,
+    post_stt_ms: postSttMs,
+    voiceprint_ms: voiceprintMs,
+    ingest_ms: ingestMs,
+    commit_ms: commitMs,
+    result_text_chars: Number(diag.result_text_chars ?? 0) || 0,
+    result_segment_count: Number(diag.result_segment_count ?? 0) || 0,
+    deferred_coordination: Boolean(diag.deferred_coordination),
+    payload_audio_ms: Number(diag.payload_audio_ms ?? 0) || 0,
+    stream_final: Boolean(diag.stream_final),
+  };
+}
+
 function buildBackendOptions(source: InputSource, helperCapabilities: HelperCapabilities | null): BackendOption[] {
   if (source === "transcript") {
     return [{ value: "manual" as const, label: "打字输入" }];
@@ -950,6 +996,13 @@ export function RealtimeStudio() {
   const apiCaptureFlushTimeoutRef = useRef<number | null>(null);
   const apiCaptureChunkIdRef = useRef(0);
   const apiCaptureSegmentStateRef = useRef<AudioSegmentState>(createAudioSegmentState());
+  const apiCaptureDiagRef = useRef({
+    startedAtMs: 0,
+    lastHeartbeatAtMs: 0,
+    frameCount: 0,
+    maxLevel: 0,
+    uploadCount: 0,
+  });
   const apiCaptureContextRef = useRef<{
     sessionId: string;
     source: InputSource;
@@ -1699,19 +1752,34 @@ export function RealtimeStudio() {
   function resetApiCaptureBuffers() {
     apiCaptureSegmentStateRef.current = createAudioSegmentState();
     apiCaptureChunkIdRef.current = 0;
+    apiCaptureDiagRef.current.frameCount = 0;
+    apiCaptureDiagRef.current.maxLevel = 0;
+    apiCaptureDiagRef.current.uploadCount = 0;
   }
 
   async function uploadApiAudioFrame(samples: Float32Array, isFinal = true) {
     const context = apiCaptureContextRef.current;
     if (!context || !samples.length) return;
 
+    const uploadStartedAt = performance.now();
     studioSend({ type: "capture.uploading" });
     studioSend({ type: "stt.working" });
 
     const chunkId = apiCaptureChunkIdRef.current;
     apiCaptureChunkIdRef.current += 1;
+    apiCaptureDiagRef.current.uploadCount += 1;
 
     try {
+      logAsrDiag("upload request started", {
+        session_id: context.sessionId,
+        source: context.source,
+        capture_mode: context.captureMode,
+        chunk_id: chunkId,
+        upload_index: apiCaptureDiagRef.current.uploadCount,
+        sample_count: samples.length,
+        audio_ms: Math.round((samples.length / HELPER_TARGET_SAMPLE_RATE) * 1000),
+        is_final: isFinal,
+      });
       logBrowserRuntime("api_stt upload started", {
         session_id: context.sessionId,
         source: context.source,
@@ -1791,6 +1859,43 @@ export function RealtimeStudio() {
         segments: response.segments ?? null,
         voiceprint: response.voiceprint ?? null,
       });
+      const responseHasText = Boolean(response.text.trim()) || (response.segments?.length ?? 0) > 0;
+      const diagSummary = summarizeAsrDiagnostics(response.diagnostics);
+      const requestMs = Math.round(performance.now() - uploadStartedAt);
+      logAsrDiag(
+        responseHasText ? "upload response with text" : "upload response empty",
+        {
+          session_id: context.sessionId,
+          chunk_id: chunkId,
+          request_ms: requestMs,
+          backend_latency_ms: response.latency_ms,
+          provider: response.provider,
+          model: response.model,
+          is_final: isFinal,
+          text_chars: response.text.trim().length,
+          segment_count: response.segments?.length ?? 0,
+          speaker: response.speaker,
+          voiceprint_mode: response.voiceprint?.mode ?? null,
+          request_url: apiUrl(`/api/v1/realtime/sessions/${context.sessionId}/audio/transcriptions`),
+          browser_proxy_mode: process.env.NEXT_PUBLIC_API_BROWSER_PROXY === "0" ? "direct_api" : "next_rewrite_proxy",
+          backend_request_total_ms: diagSummary.request_total_ms,
+          backend_stt_wall_ms: diagSummary.stt_wall_ms,
+          backend_stt_reported_latency_ms: diagSummary.stt_reported_latency_ms,
+          backend_post_stt_ms: diagSummary.post_stt_ms,
+          backend_voiceprint_ms: diagSummary.voiceprint_ms,
+          backend_ingest_ms: diagSummary.ingest_ms,
+          backend_commit_ms: diagSummary.commit_ms,
+          browser_minus_backend_ms:
+            diagSummary.request_total_ms > 0 ? Math.max(0, requestMs - diagSummary.request_total_ms) : null,
+          backend_minus_stt_ms:
+            diagSummary.request_total_ms > 0
+              ? Math.max(0, diagSummary.request_total_ms - diagSummary.stt_reported_latency_ms)
+              : null,
+          diagnostics_json: JSON.stringify(diagSummary),
+          diagnostics: response.diagnostics ?? {},
+        },
+        responseHasText ? "info" : "warn",
+      );
       if (response.voiceprint?.mode === "feature_split") {
         setNotice({
           tone: "success",
@@ -1826,6 +1931,18 @@ export function RealtimeStudio() {
       setError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "API STT 上传失败。";
+      logAsrDiag(
+        "upload request failed",
+        {
+          session_id: context.sessionId,
+          source: context.source,
+          capture_mode: context.captureMode,
+          chunk_id: chunkId,
+          request_ms: Math.round(performance.now() - uploadStartedAt),
+          error: message,
+        },
+        "error",
+      );
       logBrowserRuntime(
         "api_stt upload failed",
         {
@@ -1843,10 +1960,27 @@ export function RealtimeStudio() {
     }
   }
 
-  async function flushApiCaptureBuffer(isFinal = true) {
+  async function flushApiCaptureBuffer(isFinal = true, reason = "manual") {
     const state = apiCaptureSegmentStateRef.current;
-    if (!state.activeSampleCount) return;
+    if (!state.activeSampleCount) {
+      logAsrDiag(
+        "flush skipped empty buffer",
+        {
+          reason,
+          is_final: isFinal,
+        },
+        "warn",
+      );
+      return;
+    }
     const merged = mergeSegmentFrames(state.activeFrames, state.activeSampleCount);
+    logAsrDiag("flush queued", {
+      reason,
+      is_final: isFinal,
+      sample_count: merged.length,
+      audio_ms: Math.round((merged.length / HELPER_TARGET_SAMPLE_RATE) * 1000),
+      ...audioSegmentDiag(state, HELPER_TARGET_SAMPLE_RATE),
+    });
     apiCaptureSegmentStateRef.current = createAudioSegmentState();
     apiCaptureUploadQueueRef.current = apiCaptureUploadQueueRef.current.then(() => uploadApiAudioFrame(merged, isFinal));
     await apiCaptureUploadQueueRef.current;
@@ -1861,7 +1995,7 @@ export function RealtimeStudio() {
     apiCaptureFlushQueuedRef.current = false;
     if (flush) {
       try {
-        await flushApiCaptureBuffer(true);
+        await flushApiCaptureBuffer(true, "teardown");
       } catch {
         // keep last surfaced STT error
       }
@@ -1898,6 +2032,8 @@ export function RealtimeStudio() {
     apiCaptureStopRequestedRef.current = false;
     apiCaptureContextRef.current = payload;
     resetApiCaptureBuffers();
+    apiCaptureDiagRef.current.startedAtMs = performance.now();
+    apiCaptureDiagRef.current.lastHeartbeatAtMs = apiCaptureDiagRef.current.startedAtMs;
     apiCaptureUploadQueueRef.current = Promise.resolve();
     apiCaptureFlushPromiseRef.current = null;
     apiCaptureFlushQueuedRef.current = false;
@@ -1911,6 +2047,20 @@ export function RealtimeStudio() {
     const processor = audioContext.createScriptProcessor(4096, sourceNode.channelCount || 2, 1);
     const muteNode = audioContext.createGain();
     muteNode.gain.value = 0;
+    logAsrDiag("capture bridge started", {
+      session_id: payload.sessionId,
+      source: payload.source,
+      capture_mode: payload.captureMode,
+      audio_context_sample_rate: audioContext.sampleRate,
+      target_sample_rate: HELPER_TARGET_SAMPLE_RATE,
+      input_channel_count: sourceNode.channelCount || null,
+      processor_buffer_size: 4096,
+      start_threshold: AUDIO_LEVEL_START_THRESHOLD,
+      continue_threshold: AUDIO_LEVEL_CONTINUE_THRESHOLD,
+      segment_max_ms: AUDIO_SEGMENT_MAX_MS,
+      end_silence_ms: AUDIO_SEGMENT_END_SILENCE_MS,
+      min_speech_ms: AUDIO_SEGMENT_MIN_SPEECH_MS,
+    });
 
     processor.onaudioprocess = (event) => {
       const input = event.inputBuffer;
@@ -1926,12 +2076,43 @@ export function RealtimeStudio() {
       }
 
       const level = calculateAudioLevel(merged);
+      const diag = apiCaptureDiagRef.current;
+      const now = performance.now();
+      diag.frameCount += 1;
+      diag.maxLevel = Math.max(diag.maxLevel, level);
       studioSend({ type: "audio.level", level });
       const action = pushAudioSegmentFrame(apiCaptureSegmentStateRef.current, merged, level, HELPER_TARGET_SAMPLE_RATE);
+      if (now - diag.lastHeartbeatAtMs >= ASR_DIAG_HEARTBEAT_MS) {
+        const segmentState = apiCaptureSegmentStateRef.current;
+        logAsrDiag("capture heartbeat", {
+          session_id: payload.sessionId,
+          source: payload.source,
+          elapsed_ms: Math.round(now - diag.startedAtMs),
+          frame_count: diag.frameCount,
+          current_level: Number(level.toFixed(4)),
+          max_level_since_last: Number(diag.maxLevel.toFixed(4)),
+          chunk_id_next: apiCaptureChunkIdRef.current,
+          ...audioSegmentDiag(segmentState, HELPER_TARGET_SAMPLE_RATE),
+        });
+        diag.lastHeartbeatAtMs = now;
+        diag.maxLevel = 0;
+      }
       if (action === "soft_flush") {
-        void flushApiCaptureBuffer(false);
+        logAsrDiag("vad action soft_flush", {
+          session_id: payload.sessionId,
+          level: Number(level.toFixed(4)),
+          chunk_id_next: apiCaptureChunkIdRef.current,
+          ...audioSegmentDiag(apiCaptureSegmentStateRef.current, HELPER_TARGET_SAMPLE_RATE),
+        });
+        void flushApiCaptureBuffer(false, "vad_soft_flush");
       } else if (action === "final_flush") {
-        void flushApiCaptureBuffer(true);
+        logAsrDiag("vad action final_flush", {
+          session_id: payload.sessionId,
+          level: Number(level.toFixed(4)),
+          chunk_id_next: apiCaptureChunkIdRef.current,
+          ...audioSegmentDiag(apiCaptureSegmentStateRef.current, HELPER_TARGET_SAMPLE_RATE),
+        });
+        void flushApiCaptureBuffer(true, "vad_final_flush");
       }
     };
 
@@ -1974,6 +2155,13 @@ export function RealtimeStudio() {
     }
 
     const sessionId = await ensureSession();
+    logAsrDiag("start requested", {
+      session_id: sessionId,
+      source,
+      backend: selectedRecognitionBackend,
+      stt_profile_id: sttProfileId || null,
+      stt_model: sttModel || null,
+    });
 
     let stream: MediaStream;
     try {
@@ -1987,7 +2175,28 @@ export function RealtimeStudio() {
           return;
         }
       }
+      logAsrDiag("media stream acquired", {
+        session_id: sessionId,
+        source,
+        audio_track_count: stream.getAudioTracks().length,
+        video_track_count: stream.getVideoTracks().length,
+        audio_tracks: stream.getAudioTracks().map((track) => ({
+          label: track.label,
+          enabled: track.enabled,
+          muted: track.muted,
+          ready_state: track.readyState,
+        })),
+      });
     } catch (err) {
+      logAsrDiag(
+        "media stream failed",
+        {
+          session_id: sessionId,
+          source,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "error",
+      );
       setError(
         source === "microphone_browser"
           ? err instanceof Error
@@ -2024,6 +2233,12 @@ export function RealtimeStudio() {
   }
 
   async function stopApiCapture(message = "已停止 API STT 采集。") {
+    logAsrDiag("stop requested", {
+      session_id: apiCaptureContextRef.current?.sessionId ?? null,
+      source: apiCaptureContextRef.current?.source ?? null,
+      next_chunk_id: apiCaptureChunkIdRef.current,
+      ...audioSegmentDiag(apiCaptureSegmentStateRef.current, HELPER_TARGET_SAMPLE_RATE),
+    });
     await teardownApiCaptureGraph({ flush: true });
     studioSend({ type: "capture.stop" });
     setNotice({ tone: "info", text: message });

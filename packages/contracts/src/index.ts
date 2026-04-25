@@ -267,6 +267,7 @@ export const realtimeAudioTranscriptionSchema = z.object({
   provider: z.string(),
   model: z.string(),
   latency_ms: z.number(),
+  diagnostics: z.record(z.any()).optional().default({}),
   pipeline: z.record(z.any()),
   evaluation: z.record(z.any()).nullable().optional(),
 });
