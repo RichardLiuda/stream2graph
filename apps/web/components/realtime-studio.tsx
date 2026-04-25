@@ -13,6 +13,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Eraser,
   Fingerprint,
   Headphones,
   Mic,
@@ -23,8 +24,10 @@ import {
   Download,
   Save,
   Send,
+  Square,
   StopCircle,
   Trash2,
+  Type,
   WandSparkles,
 } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -4113,7 +4116,7 @@ export function RealtimeStudio() {
                       <button
                         type="button"
                         disabled={!currentSessionId}
-                      className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#8fa79b] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#8fa79b] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "pen"
                           ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(143,167,155,0.22)]"
                           : "bg-white text-[#111827] hover:bg-white/95"
@@ -4130,22 +4133,14 @@ export function RealtimeStudio() {
                         }}
                         title={!currentSessionId ? "请先创建会话" : "画笔"}
                       >
-                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                          <path
-                            d="M2.2 11.8l2.7-.6 5.8-5.8-2.1-2.1-5.8 5.8-.6 2.7z"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.3"
-                            strokeLinejoin="round"
-                          />
-                          <path d="M7.6 3.3l2.1 2.1" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                        </svg>
+                        <Pencil className="h-3.5 w-3.5 shrink-0" />
+                        <span className="leading-none">画笔</span>
                       </button>
 
                       <button
                         type="button"
                         disabled={!currentSessionId}
-                      className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#bba98d] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#bba98d] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "rect"
                           ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(187,169,141,0.22)]"
                           : "bg-white text-[#111827] hover:bg-white/95"
@@ -4162,24 +4157,14 @@ export function RealtimeStudio() {
                         }}
                         title={!currentSessionId ? "请先创建会话" : "框"}
                       >
-                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                          <rect
-                            x="2.25"
-                            y="2.25"
-                            width="9.5"
-                            height="9.5"
-                            rx="1.8"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.3"
-                          />
-                        </svg>
+                        <Square className="h-3.5 w-3.5 shrink-0" />
+                        <span className="leading-none">框图</span>
                       </button>
 
                       <button
                         type="button"
                         disabled={!currentSessionId}
-                      className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#9fb2c4] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#9fb2c4] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "text"
                           ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(159,178,196,0.22)]"
                           : "bg-white text-[#111827] hover:bg-white/95"
@@ -4196,24 +4181,16 @@ export function RealtimeStudio() {
                         }}
                         title={!currentSessionId ? "请先创建会话" : "文字批注"}
                       >
-                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                          <path
-                            d="M2.5 3.2h9M7 3.2v7.6M4.6 10.8h4.8"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.35"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
+                        <Type className="h-3.5 w-3.5 shrink-0" />
+                        <span className="leading-none">文字</span>
                       </button>
 
                       <button
                         type="button"
                         disabled={!currentSessionId}
-                      className={`inline-flex h-7 w-[72px] shrink-0 items-center justify-center rounded-md border border-[#b7aba1] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#887bb1] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "eraser"
-                          ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(183,171,161,0.22)]"
+                          ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(136,123,177,0.22)]"
                           : "bg-white text-[#111827] hover:bg-white/95"
                       }`}
                         onClick={() => {
@@ -4232,29 +4209,13 @@ export function RealtimeStudio() {
                         }}
                         title={!currentSessionId ? "请先创建会话" : "橡皮"}
                       >
-                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                          <path
-                            d="M3.1 8.7l3.6-3.6a1.6 1.6 0 0 1 2.2 0l1.9 1.9a1.6 1.6 0 0 1 0 2.2L8.3 11.7H5.2z"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.3"
-                            strokeLinejoin="round"
-                          />
-                          <path d="M4.2 11.7h6.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                        </svg>
+                        <Eraser className="h-3.5 w-3.5 shrink-0" />
+                        <span className="leading-none">橡皮</span>
                       </button>
 
                     {activeAnnotationPanel ? (
                       <div
-                        className={`absolute left-2 right-2 top-full z-30 mt-2 rounded-2xl border px-3 py-2 shadow-lg backdrop-blur-sm ${
-                          activeAnnotationPanel === "pen"
-                            ? "border-[#8fa79b] bg-[#d7e3dc]/95"
-                            : activeAnnotationPanel === "rect"
-                              ? "border-[#bba98d] bg-[#e8e1d2]/95"
-                              : activeAnnotationPanel === "text"
-                                ? "border-[#9fb2c4] bg-[#dde6ef]/95"
-                                : "border-[#b7aba1] bg-[#e7e2dd]/95"
-                        }`}
+                        className="absolute left-2 right-2 top-full z-30 mt-2 rounded-2xl border border-[#887bb1] bg-[#d9d2ea]/95 px-3 py-2 shadow-lg backdrop-blur-sm"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
@@ -4323,8 +4284,8 @@ export function RealtimeStudio() {
                                   aria-label={`精准橡皮，宽度 ${w}`}
                                       className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
                                         active
-                                          ? "border-[#b7aba1] bg-[#d7d0c9] text-[#3f3832]"
-                                          : "border-[#c7bdb5] bg-[#efeae6] text-[#564d46] hover:bg-[#e5dfda]"
+                                          ? "border-[#887bb1] bg-[#cec6e5] text-[#2d2545]"
+                                          : "border-[#9a8bc2] bg-[#ebe6f6] text-[#4a3f6b] hover:bg-[#ddd4ef]"
                                   }`}
                                   onClick={() => {
                                     setAnnotationsEnabled(true);
@@ -4346,8 +4307,8 @@ export function RealtimeStudio() {
                               aria-label="对象橡皮"
                                   className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
                                 annotationsTool === "erase_object"
-                                      ? "border-[#b7aba1] bg-[#d7d0c9] text-[#3f3832]"
-                                      : "border-[#c7bdb5] bg-[#efeae6] text-[#564d46] hover:bg-[#e5dfda]"
+                                      ? "border-[#887bb1] bg-[#cec6e5] text-[#2d2545]"
+                                      : "border-[#9a8bc2] bg-[#ebe6f6] text-[#4a3f6b] hover:bg-[#ddd4ef]"
                               }`}
                               onClick={() => {
                                 setAnnotationsEnabled(true);
@@ -4369,15 +4330,7 @@ export function RealtimeStudio() {
                           </div>
                           <button
                             type="button"
-                            className={`inline-flex h-7 shrink-0 items-center justify-center rounded-md border px-2 text-[11px] font-semibold ${
-                              activeAnnotationPanel === "pen"
-                                ? "border-[#8fa79b] bg-[#c1d3c8] text-[#2f4b42] hover:bg-[#b4c9bd]"
-                                : activeAnnotationPanel === "rect"
-                                  ? "border-[#bba98d] bg-[#d8cbb1] text-[#514530] hover:bg-[#cfbe9f]"
-                                  : activeAnnotationPanel === "text"
-                                    ? "border-[#9fb2c4] bg-[#cbd9e6] text-[#334556] hover:bg-[#bfd1df]"
-                                    : "border-[#b7aba1] bg-[#d7d0c9] text-[#3f3832] hover:bg-[#cbc2bb]"
-                            }`}
+                            className="inline-flex h-7 shrink-0 items-center justify-center rounded-md border border-[#887bb1] bg-[#cec6e5] px-2 text-[11px] font-semibold text-[#2d2545] hover:bg-[#c1b7df]"
                             onClick={() => {
                               setAnnotationsEnabled(false);
                               setActiveAnnotationPanel(null);
@@ -4533,6 +4486,7 @@ export function RealtimeStudio() {
                   annotationEraserWidth={annotationEraserWidth}
                   annotationsDoc={mermaidAnnotationsDoc}
                   onAnnotationsChange={onMermaidAnnotationsChange}
+                  panZoomControlsOffsetTop={activeAnnotationPanel ? 72 : 12}
                 />
               </div>
             </Tabs.Content>
@@ -4556,6 +4510,7 @@ export function RealtimeStudio() {
                   annotationEraserWidth={annotationEraserWidth}
                   annotationsDoc={structureAnnotationsDoc}
                   onAnnotationsChange={onStructureAnnotationsChange}
+                  panZoomControlsOffsetTop={activeAnnotationPanel ? 72 : 12}
                 />
               </div>
             </Tabs.Content>

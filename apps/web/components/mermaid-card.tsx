@@ -735,6 +735,7 @@ function MermaidCardBody({
   annotationExportHostId = "s2g-annotation-host-mermaid",
   /** @description Realtime 嵌入时固定浅色画布 token */
   fixedLightCanvas = false,
+  panZoomControlsOffsetTop = 12,
 }: {
   title: string;
   code: string;
@@ -770,6 +771,7 @@ function MermaidCardBody({
   onAnnotationsChange?: (next: AnnotationDoc) => void;
   annotationExportHostId?: string;
   fixedLightCanvas?: boolean;
+  panZoomControlsOffsetTop?: number;
 }) {
   const id = useId().replace(/:/g, "");
   const [diagramExpanded, setDiagramExpanded] = useState(defaultDiagramExpanded);
@@ -1352,6 +1354,7 @@ function MermaidCardBody({
               maxScale={2.6}
               initialScale={1}
               initialOffset={{ x: 0, y: 0 }}
+              controlsOffsetTop={panZoomControlsOffsetTop}
               overlay={
                 interactiveRelayoutEnabled ? (
                   <div className="rounded-md border border-theme-default bg-surface-muted px-2.5 py-1.5 text-[11px] leading-snug text-theme-3 shadow-lg backdrop-blur-[2px]">
@@ -1539,6 +1542,7 @@ export function MermaidCard(props: {
   onAnnotationsChange?: (next: AnnotationDoc) => void;
   annotationExportHostId?: string;
   fixedLightCanvas?: boolean;
+  panZoomControlsOffsetTop?: number;
 }) {
   return (
     <ErrorBoundary
