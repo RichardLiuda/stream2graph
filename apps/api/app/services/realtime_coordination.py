@@ -42,6 +42,16 @@ from tools.incremental_system.schema import DialogueTurn
 logger = logging.getLogger(__name__)
 GraphEntityT = TypeVar("GraphEntityT")
 LLM_LOG_TEXT_LIMIT = 4000
+INCREMENTAL_STAGE_PALETTE = [
+    "#2563eb",
+    "#0f766e",
+    "#d97706",
+    "#7c3aed",
+    "#dc2626",
+    "#0891b2",
+    "#65a30d",
+    "#be185d",
+]
 
 
 def _log_coordination_event(message: str, payload: dict[str, Any]) -> None:
@@ -118,6 +128,123 @@ def _graph_metrics(graph_ir: GraphIR) -> dict[str, Any]:
 
 def _graph_payload_signature(graph_ir: GraphIR) -> str:
     return json.dumps(graph_ir.to_payload(), ensure_ascii=False, sort_keys=True)
+
+
+def _stage_color(stage_index: int) -> str:
+    if stage_index <= 0:
+        return INCREMENTAL_STAGE_PALETTE[0]
+    return INCREMENTAL_STAGE_PALETTE[(stage_index - 1) % len(INCREMENTAL_STAGE_PALETTE)]
+
+
+def _delta_concepts(delta_ops: list[dict[str, Any]], limit: int = 6) -> list[str]:
+    concepts: list[str] = []
+    for op in delta_ops:
+        label = str(op.get("label") or op.get("node_id") or op.get("group_id") or op.get("id") or "").strip()
+        if not label:
+            source = str(op.get("source") or "").strip()
+            target = str(op.get("target") or "").strip()
+            label = " -> ".join(item for item in (source, target) if item)
+        if label and label not in concepts:
+            concepts.append(label)
+        if len(concepts) >= limit:
+            break
+    return concepts
+
+
+def _stage_metadata(stage_index: int, concepts: list[str]) -> dict[str, Any]:
+    return {
+        "incremental_stage_index": stage_index,
+        "incremental_stage_color": _stage_color(stage_index),
+        "incremental_stage_concepts": list(concepts),
+    }
+
+
+def _merge_stage_metadata(existing: dict[str, Any], stage_index: int, concepts: list[str]) -> dict[str, Any]:
+    previous_indices = existing.get("incremental_stage_indices", [])
+    indices = [
+        int(item)
+        for item in previous_indices
+        if isinstance(item, int) or (isinstance(item, str) and item.isdigit())
+    ]
+    if stage_index not in indices:
+        indices.append(stage_index)
+
+    previous_concepts = existing.get("incremental_stage_concepts", [])
+    merged_concepts = [
+        str(item).strip()
+        for item in previous_concepts
+        if str(item).strip()
+    ]
+    for concept in concepts:
+        if concept not in merged_concepts:
+            merged_concepts.append(concept)
+
+    return {
+        **dict(existing),
+        **_stage_metadata(stage_index, concepts),
+        "incremental_stage_indices": sorted(indices),
+        "incremental_stage_concepts": merged_concepts[:8],
+    }
+
+
+def _annotate_incremental_stage(
+    graph_ir: GraphIR,
+    delta_ops: list[dict[str, Any]],
+    *,
+    stage_index: int,
+) -> GraphIR:
+    if stage_index <= 0 or not delta_ops:
+        return graph_ir
+    concepts = _delta_concepts(delta_ops)
+    node_by_id = {node.id: node for node in graph_ir.nodes}
+    edge_by_id = {edge.id: edge for edge in graph_ir.edges}
+    group_by_id = {group.id: group for group in graph_ir.groups}
+
+    for op in delta_ops:
+        op_name = str(op.get("op") or op.get("type") or "").strip().lower()
+        if op_name == "add_node":
+            node_id = str(op.get("node_id") or op.get("id") or "").strip()
+            if node_id in node_by_id:
+                node_by_id[node_id].metadata = _merge_stage_metadata(node_by_id[node_id].metadata, stage_index, concepts)
+        elif op_name == "add_edge":
+            edge_id = str(op.get("edge_id") or op.get("id") or "").strip()
+            source = str(op.get("source") or "").strip()
+            target = str(op.get("target") or "").strip()
+            edge = edge_by_id.get(edge_id)
+            if edge is None and source and target:
+                edge = next((item for item in graph_ir.edges if item.source == source and item.target == target), None)
+            if edge is not None:
+                edge.metadata = _merge_stage_metadata(edge.metadata, stage_index, concepts)
+                for node_id in (edge.source, edge.target):
+                    if node_id in node_by_id:
+                        node_by_id[node_id].metadata = _merge_stage_metadata(
+                            node_by_id[node_id].metadata,
+                            stage_index,
+                            concepts,
+                        )
+        elif op_name == "add_group":
+            group_id = str(op.get("group_id") or op.get("id") or "").strip()
+            if group_id in group_by_id:
+                group_by_id[group_id].metadata = _merge_stage_metadata(group_by_id[group_id].metadata, stage_index, concepts)
+
+    stages = list(graph_ir.metadata.get("incremental_stages", [])) if isinstance(graph_ir.metadata, dict) else []
+    stage_row = {
+        "stage_index": stage_index,
+        "stage_color": _stage_color(stage_index),
+        "concepts": concepts[:3],
+        "delta_op_count": len(delta_ops),
+    }
+    stages = [row for row in stages if not isinstance(row, dict) or row.get("stage_index") != stage_index]
+    stages.append(stage_row)
+    graph_ir.metadata = {
+        **dict(graph_ir.metadata),
+        "incremental_stage_palette": list(INCREMENTAL_STAGE_PALETTE),
+        "incremental_stages": sorted(
+            stages,
+            key=lambda row: int(row.get("stage_index", 0) or 0) if isinstance(row, dict) else 0,
+        ),
+    }
+    return graph_ir
 
 
 def _presentation_graph_ir(graph_ir: GraphIR, *, diagram_type: str | None = None) -> GraphIR:
@@ -908,13 +1035,20 @@ def _restore_renderer(payload: dict[str, Any], graph_ir: GraphIR) -> Incremental
             )
     edges = renderer_state.get("edges", [])
     if isinstance(edges, list):
-        renderer.edges = {
-            (str(edge.get("from") or "").strip(), str(edge.get("to") or "").strip())
-            for edge in edges
-            if isinstance(edge, dict)
-            and str(edge.get("from") or "").strip()
-            and str(edge.get("to") or "").strip()
-        }
+        restored_edges: set[tuple[str, str]] = set()
+        restored_edge_frames: dict[tuple[str, str], int] = {}
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            source = str(edge.get("from") or "").strip()
+            target = str(edge.get("to") or "").strip()
+            if not source or not target:
+                continue
+            key = (source, target)
+            restored_edges.add(key)
+            restored_edge_frames[key] = int(edge.get("created_frame", 0) or 0)
+        renderer.edges = restored_edges
+        renderer.edge_frames = restored_edge_frames
     renderer.frame_id = int(renderer_state.get("frame_count", 0) or 0)
     return renderer
 
@@ -1030,6 +1164,20 @@ LIVE_PLANNER_SYSTEM_PROMPT = (
     "Do NOT default to flowchart unless the dialogue truly describes a generic process or workflow."
 )
 
+LIVE_PLANNER_JSON_REPAIR_SYSTEM_PROMPT = (
+    "You are the Gate model temporarily acting as a strict JSON repairer for a realtime diagram planner. "
+    "Repair only JSON syntax and planner contract mistakes. Do not invent new intent beyond the pending dialogue. "
+    "Return exactly one valid planner contract JSON object. No markdown, no explanations, no prose before or after JSON. "
+    "The repaired object must include diagram_type, delta_ops, and notes, and may include target_graph_ir and styles."
+)
+
+LIVE_REPAIRED_PLAN_GATE_SYSTEM_PROMPT = (
+    "You are the Gate model checking a repaired realtime diagram planner JSON object. "
+    "Do not repair or rewrite it. Decide only whether the repaired plan is safe, valid, and consistent with the pending dialogue. "
+    "Return strict JSON only with keys: action, reason, confidence. "
+    "Allowed action values: EMIT_UPDATE, WAIT. SWITCH_CANVAS is not allowed in this post-repair check."
+)
+
 
 LIVE_RELAYOUT_SYSTEM_PROMPT = (
     "You are the large planner model for a collaborative realtime diagram editor. "
@@ -1044,6 +1192,33 @@ LIVE_RELAYOUT_SYSTEM_PROMPT = (
     "Prefer the smallest coherent graph edit that explains the new spatial arrangement. "
     "If the drag does not imply a real structural change, return the current graph unchanged with a short note."
 )
+
+
+def _planner_output_contract() -> dict[str, Any]:
+    return {
+        "diagram_type": "REQUIRED: one of flowchart, sequence, statediagram, class, er, requirement — always include based on dialogue content",
+        "delta_ops": [
+            {
+                "op": "add_group|add_node|add_edge",
+                "group_id": "for add_group",
+                "node_id": "for add_node",
+                "edge_id": "for add_edge",
+                "source": "for add_edge",
+                "target": "for add_edge",
+                "label": "string",
+                "kind": "optional string",
+                "parent": "optional group id",
+            }
+        ],
+        "styles": [
+            {
+                "line": "optional Mermaid style directive such as classDef/class/style/linkStyle",
+            }
+        ],
+        "language": "all human-readable labels and notes must stay in the dominant dialogue language unless the user explicitly requests translation",
+        "notes": "short string",
+        "target_graph_ir": "optional full graph object, including styles when available",
+    }
 
 
 @dataclass
@@ -1078,6 +1253,19 @@ class PlannerDecision:
             "metadata": dict(self.metadata),
             "diagram_type": self.diagram_type,
         }
+
+
+class PlannerRepairGateWait(RuntimeError):
+    def __init__(self, gate_decision: GateDecision, planner_metadata: dict[str, Any]) -> None:
+        super().__init__(gate_decision.reason or "repaired planner JSON was held by Gate")
+        self.gate_decision = gate_decision
+        self.planner_metadata = dict(planner_metadata)
+
+
+class PlannerJsonRepairFailed(RuntimeError):
+    def __init__(self, message: str, planner_metadata: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.planner_metadata = dict(planner_metadata)
 
 
 @dataclass
@@ -1625,7 +1813,6 @@ class CoordinationRuntimeSession:
             return []
 
         gate_decision = self._decide_gate(db, session_obj, pending_turns, force_emit=force_emit)
-        self.gate_action_counts[gate_decision.action] += 1
         _log_coordination_event(
             "Gate decision produced",
             {
@@ -1637,14 +1824,99 @@ class CoordinationRuntimeSession:
             },
         )
         if gate_decision.action == "WAIT":
+            self.gate_action_counts[gate_decision.action] += 1
             return []
+        should_switch_canvas = gate_decision.action == "SWITCH_CANVAS"
         canvas_transition = None
-        if gate_decision.action == "SWITCH_CANVAS":
-            canvas_transition = self._switch_to_new_canvas(pending_turns, gate_decision)
 
         try:
             planner_decision = self._plan_update(db, session_obj, pending_turns)
+            post_repair_gate_payload = planner_decision.metadata.get("post_repair_gate_decision")
+            if isinstance(post_repair_gate_payload, dict):
+                gate_decision = GateDecision(
+                    action=str(post_repair_gate_payload.get("action") or "WAIT"),
+                    reason=str(post_repair_gate_payload.get("reason") or ""),
+                    confidence=(
+                        float(post_repair_gate_payload["confidence"])
+                        if post_repair_gate_payload.get("confidence") is not None
+                        else None
+                    ),
+                    metadata=dict(post_repair_gate_payload.get("metadata") or {}),
+                )
+        except PlannerRepairGateWait as exc:
+            gate_decision = exc.gate_decision
+            self.gate_action_counts[gate_decision.action] += 1
+            now_ms = int(time.time() * 1000)
+            self.planner_state = {
+                "status": "repair_succeeded_but_gate_wait",
+                "provider": exc.planner_metadata.get("provider", ""),
+                "model": exc.planner_metadata.get("model_name", ""),
+                "latency_ms": float(exc.planner_metadata.get("latency_ms") or 0.0),
+                "delta_ops_count": 0,
+                "graph_changed": False,
+                "notes": "",
+                "updated_at": now_ms,
+                "error_message": gate_decision.reason,
+                "debug": {
+                    "json_repair_attempted": exc.planner_metadata.get("json_repair_attempted", True),
+                    "json_repair_succeeded": exc.planner_metadata.get("json_repair_succeeded", True),
+                    "repair_model": exc.planner_metadata.get("repair_model"),
+                    "repair_error": exc.planner_metadata.get("repair_error"),
+                    "gate_paused_during_repair": exc.planner_metadata.get("gate_paused_during_repair", True),
+                    "post_repair_gate_action": gate_decision.action,
+                    "post_repair_gate_reason": gate_decision.reason,
+                    "raw_text_preview": exc.planner_metadata.get("raw_text_preview"),
+                    "repaired_raw_text_preview": exc.planner_metadata.get("repaired_raw_text_preview"),
+                    "usage": exc.planner_metadata.get("usage"),
+                },
+            }
+            _log_coordination_event(
+                "Planner repair succeeded but post-repair Gate waited",
+                {
+                    "session_id": self.session_id,
+                    "pending_turn_ids": [turn.turn_id for turn in pending_turns],
+                    "gate": gate_decision.to_payload(),
+                    "planner_state": self.planner_state,
+                },
+            )
+            return []
+        except PlannerJsonRepairFailed as exc:
+            self.gate_action_counts["WAIT"] += 1
+            metadata = exc.planner_metadata
+            self.planner_state = {
+                "status": "error",
+                "provider": metadata.get("provider", ""),
+                "model": metadata.get("model_name", ""),
+                "latency_ms": float(metadata.get("latency_ms") or 0.0),
+                "delta_ops_count": 0,
+                "graph_changed": False,
+                "notes": "",
+                "updated_at": int(time.time() * 1000),
+                "error_message": str(exc),
+                "debug": {
+                    "json_repair_attempted": metadata.get("json_repair_attempted", False),
+                    "json_repair_succeeded": metadata.get("json_repair_succeeded", False),
+                    "repair_model": metadata.get("repair_model"),
+                    "repair_error": metadata.get("repair_error"),
+                    "gate_paused_during_repair": metadata.get("gate_paused_during_repair", False),
+                    "post_repair_gate_action": metadata.get("post_repair_gate_action"),
+                    "raw_text_preview": metadata.get("raw_text_preview"),
+                    "repaired_raw_text_preview": metadata.get("repaired_raw_text_preview"),
+                    "usage": metadata.get("usage"),
+                },
+            }
+            _log_coordination_event(
+                "Planner JSON repair failed",
+                {
+                    "session_id": self.session_id,
+                    "error": str(exc),
+                    "pending_turn_ids": [turn.turn_id for turn in pending_turns],
+                    "planner_state": self.planner_state,
+                },
+            )
+            return []
         except Exception as exc:
+            self.gate_action_counts["WAIT"] += 1
             self.planner_state = {
                 "status": "error",
                 "provider": "",
@@ -1665,6 +1937,12 @@ class CoordinationRuntimeSession:
                 },
             )
             return []
+        if gate_decision.action == "WAIT":
+            self.gate_action_counts[gate_decision.action] += 1
+            return []
+        self.gate_action_counts[gate_decision.action] += 1
+        if should_switch_canvas:
+            canvas_transition = self._switch_to_new_canvas(pending_turns, gate_decision)
         base_graph = _clone_graph_ir(self.current_graph_ir)
         next_graph, effective_delta_ops, graph_changed = self._apply_planner_decision(base_graph, planner_decision)
         pending_turn_ids = [turn.turn_id for turn in pending_turns]
@@ -1688,11 +1966,27 @@ class CoordinationRuntimeSession:
             self.planner_state = {
                 **self.planner_state,
                 "status": "success",
+                "provider": planner_decision.metadata.get("provider", ""),
+                "model": planner_decision.metadata.get("model_name", ""),
+                "latency_ms": float(planner_decision.metadata.get("latency_ms") or 0.0),
                 "delta_ops_count": 0,
                 "graph_changed": False,
                 "notes": planner_decision.notes,
                 "updated_at": int(time.time() * 1000),
                 "error_message": None,
+                "debug": {
+                    "semantic_attempt": planner_decision.metadata.get("semantic_attempt"),
+                    "raw_text_preview": planner_decision.metadata.get("raw_text_preview"),
+                    "repaired_raw_text_preview": planner_decision.metadata.get("repaired_raw_text_preview"),
+                    "usage": planner_decision.metadata.get("usage"),
+                    "planner_noop": planner_decision.metadata.get("planner_noop", False),
+                    "json_repair_attempted": planner_decision.metadata.get("json_repair_attempted", False),
+                    "json_repair_succeeded": planner_decision.metadata.get("json_repair_succeeded", False),
+                    "repair_model": planner_decision.metadata.get("repair_model"),
+                    "repair_error": planner_decision.metadata.get("repair_error"),
+                    "gate_paused_during_repair": planner_decision.metadata.get("gate_paused_during_repair", False),
+                    "post_repair_gate_action": planner_decision.metadata.get("post_repair_gate_action"),
+                },
             }
             self._sync_active_canvas_from_runtime(
                 last_turn_id=self.last_consumed_turn_id,
@@ -1709,6 +2003,11 @@ class CoordinationRuntimeSession:
             return []
 
         self.update_index += 1
+        next_graph = _annotate_incremental_stage(
+            next_graph,
+            effective_delta_ops,
+            stage_index=self.update_index,
+        )
         render_ops = _renderer_operations(effective_delta_ops)
         render_t0 = time.time()
         frame = self.renderer.apply_update(self.update_index, render_ops, "emit_update")
@@ -1789,8 +2088,15 @@ class CoordinationRuntimeSession:
             "debug": {
                 "semantic_attempt": planner_decision.metadata.get("semantic_attempt"),
                 "raw_text_preview": planner_decision.metadata.get("raw_text_preview"),
+                "repaired_raw_text_preview": planner_decision.metadata.get("repaired_raw_text_preview"),
                 "usage": planner_decision.metadata.get("usage"),
                 "planner_noop": planner_decision.metadata.get("planner_noop", False),
+                "json_repair_attempted": planner_decision.metadata.get("json_repair_attempted", False),
+                "json_repair_succeeded": planner_decision.metadata.get("json_repair_succeeded", False),
+                "repair_model": planner_decision.metadata.get("repair_model"),
+                "repair_error": planner_decision.metadata.get("repair_error"),
+                "gate_paused_during_repair": planner_decision.metadata.get("gate_paused_during_repair", False),
+                "post_repair_gate_action": planner_decision.metadata.get("post_repair_gate_action"),
             },
         }
         return [event]
@@ -2046,6 +2352,255 @@ class CoordinationRuntimeSession:
             )
             return GateDecision(action="WAIT", reason=str(exc), confidence=None, metadata={"latency_ms": 0.0})
 
+    def _planner_decision_from_payload(
+        self,
+        payload: dict[str, Any],
+        sample_hint: SimpleNamespace,
+        state_hint: SimpleNamespace,
+        metadata: dict[str, Any],
+    ) -> PlannerDecision:
+        style_entries = _coerce_style_entries(payload.get("styles"))
+        has_explicit_target_graph = any(
+            isinstance(payload.get(key), dict) and payload.get(key)
+            for key in ("target_graph_ir", "graph_ir", "graph")
+        )
+        has_inline_graph = any(key in payload for key in ("nodes", "edges", "groups"))
+        if not _has_delta_ops_field(payload) and not has_explicit_target_graph and not has_inline_graph and not style_entries:
+            raise ValueError("planner returned neither delta_ops nor target_graph_ir")
+        raw_graph_payload = _extract_graph_payload(payload)
+        target_graph_ir = None
+        if isinstance(raw_graph_payload, dict) and raw_graph_payload:
+            target_graph_ir = _graph_ir_from_payload(raw_graph_payload)
+            if style_entries and not target_graph_ir.styles:
+                target_graph_ir.styles = list(style_entries)
+            target_graph_ir = _refine_graph_ir(sample_hint, self.turns, target_graph_ir)
+        elif style_entries:
+            target_graph_ir = _clone_graph_ir(self.current_graph_ir)
+            target_graph_ir.styles = list(style_entries)
+        delta_ops = _refine_delta_ops(sample_hint, self.turns, state_hint, _coerce_delta_ops(payload))
+        if not delta_ops and target_graph_ir is None and _has_delta_ops_field(payload):
+            target_graph_ir = _clone_graph_ir(self.current_graph_ir)
+        if not delta_ops and target_graph_ir is None:
+            raise ValueError("planner returned neither delta_ops nor target_graph_ir")
+
+        suggested_diagram_type = payload.get("diagram_type")
+        if suggested_diagram_type and isinstance(suggested_diagram_type, str):
+            validated_type = canonical_diagram_type(suggested_diagram_type)
+            suggested_diagram_type = validated_type if validated_type not in ("unknown", "") else None
+        else:
+            suggested_diagram_type = None
+
+        return PlannerDecision(
+            delta_ops=delta_ops,
+            target_graph_ir=target_graph_ir,
+            notes=str(payload.get("notes", "")).strip(),
+            metadata={**metadata, "planner_noop": (not delta_ops and target_graph_ir is not None)},
+            diagram_type=suggested_diagram_type,
+        )
+
+    def _repair_and_gate_planner_json(
+        self,
+        db: Session,
+        session_obj: RealtimeSession,
+        pending_turns: list[DialogueTurn],
+        *,
+        planner_user_payload: dict[str, Any],
+        planner_profile: dict[str, Any],
+        planner_model: str,
+        initial_result_text: str,
+        initial_latency_ms: float,
+        initial_usage: dict[str, Any] | None,
+        initial_error: Exception,
+        sample_hint: SimpleNamespace,
+        state_hint: SimpleNamespace,
+    ) -> tuple[PlannerDecision, GateDecision]:
+        runtime_options = _current_runtime_options(session_obj)
+        gate_profile = resolve_profile(db, "gate", runtime_options.get("gate_profile_id"))
+        gate_model = str(runtime_options.get("gate_model") or (gate_profile or {}).get("default_model") or "")
+        if not gate_profile or not gate_model:
+            raise RuntimeError("planner JSON repair skipped: missing Gate profile / model") from initial_error
+
+        now_ms = int(time.time() * 1000)
+        self.gate_state = {
+            "status": "paused_for_planner_json_repair",
+            "last_action": "WAIT",
+            "reason": "Planner JSON 解析或契约校验失败，Gate 暂停放行并修复 JSON。",
+            "confidence": None,
+            "provider": str(gate_profile.get("id", "")),
+            "model": gate_model,
+            "latency_ms": 0.0,
+            "updated_at": now_ms,
+            "error_message": None,
+            "debug": {
+                "json_repair_attempted": True,
+                "planner_error": str(initial_error),
+                "raw_text_preview": initial_result_text[:400],
+                "gate_paused_during_repair": True,
+            },
+        }
+        _log_coordination_event(
+            "Planner JSON repair phase started",
+            {
+                "session_id": self.session_id,
+                "planner_provider": str(planner_profile.get("id", "")),
+                "planner_model": planner_model,
+                "repair_provider": str(gate_profile.get("id", "")),
+                "repair_model": gate_model,
+                "pending_turn_ids": [turn.turn_id for turn in pending_turns],
+                "error": str(initial_error),
+            },
+        )
+
+        client = build_chat_client(gate_profile, gate_model, timeout_sec=REALTIME_RELAYOUT_LLM_TIMEOUT_SEC)
+        repair_messages = [
+            {"role": "system", "content": LIVE_PLANNER_JSON_REPAIR_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "session_id": self.session_id,
+                        "diagram_type": self.diagram_type,
+                        "pending_turns": [_dialogue_payload(turn) for turn in pending_turns],
+                        "current_graph_ir": self.current_graph_ir.to_payload(),
+                        "current_graph_metrics": _graph_metrics(self.current_graph_ir),
+                        "planner_request": planner_user_payload,
+                        "planner_raw_output": strip_think_traces(initial_result_text)[:12000],
+                        "planner_error": str(initial_error),
+                        "output_contract": _planner_output_contract(),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            },
+        ]
+        repair_result = client.chat(repair_messages)
+        repair_text = repair_result.text or ""
+        try:
+            repaired_payload = _parse_json_object(repair_result.text)
+            repair_error: str | None = None
+        except Exception as exc:
+            repair_error = str(exc)
+            raise RuntimeError(f"Gate planner JSON repair returned invalid JSON: {exc}") from exc
+
+        repair_metadata = {
+            "provider": str(planner_profile.get("id", "")),
+            "model_name": planner_model,
+            "latency_ms": round(initial_latency_ms + float(repair_result.latency_ms), 4),
+            "usage": initial_usage,
+            "semantic_attempt": 1,
+            "raw_text_preview": initial_result_text[:400],
+            "json_repair_attempted": True,
+            "json_repair_succeeded": True,
+            "repair_model": gate_model,
+            "repair_provider": str(gate_profile.get("id", "")),
+            "repair_latency_ms": float(repair_result.latency_ms),
+            "repair_usage": repair_result.usage,
+            "repair_error": repair_error,
+            "gate_paused_during_repair": True,
+            "repaired_raw_text_preview": repair_text[:400],
+            "post_repair_gate_action": None,
+        }
+        try:
+            repaired_decision = self._planner_decision_from_payload(
+                repaired_payload,
+                sample_hint,
+                state_hint,
+                repair_metadata,
+            )
+        except Exception as exc:
+            repair_metadata["json_repair_succeeded"] = False
+            repair_metadata["repair_error"] = str(exc)
+            raise RuntimeError(f"Gate planner JSON repair did not satisfy planner contract: {exc}") from exc
+
+        post_gate_messages = [
+            {"role": "system", "content": LIVE_REPAIRED_PLAN_GATE_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "session_id": self.session_id,
+                        "diagram_type": self.diagram_type,
+                        "pending_turns": [_dialogue_payload(turn) for turn in pending_turns],
+                        "current_graph_ir": self.current_graph_ir.to_payload(),
+                        "current_graph_metrics": _graph_metrics(self.current_graph_ir),
+                        "repaired_planner_json": repaired_payload,
+                        "repair_error_context": {
+                            "planner_error": str(initial_error),
+                            "planner_raw_output_preview": strip_think_traces(initial_result_text)[:2000],
+                            "repair_model": gate_model,
+                        },
+                        "instruction": "Only decide whether this repaired plan is safe, valid, and aligned with the pending dialogue. Return EMIT_UPDATE or WAIT.",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            },
+        ]
+        post_gate_result = client.chat(post_gate_messages)
+        post_gate_text = post_gate_result.text or ""
+        post_gate_payload = _parse_json_object(post_gate_result.text)
+        action = _coerce_gate_action(post_gate_payload.get("action", "WAIT"))
+        if action not in {"EMIT_UPDATE", "WAIT"}:
+            raise ValueError(f"post-repair gate action must be EMIT_UPDATE or WAIT, got {action}")
+        post_repair_gate = GateDecision(
+            action=action,
+            reason=str(post_gate_payload.get("reason", "")).strip(),
+            confidence=float(post_gate_payload["confidence"]) if post_gate_payload.get("confidence") is not None else None,
+            metadata={
+                "provider": str(gate_profile.get("id", "")),
+                "model_name": gate_model,
+                "latency_ms": float(post_gate_result.latency_ms),
+                "usage": post_gate_result.usage,
+                "semantic_attempt": 1,
+                "raw_text_preview": post_gate_text[:400],
+                "post_repair_gate": True,
+            },
+        )
+        self.gate_latency_ms.append(float(post_gate_result.latency_ms))
+        self.gate_state = {
+            "status": "success",
+            "last_action": post_repair_gate.action,
+            "reason": post_repair_gate.reason,
+            "confidence": post_repair_gate.confidence,
+            "provider": str(gate_profile.get("id", "")),
+            "model": gate_model,
+            "latency_ms": float(post_gate_result.latency_ms),
+            "updated_at": int(time.time() * 1000),
+            "error_message": None,
+            "debug": {
+                "json_repair_attempted": True,
+                "json_repair_succeeded": True,
+                "repair_model": gate_model,
+                "repair_error": repair_error,
+                "gate_paused_during_repair": True,
+                "post_repair_gate_action": post_repair_gate.action,
+                "raw_text_preview": post_gate_text[:400],
+                "usage": post_gate_result.usage,
+            },
+        }
+        repaired_decision.metadata.update(
+            {
+                "latency_ms": round(float(repaired_decision.metadata.get("latency_ms") or 0.0), 4),
+                "post_repair_gate_action": post_repair_gate.action,
+                "post_repair_gate_decision": post_repair_gate.to_payload(),
+                "post_repair_gate_latency_ms": float(post_gate_result.latency_ms),
+            }
+        )
+        _log_coordination_event(
+            "Post-repair Gate request succeeded",
+            {
+                "session_id": self.session_id,
+                "repair_model": gate_model,
+                "action": post_repair_gate.action,
+                "confidence": post_repair_gate.confidence,
+                "latency_ms": post_gate_result.latency_ms,
+                "llm_response_text": _llm_log_text(post_gate_text),
+            },
+        )
+        if post_repair_gate.action == "WAIT":
+            raise PlannerRepairGateWait(post_repair_gate, repaired_decision.metadata)
+        return repaired_decision, post_repair_gate
+
     def _plan_update(
         self,
         db: Session,
@@ -2072,144 +2627,131 @@ class CoordinationRuntimeSession:
         sample_hint = SimpleNamespace(sample_id=self.session_id, diagram_type=self.diagram_type)
         state_hint = SimpleNamespace(current_graph_ir=self.current_graph_ir)
         language_guidance = _dialogue_language_guidance([*self.turns[-24:], *pending_turns])
-        base_messages = [
+        user_payload = {
+            "session_id": self.session_id,
+            "diagram_type": self.diagram_type,
+            "current_update_index": self.update_index,
+            "canvas_state": self._canvas_prompt_summary(),
+            "dominant_dialogue_language": language_guidance["dominant_language"],
+            "language_requirement": language_guidance["instruction"],
+            "pending_turns": [_dialogue_payload(turn) for turn in pending_turns],
+            "recent_turns": [_dialogue_payload(turn) for turn in self.turns[-24:]],
+            "recent_dialogue_snapshot": _build_recent_dialogue_snapshot(self.turns[-24:]),
+            "identifier_candidates": list(_extract_identifier_candidates(self.turns).values())[:24],
+            "diagram_type_priors": _diagram_type_alignment_priors(self.diagram_type),
+            "current_graph_ir": self.current_graph_ir.to_payload(),
+            "current_graph_metrics": _graph_metrics(self.current_graph_ir),
+            "output_contract": _planner_output_contract(),
+        }
+        messages = [
             {"role": "system", "content": LIVE_PLANNER_SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": json.dumps(
-                    {
-                        "session_id": self.session_id,
-                        "diagram_type": self.diagram_type,
-                        "current_update_index": self.update_index,
-                        "canvas_state": self._canvas_prompt_summary(),
-                        "dominant_dialogue_language": language_guidance["dominant_language"],
-                        "language_requirement": language_guidance["instruction"],
-                        "pending_turns": [_dialogue_payload(turn) for turn in pending_turns],
-                        "recent_turns": [_dialogue_payload(turn) for turn in self.turns[-24:]],
-                        "recent_dialogue_snapshot": _build_recent_dialogue_snapshot(self.turns[-24:]),
-                        "identifier_candidates": list(_extract_identifier_candidates(self.turns).values())[:24],
-                        "diagram_type_priors": _diagram_type_alignment_priors(self.diagram_type),
-                        "current_graph_ir": self.current_graph_ir.to_payload(),
-                        "current_graph_metrics": _graph_metrics(self.current_graph_ir),
-                        "output_contract": {
-                            "diagram_type": "REQUIRED: one of flowchart, sequence, statediagram, class, er, requirement — always include based on dialogue content",
-                            "delta_ops": [
-                                {
-                                    "op": "add_group|add_node|add_edge",
-                                    "group_id": "for add_group",
-                                    "node_id": "for add_node",
-                                    "edge_id": "for add_edge",
-                                    "source": "for add_edge",
-                                    "target": "for add_edge",
-                                    "label": "string",
-                                    "kind": "optional string",
-                                    "parent": "optional group id",
-                                }
-                            ],
-                            "styles": [
-                                {
-                                    "line": "optional Mermaid style directive such as classDef/class/style/linkStyle",
-                                }
-                            ],
-                            "language": "all human-readable labels and notes must stay in the dominant dialogue language unless the user explicitly requests translation",
-                            "notes": "short string",
-                            "target_graph_ir": "optional full graph object, including styles when available",
-                        },
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                ),
+                "content": json.dumps(user_payload, ensure_ascii=False, indent=2),
             },
         ]
-        current_messages = list(base_messages)
-        last_error: Exception | None = None
-        last_result_text = ""
-
-        for attempt in range(2):
-            result = client.chat(current_messages)
+        result = client.chat(messages)
+        result_text = result.text or ""
+        metadata = {
+            "provider": str(profile.get("id", "")),
+            "model_name": model,
+            "latency_ms": float(result.latency_ms),
+            "usage": result.usage,
+            "semantic_attempt": 1,
+            "raw_text_preview": result_text[:400],
+            "json_repair_attempted": False,
+            "json_repair_succeeded": False,
+            "repair_model": None,
+            "repair_error": None,
+            "gate_paused_during_repair": False,
+            "post_repair_gate_action": None,
+        }
+        try:
+            payload = _parse_json_object(result.text)
+            decision = self._planner_decision_from_payload(payload, sample_hint, state_hint, metadata)
+            self.planner_latency_ms.append(float(result.latency_ms))
+            _log_coordination_event(
+                "Planner request succeeded",
+                {
+                    "session_id": self.session_id,
+                    "provider": str(profile.get("id", "")),
+                    "model": model,
+                    "latency_ms": result.latency_ms,
+                    "semantic_attempt": 1,
+                    "delta_ops_count": len(decision.delta_ops),
+                    "has_target_graph_ir": decision.target_graph_ir is not None,
+                    "usage": result.usage,
+                    "llm_response_text": _llm_log_text(result_text),
+                },
+            )
+            return decision
+        except Exception as exc:
+            _log_coordination_event(
+                "Planner request parse failed",
+                {
+                    "session_id": self.session_id,
+                    "provider": str(profile.get("id", "")),
+                    "model": model,
+                    "semantic_attempt": 1,
+                    "error": str(exc),
+                    "llm_response_text": _llm_log_text(result_text),
+                },
+            )
             try:
-                last_result_text = result.text or ""
-                payload = _parse_json_object(result.text)
-                raw_graph_payload = _extract_graph_payload(payload)
-                style_entries = _coerce_style_entries(payload.get("styles"))
-                target_graph_ir = None
-                if isinstance(raw_graph_payload, dict) and raw_graph_payload:
-                    target_graph_ir = _graph_ir_from_payload(raw_graph_payload)
-                    if style_entries and not target_graph_ir.styles:
-                        target_graph_ir.styles = list(style_entries)
-                    target_graph_ir = _refine_graph_ir(sample_hint, self.turns, target_graph_ir)
-                elif style_entries:
-                    target_graph_ir = _clone_graph_ir(self.current_graph_ir)
-                    target_graph_ir.styles = list(style_entries)
-                delta_ops = _refine_delta_ops(sample_hint, self.turns, state_hint, _coerce_delta_ops(payload))
-                if not delta_ops and target_graph_ir is None and _has_delta_ops_field(payload):
-                    target_graph_ir = _clone_graph_ir(self.current_graph_ir)
-                if not delta_ops and target_graph_ir is None:
-                    raise ValueError("planner returned neither delta_ops nor target_graph_ir")
-                # Extract diagram_type suggestion from planner response
-                suggested_diagram_type = payload.get("diagram_type")
-                if suggested_diagram_type and isinstance(suggested_diagram_type, str):
-                    validated_type = canonical_diagram_type(suggested_diagram_type)
-                    if validated_type not in ("unknown", ""):
-                        suggested_diagram_type = validated_type
-                    else:
-                        suggested_diagram_type = None
-                else:
-                    suggested_diagram_type = None
-                decision = PlannerDecision(
-                    delta_ops=delta_ops,
-                    target_graph_ir=target_graph_ir,
-                    notes=str(payload.get("notes", "")).strip(),
-                    metadata={
+                repaired_decision, post_repair_gate = self._repair_and_gate_planner_json(
+                    db,
+                    session_obj,
+                    pending_turns,
+                    planner_user_payload=user_payload,
+                    planner_profile=profile,
+                    planner_model=model,
+                    initial_result_text=result_text,
+                    initial_latency_ms=float(result.latency_ms),
+                    initial_usage=result.usage,
+                    initial_error=exc,
+                    sample_hint=sample_hint,
+                    state_hint=state_hint,
+                )
+            except PlannerRepairGateWait:
+                raise
+            except Exception as repair_exc:
+                preview = strip_think_traces(result_text).strip().replace("\n", " ")[:300]
+                runtime_options = _current_runtime_options(session_obj)
+                gate_profile = resolve_profile(db, "gate", runtime_options.get("gate_profile_id"))
+                gate_model = str(runtime_options.get("gate_model") or (gate_profile or {}).get("default_model") or "")
+                repair_skipped = not gate_profile or not gate_model
+                raise PlannerJsonRepairFailed(
+                    f"{exc}; repair_error={repair_exc}; raw_preview={preview}",
+                    {
                         "provider": str(profile.get("id", "")),
                         "model_name": model,
-                        "latency_ms": result.latency_ms,
+                        "latency_ms": float(result.latency_ms),
                         "usage": result.usage,
-                        "semantic_attempt": attempt + 1,
-                        "raw_text_preview": (result.text or "")[:400],
-                        "planner_noop": (not delta_ops and target_graph_ir is not None),
+                        "semantic_attempt": 1,
+                        "raw_text_preview": result_text[:400],
+                        "json_repair_attempted": not repair_skipped,
+                        "json_repair_succeeded": False,
+                        "repair_model": gate_model if not repair_skipped else None,
+                        "repair_error": str(repair_exc),
+                        "gate_paused_during_repair": not repair_skipped,
+                        "post_repair_gate_action": None,
                     },
-                    diagram_type=suggested_diagram_type,
-                )
-                self.planner_latency_ms.append(float(result.latency_ms))
-                _log_coordination_event(
-                    "Planner request succeeded",
-                    {
-                        "session_id": self.session_id,
-                        "provider": str(profile.get("id", "")),
-                        "model": model,
-                        "latency_ms": result.latency_ms,
-                        "semantic_attempt": attempt + 1,
-                        "delta_ops_count": len(delta_ops),
-                        "has_target_graph_ir": target_graph_ir is not None,
-                        "usage": result.usage,
-                        "llm_response_text": _llm_log_text(last_result_text),
-                    },
-                )
-                return decision
-            except Exception as exc:
-                last_error = exc
-                _log_coordination_event(
-                    "Planner request parse failed",
-                    {
-                        "session_id": self.session_id,
-                        "provider": str(profile.get("id", "")),
-                        "model": model,
-                        "semantic_attempt": attempt + 1,
-                        "error": str(exc),
-                        "llm_response_text": _llm_log_text(last_result_text),
-                    },
-                )
-                if attempt >= 1:
-                    preview = strip_think_traces(last_result_text).strip().replace("\n", " ")[:300]
-                    raise RuntimeError(f"{exc}; raw_preview={preview}") from exc
-                current_messages = [
-                    *base_messages,
-                    {"role": "assistant", "content": strip_think_traces(result.text or "")[:4000]},
-                    {"role": "user", "content": _repair_prompt(exc)},
-                ]
-
-        raise RuntimeError(str(last_error) if last_error else "planner failed without an explicit error")
+                ) from repair_exc
+            if post_repair_gate.action == "WAIT":
+                raise PlannerRepairGateWait(post_repair_gate, repaired_decision.metadata)
+            self.planner_latency_ms.append(float(repaired_decision.metadata.get("latency_ms") or 0.0))
+            _log_coordination_event(
+                "Planner JSON repaired and approved by Gate",
+                {
+                    "session_id": self.session_id,
+                    "planner_model": model,
+                    "repair_model": repaired_decision.metadata.get("repair_model"),
+                    "post_repair_gate_action": post_repair_gate.action,
+                    "delta_ops_count": len(repaired_decision.delta_ops),
+                    "has_target_graph_ir": repaired_decision.target_graph_ir is not None,
+                },
+            )
+            return repaired_decision
 
     def _plan_relayout(
         self,

@@ -133,6 +133,12 @@ function apiErrorLogLevel(path: string, status: number) {
   if (path === "/api/v1/auth/me" && status === 401) {
     return "info" as const;
   }
+  if (
+    status === 404 &&
+    /^\/api\/v1\/realtime\/sessions\/[^/]+\/(?:annotations|timeline)$/.test(path)
+  ) {
+    return "info" as const;
+  }
   return "error" as const;
 }
 
@@ -224,7 +230,7 @@ async function request<TSchema extends z.ZodTypeAny>(
           status: response.status,
           payload: raw,
         },
-        apiErrorLogLevel(path, response.status),
+        logLevel === "info" ? logLevel : apiErrorLogLevel(path, response.status),
       );
       throw new ApiError(response.status, messageFromErrorPayload(raw), raw);
     }

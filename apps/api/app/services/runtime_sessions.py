@@ -88,6 +88,7 @@ def persist_chunk(db: Session, session_id: str, payload: dict[str, Any]) -> Real
         meta_json=payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {},
     )
     db.add(obj)
+    db.flush()
     return obj
 
 

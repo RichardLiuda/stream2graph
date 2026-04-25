@@ -187,6 +187,46 @@ function metadataBoolean(metadata: Record<string, unknown> | undefined, key: str
   return fallback;
 }
 
+function metadataStageIndex(metadata: Record<string, unknown> | undefined) {
+  const value = metadata?.incremental_stage_index;
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function metadataIncludesStage(metadata: Record<string, unknown> | undefined, stageIndex: number | null) {
+  if (!stageIndex) return false;
+  const values = metadata?.incremental_stage_indices;
+  if (Array.isArray(values)) {
+    return values.some((value) => {
+      const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+      return parsed === stageIndex;
+    });
+  }
+  return metadataStageIndex(metadata) === stageIndex;
+}
+
+function metadataStageColor(metadata: Record<string, unknown> | undefined, fallback = "") {
+  const value = metadata?.incremental_stage_color;
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function graphStageColor(graphPayload: MermaidGraphPayload, stageIndex: number | null, fallback = "#2563eb") {
+  if (!stageIndex) return fallback;
+  const stages = graphPayload?.metadata?.incremental_stages;
+  if (Array.isArray(stages)) {
+    for (const row of stages) {
+      if (!row || typeof row !== "object") continue;
+      const record = row as Record<string, unknown>;
+      const rawIndex = record.stage_index;
+      const parsed = typeof rawIndex === "number" ? rawIndex : typeof rawIndex === "string" ? Number(rawIndex) : NaN;
+      if (parsed !== stageIndex) continue;
+      const color = record.stage_color;
+      if (typeof color === "string" && color.trim()) return color.trim();
+    }
+  }
+  return fallback;
+}
+
 function fallbackLaneColor(index: number) {
   const palette = ["#eff6ff", "#fef3c7", "#ecfccb", "#fce7f3", "#ede9fe", "#cffafe"];
   return palette[index % palette.length] || "#eff6ff";
@@ -693,6 +733,7 @@ function MermaidCardBody({
   graphPayload = null,
   onNodeRelayout,
   relayoutBusy = false,
+  activeIncrementalStageIndex = null,
   exportRootId,
   annotationsEnabled = false,
   annotationsTool = "none",
@@ -728,6 +769,7 @@ function MermaidCardBody({
   graphPayload?: MermaidGraphPayload;
   onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
   relayoutBusy?: boolean;
+  activeIncrementalStageIndex?: number | null;
   exportRootId?: string | null;
   annotationsEnabled?: boolean;
   annotationsTool?: AnnotationTool;
@@ -868,6 +910,11 @@ function MermaidCardBody({
 
     const nodeElementById = new Map(collected.nodes.map((entity) => [entity.id, entity]));
     const groupElementById = new Map(collected.groups.map((entity) => [entity.id, entity]));
+    const activeStageIndex =
+      typeof activeIncrementalStageIndex === "number" && activeIncrementalStageIndex > 0
+        ? activeIncrementalStageIndex
+        : null;
+    const activeStageColor = graphStageColor(graphPayload, activeStageIndex);
 
     const clearVisualState = () => {
       for (const entity of collected.nodes) {
@@ -923,6 +970,56 @@ function MermaidCardBody({
           renderedEdge.path.style.strokeWidth = "2.1px";
         }
       });
+    };
+
+    const applyStageHighlight = () => {
+      if (!activeStageIndex) return;
+
+      for (const entity of collected.nodes) {
+        const payload = nodePayloadById.get(entity.id);
+        const stageColor = activeStageColor || metadataStageColor(payload?.metadata, "#2563eb");
+        const active = metadataIncludesStage(payload?.metadata, activeStageIndex);
+        entity.element.style.opacity = active ? "1" : "0.18";
+        entity.element.style.filter = active ? `drop-shadow(0 0 14px ${stageColor}44)` : "";
+        if (!active) continue;
+        for (const shape of Array.from(entity.element.querySelectorAll<SVGElement>("rect,polygon,path,circle,ellipse"))) {
+          shape.style.fill = stageColor;
+          shape.style.fillOpacity = "0.22";
+          shape.style.stroke = stageColor;
+          shape.style.strokeWidth = "3px";
+        }
+      }
+
+      for (const entity of collected.groups) {
+        const payload = groupPayloadById.get(entity.id);
+        const stageColor = activeStageColor || metadataStageColor(payload?.metadata, "#2563eb");
+        const active = metadataIncludesStage(payload?.metadata, activeStageIndex);
+        entity.element.style.opacity = active ? "1" : "0.18";
+        entity.element.style.filter = active ? `drop-shadow(0 0 14px ${stageColor}33)` : "";
+        if (!active) continue;
+        for (const shape of Array.from(entity.element.querySelectorAll<SVGElement>("rect,polygon,path"))) {
+          shape.style.fill = stageColor;
+          shape.style.fillOpacity = "0.18";
+          shape.style.stroke = stageColor;
+          shape.style.strokeWidth = "3px";
+        }
+      }
+
+      renderedEdges.forEach((renderedEdge) => {
+        const stageColor = activeStageColor || metadataStageColor(renderedEdge.edge.metadata, "#2563eb");
+        const active = metadataIncludesStage(renderedEdge.edge.metadata, activeStageIndex);
+        renderedEdge.container.style.opacity = active ? "1" : "0.14";
+        renderedEdge.path.style.opacity = active ? "1" : "0.14";
+        if (!active) return;
+        renderedEdge.path.style.stroke = stageColor;
+        renderedEdge.path.style.strokeWidth = "3.5px";
+        renderedEdge.path.style.filter = `drop-shadow(0 0 12px ${stageColor}44)`;
+      });
+    };
+
+    const resetVisualState = () => {
+      applyBaseStyles();
+      applyStageHighlight();
     };
 
     const dimEverything = () => {
@@ -997,12 +1094,12 @@ function MermaidCardBody({
       highlightLaneIds(new Set([sourceLaneId, targetLaneId].filter(Boolean)));
     };
 
-    applyBaseStyles();
+    resetVisualState();
 
     const cleanupFns: Array<() => void> = [];
     for (const entity of collected.nodes) {
       const handleEnter = () => activateNodePath(entity.id);
-      const handleLeave = () => applyBaseStyles();
+      const handleLeave = () => resetVisualState();
       entity.element.addEventListener("pointerenter", handleEnter);
       entity.element.addEventListener("pointerleave", handleLeave);
       cleanupFns.push(() => {
@@ -1014,7 +1111,7 @@ function MermaidCardBody({
     for (const renderedEdge of renderedEdges) {
       if (!["attack", "support"].includes(renderedEdge.relationType)) continue;
       const handleEnter = () => activateEdgeFocus(renderedEdge);
-      const handleLeave = () => applyBaseStyles();
+      const handleLeave = () => resetVisualState();
       renderedEdge.container.addEventListener("pointerenter", handleEnter);
       renderedEdge.container.addEventListener("pointerleave", handleLeave);
       cleanupFns.push(() => {
@@ -1030,7 +1127,7 @@ function MermaidCardBody({
         overlayRoot.parentNode.removeChild(overlayRoot);
       }
     };
-  }, [graphPayload, svg, zoomRebuildNonce]);
+  }, [activeIncrementalStageIndex, graphPayload, svg, zoomRebuildNonce]);
 
   useEffect(() => {
     const host = renderSurfaceRef.current;
@@ -1444,6 +1541,7 @@ export function MermaidCard(props: {
   graphPayload?: MermaidGraphPayload;
   onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
   relayoutBusy?: boolean;
+  activeIncrementalStageIndex?: number | null;
   exportRootId?: string | null;
   annotationsEnabled?: boolean;
   annotationsTool?: AnnotationTool;

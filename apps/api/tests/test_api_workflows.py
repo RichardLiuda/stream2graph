@@ -244,6 +244,88 @@ def test_realtime_chunk_batch_runs_single_coordination_cycle(
     assert "### [00:00.450 - 00:00.450] expert" in md_download.text
 
 
+def test_realtime_updates_attach_incremental_stage_metadata(
+    admin_client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._decide_gate",
+        lambda self, db, obj, pending_turns, force_emit=False: GateDecision(
+            action="EMIT_UPDATE",
+            reason="test emits every chunk",
+            confidence=0.99,
+            metadata={"provider": "test-gate", "model_name": "test-gate-model", "latency_ms": 1.0},
+        ),
+    )
+
+    def plan_update(self, db, obj, pending_turns):
+        if self.update_index == 0:
+            delta_ops = [
+                {"op": "add_node", "node_id": "Gateway", "id": "Gateway", "label": "Gateway"},
+            ]
+        else:
+            delta_ops = [
+                {"op": "add_node", "node_id": "Parser", "id": "Parser", "label": "Parser"},
+                {
+                    "op": "add_edge",
+                    "edge_id": "edge_gateway_parser",
+                    "id": "edge_gateway_parser",
+                    "source": "Gateway",
+                    "target": "Parser",
+                    "label": "routes to",
+                },
+            ]
+        return PlannerDecision(
+            delta_ops=delta_ops,
+            notes="stage metadata",
+            metadata={"provider": "test-planner", "model_name": "test-planner-model", "latency_ms": 1.0},
+        )
+
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._plan_update",
+        plan_update,
+    )
+
+    created = admin_client.post(
+        "/api/v1/realtime/sessions",
+        json={
+            "title": "stage metadata session",
+            "gate_profile_id": "test-gate",
+            "gate_model": "test-gate-model",
+            "planner_profile_id": "test-planner",
+            "planner_model": "test-planner-model",
+        },
+    )
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    first = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/chunks",
+        json={"timestamp_ms": 0, "text": "Add gateway.", "speaker": "expert"},
+    )
+    assert first.status_code == 200
+
+    second = admin_client.post(
+        f"/api/v1/realtime/sessions/{session_id}/chunks",
+        json={"timestamp_ms": 100, "text": "Connect parser.", "speaker": "expert"},
+    )
+    assert second.status_code == 200
+    payload = second.json()["pipeline"]
+    graph = payload["graph_state"]["current_graph_ir"]
+    nodes = {node["id"]: node for node in graph["nodes"]}
+    edges = {edge["id"]: edge for edge in graph["edges"]}
+
+    assert graph["metadata"]["incremental_stages"][0]["stage_index"] == 1
+    assert graph["metadata"]["incremental_stages"][1]["stage_index"] == 2
+    assert nodes["Gateway"]["metadata"]["incremental_stage_index"] == 2
+    assert nodes["Gateway"]["metadata"]["incremental_stage_indices"] == [1, 2]
+    assert nodes["Parser"]["metadata"]["incremental_stage_index"] == 2
+    assert nodes["Parser"]["metadata"]["incremental_stage_indices"] == [2]
+    assert edges["edge_gateway_parser"]["metadata"]["incremental_stage_index"] == 2
+    assert nodes["Parser"]["metadata"]["incremental_stage_color"]
+    assert payload["renderer_state"]["edges"][0]["created_frame"] == 2
+
+
 def test_realtime_timeline_preview_and_apply_rollback(admin_client: TestClient, session_factory, monkeypatch) -> None:
     monkeypatch.setattr(
         "app.services.realtime_coordination.CoordinationRuntimeSession._decide_gate",

@@ -12,17 +12,29 @@ type RendererNode = {
   label: string;
   x: number;
   y: number;
+  created_frame?: number;
+  metadata?: Record<string, unknown>;
 };
 
 type RendererEdge = {
   from: string;
   to: string;
+  created_frame?: number;
+  metadata?: Record<string, unknown>;
 };
 
 type RendererGroup = {
   id: string;
   label: string;
   member_ids?: string[];
+  metadata?: Record<string, unknown>;
+};
+
+type IncrementalStageSummary = {
+  stageIndex: number;
+  color: string;
+  concepts: string[];
+  deltaOpCount: number;
 };
 
 export function GraphStage({
@@ -44,6 +56,8 @@ export function GraphStage({
   annotationExportHostId = "s2g-annotation-host-structure",
   /** @description 在 Realtime 中固定为浅底+浅色结构图 token，不随站点主题 */
   fixedLightCanvas = false,
+  incrementalStages = [],
+  activeIncrementalStageIndex = null,
 }: {
   title: string;
   nodes: RendererNode[];
@@ -63,10 +77,36 @@ export function GraphStage({
   onAnnotationsChange?: (next: AnnotationDoc) => void;
   annotationExportHostId?: string;
   fixedLightCanvas?: boolean;
+  incrementalStages?: IncrementalStageSummary[];
+  activeIncrementalStageIndex?: number | null;
 }) {
   const [zoomRebuildNonce, setZoomRebuildNonce] = useState(0);
   const isEmpty = nodes.length === 0;
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const stageByIndex = new Map(incrementalStages.map((stage) => [stage.stageIndex, stage]));
+  const activeStage = activeIncrementalStageIndex ? stageByIndex.get(activeIncrementalStageIndex) : null;
+  const stageSelected = Boolean(activeStage);
+  const metadataStageIndex = (metadata?: Record<string, unknown>) => {
+    const value = metadata?.incremental_stage_index;
+    const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
+  const metadataHasStage = (metadata: Record<string, unknown> | undefined, stageIndex: number | null) => {
+    if (!stageIndex) return false;
+    const values = metadata?.incremental_stage_indices;
+    if (Array.isArray(values)) {
+      return values.some((value) => {
+        const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+        return parsed === stageIndex;
+      });
+    }
+    return metadataStageIndex(metadata) === stageIndex;
+  };
+  const metadataStageColor = (metadata?: Record<string, unknown>, stageIndex?: number | null) => {
+    const value = metadata?.incremental_stage_color;
+    if (typeof value === "string" && value.trim()) return value.trim();
+    return stageIndex ? stageByIndex.get(stageIndex)?.color || "" : "";
+  };
   const groupBoxes = groups
     .map((group) => {
       const members = (group.member_ids || [])
@@ -87,6 +127,9 @@ export function GraphStage({
         y: minY,
         width: maxX - minX,
         height: maxY - minY,
+        stageIndex: metadataStageIndex(group.metadata),
+        stageColor: metadataStageColor(group.metadata, metadataStageIndex(group.metadata)),
+        metadata: group.metadata,
       };
     })
     .filter((group): group is NonNullable<typeof group> => Boolean(group));
@@ -140,16 +183,39 @@ export function GraphStage({
             </marker>
           </defs>
           {groupBoxes.map((group) => (
-            <g key={group.id}>
+            <g
+              key={group.id}
+              opacity={stageSelected && !metadataHasStage(group.metadata, activeIncrementalStageIndex) ? 0.22 : 1}
+            >
+              {stageSelected && metadataHasStage(group.metadata, activeIncrementalStageIndex) ? (
+                <rect
+                  x={group.x - 6}
+                  y={group.y - 6}
+                  width={group.width + 12}
+                  height={group.height + 12}
+                  rx="28"
+                  fill={group.stageColor || activeStage?.color || "var(--accent)"}
+                  opacity="0.12"
+                />
+              ) : null}
               <rect
                 x={group.x}
                 y={group.y}
                 width={group.width}
                 height={group.height}
                 rx="24"
-                fill="var(--graph-svg-group-fill)"
-                stroke="var(--graph-svg-group-stroke)"
-                strokeWidth="2"
+                fill={
+                  stageSelected && metadataHasStage(group.metadata, activeIncrementalStageIndex)
+                    ? activeStage?.color || group.stageColor || "var(--graph-svg-group-fill)"
+                    : "var(--graph-svg-group-fill)"
+                }
+                fillOpacity={stageSelected && metadataHasStage(group.metadata, activeIncrementalStageIndex) ? 0.16 : undefined}
+                stroke={
+                  stageSelected && metadataHasStage(group.metadata, activeIncrementalStageIndex)
+                    ? activeStage?.color || group.stageColor || "var(--graph-svg-group-stroke)"
+                    : "var(--graph-svg-group-stroke)"
+                }
+                strokeWidth={stageSelected && metadataHasStage(group.metadata, activeIncrementalStageIndex) ? "3" : "2"}
                 strokeDasharray="10 8"
               />
               <text x={group.x + 18} y={group.y + 28} fill="var(--graph-svg-group-label)" fontSize="13" fontWeight="700">
@@ -161,6 +227,10 @@ export function GraphStage({
             const from = nodeMap.get(edge.from);
             const to = nodeMap.get(edge.to);
             if (!from || !to) return null;
+            const edgeStageIndex = metadataStageIndex(edge.metadata) || edge.created_frame || null;
+            const edgeActive = stageSelected && (metadataHasStage(edge.metadata, activeIncrementalStageIndex) || edgeStageIndex === activeIncrementalStageIndex);
+            const edgeDimmed = stageSelected && !edgeActive;
+            const edgeColor = activeStage?.color || metadataStageColor(edge.metadata, edgeStageIndex) || "var(--graph-svg-edge)";
             return (
               <line
                 key={`${edge.from}-${edge.to}-${index}`}
@@ -168,15 +238,28 @@ export function GraphStage({
                 y1={from.y}
                 x2={to.x}
                 y2={to.y}
-                stroke="var(--graph-svg-edge)"
-                strokeWidth="2"
+                stroke={edgeActive ? edgeColor : "var(--graph-svg-edge)"}
+                strokeWidth={edgeActive ? "3.4" : "2"}
+                opacity={edgeDimmed ? 0.14 : 1}
                 markerEnd="url(#arrowHead)"
               />
             );
           })}
-          {nodes.map((node) => (
-            <g key={node.id} transform={`translate(${node.x}, ${node.y})`}>
-              <circle r="34" fill="var(--graph-svg-node-fill)" stroke="var(--graph-svg-node-stroke)" strokeWidth="2" />
+          {nodes.map((node) => {
+            const nodeStageIndex = metadataStageIndex(node.metadata) || node.created_frame || null;
+            const nodeActive = stageSelected && (metadataHasStage(node.metadata, activeIncrementalStageIndex) || nodeStageIndex === activeIncrementalStageIndex);
+            const nodeDimmed = stageSelected && !nodeActive;
+            const nodeColor = activeStage?.color || metadataStageColor(node.metadata, nodeStageIndex) || "var(--graph-svg-node-fill)";
+            return (
+            <g key={node.id} transform={`translate(${node.x}, ${node.y})`} opacity={nodeDimmed ? 0.2 : 1}>
+              {nodeActive ? <circle r="41" fill={nodeColor} opacity="0.16" /> : null}
+              <circle
+                r="34"
+                fill={nodeActive ? nodeColor : "var(--graph-svg-node-fill)"}
+                fillOpacity={nodeActive ? 0.22 : undefined}
+                stroke={nodeActive ? nodeColor : "var(--graph-svg-node-stroke)"}
+                strokeWidth={nodeActive ? "3.2" : "2"}
+              />
               <text
                 textAnchor="middle"
                 dominantBaseline="middle"
@@ -187,8 +270,20 @@ export function GraphStage({
                 {(node.label || node.id).slice(0, 14)}
               </text>
             </g>
-          ))}
+            );
+          })}
           </svg>
+          {activeStage ? (
+            <div className="pointer-events-none absolute bottom-3 left-3 z-[3] max-w-[min(520px,calc(100%-1.5rem))] rounded-lg border border-theme-default bg-surface-1/90 px-3 py-2 text-xs shadow-lg backdrop-blur">
+              <div className="flex items-center gap-2 font-semibold text-theme-1">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: activeStage.color }} aria-hidden />
+                阶段 {activeStage.stageIndex}
+              </div>
+              <div className="mt-1 truncate text-[11px] text-theme-3">
+                {activeStage.concepts.length ? activeStage.concepts.join(" / ") : `${activeStage.deltaOpCount} 项增量`}
+              </div>
+            </div>
+          ) : null}
           {annotationsDoc && onAnnotationsChange ? (
             <AnnotationLayer
               enabled={annotationsEnabled}

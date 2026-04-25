@@ -998,7 +998,7 @@ export function ScrollLinkedCardsBlockSection({
                 const baseX = isLastCard ? rawBaseX * (1 - retreatEase) : rawBaseX;
                 const baseY = 0;
                 const renderBaseX = baseX + stageShiftX;
-                const sizeVariant: "sm" | "md" | "lg" = cardSizeVariants[index] ?? "sm";
+                const sizeVariant = (cardSizeVariants[index] ?? "sm") as "sm" | "md" | "lg";
                 const width = cardWidthPx(sizeVariant);
                 const isSecondCard = index === 1 || card.id.includes("clean");
                 const isThirdCard = index === 2 || card.id.includes("graph");
@@ -1277,7 +1277,7 @@ export function ScrollLinkedCardsBlockSection({
                           top: `calc(50% + ${item.baseY}px)`,
                           opacity: item.visualOpacity,
                           scale: item.visualScale,
-                          rotate: item.visualRotate,
+                          rotate: `${item.visualRotate}deg`,
                         }}
                         dragBounds={{
                           // 横向仍保留部分越界余量；纵向下界放开到贴近屏幕底端。
@@ -1383,4 +1383,3 @@ export function ScrollLinkedCardsBlockSection({
     </section>
   );
 }
-

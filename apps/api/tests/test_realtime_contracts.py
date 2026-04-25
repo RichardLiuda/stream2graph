@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from types import MethodType, SimpleNamespace
 
@@ -17,7 +18,86 @@ from app.services.realtime_coordination import (
 from app.models import RealtimeSession
 from tools.incremental_dataset.schema import GraphEdge, GraphGroup, GraphIR, GraphNode
 from tools.incremental_dataset.staging import render_preview_mermaid
+from tools.incremental_system.chat_clients import ChatResult
 from tools.incremental_system.models import _diagram_type_alignment_priors
+
+
+class _SequenceClient:
+    def __init__(self, responses: list[str], *, latency_ms: float = 3.0) -> None:
+        self.responses = list(responses)
+        self.latency_ms = latency_ms
+        self.messages: list[list[dict[str, str]]] = []
+
+    def chat(self, messages: list[dict[str, str]]) -> ChatResult:
+        self.messages.append(messages)
+        if not self.responses:
+            raise AssertionError("unexpected chat call")
+        return ChatResult(text=self.responses.pop(0), latency_ms=self.latency_ms, usage={"test": True})
+
+
+def _runtime_session_obj() -> RealtimeSession:
+    return RealtimeSession(
+        title="planner repair",
+        status="active",
+        config_snapshot={
+            "runtime_options": {
+                "diagram_type": "flowchart",
+                "planner_profile_id": "planner-profile",
+                "planner_model": "planner-model",
+                "gate_profile_id": "gate-profile",
+                "gate_model": "gate-model",
+            },
+            "input_runtime": {"input_source": "demo_mode", "capture_mode": "manual_text"},
+        },
+    )
+
+
+def _install_planner_repair_fakes(
+    monkeypatch,
+    *,
+    planner_responses: list[str],
+    gate_responses: list[str],
+    include_gate_profile: bool = True,
+) -> tuple[_SequenceClient, _SequenceClient]:
+    planner_client = _SequenceClient(planner_responses, latency_ms=11.0)
+    gate_client = _SequenceClient(gate_responses, latency_ms=7.0)
+
+    def _fake_resolve_profile(db, kind, profile_id):
+        if kind == "planner":
+            return {"id": "planner-profile", "provider_kind": "openai_compatible", "default_model": "planner-model"}
+        if kind == "gate" and include_gate_profile:
+            return {"id": "gate-profile", "provider_kind": "openai_compatible", "default_model": "gate-model"}
+        return None
+
+    def _fake_build_chat_client(profile, model, *, timeout_sec=180):
+        if model == "planner-model":
+            return planner_client
+        if model == "gate-model":
+            return gate_client
+        raise AssertionError(f"unexpected model {model}")
+
+    monkeypatch.setattr("app.services.realtime_coordination.resolve_profile", _fake_resolve_profile)
+    monkeypatch.setattr("app.services.realtime_coordination.build_chat_client", _fake_build_chat_client)
+    monkeypatch.setattr(
+        "app.services.realtime_coordination.CoordinationRuntimeSession._decide_gate",
+        lambda self, db, obj, pending_turns, force_emit=False: GateDecision(
+            action="EMIT_UPDATE",
+            reason="test initial gate",
+            confidence=1.0,
+            metadata={"provider": "initial-gate", "model_name": "initial-gate", "latency_ms": 1.0},
+        ),
+    )
+    return planner_client, gate_client
+
+
+def _valid_repaired_plan(node_id: str = "gateway") -> str:
+    return json.dumps(
+        {
+            "diagram_type": "flowchart",
+            "delta_ops": [{"op": "add_node", "node_id": node_id, "id": node_id, "label": "Gateway"}],
+            "notes": "repaired",
+        }
+    )
 
 
 def test_runtime_session_emits_pipeline_payload() -> None:
@@ -83,6 +163,168 @@ def test_manual_transcript_shortcuts_gate_without_model_call(session_factory, mo
         assert runtime.gate_state["provider"] == "heuristic_batch_gate"
         assert runtime.gate_state["last_action"] == "EMIT_UPDATE"
         assert isinstance(emitted, list)
+
+
+def test_planner_malformed_json_is_repaired_then_rechecked_by_gate(session_factory, monkeypatch) -> None:
+    _, gate_client = _install_planner_repair_fakes(
+        monkeypatch,
+        planner_responses=['{"diagram_type":"flowchart","delta_ops":['],
+        gate_responses=[
+            _valid_repaired_plan("gateway"),
+            json.dumps({"action": "EMIT_UPDATE", "reason": "repaired plan is safe", "confidence": 0.91}),
+        ],
+    )
+    with session_factory() as db:
+        obj = _runtime_session_obj()
+        db.add(obj)
+        db.flush()
+        runtime = CoordinationRuntimeSession.create(obj.id)
+        events = runtime.ingest_chunk(
+            db,
+            obj,
+            timestamp_ms=0,
+            text="Add a gateway component.",
+            speaker="expert",
+            is_final=True,
+            expected_intent="structural",
+        )
+
+    assert len(events) == 1
+    assert runtime.pending_turn_ids == []
+    assert [node.id for node in runtime.current_graph_ir.nodes] == ["gateway"]
+    assert runtime.gate_action_counts["EMIT_UPDATE"] == 1
+    assert len(gate_client.messages) == 2
+    assert runtime.planner_state["debug"]["json_repair_attempted"] is True
+    assert runtime.planner_state["debug"]["json_repair_succeeded"] is True
+    assert runtime.planner_state["debug"]["gate_paused_during_repair"] is True
+    assert runtime.planner_state["debug"]["post_repair_gate_action"] == "EMIT_UPDATE"
+    assert events[0]["planner"]["metadata"]["repair_model"] == "gate-model"
+    assert events[0]["gate"]["action"] == "EMIT_UPDATE"
+
+
+def test_planner_contract_error_is_repaired_and_applied(session_factory, monkeypatch) -> None:
+    _install_planner_repair_fakes(
+        monkeypatch,
+        planner_responses=[json.dumps({"diagram_type": "flowchart", "notes": "missing graph update"})],
+        gate_responses=[
+            _valid_repaired_plan("parser"),
+            json.dumps({"action": "EMIT_UPDATE", "reason": "contract repaired", "confidence": 0.88}),
+        ],
+    )
+    with session_factory() as db:
+        obj = _runtime_session_obj()
+        db.add(obj)
+        db.flush()
+        runtime = CoordinationRuntimeSession.create(obj.id)
+        events = runtime.ingest_chunk(
+            db,
+            obj,
+            timestamp_ms=0,
+            text="Add a parser component.",
+            speaker="expert",
+            is_final=True,
+            expected_intent="structural",
+        )
+
+    assert len(events) == 1
+    assert runtime.pending_turn_ids == []
+    assert [node.id for node in runtime.current_graph_ir.nodes] == ["parser"]
+    assert runtime.planner_state["debug"]["json_repair_succeeded"] is True
+
+
+def test_repaired_planner_json_waits_when_post_repair_gate_waits(session_factory, monkeypatch) -> None:
+    _install_planner_repair_fakes(
+        monkeypatch,
+        planner_responses=['{"diagram_type":"flowchart","delta_ops":['],
+        gate_responses=[
+            _valid_repaired_plan("gateway"),
+            json.dumps({"action": "WAIT", "reason": "dialogue needs more context", "confidence": 0.72}),
+        ],
+    )
+    with session_factory() as db:
+        obj = _runtime_session_obj()
+        db.add(obj)
+        db.flush()
+        runtime = CoordinationRuntimeSession.create(obj.id)
+        events = runtime.ingest_chunk(
+            db,
+            obj,
+            timestamp_ms=0,
+            text="Maybe gateway.",
+            speaker="expert",
+            is_final=True,
+            expected_intent="structural",
+        )
+
+    assert events == []
+    assert runtime.pending_turn_ids == [1]
+    assert runtime.current_graph_ir.nodes == []
+    assert runtime.gate_action_counts["WAIT"] == 1
+    assert runtime.planner_state["status"] == "repair_succeeded_but_gate_wait"
+    assert runtime.planner_state["debug"]["json_repair_succeeded"] is True
+    assert runtime.planner_state["debug"]["post_repair_gate_action"] == "WAIT"
+
+
+def test_planner_json_repair_failure_keeps_pending_turns(session_factory, monkeypatch) -> None:
+    _install_planner_repair_fakes(
+        monkeypatch,
+        planner_responses=['{"diagram_type":"flowchart","delta_ops":['],
+        gate_responses=[json.dumps({"diagram_type": "flowchart", "notes": "still missing graph update"})],
+    )
+    with session_factory() as db:
+        obj = _runtime_session_obj()
+        db.add(obj)
+        db.flush()
+        runtime = CoordinationRuntimeSession.create(obj.id)
+        events = runtime.ingest_chunk(
+            db,
+            obj,
+            timestamp_ms=0,
+            text="Add gateway.",
+            speaker="expert",
+            is_final=True,
+            expected_intent="structural",
+        )
+
+    assert events == []
+    assert runtime.pending_turn_ids == [1]
+    assert runtime.current_graph_ir.nodes == []
+    assert runtime.gate_action_counts["WAIT"] == 1
+    assert runtime.planner_state["status"] == "error"
+    assert runtime.planner_state["debug"]["json_repair_attempted"] is True
+    assert runtime.planner_state["debug"]["json_repair_succeeded"] is False
+    assert runtime.planner_state["debug"]["repair_error"]
+
+
+def test_planner_json_repair_skips_when_gate_profile_missing(session_factory, monkeypatch) -> None:
+    _, gate_client = _install_planner_repair_fakes(
+        monkeypatch,
+        planner_responses=['{"diagram_type":"flowchart","delta_ops":['],
+        gate_responses=[_valid_repaired_plan("gateway")],
+        include_gate_profile=False,
+    )
+    with session_factory() as db:
+        obj = _runtime_session_obj()
+        db.add(obj)
+        db.flush()
+        runtime = CoordinationRuntimeSession.create(obj.id)
+        events = runtime.ingest_chunk(
+            db,
+            obj,
+            timestamp_ms=0,
+            text="Add gateway.",
+            speaker="expert",
+            is_final=True,
+            expected_intent="structural",
+        )
+
+    assert events == []
+    assert runtime.pending_turn_ids == [1]
+    assert runtime.current_graph_ir.nodes == []
+    assert gate_client.messages == []
+    assert runtime.planner_state["status"] == "error"
+    assert runtime.planner_state["debug"]["json_repair_attempted"] is False
+    assert runtime.planner_state["debug"]["json_repair_succeeded"] is False
 
 
 def test_runtime_session_switches_canvas_and_restores() -> None:
