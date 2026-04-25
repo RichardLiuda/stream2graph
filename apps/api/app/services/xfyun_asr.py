@@ -30,13 +30,18 @@ DEFAULT_XFYUN_ASR_MODELS = ["rtasr_llm"]
 DEFAULT_XFYUN_ASR_LANGUAGE = "autodialect"
 DEFAULT_XFYUN_ASR_AUDIO_ENCODE = "pcm_s16le"
 XFYUN_ASR_FRAME_BYTES = 1280
-XFYUN_ASR_FRAME_INTERVAL_SEC = 0.04
+DEFAULT_XFYUN_ASR_FRAME_INTERVAL_SEC = 0.02
 RTASR_INTERMEDIATE_CHUNK_TIMEOUT_SEC = 30.0
 RTASR_FINAL_CHUNK_TIMEOUT_SEC = 45.0
 RTASR_RESET_TIMEOUT_SEC = 1.5
 RTASR_READY_TIMEOUT_SEC = 1.5
 _STREAMS_LOCK = threading.Lock()
 _STREAMS: dict[str, "RTASRRealtimeSessionStream"] = {}
+
+
+def _xfyun_asr_frame_interval_sec() -> float:
+    configured = float(get_settings().xfyun_asr_frame_interval_sec)
+    return max(0.0, min(0.04, configured))
 
 
 def _anonymous_speaker_label(index: int) -> str:
@@ -562,15 +567,18 @@ class RTASRRealtimeSessionStream:
             raw_pcm[index : index + XFYUN_ASR_FRAME_BYTES]
             for index in range(0, len(raw_pcm), XFYUN_ASR_FRAME_BYTES)
         ] or [b""]
+        frame_interval_sec = _xfyun_asr_frame_interval_sec()
         for index, frame in enumerate(frames):
             await self._ws.send(frame)
-            if index < len(frames) - 1:
-                await asyncio.sleep(XFYUN_ASR_FRAME_INTERVAL_SEC)
+            if frame_interval_sec > 0 and index < len(frames) - 1:
+                await asyncio.sleep(frame_interval_sec)
 
     async def _send_end_marker(self) -> None:
         if self._ws is None:
             raise RuntimeError("讯飞 RTASR 连接尚未建立。")
-        await asyncio.sleep(XFYUN_ASR_FRAME_INTERVAL_SEC)
+        frame_interval_sec = _xfyun_asr_frame_interval_sec()
+        if frame_interval_sec > 0:
+            await asyncio.sleep(frame_interval_sec)
         payload: dict[str, Any] = {"end": True}
         if self._remote_session_id:
             payload["sessionId"] = self._remote_session_id
