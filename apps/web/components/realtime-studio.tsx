@@ -434,6 +434,28 @@ function formatLiveTranscript(text: string) {
   return text.trim() || "等待识别结果...";
 }
 
+function makeTranscriptTurn(
+  turn: Omit<
+    RealtimeTranscriptTurn,
+    "speaker_slot_key" | "speaker_identity" | "raw_role_label" | "speaker_resolution_source"
+  > &
+    Partial<
+      Pick<
+        RealtimeTranscriptTurn,
+        "speaker_slot_key" | "speaker_identity" | "raw_role_label" | "speaker_resolution_source"
+      >
+    >,
+): RealtimeTranscriptTurn {
+  return {
+    ...turn,
+    capture_mode: turn.capture_mode || "",
+    speaker_slot_key: turn.speaker_slot_key || "",
+    speaker_identity: turn.speaker_identity || "",
+    raw_role_label: turn.raw_role_label || "",
+    speaker_resolution_source: turn.speaker_resolution_source || "",
+  };
+}
+
 function normalizeTranscriptTurn(value: unknown): RealtimeTranscriptTurn | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
@@ -447,7 +469,7 @@ function normalizeTranscriptTurn(value: unknown): RealtimeTranscriptTurn | null 
   ) {
     return null;
   }
-  return {
+  return makeTranscriptTurn({
     speaker: row.speaker,
     text: row.text,
     start_ms: row.start_ms,
@@ -455,7 +477,12 @@ function normalizeTranscriptTurn(value: unknown): RealtimeTranscriptTurn | null 
     is_final: row.is_final,
     source: row.source,
     capture_mode: typeof row.capture_mode === "string" ? row.capture_mode : "",
-  };
+    speaker_slot_key: typeof row.speaker_slot_key === "string" ? row.speaker_slot_key : "",
+    speaker_identity: typeof row.speaker_identity === "string" ? row.speaker_identity : "",
+    raw_role_label: typeof row.raw_role_label === "string" ? row.raw_role_label : "",
+    speaker_resolution_source:
+      typeof row.speaker_resolution_source === "string" ? row.speaker_resolution_source : "",
+  });
 }
 
 function readTranscriptState(pipeline: Record<string, any> | null | undefined): TranscriptStateView {
@@ -534,7 +561,7 @@ function deriveTranscriptTurnsFromEvents(events: Array<Record<string, any>> | nu
           const endMs = typeof turn.timestamp_ms === "number" ? turn.timestamp_ms : Number(event?.update?.end_ms ?? startMs);
           rows.push(
             makeTranscriptHistoryItem(
-              {
+              makeTranscriptTurn({
                 speaker,
                 text,
                 start_ms: Number.isFinite(startMs) ? startMs : 0,
@@ -542,7 +569,7 @@ function deriveTranscriptTurnsFromEvents(events: Array<Record<string, any>> | nu
                 is_final: true,
                 source: "event_fallback",
                 capture_mode: `event_${eventIndex}_${turnIndex}`,
-              },
+              }),
               "event",
               `${eventIndex}_${turnIndex}`,
               Number.isFinite(endMs) ? endMs : Number.isFinite(startMs) ? startMs : undefined,
@@ -560,7 +587,7 @@ function deriveTranscriptTurnsFromEvents(events: Array<Record<string, any>> | nu
       const endMs = Number(event?.update?.end_ms ?? event?.update?.start_ms ?? 0) || 0;
       rows.push(
         makeTranscriptHistoryItem(
-          {
+          makeTranscriptTurn({
             speaker: "speaker",
             text: transcriptText,
             start_ms: startMs,
@@ -568,7 +595,7 @@ function deriveTranscriptTurnsFromEvents(events: Array<Record<string, any>> | nu
             is_final: true,
             source: "event_fallback",
             capture_mode: `event_${eventIndex}`,
-          },
+          }),
           "event",
           `${eventIndex}`,
           endMs || startMs || undefined,
@@ -1275,7 +1302,7 @@ export function RealtimeStudio() {
     staleTime: 5_000,
     retry: false,
   });
-  const timelineNodes = timelineQuery.data?.nodes ?? [];
+  const timelineNodes = timelineQuery.data?.session_id === currentSessionId ? timelineQuery.data.nodes : [];
   const orderedTimelineNodes = useMemo(() => [...timelineNodes].reverse(), [timelineNodes]);
   const selectedTimelineNode = useMemo(
     () => timelineNodes.find((node) => node.snapshot_id === selectedTimelineSnapshotId) ?? null,
@@ -1335,8 +1362,9 @@ export function RealtimeStudio() {
 
   useEffect(() => {
     if (!currentSessionId || !selectedTimelineSnapshotId) return;
+    if (!timelineNodes.some((node) => node.snapshot_id === selectedTimelineSnapshotId)) return;
     rollbackPreviewMutation.mutate({ sessionId: currentSessionId, snapshotId: selectedTimelineSnapshotId });
-  }, [currentSessionId, selectedTimelineSnapshotId]);
+  }, [currentSessionId, selectedTimelineSnapshotId, timelineNodes]);
 
   useEffect(() => {
     const target = timelineScrollViewportRef.current;
@@ -1821,7 +1849,7 @@ export function RealtimeStudio() {
                 .map((segment) => {
                   const text = String(segment?.text || "").trim();
                   if (!text) return null;
-                  return {
+                  return makeTranscriptTurn({
                     speaker: String(segment?.speaker || response.speaker || context.speaker || "speaker"),
                     text,
                     start_ms: Number(segment?.start_ms ?? 0) || 0,
@@ -1829,7 +1857,7 @@ export function RealtimeStudio() {
                     is_final: true,
                     source: context.source,
                     capture_mode: context.captureMode,
-                  } as RealtimeTranscriptTurn | null;
+                  });
                 })
                 .filter((row): row is RealtimeTranscriptTurn => Boolean(row))
             : [];
@@ -1837,7 +1865,7 @@ export function RealtimeStudio() {
           pushLocalCommittedTurns(segmentTurns.reverse());
         } else if (response.text.trim()) {
           pushLocalCommittedTurns([
-            {
+            makeTranscriptTurn({
               speaker: response.speaker || context.speaker || "speaker",
               text: response.text.trim(),
               start_ms: 0,
@@ -1845,7 +1873,7 @@ export function RealtimeStudio() {
               is_final: true,
               source: context.source,
               capture_mode: context.captureMode,
-            },
+            }),
           ]);
         }
       }
@@ -2428,7 +2456,7 @@ export function RealtimeStudio() {
     });
     if (isFinal && text.trim()) {
       pushLocalCommittedTurns([
-        {
+        makeTranscriptTurn({
           speaker: source === "system_audio_helper" ? "system_audio" : "speaker",
           text: text.trim(),
           start_ms: 0,
@@ -2436,7 +2464,7 @@ export function RealtimeStudio() {
           is_final: true,
           source,
           capture_mode: captureMode,
-        },
+        }),
       ]);
     }
     setSnapshot({ session_id: data.session_id, pipeline: data.pipeline, evaluation: data.evaluation });
@@ -2480,13 +2508,15 @@ export function RealtimeStudio() {
       pushLocalCommittedTurns(
         rows
           .map((row, index) => ({
-            speaker: row.speaker,
-            text: row.text.trim(),
-            start_ms: index * 450,
-            end_ms: index * 450,
-            is_final: true,
-            source: "transcript",
-            capture_mode: "manual_text",
+            ...makeTranscriptTurn({
+              speaker: row.speaker,
+              text: row.text.trim(),
+              start_ms: index * 450,
+              end_ms: index * 450,
+              is_final: true,
+              source: "transcript",
+              capture_mode: "manual_text",
+            }),
           }))
           .filter((row) => row.text),
       );
@@ -2558,8 +2588,17 @@ export function RealtimeStudio() {
       setRollbackPreview(data);
       setError(null);
     },
-    onError: (err) => {
+    onError: (err, variables) => {
       setRollbackPreview(null);
+      if (err instanceof ApiError && err.status === 404) {
+        if (selectedTimelineSnapshotId === variables.snapshotId) {
+          setSelectedTimelineSnapshotId(null);
+        }
+        timelinePreviewRequestRef.current = null;
+        queryClient.invalidateQueries({ queryKey: ["realtime-timeline", variables.sessionId] });
+        setNotice({ tone: "info", text: "该历史快照已不存在，已刷新时间轴。" });
+        return;
+      }
       setError((err as Error).message);
     },
   });
@@ -2770,7 +2809,7 @@ export function RealtimeStudio() {
             metadata: buildChunkMetadata("microphone_browser", "browser_speech"),
           });
           pushLocalCommittedTurns([
-            {
+            makeTranscriptTurn({
               speaker: "speaker",
               text,
               start_ms: 0,
@@ -2778,7 +2817,7 @@ export function RealtimeStudio() {
               is_final: true,
               source: "microphone_browser",
               capture_mode: "browser_speech",
-            },
+            }),
           ]);
           setSnapshot({ session_id: data.session_id, pipeline: data.pipeline, evaluation: data.evaluation });
           studioSend({ type: "stt.success", text });
@@ -4807,7 +4846,7 @@ export function RealtimeStudio() {
                                     setRollbackEditTurns([]);
                                   } else {
                                     setRollbackEditTurns(
-                                      turns.map((t: RealtimeTranscriptTurn) => ({
+                                      turns.map((t) => ({
                                         speaker: String(t.speaker || "speaker"),
                                         text: String(t.text || ""),
                                       })),
@@ -4942,7 +4981,7 @@ export function RealtimeStudio() {
                                   setRollbackEditTurns([]);
                                 } else {
                                   setRollbackEditTurns(
-                                    turns.map((t: RealtimeTranscriptTurn) => ({
+                                    turns.map((t) => ({
                                       speaker: String(t.speaker || "speaker"),
                                       text: String(t.text || ""),
                                     })),

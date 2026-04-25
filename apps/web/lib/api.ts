@@ -135,7 +135,7 @@ function apiErrorLogLevel(path: string, status: number) {
   }
   if (
     status === 404 &&
-    /^\/api\/v1\/realtime\/sessions\/[^/]+\/(?:annotations|timeline)$/.test(path)
+    /^\/api\/v1\/realtime\/sessions\/[^/]+\/(?:annotations|timeline|rollback\/preview)$/.test(path)
   ) {
     return "info" as const;
   }
