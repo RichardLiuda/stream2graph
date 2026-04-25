@@ -53,13 +53,13 @@ Split: `test_full_public_clean`, sample count `313`, error rows `0`.
 | --- | ---: | ---: | ---: | ---: |
 | `LocalHF Qwen3.5-27B planner + Qwen3.5-4B gate` | 0.1086 | 0.1118 | 0.4584 | 76963.42 |
 | `Claude Sonnet 4.5` | 0.0383 | 0.0415 | 0.2549 | 54485.00 |
-| `Gemini 3 Flash rerun2` | 0.0415 | 0.0415 | 0.2768 | 91960.09 |
-| `GPT-5.4 gateway` | 0.0383 | 0.0415 | 0.2711 | 47377.91 |
+| `Gemini 3 Flash` | 0.0415 | 0.0415 | 0.2768 | 91960.09 |
+| `GPT-5.4` | 0.0383 | 0.0415 | 0.2711 | 47377.91 |
 | `MiniMax M2.7` | 0.0256 | 0.0319 | 0.2703 | 59435.85 |
 | `Moonshot K2.5` | 0.0415 | 0.0447 | 0.2710 | 181934.61 |
 | `Qwen3.5-Plus` | 0.0383 | 0.0383 | 0.2861 | 40526.73 |
 | `Qwen3.5-Plus thinking on` | 0.0415 | 0.0479 | 0.2753 | 239948.69 |
-| `Qwen3.5-27B DashScope` | 0.0415 | 0.0415 | 0.2990 | 41654.88 |
+| `Qwen3.5-27B` | 0.0415 | 0.0415 | 0.2990 | 41654.88 |
 
 ### What the final model wins on
 
@@ -80,25 +80,25 @@ Split: `test_full_public_clean`, sample count `313`, error rows `0`.
 ### What the final model does not win on
 
 - It is not the fastest end-to-end system.
-  - `Qwen3.5-Plus`, `Qwen3.5-27B DashScope`, and `GPT-5.4 gateway` are all faster overall.
-  - The LocalHF final system sits in the middle of the latency pack: slower than the fastest commercial baselines, but still much faster than Moonshot, Gemini rerun2, and Qwen thinking-on.
+  - `Qwen3.5-Plus`, `Qwen3.5-27B`, and `GPT-5.4` are all faster overall.
+  - The Stream2Graph local system sits in the middle of the latency pack: slower than the fastest commercial baselines, but still much faster than Moonshot, Gemini 3 Flash, and Qwen thinking-on.
 - Planner latency is the main cost.
-  - `24300.95 ms` is much higher than `Qwen3.5-27B DashScope` (`3096.60 ms`) and `Qwen3.5-Plus` (`4787.69 ms`).
+  - `24300.95 ms` is much higher than `Qwen3.5-27B` (`3096.60 ms`) and `Qwen3.5-Plus` (`4787.69 ms`).
 - `edge_semantic_f1` stays at `0.6422`, identical to the compared baselines in this workspace, so the final gains come from node, group, and attachment quality rather than edge score improvements.
 
 ## Diagram-type comparison on the full test split
 
 Strict final match:
 
-- `architecture`: LocalHF final is the only compared system above zero (`0.0185`).
-- `flowchart`: LocalHF final reaches `0.2115`; all compared baselines in this workspace are `0.0`.
-- `mindmap`: LocalHF final reaches `0.3774`; the best baseline is `0.2453`.
-- `sequence`: LocalHF final reaches `0.0392`; the compared baselines in this workspace are `0.0`.
+- `architecture`: Stream2Graph local is the only compared system above zero (`0.0185`).
+- `flowchart`: Stream2Graph local reaches `0.2115`; all compared baselines in this workspace are `0.0`.
+- `mindmap`: Stream2Graph local reaches `0.3774`; the best baseline is `0.2453`.
+- `sequence`: Stream2Graph local reaches `0.0392`; the compared baselines in this workspace are `0.0`.
 - `ER` and `StateDiagram`: strict final match remains `0.0` for both the final model and the compared baselines.
 
 Entity semantic F1:
 
-- The LocalHF final model is best on all six diagram types in this workspace.
+- The Stream2Graph local model is best on all six diagram types in this workspace.
 - The largest semantic gains are on `mindmap` (`0.7336`) and `flowchart` (`0.4967`).
 - Even on the still-unsolved strict-match types, the final model improves semantic fidelity:
   - `ER = 0.4698`

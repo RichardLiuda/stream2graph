@@ -192,6 +192,74 @@ class RealtimeSnapshot(BaseModel):
     evaluation: dict[str, Any] | None = None
 
 
+class RealtimeTimelineNode(BaseModel):
+    snapshot_id: str
+    created_at: datetime
+    summary: dict[str, Any] = Field(default_factory=dict)
+    event_count: int = 0
+    chunk_count: int = 0
+    label: str | None = None
+
+
+class RealtimeTimelineResponse(BaseModel):
+    session_id: str
+    nodes: list[RealtimeTimelineNode] = Field(default_factory=list)
+
+
+class RealtimeRollbackRequest(BaseModel):
+    snapshot_id: str
+
+
+class RealtimeRollbackPreviewResponse(BaseModel):
+    session_id: str
+    snapshot_id: str
+    created_at: datetime
+    summary: dict[str, Any] = Field(default_factory=dict)
+    pipeline: dict[str, Any] = Field(default_factory=dict)
+    evaluation: dict[str, Any] | None = None
+    transcript_turn_count: int = 0
+    annotation_version: int = 1
+    turns: list["RealtimeTranscriptTurn"] = Field(default_factory=list)
+
+
+class RealtimeRollbackApplyResponse(BaseModel):
+    session_id: str
+    restored_from_snapshot_id: str
+    pipeline: dict[str, Any] = Field(default_factory=dict)
+    evaluation: dict[str, Any] | None = None
+
+
+class RealtimeTranscriptTurnEditable(BaseModel):
+    speaker: str
+    text: str
+    start_ms: int | None = None
+    end_ms: int | None = None
+    is_final: bool | None = None
+
+
+class RealtimeRollbackEditRequest(BaseModel):
+    snapshot_id: str
+    turns: list[RealtimeTranscriptTurnEditable] = Field(default_factory=list)
+
+
+class RealtimeRollbackEditApplyResponse(BaseModel):
+    session_id: str
+    restored_from_snapshot_id: str
+    pipeline: dict[str, Any] = Field(default_factory=dict)
+    evaluation: dict[str, Any] | None = None
+
+
+class RealtimeSessionAnnotations(BaseModel):
+    session_id: str
+    version: int = 1
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class RealtimeSessionAnnotationsUpdateRequest(BaseModel):
+    version: int = 1
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
 class RealtimeTranscriptTurn(BaseModel):
     speaker: str
     text: str
@@ -200,6 +268,10 @@ class RealtimeTranscriptTurn(BaseModel):
     is_final: bool = True
     source: str = ""
     capture_mode: str = ""
+    speaker_slot_key: str = ""
+    speaker_identity: str = ""
+    raw_role_label: str = ""
+    speaker_resolution_source: str = ""
 
 
 class RealtimeSessionCloseDownloads(BaseModel):
@@ -267,6 +339,7 @@ class RealtimeAudioTranscriptionResponse(BaseModel):
     provider: str
     model: str
     latency_ms: float
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
     pipeline: dict[str, Any]
     evaluation: dict[str, Any] | None = None
 

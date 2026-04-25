@@ -67,6 +67,7 @@ class IncrementalGraphRenderer:
 
         self.nodes: Dict[str, NodeState] = {}
         self.edges: Set[Tuple[str, str]] = set()
+        self.edge_frames: Dict[Tuple[str, str], int] = {}
         self.frame_id = 0
         self.frames: List[RenderFrame] = []
 
@@ -132,6 +133,7 @@ class IncrementalGraphRenderer:
                 edge = (src, dst)
                 if edge not in self.edges:
                     self.edges.add(edge)
+                    self.edge_frames[edge] = self.frame_id
                     added_edges += 1
 
         self._local_relax_new_nodes(added_nodes)
@@ -148,7 +150,10 @@ class IncrementalGraphRenderer:
     def export_state(self) -> Dict:
         return {
             "nodes": [asdict(n) for n in self.nodes.values()],
-            "edges": [{"from": s, "to": t} for s, t in sorted(self.edges)],
+            "edges": [
+                {"from": s, "to": t, "created_frame": self.edge_frames.get((s, t), 0)}
+                for s, t in sorted(self.edges)
+            ],
             "frame_count": self.frame_id,
         }
 

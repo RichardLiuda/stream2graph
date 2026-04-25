@@ -8,7 +8,6 @@ import Link from "next/link";
 import {
   AudioLines,
   Check,
-  ChevronLeft,
   ChevronDown,
   ChevronRight,
   Fingerprint,
@@ -30,7 +29,12 @@ import { createPortal } from "react-dom";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
 import { Badge, Button, Card, Input, StatCard, Textarea } from "@stream2graph/ui";
-import type { RealtimeSession, RealtimeTranscriptTurn } from "@stream2graph/contracts";
+import type {
+  RealtimeSession,
+  RealtimeTimelineNode,
+  RealtimeTranscriptTurn,
+  RealtimeTranscriptTurnEditable,
+} from "@stream2graph/contracts";
 
 import { ApiError, api, apiUrl } from "@/lib/api";
 import { encodeFloat32ToBase64Pcm16 } from "@/lib/audio";
@@ -58,6 +62,14 @@ import {
   resolveRuntimePreferences,
   saveRuntimePreferences,
 } from "@/lib/runtime-preferences";
+import type { AnnotationDoc, AnnotationTool } from "@/components/annotation-layer";
+import { normalizeMaskStrokes } from "@/components/annotation-layer";
+import {
+  normalizeSessionAnnotationsPayload,
+  type SessionAnnotationsPayload,
+} from "@/lib/session-annotations-payload";
+import { AnnotationColorPopover } from "@/components/annotation-color-popover";
+import { AnnotationWidthSlider } from "@/components/annotation-width-slider";
 import { GraphStage } from "@/components/graph-stage";
 import { MermaidCard, type MermaidNodeRelayoutPayload } from "@/components/mermaid-card";
 
@@ -66,6 +78,36 @@ const LOCAL_SESSION_KEY = "s2g:last-realtime-session";
 const DEFAULT_VOICEPRINT_BASE = "https://api.xf-yun.com";
 
 type AdminRuntimeOptionsPayload = Awaited<ReturnType<typeof api.getAdminRuntimeOptions>>;
+type RealtimeRollbackPreviewPayload = Awaited<ReturnType<typeof api.previewRealtimeRollback>>;
+
+/** 浅色画布上的笔触预设（原「浅」模式色板） */
+const ANNOTATION_SWATCHES_LIGHT_CANVAS = [
+  "#111827",
+  "#374151",
+  "#1D4ED8",
+  "#0F766E",
+  "#6D28D9",
+  "#BE185D",
+  "#9A3412",
+  "#B45309",
+] as const;
+
+const DEFAULT_ANNOTATION_COLOR = ANNOTATION_SWATCHES_LIGHT_CANVAS[0];
+
+/** 橡皮：小圆→大圆为精准擦宽度；叉为对象擦 */
+const ERASER_WIDTH_PRESETS = [
+  { w: 6, dot: 5 },
+  { w: 10, dot: 6 },
+  { w: 14, dot: 7 },
+  { w: 20, dot: 8 },
+  { w: 28, dot: 10 },
+  { w: 36, dot: 12 },
+] as const;
+
+function nearestEraserPresetWidth(width: number): number {
+  const ws = ERASER_WIDTH_PRESETS.map((p) => p.w);
+  return ws.reduce((best, p) => (Math.abs(p - width) < Math.abs(best - width) ? p : best), ws[0]!);
+}
 
 function voiceprintPayloadForSave(
   profile: AdminRuntimeOptionsPayload["stt_profiles"][number],
@@ -142,164 +184,78 @@ type TranscriptDisplayState = {
 
 type NoticeTone = "info" | "success" | "warning";
 
+const DEFAULT_DEMO_TRANSCRIPT = [
+  "主持人A|我们先过一下今天的评审目标：确认实时转写、结构图联动和报告导出是否都稳定。|sequential",
+  "产品经理B|我重点关注历史转写的可读性，尤其是不同发言人能不能快速分辨。|structural",
+  "研究员C|我会补充一段第三视角的观察，看看三人交替时颜色识别是否仍然清晰。|structural",
+  "主持人A|好的，那我先补充上下文：这轮测试会包含三位说话人轮流发言。|sequential",
+  "产品经理B|如果颜色区分明显，我们就直接沿用到演示环境，并记录在发布检查清单里。|feedback_loop",
+  "研究员C|另外也要确认长句和短句混合时，色块层级不会影响可读性。|structural",
+].join("\n");
+
 const TRANSCRIPT_PRESETS: TranscriptPreset[] = [
   {
-    id: "demo_mindmap_public_culture",
-    label: "演示思维导图",
-    description: "基于公开访谈整理，适合展示中心主题、一级分支和延展细节。",
+    id: "platform_architecture",
+    label: "平台架构梳理",
+    description: "适合生成服务依赖、数据流和后台管理关系图。",
     value: [
-      "主持人|我们今天围绕公共文化服务提升来做一张思维导图，中心主题就叫公共文化服务提升。|structural",
-      "嘉宾|中心主题下面先分成四个一级分支，分别是空间建设、数字服务、社会参与和文旅融合。|structural",
-      "主持人|空间建设这一支继续展开，放角楼图书馆、红楼藏书楼和腾退空间改造。|structural",
-      "嘉宾|数字服务这一支补充线上阅读、数字资源下沉和家门口文化服务。|structural",
-      "主持人|社会参与这一支体现政府引导、社会力量参与、街道社区联动和企业合作。|structural",
-      "嘉宾|文旅融合这一支展开成以文塑旅、以旅彰文、老工业厂区更新和阅读空间拓展。|structural",
-      "主持人|最后再加一个成果分支，连到群众文化获得感提升、城市品质提升和北京故事传播。|structural",
+      "host|We need a platform map that starts from the web console and reaches the backend services.|structural",
+      "expert|Put the admin console on the left because every workflow begins there.|structural",
+      "expert|From the admin console, connect to the API gateway that handles auth, runtime control, and report export.|sequential",
+      "expert|The API gateway talks to the session manager for realtime runs and to the study manager for participant workflows.|structural",
+      "expert|The session manager writes state into PostgreSQL and artifacts into object storage.|structural",
+      "expert|A worker service reads queued jobs from PostgreSQL and produces reports and evaluation artifacts.|sequential",
+      "expert|The audio helper is optional and only feeds transcript chunks back into the API gateway.|structural",
+      "host|Please show that the runtime options service configures both the LLM path and the STT path.|structural",
+      "expert|Add a runtime settings module above the API gateway and connect it to LLM provider, STT provider, and model probe capability.|structural",
     ].join("\n"),
   },
   {
-    id: "demo_er_reading_festival",
-    label: "演示实体关系图",
-    description: "基于高校读书节通知整理，适合展示活动、参与者、作品和奖项关系。",
+    id: "incident_response",
+    label: "故障响应流程",
+    description: "适合展示顺序步骤、分支决策和回滚路径。",
     value: [
-      "图书馆老师|我们按第十一届读书节活动通知来梳理实体，先放总活动实体“读书节”。|structural",
-      "学院老师|读书节下面包含征文、摄影大赛、阅读之星评选和书香学院评选四类子活动。|structural",
-      "图书馆老师|参与者分成学生、二级学院、图书馆和评委组。|structural",
-      "学院老师|学生可以提交作品，作品可能是征文、摄影作品或阅读案例，每件作品都归属于一个学生，也归属于一个学院。|structural",
-      "图书馆老师|评委组负责审核作品并给出奖项，奖项既可以关联作品，也可以直接关联学生或学院。|structural",
-      "学院老师|图书馆负责发布通知、汇总报名和公示结果，学院负责组织报名和推荐。|structural",
-      "图书馆老师|如果是阅读之星这类个人奖，就把学生和奖项直接关联；如果是书香学院，就把学院和奖项直接关联。|structural",
+      "operator|We need an incident response flow for a production outage.|sequential",
+      "lead|Start with alert ingestion from monitoring and paging into the on-call engineer.|sequential",
+      "lead|After triage, add a decision node: is customer traffic impacted?|structural",
+      "lead|If yes, branch to mitigation, status page update, and executive notification in parallel.|parallel",
+      "lead|If no, branch to deeper diagnosis without public communication.|conditional",
+      "operator|Mitigation should route to rollback, traffic shift, or feature flag disable depending on root cause.|conditional",
+      "lead|Once mitigation is stable, move into root-cause analysis, action items, and follow-up review.|sequential",
+      "operator|Close the loop by feeding action items back into backlog and runbooks.|feedback_loop",
     ].join("\n"),
   },
   {
-    id: "demo_flow_transport_service",
-    label: "演示流程图",
-    description: "基于“开办运输企业一件事”公开资料整理，适合展示办理流程与条件分支。",
+    id: "research_workflow",
+    label: "用户研究闭环",
+    description: "适合演示 participant session、提交、评测和报告产出。",
     value: [
-      "办事人|我要开办道路货物运输企业，请按一件事流程帮我梳理。|sequential",
-      "导办员|第一步先进入高效办成一件事专区。|sequential",
-      "导办员|第二步一次填写一张表单，并上传一套共享材料。|sequential",
-      "办事人|提交之后会经过哪些环节。|structural",
-      "导办员|系统受理后会自动流转到营业执照、道路货运经营许可和相关审批环节。|sequential",
-      "导办员|如果材料不完整，就退回补正；如果材料齐全，就进入并联审批。|conditional",
-      "办事人|审批通过以后怎么结束。|sequential",
-      "导办员|最后统一出结果并反馈给企业，实现一次申请、一次办结。|sequential",
+      "researcher|Describe the study workflow from task creation to report export.|sequential",
+      "expert|First create a study task with materials, condition setup, and participant codes.|sequential",
+      "expert|Participants enter through the participant page, review materials, and start a timed session.|sequential",
+      "expert|During the session, autosave keeps draft Mermaid output and transcript notes in progress storage.|structural",
+      "expert|Submission sends final Mermaid, compile result, and survey answers into the study session record.|sequential",
+      "researcher|Add automatic evaluation after submit so the system compares final output with reference and computes metrics.|sequential",
+      "expert|The study manager writes all session data into PostgreSQL and triggers report generation for aggregate analysis.|structural",
+      "researcher|End with a report dashboard that exports JSON, CSV, and markdown summaries for the whole study.|sequential",
     ].join("\n"),
   },
   {
-    id: "demo_sequence_online_clinic",
-    label: "演示时序图",
-    description: "基于公开医疗服务流程整理，适合展示患者、平台、医生和医保之间的时序关系。",
+    id: "data_pipeline",
+    label: "数据处理管线",
+    description: "适合演示 ingest、校验、富化、分发和监控。",
     value: [
-      "患者|我想按公开医疗服务流程梳理一次线上复诊结算时序。|sequential",
-      "客服|先由患者在医院应用上注册并预约复诊。|sequential",
-      "客服|到预约时间后，应用把复诊请求发送给医生。|sequential",
-      "医生|我先核验患者身份和既往记录，再进行在线问诊。|sequential",
-      "医生|问诊完成后开具电子处方，并把处方发送给药房。|sequential",
-      "药房|药房收到处方后配药，同时把费用信息提交给医保结算系统。|sequential",
-      "医保专员|医保系统完成审核和实时报销，再把结算结果回传给医院和患者。|sequential",
-      "客服|最后药品配送到家，患者在线查看结算结果和配送状态。|sequential",
-    ].join("\n"),
-  },
-  {
-    id: "demo_state_student_project",
-    label: "演示状态图",
-    description: "基于大学生创新创业训练计划工作指南整理，适合展示项目生命周期状态。",
-    value: [
-      "老师|我们按大学生创新创业训练计划的全生命周期来做一张状态图。|structural",
-      "学生|项目最开始是申报中，提交申请书后进入立项评审。|sequential",
-      "老师|评审通过转为已立项，评审未通过就进入未立项结束态。|conditional",
-      "学生|已立项之后进入执行中，团队开始周记、调研和实验。|sequential",
-      "老师|到中期检查时，如果进展正常就继续执行；如果问题严重就进入整改中。|conditional",
-      "学生|整改通过回到执行中，整改失败可以转为终止。|conditional",
-      "老师|完成研究任务并提交结题材料后，项目进入结题验收。|sequential",
-      "老师|验收通过转为已结题，验收未通过可以修改后再次提交。|conditional",
-    ].join("\n"),
-  },
-  {
-    id: "demo_arch_government_service",
-    label: "演示架构图",
-    description: "基于北京市政务服务公开访谈整理，适合展示入口、服务、协同和结果层。",
-    value: [
-      "主持人|我们按北京市政务服务渠道协同来画一张架构图，中心放政务服务总入口。|structural",
-      "嘉宾|总入口上面接首都之窗、北京通、政务服务大厅和自助终端四类入口。|structural",
-      "主持人|总入口下面连接事项受理平台、知识库、身份认证和短信通知。|structural",
-      "嘉宾|事项受理平台再对接各委办局业务系统，实现数据共享和结果回传。|structural",
-      "主持人|12345热线和帮办代办体系也要接入总入口，用于咨询、回访和督办。|structural",
-      "嘉宾|结果层再分成办理结果推送、评价反馈、统计分析和效能监管。|structural",
-      "主持人|请把入口层、服务层、协同层和结果层的层次关系表达清楚。|structural",
+      "architect|Map the event processing pipeline for partner data ingestion.|sequential",
+      "architect|Source systems push files and webhooks into an ingestion gateway.|sequential",
+      "architect|The ingestion gateway forwards payloads to schema validation and deduplication.|sequential",
+      "architect|Validated records go into an enrichment stage that joins account metadata and policy rules.|sequential",
+      "architect|After enrichment, split the flow into analytics warehouse, operational database, and search index.|parallel",
+      "architect|Any failed validation or policy conflict should go into a quarantine queue with manual review.|conditional",
+      "architect|Monitoring watches latency, failure rate, and backlog depth, then alerts ops when thresholds are exceeded.|structural",
+      "architect|Manual review can either release records back into enrichment or permanently reject them.|feedback_loop",
     ].join("\n"),
   },
 ];
-
-type DemoPreset = {
-  id: string;
-  label: string;
-  description: string;
-  value: string;
-  diagramType: string;
-};
-
-const CURATED_DEMO_PRESETS: DemoPreset[] = [
-  {
-    id: "demo_mindmap_public_culture",
-    label: "演示思维导图",
-    description: "基于公开访谈整理，适合展示中心主题和层级展开。",
-    value: TRANSCRIPT_PRESETS.find((p) => p.id === "demo_mindmap_public_culture")!.value,
-    diagramType: "flowchart",
-  },
-  {
-    id: "demo_er_reading_festival",
-    label: "演示实体关系图",
-    description: "基于高校活动通知整理，适合展示实体与关系。",
-    value: TRANSCRIPT_PRESETS.find((p) => p.id === "demo_er_reading_festival")!.value,
-    diagramType: "er",
-  },
-  {
-    id: "demo_flow_transport_service",
-    label: "演示流程图",
-    description: "基于政务服务公开资料整理，适合展示条件分支和办理闭环。",
-    value: TRANSCRIPT_PRESETS.find((p) => p.id === "demo_flow_transport_service")!.value,
-    diagramType: "flowchart",
-  },
-  {
-    id: "demo_sequence_online_clinic",
-    label: "演示时序图",
-    description: "基于公开医疗服务流程整理，适合展示角色之间的消息往返。",
-    value: TRANSCRIPT_PRESETS.find((p) => p.id === "demo_sequence_online_clinic")!.value,
-    diagramType: "sequence",
-  },
-  {
-    id: "demo_state_student_project",
-    label: "演示状态图",
-    description: "基于项目指南整理，适合展示状态流转与回退。",
-    value: TRANSCRIPT_PRESETS.find((p) => p.id === "demo_state_student_project")!.value,
-    diagramType: "state",
-  },
-  {
-    id: "demo_arch_government_service",
-    label: "演示架构图",
-    description: "基于公开访谈整理，适合展示多层服务协同。",
-    value: TRANSCRIPT_PRESETS.find((p) => p.id === "demo_arch_government_service")!.value,
-    diagramType: "flowchart",
-  },
-];
-
-const DEFAULT_DEMO_PRESET_ID = CURATED_DEMO_PRESETS[0].id;
-
-function mapDiagramHintToMermaidType(hint?: string): string {
-  if (!hint) return "flowchart";
-  const map: Record<string, string> = {
-    flowchart: "flowchart",
-    sequence: "sequence",
-    class: "class",
-    state: "state",
-    er: "er",
-    requirement: "requirement",
-    architecture: "flowchart",
-  };
-  return map[hint] || "flowchart";
-}
 
 function parseTranscriptInput(raw: string): TranscriptRow[] {
   return raw
@@ -327,7 +283,7 @@ function getSourceBadgeLabel(source: InputSource | null) {
     case "system_audio_browser_experimental":
       return "共享音频验证中";
     case "system_audio_helper":
-      return "本机内录采集中";
+      return "增强模式运行中";
     default:
       return "当前未进行实时采集";
   }
@@ -346,6 +302,7 @@ const AUDIO_SEGMENT_MIN_SPEECH_MS = 320;
 const AUDIO_SEGMENT_PREROLL_MS = 180;
 const AUDIO_LEVEL_START_THRESHOLD = 0.08;
 const AUDIO_LEVEL_CONTINUE_THRESHOLD = 0.045;
+const ASR_DIAG_HEARTBEAT_MS = 5_000;
 
 type AudioSegmentState = {
   activeFrames: Float32Array[];
@@ -462,8 +419,41 @@ function calculateAudioLevel(samples: Float32Array) {
   return Math.max(0, Math.min(1, rms * 5));
 }
 
+function audioSegmentDiag(state: AudioSegmentState, sampleRate: number) {
+  return {
+    has_speech: state.hasSpeech,
+    active_ms: Math.round((state.activeSampleCount / sampleRate) * 1000),
+    speech_ms: Math.round((state.speechSampleCount / sampleRate) * 1000),
+    silence_ms: Math.round((state.silenceSampleCount / sampleRate) * 1000),
+    preroll_ms: Math.round((state.preRollSampleCount / sampleRate) * 1000),
+    active_frame_count: state.activeFrames.length,
+  };
+}
+
 function formatLiveTranscript(text: string) {
   return text.trim() || "等待识别结果...";
+}
+
+function makeTranscriptTurn(
+  turn: Omit<
+    RealtimeTranscriptTurn,
+    "speaker_slot_key" | "speaker_identity" | "raw_role_label" | "speaker_resolution_source"
+  > &
+    Partial<
+      Pick<
+        RealtimeTranscriptTurn,
+        "speaker_slot_key" | "speaker_identity" | "raw_role_label" | "speaker_resolution_source"
+      >
+    >,
+): RealtimeTranscriptTurn {
+  return {
+    ...turn,
+    capture_mode: turn.capture_mode || "",
+    speaker_slot_key: turn.speaker_slot_key || "",
+    speaker_identity: turn.speaker_identity || "",
+    raw_role_label: turn.raw_role_label || "",
+    speaker_resolution_source: turn.speaker_resolution_source || "",
+  };
 }
 
 function normalizeTranscriptTurn(value: unknown): RealtimeTranscriptTurn | null {
@@ -479,7 +469,7 @@ function normalizeTranscriptTurn(value: unknown): RealtimeTranscriptTurn | null 
   ) {
     return null;
   }
-  return {
+  return makeTranscriptTurn({
     speaker: row.speaker,
     text: row.text,
     start_ms: row.start_ms,
@@ -487,7 +477,12 @@ function normalizeTranscriptTurn(value: unknown): RealtimeTranscriptTurn | null 
     is_final: row.is_final,
     source: row.source,
     capture_mode: typeof row.capture_mode === "string" ? row.capture_mode : "",
-  };
+    speaker_slot_key: typeof row.speaker_slot_key === "string" ? row.speaker_slot_key : "",
+    speaker_identity: typeof row.speaker_identity === "string" ? row.speaker_identity : "",
+    raw_role_label: typeof row.raw_role_label === "string" ? row.raw_role_label : "",
+    speaker_resolution_source:
+      typeof row.speaker_resolution_source === "string" ? row.speaker_resolution_source : "",
+  });
 }
 
 function readTranscriptState(pipeline: Record<string, any> | null | undefined): TranscriptStateView {
@@ -566,7 +561,7 @@ function deriveTranscriptTurnsFromEvents(events: Array<Record<string, any>> | nu
           const endMs = typeof turn.timestamp_ms === "number" ? turn.timestamp_ms : Number(event?.update?.end_ms ?? startMs);
           rows.push(
             makeTranscriptHistoryItem(
-              {
+              makeTranscriptTurn({
                 speaker,
                 text,
                 start_ms: Number.isFinite(startMs) ? startMs : 0,
@@ -574,7 +569,7 @@ function deriveTranscriptTurnsFromEvents(events: Array<Record<string, any>> | nu
                 is_final: true,
                 source: "event_fallback",
                 capture_mode: `event_${eventIndex}_${turnIndex}`,
-              },
+              }),
               "event",
               `${eventIndex}_${turnIndex}`,
               Number.isFinite(endMs) ? endMs : Number.isFinite(startMs) ? startMs : undefined,
@@ -592,7 +587,7 @@ function deriveTranscriptTurnsFromEvents(events: Array<Record<string, any>> | nu
       const endMs = Number(event?.update?.end_ms ?? event?.update?.start_ms ?? 0) || 0;
       rows.push(
         makeTranscriptHistoryItem(
-          {
+          makeTranscriptTurn({
             speaker: "speaker",
             text: transcriptText,
             start_ms: startMs,
@@ -600,7 +595,7 @@ function deriveTranscriptTurnsFromEvents(events: Array<Record<string, any>> | nu
             is_final: true,
             source: "event_fallback",
             capture_mode: `event_${eventIndex}`,
-          },
+          }),
           "event",
           `${eventIndex}`,
           endMs || startMs || undefined,
@@ -700,6 +695,23 @@ function downloadCurrentMermaidSvg(exportRootId: string, filename: string) {
   downloadTextBlob(filename, svgSource, "image/svg+xml");
 }
 
+function downloadAnnotationsSvg(filename: string, exportHostId: string) {
+  const host = document.getElementById(exportHostId);
+  const svg = host?.querySelector("svg");
+  if (!(svg instanceof SVGSVGElement)) {
+    throw new Error("当前没有可下载的批注。");
+  }
+  const clone = svg.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+  // Strip pointer events to make it a clean asset.
+  clone.removeAttribute("class");
+  clone.removeAttribute("style");
+  const serialized = new XMLSerializer().serializeToString(clone);
+  const svgSource = `<?xml version="1.0" encoding="UTF-8"?>\n${serialized}`;
+  downloadTextBlob(filename, svgSource, "image/svg+xml");
+}
+
 function formatApiTranscriptSegments(segments: Array<Record<string, any>> | null | undefined) {
   if (!segments?.length) return "";
   return segments
@@ -721,7 +733,6 @@ function preserveCoordinationSnapshot(
   if (!previousPipeline) return nextPipeline;
   return {
     ...nextPipeline,
-    canvas_state: nextPipeline.canvas_state ?? previousPipeline.canvas_state ?? null,
     gate_state: previousPipeline.gate_state ?? nextPipeline.gate_state ?? null,
     planner_state: previousPipeline.planner_state ?? nextPipeline.planner_state ?? null,
     mermaid_state: previousPipeline.mermaid_state ?? nextPipeline.mermaid_state ?? null,
@@ -774,9 +785,43 @@ function logBrowserRuntime(label: string, payload: Record<string, unknown>, leve
   method(`[S2G][Realtime] ${label}`, payload);
 }
 
+function logAsrDiag(label: string, payload: Record<string, unknown>, level: "info" | "warn" | "error" = "info") {
+  if (typeof window === "undefined") return;
+  const method = level === "error" ? console.error : level === "warn" ? console.warn : console.info;
+  method(`[S2G][ASR_DIAG] ${label}`, {
+    at: new Date().toISOString(),
+    ...payload,
+  });
+}
+
+function summarizeAsrDiagnostics(diagnostics: Record<string, unknown> | null | undefined) {
+  const diag = diagnostics && typeof diagnostics === "object" ? diagnostics : {};
+  const requestTotalMs = Number(diag.request_total_ms ?? 0) || 0;
+  const sttWallMs = Number(diag.stt_wall_ms ?? 0) || 0;
+  const sttReportedLatencyMs = Number(diag.stt_reported_latency_ms ?? 0) || 0;
+  const postSttMs = Number(diag.pre_response_post_stt_ms ?? 0) || 0;
+  const voiceprintMs = Number(diag.voiceprint_ms ?? 0) || 0;
+  const ingestMs = Number(diag.ingest_ms ?? 0) || 0;
+  const commitMs = Number(diag.commit_ms ?? 0) || 0;
+  return {
+    request_total_ms: requestTotalMs,
+    stt_wall_ms: sttWallMs,
+    stt_reported_latency_ms: sttReportedLatencyMs,
+    post_stt_ms: postSttMs,
+    voiceprint_ms: voiceprintMs,
+    ingest_ms: ingestMs,
+    commit_ms: commitMs,
+    result_text_chars: Number(diag.result_text_chars ?? 0) || 0,
+    result_segment_count: Number(diag.result_segment_count ?? 0) || 0,
+    deferred_coordination: Boolean(diag.deferred_coordination),
+    payload_audio_ms: Number(diag.payload_audio_ms ?? 0) || 0,
+    stream_final: Boolean(diag.stream_final),
+  };
+}
+
 function buildBackendOptions(source: InputSource, helperCapabilities: HelperCapabilities | null): BackendOption[] {
-  if (source === "transcript" || source === "demo_mode") {
-    return [{ value: "manual" as const, label: "文本输入" }];
+  if (source === "transcript") {
+    return [{ value: "manual" as const, label: "打字输入" }];
   }
   if (source === "microphone_browser") {
     return [
@@ -811,43 +856,74 @@ function capabilityBadgeTone(status: string) {
   return "";
 }
 
-function capabilityStatusLabel(status: string) {
-  if (status === "supported") return "可用";
-  if (status === "limited") return "受限";
-  if (status === "unsupported") return "不可用";
-  return status;
-}
-
-function shouldShowCapabilityStatus(source: InputSource) {
-  return source !== "demo_mode" && source !== "transcript";
+function transcriptSpeakerCardTone(speaker: string | undefined) {
+  const key = (speaker || "speaker").toLowerCase().trim();
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) {
+    hash = (hash * 31 + key.charCodeAt(i)) % 9973;
+  }
+  const tones = [
+    {
+      card: "border-[#a7b3b0] bg-[#e8ecea]",
+      speaker: "text-[#55615e]",
+      body: "text-slate-800",
+      style: { borderColor: "rgb(167 179 176 / 0.92)", backgroundColor: "rgb(232 236 234 / 0.95)" },
+      contentStyle: { backgroundColor: "rgb(219 226 223 / 0.86)" },
+      speakerTagStyle: { backgroundColor: "rgb(209 218 214 / 0.94)", borderColor: "rgb(156 170 165 / 0.88)" },
+    },
+    {
+      card: "border-[#b7ad9f] bg-[#efe8dd]",
+      speaker: "text-[#6a6055]",
+      body: "text-slate-800",
+      style: { borderColor: "rgb(183 173 159 / 0.92)", backgroundColor: "rgb(239 232 221 / 0.95)" },
+      contentStyle: { backgroundColor: "rgb(229 220 206 / 0.86)" },
+      speakerTagStyle: { backgroundColor: "rgb(220 209 194 / 0.94)", borderColor: "rgb(170 158 143 / 0.88)" },
+    },
+    {
+      card: "border-[#aab0bf] bg-[#e7eaf1]",
+      speaker: "text-[#575f73]",
+      body: "text-slate-800",
+      style: { borderColor: "rgb(170 176 191 / 0.92)", backgroundColor: "rgb(231 234 241 / 0.95)" },
+      contentStyle: { backgroundColor: "rgb(218 223 235 / 0.86)" },
+      speakerTagStyle: { backgroundColor: "rgb(206 213 228 / 0.94)", borderColor: "rgb(158 166 184 / 0.88)" },
+    },
+    {
+      card: "border-[#b9a4aa] bg-[#efe5e8]",
+      speaker: "text-[#6c565c]",
+      body: "text-slate-800",
+      style: { borderColor: "rgb(185 164 170 / 0.92)", backgroundColor: "rgb(239 229 232 / 0.95)" },
+      contentStyle: { backgroundColor: "rgb(229 216 220 / 0.86)" },
+      speakerTagStyle: { backgroundColor: "rgb(220 204 209 / 0.94)", borderColor: "rgb(173 149 156 / 0.88)" },
+    },
+    {
+      card: "border-[#a9aba3] bg-[#eceee8]",
+      speaker: "text-[#5c5f57]",
+      body: "text-slate-800",
+      style: { borderColor: "rgb(169 171 163 / 0.92)", backgroundColor: "rgb(236 238 232 / 0.95)" },
+      contentStyle: { backgroundColor: "rgb(224 227 218 / 0.86)" },
+      speakerTagStyle: { backgroundColor: "rgb(213 217 207 / 0.94)", borderColor: "rgb(157 160 150 / 0.88)" },
+    },
+  ] as const;
+  return tones[hash % tones.length] ?? tones[0];
 }
 
 const STAGE_TABS: ReadonlyArray<readonly [string, string]> = [
   ["mermaid", "主图"],
   ["structure", "结构视图"],
   ["events", "更新记录"],
-  ["metrics", "评测指标"],
-  ["pipeline", "运行摘要"],
 ] as const;
-
-/** 新建 / 重建会话时服务端与顶栏使用的默认名称 */
-const DEFAULT_REALTIME_SESSION_TITLE = "研究演示会话";
 
 export function RealtimeStudio() {
   const queryClient = useQueryClient();
   const [studioState, studioSend] = useMachine(realtimeStudioMachine);
-  const [title, setTitle] = useState(DEFAULT_REALTIME_SESSION_TITLE);
-  const [titleDraft, setTitleDraft] = useState(DEFAULT_REALTIME_SESSION_TITLE);
+  const [title, setTitle] = useState("研究演示会话");
+  const [titleDraft, setTitleDraft] = useState("研究演示会话");
   const [isTitleEditing, setIsTitleEditing] = useState(false);
   const [datasetVersion, setDatasetVersion] = useState("");
-  const [selectedTranscriptPresetId, setSelectedTranscriptPresetId] = useState(
-    () => TRANSCRIPT_PRESETS[0]?.id ?? "",
-  );
-  const [transcriptText, setTranscriptText] = useState("");
-  const [transcriptSidebarTab, setTranscriptSidebarTab] = useState("panel-input");
+  const [selectedTranscriptPresetId, setSelectedTranscriptPresetId] = useState("");
+  const [transcriptText, setTranscriptText] = useState(DEFAULT_DEMO_TRANSCRIPT);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Record<string, any> | null>(null);
-  const [selectedCanvasId, setSelectedCanvasId] = useState<string | null>(null);
   const [localCommittedTranscriptTurns, setLocalCommittedTranscriptTurns] = useState<TranscriptHistoryItem[]>([]);
   const [closedSessionMeta, setClosedSessionMeta] = useState<{
     sessionId: string;
@@ -880,8 +956,42 @@ export function RealtimeStudio() {
   const [detailDrawerPortalReady, setDetailDrawerPortalReady] = useState(false);
   /** @description 主舞台 Tab，用于顶栏与「主图」徽章联动 */
   const [stageTab, setStageTab] = useState("mermaid");
+  /** @description 实时转写面板内 Tab：当前字幕 / 历史转写 */
+  const [transcriptPanelTab, setTranscriptPanelTab] = useState<"live" | "history">("live");
+  const [annotationsEnabled, setAnnotationsEnabled] = useState(false);
+  const [annotationsTool, setAnnotationsTool] = useState<AnnotationTool>("pen");
+  const [activeAnnotationPanel, setActiveAnnotationPanel] = useState<"pen" | "rect" | "text" | "eraser" | null>(null);
+  const [annotationPenWidth, setAnnotationPenWidth] = useState(2);
+  const [annotationPenColor, setAnnotationPenColor] = useState<string>(DEFAULT_ANNOTATION_COLOR);
+  const [annotationRectColor, setAnnotationRectColor] = useState<string>(DEFAULT_ANNOTATION_COLOR);
+  const [annotationRectStrokeWidth, setAnnotationRectStrokeWidth] = useState(2);
+  const [annotationTextColor, setAnnotationTextColor] = useState<string>(DEFAULT_ANNOTATION_COLOR);
+  const [annotationEraserWidth, setAnnotationEraserWidth] = useState(12);
+  const [annotationsState, setAnnotationsState] = useState<{
+    version: number;
+    payload: SessionAnnotationsPayload;
+  }>({
+    version: 1,
+    payload: normalizeSessionAnnotationsPayload(null),
+  });
+  const annotationsUndoRef = useRef<Array<{ version: number; payload: SessionAnnotationsPayload }>>([]);
+  const lastSavedAnnotationsRef = useRef<string>("");
+  const lastLoadedSessionIdRef = useRef<string | null>(null);
   /** @description 工作台两页：第 1 页（输入来源 + 主图），第 2 页（会话与录音设置 + 默认设置） */
   const [studioPage] = useState<1 | 2>(1);
+  const [selectedTimelineSnapshotId, setSelectedTimelineSnapshotId] = useState<string | null>(null);
+  const [rollbackPreview, setRollbackPreview] = useState<RealtimeRollbackPreviewPayload | null>(null);
+  const [autoFollowLatestTimelineNode, setAutoFollowLatestTimelineNode] = useState(true);
+  const lastTimelineHeadSnapshotIdRef = useRef<string | null>(null);
+  const timelineScrollViewportRef = useRef<HTMLDivElement | null>(null);
+  const [timelineViewportWidth, setTimelineViewportWidth] = useState(0);
+  const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
+  const [timelineHoverTooltip, setTimelineHoverTooltip] = useState<{
+    text: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const timelinePreviewRequestRef = useRef<string | null>(null);
   const [listening, setListening] = useState(false);
   const [audioContext, setAudioContext] = useState<ClientAudioContext | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -913,6 +1023,13 @@ export function RealtimeStudio() {
   const apiCaptureFlushTimeoutRef = useRef<number | null>(null);
   const apiCaptureChunkIdRef = useRef(0);
   const apiCaptureSegmentStateRef = useRef<AudioSegmentState>(createAudioSegmentState());
+  const apiCaptureDiagRef = useRef({
+    startedAtMs: 0,
+    lastHeartbeatAtMs: 0,
+    frameCount: 0,
+    maxLevel: 0,
+    uploadCount: 0,
+  });
   const apiCaptureContextRef = useRef<{
     sessionId: string;
     source: InputSource;
@@ -922,26 +1039,8 @@ export function RealtimeStudio() {
   const apiCaptureStopRequestedRef = useRef(false);
   const inputSourceMenuRef = useRef<HTMLDivElement | null>(null);
   const historyFeedKeysRef = useRef<string[]>([]);
-  const previousActiveCanvasIdRef = useRef<string | null>(null);
-  /** 用于区分「首次创建」与「重建会话」：仅重建时把标题恢复默认 */
-  const recreatingSessionRef = useRef(false);
-
-  const demoTranscriptSeed = useMemo(() => {
-    const presetId = selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID;
-    const preset = CURATED_DEMO_PRESETS.find((item) => item.id === presetId) || CURATED_DEMO_PRESETS[0];
-    return preset;
-  }, [selectedTranscriptPresetId]);
-
-  const switchDemoPreset = (presetId: string) => {
-    const preset = CURATED_DEMO_PRESETS.find((item) => item.id === presetId) || CURATED_DEMO_PRESETS[0];
-    setSelectedTranscriptPresetId(presetId);
-    setTranscriptText(preset.value);
-    setTitle(preset.label);
-    setTitleDraft(preset.label);
-  };
 
   const selectedInputSource = studioState.context.selectedInputSource;
-  const isTextOnlySource = selectedInputSource === "demo_mode" || selectedInputSource === "transcript";
   const selectedRecognitionBackend = studioState.context.recognitionBackend;
   const activeCaptureSource = studioState.context.captureStatus !== "idle" ? selectedInputSource : null;
   const inputLevel = studioState.context.inputLevel;
@@ -949,15 +1048,6 @@ export function RealtimeStudio() {
   const captureStatus = studioState.context.captureStatus;
   const sttStatus = studioState.context.sttStatus;
   const gateStatus = studioState.context.gateStatus;
-
-  useEffect(() => {
-    if (selectedInputSource !== "demo_mode" || selectedTranscriptPresetId) return;
-    const preset = CURATED_DEMO_PRESETS[0];
-    setSelectedTranscriptPresetId(preset.id);
-    setTranscriptText((current) => (current.trim() ? current : preset.value));
-    setTitle((current) => (current === DEFAULT_REALTIME_SESSION_TITLE ? preset.label : current));
-    setTitleDraft((current) => (current === DEFAULT_REALTIME_SESSION_TITLE ? preset.label : current));
-  }, [selectedInputSource, selectedTranscriptPresetId]);
   const plannerStatus = studioState.context.plannerStatus;
   const mermaidStatus = studioState.context.mermaidStatus;
   const machineError = studioState.context.error;
@@ -966,6 +1056,7 @@ export function RealtimeStudio() {
     0,
     STAGE_TABS.findIndex(([value]) => value === stageTab),
   );
+  const stageTabCount = STAGE_TABS.length;
 
   const authQuery = useQuery({
     queryKey: ["auth", "me"],
@@ -979,6 +1070,131 @@ export function RealtimeStudio() {
     authQuery.error instanceof ApiError &&
     authQuery.error.status === 401;
   const workbenchDataReady = authQuery.isFetched && (isAdmin || isUnauthorizedGuest);
+
+  const annotationsQuery = useQuery({
+    queryKey: ["realtime-annotations", currentSessionId],
+    enabled: Boolean(currentSessionId),
+    queryFn: () => api.getRealtimeSessionAnnotations(currentSessionId as string),
+    retry: false,
+  });
+
+  const saveAnnotationsMutation = useMutation({
+    mutationFn: async (payload: { sessionId: string; doc: AnnotationDoc }) => {
+      return api.putRealtimeSessionAnnotations(payload.sessionId, {
+        version: payload.doc.version,
+        payload: payload.doc.payload as unknown as Record<string, unknown>,
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (!currentSessionId) {
+      lastLoadedSessionIdRef.current = null;
+      return;
+    }
+    if (!annotationsQuery.isSuccess) return;
+    if (lastLoadedSessionIdRef.current === currentSessionId) return;
+
+    const nextPayload = normalizeSessionAnnotationsPayload(annotationsQuery.data.payload);
+    const nextState = {
+      version: typeof annotationsQuery.data.version === "number" ? annotationsQuery.data.version : 1,
+      payload: nextPayload,
+    };
+    setAnnotationsState(nextState);
+    annotationsUndoRef.current = [];
+    lastSavedAnnotationsRef.current = JSON.stringify(nextPayload);
+    lastLoadedSessionIdRef.current = currentSessionId;
+  }, [annotationsQuery.data, annotationsQuery.isSuccess, currentSessionId]);
+
+  useEffect(() => {
+    if (!currentSessionId) return;
+    const payloadKey = JSON.stringify(annotationsState.payload || {});
+    if (!payloadKey || payloadKey === lastSavedAnnotationsRef.current) return;
+
+    const t = window.setTimeout(async () => {
+      try {
+        const res = await saveAnnotationsMutation.mutateAsync({
+          sessionId: currentSessionId,
+          doc: { version: annotationsState.version, payload: annotationsState.payload } as unknown as AnnotationDoc,
+        });
+        const savedPayload = normalizeSessionAnnotationsPayload((res as any).payload);
+        lastSavedAnnotationsRef.current = JSON.stringify(savedPayload);
+        setAnnotationsState((prev) => ({
+          version: typeof (res as any).version === "number" ? (res as any).version : prev.version,
+          payload: savedPayload,
+        }));
+      } catch {
+        // keep local edits; error feedback is handled elsewhere
+      }
+    }, 900);
+
+    return () => window.clearTimeout(t);
+  }, [annotationsState, currentSessionId, saveAnnotationsMutation]);
+
+  const onMermaidAnnotationsChange = (next: AnnotationDoc) => {
+    setAnnotationsState((prev) => {
+      annotationsUndoRef.current.push(structuredClone(prev));
+      if (annotationsUndoRef.current.length > 40) annotationsUndoRef.current.shift();
+      return {
+        version: prev.version + 1,
+        payload: { ...prev.payload, mermaid: next.payload },
+      };
+    });
+  };
+
+  const onStructureAnnotationsChange = (next: AnnotationDoc) => {
+    setAnnotationsState((prev) => {
+      annotationsUndoRef.current.push(structuredClone(prev));
+      if (annotationsUndoRef.current.length > 40) annotationsUndoRef.current.shift();
+      return {
+        version: prev.version + 1,
+        payload: { ...prev.payload, structure: next.payload },
+      };
+    });
+  };
+
+  const undoAnnotations = () => {
+    const prev = annotationsUndoRef.current.pop();
+    if (!prev) return;
+    setAnnotationsState({ version: prev.version + 1, payload: prev.payload });
+  };
+
+  const clearAnnotations = () => {
+    setAnnotationsState((prev) => {
+      annotationsUndoRef.current.push(structuredClone(prev));
+      if (annotationsUndoRef.current.length > 40) annotationsUndoRef.current.shift();
+      const key = stageTab === "structure" ? "structure" : "mermaid";
+      return {
+        version: prev.version + 1,
+        payload: {
+          ...prev.payload,
+          [key]: { items: [], maskStrokes: [] },
+        },
+      };
+    });
+  };
+
+  const mermaidAnnotationsDoc = useMemo(
+    (): AnnotationDoc => ({
+      version: annotationsState.version,
+      payload: annotationsState.payload.mermaid,
+    }),
+    [annotationsState.version, annotationsState.payload.mermaid],
+  );
+
+  const structureAnnotationsDoc = useMemo(
+    (): AnnotationDoc => ({
+      version: annotationsState.version,
+      payload: annotationsState.payload.structure,
+    }),
+    [annotationsState.version, annotationsState.payload.structure],
+  );
+
+  const activeAnnotationPayload =
+    stageTab === "structure" ? annotationsState.payload.structure : annotationsState.payload.mermaid;
+  const activeAnnotationEmpty =
+    (activeAnnotationPayload.items?.length ?? 0) === 0 &&
+    normalizeMaskStrokes(activeAnnotationPayload).length === 0;
 
   const datasets = useQuery({
     queryKey: ["datasets"],
@@ -1052,11 +1268,6 @@ export function RealtimeStudio() {
     if (stored) setCurrentSessionId(stored);
   }, []);
 
-  useEffect(() => {
-    setSelectedCanvasId(null);
-    previousActiveCanvasIdRef.current = null;
-  }, [currentSessionId]);
-
   const inputOptions = useMemo(() => getInputSourceOptions(audioContext), [audioContext]);
   const selectedOption = useMemo<InputSourceOption>(() => {
     return inputOptions.find((item) => item.source === selectedInputSource) || inputOptions[0];
@@ -1084,8 +1295,96 @@ export function RealtimeStudio() {
     () => sessions.data?.find((item) => item.session_id === currentSessionId) ?? null,
     [currentSessionId, sessions.data],
   );
+  const timelineQuery = useQuery({
+    queryKey: ["realtime-timeline", currentSessionId],
+    queryFn: () => api.listRealtimeTimeline(currentSessionId || ""),
+    enabled: Boolean(currentSessionId),
+    staleTime: 5_000,
+    retry: false,
+  });
+  const timelineNodes = timelineQuery.data?.session_id === currentSessionId ? timelineQuery.data.nodes : [];
+  const orderedTimelineNodes = useMemo(() => [...timelineNodes].reverse(), [timelineNodes]);
+  const selectedTimelineNode = useMemo(
+    () => timelineNodes.find((node) => node.snapshot_id === selectedTimelineSnapshotId) ?? null,
+    [selectedTimelineSnapshotId, timelineNodes],
+  );
+  const selectedTimelineOrderedIndex = useMemo(
+    () => orderedTimelineNodes.findIndex((node) => node.snapshot_id === selectedTimelineSnapshotId),
+    [orderedTimelineNodes, selectedTimelineSnapshotId],
+  );
+  const TIMELINE_MAX_VISIBLE_NODES = 7;
+  const TIMELINE_DRAG_THRESHOLD = 8;
+  const isTimelineScrollable = orderedTimelineNodes.length >= TIMELINE_DRAG_THRESHOLD;
+  const timelineScrollStep =
+    timelineViewportWidth > 0
+      ? Math.max(34, (timelineViewportWidth - 12) / Math.max(1, TIMELINE_MAX_VISIBLE_NODES - 1))
+      : 42;
+  const timelineScrollableTrackWidth = Math.max(
+    timelineViewportWidth,
+    12 + timelineScrollStep * Math.max(0, orderedTimelineNodes.length - 1),
+  );
+  const timelineScrollableSelectedLeft =
+    selectedTimelineOrderedIndex >= 0 ? 6 + selectedTimelineOrderedIndex * timelineScrollStep : null;
+  const rollbackPreviewMermaidCode = useMemo(() => {
+    if (!rollbackPreview?.pipeline || typeof rollbackPreview.pipeline !== "object") return "";
+    const mermaidState = rollbackPreview.pipeline.mermaid_state;
+    if (!mermaidState || typeof mermaidState !== "object") return "";
+    const code =
+      typeof (mermaidState as Record<string, unknown>).code === "string"
+        ? String((mermaidState as Record<string, unknown>).code)
+        : typeof (mermaidState as Record<string, unknown>).normalized_code === "string"
+          ? String((mermaidState as Record<string, unknown>).normalized_code)
+          : "";
+    return code.trim();
+  }, [rollbackPreview]);
   const currentSessionClosed =
     currentSession?.status === "closed" || closedSessionMeta?.sessionId === currentSessionId;
+
+  useEffect(() => {
+    const latestSnapshotId = timelineNodes[0]?.snapshot_id ?? null;
+    if (!latestSnapshotId) {
+      setSelectedTimelineSnapshotId(null);
+      setRollbackPreview(null);
+      lastTimelineHeadSnapshotIdRef.current = null;
+      return;
+    }
+    const latestChanged = latestSnapshotId !== lastTimelineHeadSnapshotIdRef.current;
+    lastTimelineHeadSnapshotIdRef.current = latestSnapshotId;
+    if (!selectedTimelineSnapshotId || !timelineNodes.some((node) => node.snapshot_id === selectedTimelineSnapshotId)) {
+      setSelectedTimelineSnapshotId(latestSnapshotId);
+      setAutoFollowLatestTimelineNode(true);
+      return;
+    }
+    if (autoFollowLatestTimelineNode && latestChanged && selectedTimelineSnapshotId !== latestSnapshotId) {
+      setSelectedTimelineSnapshotId(latestSnapshotId);
+    }
+  }, [autoFollowLatestTimelineNode, selectedTimelineSnapshotId, timelineNodes]);
+
+  useEffect(() => {
+    if (!currentSessionId || !selectedTimelineSnapshotId) return;
+    if (!timelineNodes.some((node) => node.snapshot_id === selectedTimelineSnapshotId)) return;
+    rollbackPreviewMutation.mutate({ sessionId: currentSessionId, snapshotId: selectedTimelineSnapshotId });
+  }, [currentSessionId, selectedTimelineSnapshotId, timelineNodes]);
+
+  useEffect(() => {
+    const target = timelineScrollViewportRef.current;
+    if (!target) return;
+    const update = () => setTimelineViewportWidth(target.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [isTimelineScrollable]);
+
+  useEffect(() => {
+    if (!isTimelineScrollable) return;
+    const target = timelineScrollViewportRef.current;
+    if (!target) return;
+    const onScroll = () => setTimelineScrollLeft(target.scrollLeft);
+    onScroll();
+    target.addEventListener("scroll", onScroll, { passive: true });
+    return () => target.removeEventListener("scroll", onScroll);
+  }, [isTimelineScrollable]);
 
   useEffect(() => {
     if (!effectiveError) return;
@@ -1101,21 +1400,6 @@ export function RealtimeStudio() {
       studioSend({ type: "source.select", source: "transcript", backend: "manual" });
     }
   }, [inputOptions, selectedInputSource, studioSend]);
-
-  useEffect(() => {
-    if (selectedInputSource !== "demo_mode") return;
-    const preset =
-      TRANSCRIPT_PRESETS.find((item) => item.id === selectedTranscriptPresetId) ?? TRANSCRIPT_PRESETS[0];
-    if (!preset) return;
-    setTranscriptText(preset.value);
-    studioSend({ type: "transcript.preview", text: preset.value });
-  }, [selectedInputSource, selectedTranscriptPresetId, studioSend]);
-
-  useEffect(() => {
-    if (selectedInputSource !== "transcript") return;
-    setTranscriptText("");
-    studioSend({ type: "transcript.preview", text: "" });
-  }, [selectedInputSource, studioSend]);
 
   useEffect(() => {
     if (!backendOptions.some((item) => item.value === selectedRecognitionBackend && !item.disabled)) {
@@ -1474,7 +1758,7 @@ export function RealtimeStudio() {
     };
 
     const handleEnded = () => {
-      void stopHelperCapture("内录共享已结束。可重新开启本机内录转写，或改回打字输入。");
+      void stopHelperCapture("系统声音共享已结束。你可以重新开始增强模式，或切回 Transcript 输入。");
     };
     stream.getTracks().forEach((track) => track.addEventListener("ended", handleEnded));
 
@@ -1496,19 +1780,34 @@ export function RealtimeStudio() {
   function resetApiCaptureBuffers() {
     apiCaptureSegmentStateRef.current = createAudioSegmentState();
     apiCaptureChunkIdRef.current = 0;
+    apiCaptureDiagRef.current.frameCount = 0;
+    apiCaptureDiagRef.current.maxLevel = 0;
+    apiCaptureDiagRef.current.uploadCount = 0;
   }
 
   async function uploadApiAudioFrame(samples: Float32Array, isFinal = true) {
     const context = apiCaptureContextRef.current;
     if (!context || !samples.length) return;
 
+    const uploadStartedAt = performance.now();
     studioSend({ type: "capture.uploading" });
     studioSend({ type: "stt.working" });
 
     const chunkId = apiCaptureChunkIdRef.current;
     apiCaptureChunkIdRef.current += 1;
+    apiCaptureDiagRef.current.uploadCount += 1;
 
     try {
+      logAsrDiag("upload request started", {
+        session_id: context.sessionId,
+        source: context.source,
+        capture_mode: context.captureMode,
+        chunk_id: chunkId,
+        upload_index: apiCaptureDiagRef.current.uploadCount,
+        sample_count: samples.length,
+        audio_ms: Math.round((samples.length / HELPER_TARGET_SAMPLE_RATE) * 1000),
+        is_final: isFinal,
+      });
       logBrowserRuntime("api_stt upload started", {
         session_id: context.sessionId,
         source: context.source,
@@ -1550,7 +1849,7 @@ export function RealtimeStudio() {
                 .map((segment) => {
                   const text = String(segment?.text || "").trim();
                   if (!text) return null;
-                  return {
+                  return makeTranscriptTurn({
                     speaker: String(segment?.speaker || response.speaker || context.speaker || "speaker"),
                     text,
                     start_ms: Number(segment?.start_ms ?? 0) || 0,
@@ -1558,7 +1857,7 @@ export function RealtimeStudio() {
                     is_final: true,
                     source: context.source,
                     capture_mode: context.captureMode,
-                  } as RealtimeTranscriptTurn | null;
+                  });
                 })
                 .filter((row): row is RealtimeTranscriptTurn => Boolean(row))
             : [];
@@ -1566,7 +1865,7 @@ export function RealtimeStudio() {
           pushLocalCommittedTurns(segmentTurns.reverse());
         } else if (response.text.trim()) {
           pushLocalCommittedTurns([
-            {
+            makeTranscriptTurn({
               speaker: response.speaker || context.speaker || "speaker",
               text: response.text.trim(),
               start_ms: 0,
@@ -1574,7 +1873,7 @@ export function RealtimeStudio() {
               is_final: true,
               source: context.source,
               capture_mode: context.captureMode,
-            },
+            }),
           ]);
         }
       }
@@ -1588,6 +1887,43 @@ export function RealtimeStudio() {
         segments: response.segments ?? null,
         voiceprint: response.voiceprint ?? null,
       });
+      const responseHasText = Boolean(response.text.trim()) || (response.segments?.length ?? 0) > 0;
+      const diagSummary = summarizeAsrDiagnostics(response.diagnostics);
+      const requestMs = Math.round(performance.now() - uploadStartedAt);
+      logAsrDiag(
+        responseHasText ? "upload response with text" : "upload response empty",
+        {
+          session_id: context.sessionId,
+          chunk_id: chunkId,
+          request_ms: requestMs,
+          backend_latency_ms: response.latency_ms,
+          provider: response.provider,
+          model: response.model,
+          is_final: isFinal,
+          text_chars: response.text.trim().length,
+          segment_count: response.segments?.length ?? 0,
+          speaker: response.speaker,
+          voiceprint_mode: response.voiceprint?.mode ?? null,
+          request_url: apiUrl(`/api/v1/realtime/sessions/${context.sessionId}/audio/transcriptions`),
+          browser_proxy_mode: process.env.NEXT_PUBLIC_API_BROWSER_PROXY === "0" ? "direct_api" : "next_rewrite_proxy",
+          backend_request_total_ms: diagSummary.request_total_ms,
+          backend_stt_wall_ms: diagSummary.stt_wall_ms,
+          backend_stt_reported_latency_ms: diagSummary.stt_reported_latency_ms,
+          backend_post_stt_ms: diagSummary.post_stt_ms,
+          backend_voiceprint_ms: diagSummary.voiceprint_ms,
+          backend_ingest_ms: diagSummary.ingest_ms,
+          backend_commit_ms: diagSummary.commit_ms,
+          browser_minus_backend_ms:
+            diagSummary.request_total_ms > 0 ? Math.max(0, requestMs - diagSummary.request_total_ms) : null,
+          backend_minus_stt_ms:
+            diagSummary.request_total_ms > 0
+              ? Math.max(0, diagSummary.request_total_ms - diagSummary.stt_reported_latency_ms)
+              : null,
+          diagnostics_json: JSON.stringify(diagSummary),
+          diagnostics: response.diagnostics ?? {},
+        },
+        responseHasText ? "info" : "warn",
+      );
       if (response.voiceprint?.mode === "feature_split") {
         setNotice({
           tone: "success",
@@ -1610,7 +1946,7 @@ export function RealtimeStudio() {
         });
       }
       if (isFinal) {
-      syncPipelineStatus(response.pipeline);
+        syncPipelineStatus(response.pipeline);
       }
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
       if (!isFinal && chunkId % 2 === 1) {
@@ -1623,6 +1959,18 @@ export function RealtimeStudio() {
       setError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "API STT 上传失败。";
+      logAsrDiag(
+        "upload request failed",
+        {
+          session_id: context.sessionId,
+          source: context.source,
+          capture_mode: context.captureMode,
+          chunk_id: chunkId,
+          request_ms: Math.round(performance.now() - uploadStartedAt),
+          error: message,
+        },
+        "error",
+      );
       logBrowserRuntime(
         "api_stt upload failed",
         {
@@ -1640,10 +1988,27 @@ export function RealtimeStudio() {
     }
   }
 
-  async function flushApiCaptureBuffer(isFinal = true) {
+  async function flushApiCaptureBuffer(isFinal = true, reason = "manual") {
     const state = apiCaptureSegmentStateRef.current;
-    if (!state.activeSampleCount) return;
+    if (!state.activeSampleCount) {
+      logAsrDiag(
+        "flush skipped empty buffer",
+        {
+          reason,
+          is_final: isFinal,
+        },
+        "warn",
+      );
+      return;
+    }
     const merged = mergeSegmentFrames(state.activeFrames, state.activeSampleCount);
+    logAsrDiag("flush queued", {
+      reason,
+      is_final: isFinal,
+      sample_count: merged.length,
+      audio_ms: Math.round((merged.length / HELPER_TARGET_SAMPLE_RATE) * 1000),
+      ...audioSegmentDiag(state, HELPER_TARGET_SAMPLE_RATE),
+    });
     apiCaptureSegmentStateRef.current = createAudioSegmentState();
     apiCaptureUploadQueueRef.current = apiCaptureUploadQueueRef.current.then(() => uploadApiAudioFrame(merged, isFinal));
     await apiCaptureUploadQueueRef.current;
@@ -1658,7 +2023,7 @@ export function RealtimeStudio() {
     apiCaptureFlushQueuedRef.current = false;
     if (flush) {
       try {
-        await flushApiCaptureBuffer(true);
+        await flushApiCaptureBuffer(true, "teardown");
       } catch {
         // keep last surfaced STT error
       }
@@ -1695,6 +2060,8 @@ export function RealtimeStudio() {
     apiCaptureStopRequestedRef.current = false;
     apiCaptureContextRef.current = payload;
     resetApiCaptureBuffers();
+    apiCaptureDiagRef.current.startedAtMs = performance.now();
+    apiCaptureDiagRef.current.lastHeartbeatAtMs = apiCaptureDiagRef.current.startedAtMs;
     apiCaptureUploadQueueRef.current = Promise.resolve();
     apiCaptureFlushPromiseRef.current = null;
     apiCaptureFlushQueuedRef.current = false;
@@ -1708,6 +2075,20 @@ export function RealtimeStudio() {
     const processor = audioContext.createScriptProcessor(4096, sourceNode.channelCount || 2, 1);
     const muteNode = audioContext.createGain();
     muteNode.gain.value = 0;
+    logAsrDiag("capture bridge started", {
+      session_id: payload.sessionId,
+      source: payload.source,
+      capture_mode: payload.captureMode,
+      audio_context_sample_rate: audioContext.sampleRate,
+      target_sample_rate: HELPER_TARGET_SAMPLE_RATE,
+      input_channel_count: sourceNode.channelCount || null,
+      processor_buffer_size: 4096,
+      start_threshold: AUDIO_LEVEL_START_THRESHOLD,
+      continue_threshold: AUDIO_LEVEL_CONTINUE_THRESHOLD,
+      segment_max_ms: AUDIO_SEGMENT_MAX_MS,
+      end_silence_ms: AUDIO_SEGMENT_END_SILENCE_MS,
+      min_speech_ms: AUDIO_SEGMENT_MIN_SPEECH_MS,
+    });
 
     processor.onaudioprocess = (event) => {
       const input = event.inputBuffer;
@@ -1723,12 +2104,43 @@ export function RealtimeStudio() {
       }
 
       const level = calculateAudioLevel(merged);
+      const diag = apiCaptureDiagRef.current;
+      const now = performance.now();
+      diag.frameCount += 1;
+      diag.maxLevel = Math.max(diag.maxLevel, level);
       studioSend({ type: "audio.level", level });
       const action = pushAudioSegmentFrame(apiCaptureSegmentStateRef.current, merged, level, HELPER_TARGET_SAMPLE_RATE);
+      if (now - diag.lastHeartbeatAtMs >= ASR_DIAG_HEARTBEAT_MS) {
+        const segmentState = apiCaptureSegmentStateRef.current;
+        logAsrDiag("capture heartbeat", {
+          session_id: payload.sessionId,
+          source: payload.source,
+          elapsed_ms: Math.round(now - diag.startedAtMs),
+          frame_count: diag.frameCount,
+          current_level: Number(level.toFixed(4)),
+          max_level_since_last: Number(diag.maxLevel.toFixed(4)),
+          chunk_id_next: apiCaptureChunkIdRef.current,
+          ...audioSegmentDiag(segmentState, HELPER_TARGET_SAMPLE_RATE),
+        });
+        diag.lastHeartbeatAtMs = now;
+        diag.maxLevel = 0;
+      }
       if (action === "soft_flush") {
-        void flushApiCaptureBuffer(false);
+        logAsrDiag("vad action soft_flush", {
+          session_id: payload.sessionId,
+          level: Number(level.toFixed(4)),
+          chunk_id_next: apiCaptureChunkIdRef.current,
+          ...audioSegmentDiag(apiCaptureSegmentStateRef.current, HELPER_TARGET_SAMPLE_RATE),
+        });
+        void flushApiCaptureBuffer(false, "vad_soft_flush");
       } else if (action === "final_flush") {
-        void flushApiCaptureBuffer(true);
+        logAsrDiag("vad action final_flush", {
+          session_id: payload.sessionId,
+          level: Number(level.toFixed(4)),
+          chunk_id_next: apiCaptureChunkIdRef.current,
+          ...audioSegmentDiag(apiCaptureSegmentStateRef.current, HELPER_TARGET_SAMPLE_RATE),
+        });
+        void flushApiCaptureBuffer(true, "vad_final_flush");
       }
     };
 
@@ -1771,6 +2183,13 @@ export function RealtimeStudio() {
     }
 
     const sessionId = await ensureSession();
+    logAsrDiag("start requested", {
+      session_id: sessionId,
+      source,
+      backend: selectedRecognitionBackend,
+      stt_profile_id: sttProfileId || null,
+      stt_model: sttModel || null,
+    });
 
     let stream: MediaStream;
     try {
@@ -1784,7 +2203,28 @@ export function RealtimeStudio() {
           return;
         }
       }
+      logAsrDiag("media stream acquired", {
+        session_id: sessionId,
+        source,
+        audio_track_count: stream.getAudioTracks().length,
+        video_track_count: stream.getVideoTracks().length,
+        audio_tracks: stream.getAudioTracks().map((track) => ({
+          label: track.label,
+          enabled: track.enabled,
+          muted: track.muted,
+          ready_state: track.readyState,
+        })),
+      });
     } catch (err) {
+      logAsrDiag(
+        "media stream failed",
+        {
+          session_id: sessionId,
+          source,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "error",
+      );
       setError(
         source === "microphone_browser"
           ? err instanceof Error
@@ -1821,32 +2261,21 @@ export function RealtimeStudio() {
   }
 
   async function stopApiCapture(message = "已停止 API STT 采集。") {
+    logAsrDiag("stop requested", {
+      session_id: apiCaptureContextRef.current?.sessionId ?? null,
+      source: apiCaptureContextRef.current?.source ?? null,
+      next_chunk_id: apiCaptureChunkIdRef.current,
+      ...audioSegmentDiag(apiCaptureSegmentStateRef.current, HELPER_TARGET_SAMPLE_RATE),
+    });
     await teardownApiCaptureGraph({ flush: true });
     studioSend({ type: "capture.stop" });
     setNotice({ tone: "info", text: message });
   }
 
   const createSession = useMutation({
-    onMutate: () => {
-      recreatingSessionRef.current = Boolean(currentSessionId);
-    },
-    mutationFn: async () => {
-      // 重建时会话标题必须在请求里就用默认名：onSuccess 再 setState 无法改写已创建的会话标题
-      const resolvedTitle = recreatingSessionRef.current
-        ? DEFAULT_REALTIME_SESSION_TITLE
-        : title.trim() || DEFAULT_REALTIME_SESSION_TITLE;
-      // Auto-detect diagram type for manual sessions with existing text input
-      let detectedDiagramType = "flowchart";
-      if (selectedInputSource !== "demo_mode" && transcriptText.trim()) {
-        try {
-          const detected = await api.detectDiagramType(transcriptText.trim());
-          detectedDiagramType = detected.diagram_type;
-        } catch {
-          // Fallback to flowchart; Planner will correct on first update
-        }
-      }
-      return api.createRealtimeSession({
-        title: resolvedTitle,
+    mutationFn: () =>
+      api.createRealtimeSession({
+        title,
         dataset_version_slug: datasetVersion || null,
         min_wait_k: 1,
         base_wait_k: 2,
@@ -1858,31 +2287,19 @@ export function RealtimeStudio() {
         stt_profile_id: sttProfileId || null,
         stt_model: sttModel || null,
         diagram_mode: diagramMode,
-        diagram_type:
-          selectedInputSource === "demo_mode"
-            ? mapDiagramHintToMermaidType(demoTranscriptSeed?.diagramType)
-            : detectedDiagramType,
         client_context: currentClientContext(),
-      });
-    },
+      }),
     onSuccess: (data) => {
       setCurrentSessionId(data.session_id);
       setClosedSessionMeta(null);
       setSnapshot(null);
       setLocalCommittedTranscriptTurns([]);
       historyFeedKeysRef.current = [];
-      if (recreatingSessionRef.current) {
-        setTitle(DEFAULT_REALTIME_SESSION_TITLE);
-        setTitleDraft(DEFAULT_REALTIME_SESSION_TITLE);
-      }
       window.localStorage.setItem(LOCAL_SESSION_KEY, data.session_id);
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
-      recreatingSessionRef.current = false;
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
     },
-    onError: (err) => {
-      recreatingSessionRef.current = false;
-      setError((err as Error).message);
-    },
+    onError: (err) => setError((err as Error).message),
   });
 
   const renameSessionMutation = useMutation({
@@ -1911,6 +2328,7 @@ export function RealtimeStudio() {
       setError(null);
       syncPipelineStatus(data.pipeline);
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
     },
     onError: (err) => setError((err as Error).message),
   });
@@ -1938,6 +2356,7 @@ export function RealtimeStudio() {
         setError(null);
         syncPipelineStatus(data.pipeline);
         queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+        queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
       })
       .catch((err) => {
         logBrowserRuntime(
@@ -1960,12 +2379,15 @@ export function RealtimeStudio() {
   }
 
   useEffect(() => {
-    if (currentSessionId) {
-      snapshotMutation.mutate(currentSessionId);
-    }
-    // `useMutation()` returns a new object identity per render; only auto-snapshot when session changes.
+    if (!currentSessionId) return;
+    // Avoid creating a new timeline node on every page refresh.
+    // Only bootstrap a snapshot when timeline data has loaded and is truly empty.
+    if (!timelineQuery.isSuccess) return;
+    if (timelineNodes.length > 0) return;
+    snapshotMutation.mutate(currentSessionId);
+    // `useMutation()` returns a new object identity per render; this effect is driven by timeline state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSessionId]);
+  }, [currentSessionId, timelineNodes.length, timelineQuery.isSuccess]);
 
   useEffect(() => {
     setLocalCommittedTranscriptTurns([]);
@@ -2034,7 +2456,7 @@ export function RealtimeStudio() {
     });
     if (isFinal && text.trim()) {
       pushLocalCommittedTurns([
-        {
+        makeTranscriptTurn({
           speaker: source === "system_audio_helper" ? "system_audio" : "speaker",
           text: text.trim(),
           start_ms: 0,
@@ -2042,7 +2464,7 @@ export function RealtimeStudio() {
           is_final: true,
           source,
           capture_mode: captureMode,
-        },
+        }),
       ]);
     }
     setSnapshot({ session_id: data.session_id, pipeline: data.pipeline, evaluation: data.evaluation });
@@ -2055,6 +2477,7 @@ export function RealtimeStudio() {
     });
     syncPipelineStatus(data.pipeline);
     queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+    queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
   }
 
   const sendTranscript = useMutation({
@@ -2065,13 +2488,10 @@ export function RealtimeStudio() {
     mutationFn: async () => {
       const sessionId = await ensureSession();
       const rows = parseTranscriptInput(transcriptText);
-      const manualSource: InputSource =
-        selectedInputSource === "demo_mode" ? "demo_mode" : "transcript";
       logBrowserRuntime("transcript send started", {
         session_id: sessionId,
         row_count: rows.length,
         rows,
-        input_source: manualSource,
       });
       return api.addRealtimeChunksBatch(sessionId, {
         chunks: rows.map((row, index) => ({
@@ -2079,24 +2499,24 @@ export function RealtimeStudio() {
           text: row.text,
           speaker: row.speaker,
           expected_intent: row.expected_intent || null,
-          metadata: buildChunkMetadata(manualSource, "manual_text"),
+          metadata: buildChunkMetadata("transcript", "manual_text"),
         })),
       });
     },
     onSuccess: (data) => {
       const rows = parseTranscriptInput(transcriptText);
-      const manualSource: InputSource =
-        selectedInputSource === "demo_mode" ? "demo_mode" : "transcript";
       pushLocalCommittedTurns(
         rows
           .map((row, index) => ({
-            speaker: row.speaker,
-            text: row.text.trim(),
-            start_ms: index * 450,
-            end_ms: index * 450,
-            is_final: true,
-            source: manualSource,
-            capture_mode: "manual_text",
+            ...makeTranscriptTurn({
+              speaker: row.speaker,
+              text: row.text.trim(),
+              start_ms: index * 450,
+              end_ms: index * 450,
+              is_final: true,
+              source: "transcript",
+              capture_mode: "manual_text",
+            }),
           }))
           .filter((row) => row.text),
       );
@@ -2109,16 +2529,10 @@ export function RealtimeStudio() {
         coordination_summary: data?.pipeline?.coordination_summary ?? null,
       });
       syncPipelineStatus(data?.pipeline);
-      setNotice({ tone: "success", text: "已写入当前会话。" });
+      setNotice({ tone: "success", text: "Transcript 已写入当前会话。" });
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
-      if (selectedInputSource === "demo_mode") {
-        const presetId = selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID;
-        const preset = CURATED_DEMO_PRESETS.find((item) => item.id === presetId) || CURATED_DEMO_PRESETS[0];
-        setTranscriptText(preset.value);
-        studioSend({ type: "transcript.preview", text: preset.value });
-      } else {
-        setTranscriptText("");
-        studioSend({ type: "transcript.preview", text: "" });
+      if (data?.session_id) {
+        queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
       }
     },
     onError: (err) => {
@@ -2136,6 +2550,7 @@ export function RealtimeStudio() {
     onSuccess: (data) => {
       setSnapshot(data);
       syncPipelineStatus(data.pipeline);
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
     },
     onError: (err) => setError((err as Error).message),
   });
@@ -2151,10 +2566,118 @@ export function RealtimeStudio() {
       syncPipelineStatus(data.pipeline);
       setNotice({ tone: "success", text: "已按节点拖动结果重组 Mermaid 关系。" });
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
     },
     onError: (err) => {
       logBrowserRuntime("diagram relayout failed", { error: (err as Error).message }, "error");
       setError((err as Error).message);
+    },
+  });
+
+  const rollbackPreviewMutation = useMutation({
+    mutationFn: ({ sessionId, snapshotId }: { sessionId: string; snapshotId: string }) =>
+      api.previewRealtimeRollback(sessionId, { snapshot_id: snapshotId }),
+    onMutate: ({ snapshotId }) => {
+      timelinePreviewRequestRef.current = snapshotId;
+    },
+    onSuccess: (data) => {
+      const requestedSnapshotId = timelinePreviewRequestRef.current;
+      if (!requestedSnapshotId || data.snapshot_id !== requestedSnapshotId) {
+        return;
+      }
+      setRollbackPreview(data);
+      setError(null);
+    },
+    onError: (err, variables) => {
+      setRollbackPreview(null);
+      if (err instanceof ApiError && err.status === 404) {
+        if (selectedTimelineSnapshotId === variables.snapshotId) {
+          setSelectedTimelineSnapshotId(null);
+        }
+        timelinePreviewRequestRef.current = null;
+        queryClient.invalidateQueries({ queryKey: ["realtime-timeline", variables.sessionId] });
+        setNotice({ tone: "info", text: "该历史快照已不存在，已刷新时间轴。" });
+        return;
+      }
+      setError((err as Error).message);
+    },
+  });
+
+  const rollbackApplyMutation = useMutation({
+    mutationFn: ({ sessionId, snapshotId }: { sessionId: string; snapshotId: string }) =>
+      api.applyRealtimeRollback(sessionId, { snapshot_id: snapshotId }),
+    onSuccess: (data) => {
+      setSnapshot({
+        session_id: data.session_id,
+        pipeline: data.pipeline,
+        evaluation: data.evaluation || {},
+      });
+      syncPipelineStatus(data.pipeline);
+      setNotice({ tone: "success", text: "已回退到选中的时间节点。" });
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
+      queryClient.invalidateQueries({ queryKey: ["realtime-annotations", data.session_id] });
+    },
+    onError: (err) => setError((err as Error).message),
+  });
+
+  const [rollbackEditOpen, setRollbackEditOpen] = useState(false);
+  const [rollbackEditTurns, setRollbackEditTurns] = useState<RealtimeTranscriptTurnEditable[]>([]);
+
+  const rollbackEditApplyMutation = useMutation({
+    mutationFn: ({
+      sessionId,
+      snapshotId,
+      turns,
+    }: {
+      sessionId: string;
+      snapshotId: string;
+      turns: RealtimeTranscriptTurnEditable[];
+    }) =>
+      api.editApplyRealtimeRollback(sessionId, {
+        snapshot_id: snapshotId,
+        turns,
+      }),
+    onMutate: () => {
+      // Close editor immediately so users are not blocked while recompute runs.
+      setRollbackEditOpen(false);
+      setNotice({ tone: "info", text: "已提交重算请求，正在后台更新主图…" });
+    },
+    onSuccess: (data) => {
+      const mermaidState =
+        data.pipeline?.mermaid_state && typeof data.pipeline.mermaid_state === "object"
+          ? (data.pipeline.mermaid_state as Record<string, unknown>)
+          : null;
+      const hasRenderIssue = Boolean(
+        mermaidState &&
+          (mermaidState.error_message ||
+            mermaidState.compile_ok === false ||
+            mermaidState.render_ok === false),
+      );
+      if (!hasRenderIssue) {
+        setSnapshot({
+          session_id: data.session_id,
+          pipeline: data.pipeline,
+          evaluation: data.evaluation || {},
+        });
+        syncPipelineStatus(data.pipeline);
+      }
+      setRollbackPreview(null);
+      setRollbackEditOpen(false);
+      setNotice(
+        hasRenderIssue
+          ? { tone: "warning", text: "重算已执行，但本次 Mermaid 渲染异常，已保留当前主图。可调整输入后重试。" }
+          : { tone: "success", text: "已保存编辑内容，并从该节点重新生成后续状态。" },
+      );
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
+      queryClient.invalidateQueries({ queryKey: ["realtime-annotations", data.session_id] });
+    },
+    onError: (err) => {
+      setError((err as Error).message);
+      setNotice({ tone: "warning", text: "重算失败，请稍后重试或调整输入内容。" });
     },
   });
 
@@ -2204,8 +2727,8 @@ export function RealtimeStudio() {
         setSnapshot(null);
         setClosedSessionMeta(null);
         studioSend({ type: "capture.stop" });
-        setTitle(DEFAULT_REALTIME_SESSION_TITLE);
-        setTitleDraft(DEFAULT_REALTIME_SESSION_TITLE);
+        setTitle("研究演示会话");
+        setTitleDraft("研究演示会话");
       }
       setNotice({ tone: "success", text: "已删除该会话。" });
       setDeleteSessionConfirmId(null);
@@ -2286,7 +2809,7 @@ export function RealtimeStudio() {
             metadata: buildChunkMetadata("microphone_browser", "browser_speech"),
           });
           pushLocalCommittedTurns([
-            {
+            makeTranscriptTurn({
               speaker: "speaker",
               text,
               start_ms: 0,
@@ -2294,7 +2817,7 @@ export function RealtimeStudio() {
               is_final: true,
               source: "microphone_browser",
               capture_mode: "browser_speech",
-            },
+            }),
           ]);
           setSnapshot({ session_id: data.session_id, pipeline: data.pipeline, evaluation: data.evaluation });
           studioSend({ type: "stt.success", text });
@@ -2348,7 +2871,7 @@ export function RealtimeStudio() {
   async function startBrowserDisplayAudioValidation() {
     clearFeedback();
     if (!window.navigator.mediaDevices?.getDisplayMedia) {
-      setError("当前浏览器不支持共享音频采集。请改用打字输入或本机内录转写。");
+      setError("当前浏览器不支持共享音频采集。请改用 Transcript 输入或增强模式。");
       return;
     }
     try {
@@ -2371,7 +2894,7 @@ export function RealtimeStudio() {
       studioSend({ type: "capture.start" });
       setNotice({
         tone: "warning",
-        text: "浏览器已成功提供共享音频轨道，但当前版本只做能力验证，尚未把共享音频直接转成文本。请改用本机内录转写或打字输入。",
+        text: "浏览器已成功提供共享音频轨道，但当前版本只做能力验证，尚未把共享音频直接转成文本 chunk。请改用增强模式或 Transcript 输入。",
       });
     } catch (err) {
       setError(getDisplayAudioErrorMessage(err instanceof DOMException ? err.name : undefined));
@@ -2419,7 +2942,7 @@ export function RealtimeStudio() {
 
     helperEventSourceRef.current?.close();
     helperEventSourceRef.current = subscribeAudioHelperEvents(
-      (payload) => {
+      (payload: any) => {
         if (payload.error_message) {
           studioSend({ type: "stt.error", message: payload.error_message });
           setError(payload.error_message);
@@ -2427,11 +2950,11 @@ export function RealtimeStudio() {
         if (payload.status === "running") {
           studioSend({ type: "capture.start" });
           studioSend({ type: "stt.working" });
-          setNotice({ tone: "success", text: "本机内录已启动，正在等待小助手推送识别结果。" });
+          setNotice({ tone: "success", text: "增强模式已启动，等待本地辅助层推送识别结果。" });
         }
         if (payload.status === "stopped") {
           studioSend({ type: "capture.stop" });
-          setNotice({ tone: "info", text: "本机内录已停止。" });
+          setNotice({ tone: "info", text: "增强模式已停止。" });
         }
         if (payload.text?.trim()) {
           studioSend({ type: "transcript.preview", text: payload.text.trim() });
@@ -2467,18 +2990,18 @@ export function RealtimeStudio() {
       studioSend({ type: "transcript.preview", text: "" });
       await startHelperAudioBridge(stream, sessionId);
       studioSend({ type: "capture.start" });
-      setNotice({ tone: "success", text: "本机内录已启动，正在把共享到的声音分段转写并写入当前会话。" });
+      setNotice({ tone: "success", text: "增强模式已启动，正在把共享音频分段转写并写入当前会话。" });
     } catch (err) {
       stream.getTracks().forEach((track) => track.stop());
       helperEventSourceRef.current?.close();
       helperEventSourceRef.current = null;
       await audioHelper.stopCapture().catch(() => undefined);
-      studioSend({ type: "stt.error", message: err instanceof Error ? err.message : "本机内录启动失败" });
-      setError(err instanceof Error ? err.message : "本机内录启动失败");
+      studioSend({ type: "stt.error", message: err instanceof Error ? err.message : "增强模式启动失败" });
+      setError(err instanceof Error ? err.message : "增强模式启动失败");
     }
   }
 
-  async function stopHelperCapture(message = "已请求停止本机内录。") {
+  async function stopHelperCapture(message = "已请求停止增强模式采集。") {
     helperEventSourceRef.current?.close();
     helperEventSourceRef.current = null;
     await teardownHelperAudioGraph({ flush: true });
@@ -2497,43 +3020,18 @@ export function RealtimeStudio() {
     return Array.isArray(activeSnapshot?.pipeline?.events) ? activeSnapshot.pipeline.events : [];
   }, [activeSnapshot?.pipeline?.events]);
   const mermaidState = activeSnapshot?.pipeline?.mermaid_state ?? null;
+  const isSelectedTimelinePreviewReady = Boolean(
+    rollbackPreviewMermaidCode &&
+      selectedTimelineSnapshotId &&
+      rollbackPreview?.snapshot_id === selectedTimelineSnapshotId,
+  );
+  const isTimelinePreviewActive = isSelectedTimelinePreviewReady;
+  const displayedMermaidCode = isTimelinePreviewActive
+    ? rollbackPreviewMermaidCode
+    : mermaidState?.code || mermaidState?.normalized_code || "";
   const rendererGroups =
     rendererState.groups || activeSnapshot?.pipeline?.graph_state?.current_graph_ir?.groups || [];
   const currentGraphPayload = activeSnapshot?.pipeline?.graph_state?.current_graph_ir ?? null;
-  const canvasState = activeSnapshot?.pipeline?.canvas_state ?? null;
-  const canvasList: Array<Record<string, any>> = Array.isArray(canvasState?.canvases) ? canvasState.canvases : [];
-  const activeCanvasId =
-    typeof canvasState?.active_canvas_id === "string"
-      ? canvasState.active_canvas_id
-      : typeof activeSnapshot?.pipeline?.graph_state?.active_canvas_id === "string"
-        ? activeSnapshot.pipeline.graph_state.active_canvas_id
-        : null;
-  const activeCanvasIndex =
-    typeof canvasState?.active_canvas_index === "number"
-      ? canvasState.active_canvas_index
-      : Math.max(
-          0,
-          canvasList.findIndex((canvas) => canvas?.canvas_id === activeCanvasId),
-        );
-  const viewedCanvas =
-    (selectedCanvasId ? canvasList.find((canvas) => canvas?.canvas_id === selectedCanvasId) : null) ||
-    (activeCanvasId ? canvasList.find((canvas) => canvas?.canvas_id === activeCanvasId) : null) ||
-    canvasList[0] ||
-    null;
-  const viewedCanvasIndex = viewedCanvas
-    ? Math.max(
-        0,
-        canvasList.findIndex((canvas) => canvas?.canvas_id === viewedCanvas.canvas_id),
-      )
-    : 0;
-  const isViewingHistoricalCanvas = Boolean(
-    viewedCanvas?.canvas_id && activeCanvasId && viewedCanvas.canvas_id !== activeCanvasId,
-  );
-  const displayedRendererState = viewedCanvas?.renderer_state || rendererState;
-  const displayedMermaidState = viewedCanvas?.mermaid_state ?? mermaidState;
-  const displayedRendererGroups = displayedRendererState.groups || viewedCanvas?.graph_ir?.groups || rendererGroups;
-  const displayedGraphPayload = viewedCanvas?.graph_ir ?? currentGraphPayload;
-  const displayedCanvasCount = canvasList.length || 1;
   const mermaidExportRootId = "realtime-mermaid-export";
   const transcriptState = useMemo(() => readTranscriptState(activeSnapshot?.pipeline), [activeSnapshot?.pipeline]);
   const transcriptDownloads = useMemo(() => {
@@ -2566,6 +3064,30 @@ export function RealtimeStudio() {
   );
   const activeTranscriptTurn = transcriptDisplayState.activeTurn;
   const archivedTranscriptTurns = transcriptDisplayState.archivedTurns;
+  const previewArchivedTranscriptTurns = useMemo(() => {
+    if (selectedInputSource !== "transcript") return archivedTranscriptTurns;
+    const rows = parseTranscriptInput(transcriptText).filter((row) => row.text.trim());
+    const uniqueSpeakers = new Set(rows.map((row) => (row.speaker || "speaker").trim().toLowerCase()));
+    const shouldForceDraftPreview = uniqueSpeakers.size >= 2;
+    if (!rows.length) return archivedTranscriptTurns;
+    const now = Date.now();
+    const draftTurns = rows
+      .map((row, index) => ({
+        key: `draft_${index}`,
+        speaker: row.speaker || "speaker",
+        text: row.text.trim(),
+        start_ms: index * 450,
+        end_ms: index * 450,
+        is_final: true,
+        source: "transcript" as const,
+        capture_mode: "manual_text" as const,
+        origin: "local" as const,
+        observedAt: now - index,
+      }))
+      .reverse();
+    if (shouldForceDraftPreview) return draftTurns;
+    return archivedTranscriptTurns.length ? archivedTranscriptTurns : draftTurns;
+  }, [archivedTranscriptTurns, selectedInputSource, transcriptText]);
   const currentSubtitleText = useMemo(() => {
     const live = liveTranscript.trim();
     if (live) return live;
@@ -2578,9 +3100,39 @@ export function RealtimeStudio() {
       return;
     }
     try {
-      const fileName = `${sanitizeDownloadFileName(titleDisplay || currentSessionId)}_graph.svg`;
+      const base = sanitizeDownloadFileName(titleDisplay || currentSessionId);
+      const fileName = `${base}_graph.svg`;
       downloadCurrentMermaidSvg(mermaidExportRootId, fileName);
-      setNotice({ tone: "success", text: "图表 SVG 已开始下载。" });
+      const p = annotationsState.payload;
+      const hasMermaidAnn =
+        (p.mermaid.items?.length ?? 0) > 0 || normalizeMaskStrokes(p.mermaid).length > 0;
+      const hasStructureAnn =
+        (p.structure.items?.length ?? 0) > 0 || normalizeMaskStrokes(p.structure).length > 0;
+      if (hasMermaidAnn || hasStructureAnn) {
+        try {
+          const parts: string[] = [];
+          if (hasMermaidAnn && document.getElementById("s2g-annotation-host-mermaid")) {
+            downloadAnnotationsSvg(`${base}_annotations_mermaid.svg`, "s2g-annotation-host-mermaid");
+            parts.push("主图批注");
+          }
+          if (hasStructureAnn && document.getElementById("s2g-annotation-host-structure")) {
+            downloadAnnotationsSvg(`${base}_annotations_structure.svg`, "s2g-annotation-host-structure");
+            parts.push("结构批注");
+          }
+          if (!parts.length) {
+            setNotice({ tone: "warning", text: "图表 SVG 已下载。批注层未挂载，未导出批注 SVG。" });
+          } else {
+            setNotice({
+              tone: "warning",
+              text: `图表 SVG 已下载；已另存 ${parts.join("、")}（SVG 需叠加查看）。`,
+            });
+          }
+        } catch {
+          setNotice({ tone: "warning", text: "图表 SVG 已下载。批注导出失败（可能当前页未启用批注层）。" });
+        }
+      } else {
+        setNotice({ tone: "success", text: "图表 SVG 已开始下载。" });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "当前没有可下载的图表。");
     }
@@ -2616,91 +3168,6 @@ export function RealtimeStudio() {
 
     historyFeedKeysRef.current = currentKeys;
   }, [archivedTranscriptTurns, currentSessionId]);
-
-  useEffect(() => {
-    if (!canvasList.length) {
-      if (selectedCanvasId) setSelectedCanvasId(null);
-      previousActiveCanvasIdRef.current = null;
-      return;
-    }
-    if (selectedCanvasId && !canvasList.some((canvas) => canvas?.canvas_id === selectedCanvasId)) {
-      setSelectedCanvasId(null);
-    }
-  }, [canvasList, selectedCanvasId]);
-
-  useEffect(() => {
-    if (!activeCanvasId) {
-      previousActiveCanvasIdRef.current = null;
-      return;
-    }
-    const previousActiveCanvasId = previousActiveCanvasIdRef.current;
-    if (previousActiveCanvasId && previousActiveCanvasId !== activeCanvasId) {
-      if (!selectedCanvasId || selectedCanvasId === previousActiveCanvasId) {
-        setSelectedCanvasId(null);
-      }
-    }
-    previousActiveCanvasIdRef.current = activeCanvasId;
-  }, [activeCanvasId, selectedCanvasId]);
-
-  function jumpCanvasBy(delta: number) {
-    if (!canvasList.length) return;
-    const nextIndex = Math.max(0, Math.min(viewedCanvasIndex + delta, canvasList.length - 1));
-    const nextCanvas = canvasList[nextIndex];
-    if (!nextCanvas) return;
-    if (activeCanvasId && nextCanvas.canvas_id === activeCanvasId) {
-      setSelectedCanvasId(null);
-      return;
-    }
-    setSelectedCanvasId(nextCanvas.canvas_id);
-  }
-
-  function resetCanvasView() {
-    setSelectedCanvasId(null);
-  }
-
-  function renderCanvasSwitcher() {
-    if (!canvasList.length) return null;
-    return (
-      <div className="flex w-full flex-wrap items-center justify-end gap-1.5">
-        <span className="text-[10px] text-theme-4">
-          {isViewingHistoricalCanvas ? `历史画布，当前写入画布 ${activeCanvasIndex + 1}` : `当前画布 ${activeCanvasIndex + 1}`}
-        </span>
-        <Button
-          type="button"
-          variant="secondary"
-          className="h-7 w-7 min-w-0 rounded-lg p-0"
-          onClick={() => jumpCanvasBy(-1)}
-          disabled={viewedCanvasIndex <= 0}
-          aria-label="查看上一张画布"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <Badge className="px-2 py-1 text-[10px]">
-          {`画布 ${viewedCanvasIndex + 1} / ${displayedCanvasCount}${isViewingHistoricalCanvas ? " · 历史" : " · 当前"}`}
-        </Badge>
-        <Button
-          type="button"
-          variant="secondary"
-          className="h-7 w-7 min-w-0 rounded-lg p-0"
-          onClick={() => jumpCanvasBy(1)}
-          disabled={viewedCanvasIndex >= displayedCanvasCount - 1}
-          aria-label="查看下一张画布"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-        {isViewingHistoricalCanvas ? (
-          <Button
-            type="button"
-            variant="secondary"
-            className="h-7 rounded-lg px-2 text-[10px]"
-            onClick={resetCanvasView}
-          >
-            回到当前
-          </Button>
-        ) : null}
-      </div>
-    );
-  }
 
   function handleMermaidNodeRelayout(payload: MermaidNodeRelayoutPayload) {
     if (!currentSessionId || relayoutMutation.isPending) return;
@@ -2845,26 +3312,26 @@ export function RealtimeStudio() {
     currentSessionClosed
       ? false
       : selectedRecognitionBackend === "browser_speech"
-      ? !listening
-      : selectedRecognitionBackend === "browser_display_validation"
-        ? activeCaptureSource !== "system_audio_browser_experimental"
-        : selectedRecognitionBackend === "local_helper"
-          ? activeCaptureSource !== "system_audio_helper"
-          : selectedRecognitionBackend === "api_stt"
-            ? captureStatus === "idle"
-            : false;
+        ? !listening
+        : selectedRecognitionBackend === "browser_display_validation"
+          ? activeCaptureSource !== "system_audio_browser_experimental"
+          : selectedRecognitionBackend === "local_helper"
+            ? activeCaptureSource !== "system_audio_helper"
+            : selectedRecognitionBackend === "api_stt"
+              ? captureStatus === "idle"
+              : false;
   const canStopCapture =
     currentSessionClosed
       ? false
       : selectedRecognitionBackend === "browser_speech"
-      ? listening
-      : selectedRecognitionBackend === "browser_display_validation"
-        ? activeCaptureSource === "system_audio_browser_experimental"
-        : selectedRecognitionBackend === "local_helper"
-          ? activeCaptureSource === "system_audio_helper"
-          : selectedRecognitionBackend === "api_stt"
-            ? captureStatus !== "idle"
-            : false;
+        ? listening
+        : selectedRecognitionBackend === "browser_display_validation"
+          ? activeCaptureSource === "system_audio_browser_experimental"
+          : selectedRecognitionBackend === "local_helper"
+            ? activeCaptureSource === "system_audio_helper"
+            : selectedRecognitionBackend === "api_stt"
+              ? captureStatus !== "idle"
+              : false;
 
   /** @description 主舞台顶栏：与抽屉内相同的开始/暂停（停止）采集逻辑 */
   async function stageStartCapture() {
@@ -2872,7 +3339,7 @@ export function RealtimeStudio() {
       setNotice({ tone: "warning", text: "当前会话已结束，请重建会话后继续采集。" });
       return;
     }
-    if (selectedInputSource === "transcript" || selectedInputSource === "demo_mode") return;
+    if (selectedInputSource === "transcript") return;
     if (selectedInputSource === "microphone_browser") {
       if (selectedRecognitionBackend === "browser_speech") return startRecognition();
       if (selectedRecognitionBackend === "api_stt") return startApiCapture();
@@ -2889,7 +3356,7 @@ export function RealtimeStudio() {
 
   async function stageStopCapture() {
     if (currentSessionClosed) return;
-    if (selectedInputSource === "transcript" || selectedInputSource === "demo_mode") return;
+    if (selectedInputSource === "transcript") return;
     if (selectedInputSource === "microphone_browser") {
       if (selectedRecognitionBackend === "browser_speech") {
         stopRecognition();
@@ -2917,12 +3384,8 @@ export function RealtimeStudio() {
     }
   }
 
-  const canStartStageCapture = !isTextOnlySource && canStartCapture;
-  const canStopStageCapture = !isTextOnlySource && canStopCapture;
-  const startRecordingPrimaryStyle = canStartStageCapture;
-  const canSendTranscriptChunk =
-    !currentSessionClosed && !sendTranscript.isPending && Boolean(transcriptText.trim());
-  const sendTranscriptPrimaryStyle = canSendTranscriptChunk;
+  const canStartStageCapture = selectedInputSource !== "transcript" && canStartCapture;
+  const canStopStageCapture = selectedInputSource !== "transcript" && canStopCapture;
   const titleDisplay = title.trim() || "未命名会话";
 
   function startTitleEdit() {
@@ -2959,7 +3422,7 @@ export function RealtimeStudio() {
   }
 
   if (authQuery.isLoading) {
-  return (
+    return (
       <div className="flex min-h-[50vh] items-center justify-center px-4 text-sm text-theme-4">
         正在加载工作台…
       </div>
@@ -2994,6 +3457,151 @@ export function RealtimeStudio() {
           {notice.text}
         </div>
       ) : null}
+      {timelineHoverTooltip && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="pointer-events-none fixed z-[24050] -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md border border-theme-default bg-surface-1 px-1.5 py-0.5 text-[10px] text-theme-2 shadow-sm"
+              style={{
+                left: `${timelineHoverTooltip.x}px`,
+                top: `${timelineHoverTooltip.y}px`,
+              }}
+            >
+              {timelineHoverTooltip.text}
+            </div>,
+            document.body,
+          )
+        : null}
+      {rollbackEditOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[22000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]">
+              <Card className="w-full max-w-[min(920px,96vw)] overflow-hidden rounded-[22px] border border-theme-default bg-surface-1 p-0 shadow-2xl">
+                <div className="flex items-center justify-between gap-3 border-b border-theme-subtle px-5 py-4">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-theme-1">编辑回溯节点的历史输入</div>
+                    <div className="mt-1 text-[11px] text-theme-4">
+                      保存后会覆盖该节点之后的时间轴，并从这里重新生成。
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-8 shrink-0 px-3 text-xs font-semibold"
+                    onClick={() => setRollbackEditOpen(false)}
+                    disabled={rollbackEditApplyMutation.isPending}
+                  >
+                    关闭
+                  </Button>
+                </div>
+                <div className="max-h-[min(70vh,560px)] overflow-auto px-5 py-4">
+                  <div className="flex flex-col gap-2">
+                    {rollbackEditTurns.length ? (
+                      rollbackEditTurns.map((turn, index) => (
+                        (() => {
+                          const tone = transcriptSpeakerCardTone(turn.speaker);
+                          return (
+                        <div
+                          key={index}
+                          className={`grid grid-cols-[140px_minmax(0,1fr)_auto] items-start gap-2 rounded-xl border p-3 ${tone.card}`}
+                          style={tone.style}
+                        >
+                          <Input
+                            value={turn.speaker}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              setRollbackEditTurns((prev) =>
+                                prev.map((t, i) => (i === index ? { ...t, speaker: next } : t)),
+                              );
+                            }}
+                            className={`h-8 rounded-lg border text-xs ${tone.speaker} ${tone.body}`}
+                            style={tone.speakerTagStyle}
+                            placeholder="speaker"
+                          />
+                          <Textarea
+                            value={turn.text}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              setRollbackEditTurns((prev) =>
+                                prev.map((t, i) => (i === index ? { ...t, text: next } : t)),
+                              );
+                            }}
+                            className={`min-h-[2.5rem] resize-y rounded-lg border text-xs ${tone.body}`}
+                            style={{ ...tone.contentStyle, ...tone.style }}
+                            placeholder="输入这一轮的内容…"
+                          />
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="h-8 shrink-0 px-2 text-xs"
+                            onClick={() => setRollbackEditTurns((prev) => prev.filter((_, i) => i !== index))}
+                            disabled={rollbackEditApplyMutation.isPending}
+                            title="删除这一条"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                          );
+                        })()
+                      ))
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-theme-default bg-surface-2 px-4 py-6 text-center text-xs text-theme-3">
+                        这个节点没有可编辑的 turns（或还未加载）。你可以先新增一条。
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-8 px-3 text-xs font-semibold"
+                      onClick={() =>
+                        setRollbackEditTurns((prev) => [...prev, { speaker: "speaker", text: "" }])
+                      }
+                      disabled={rollbackEditApplyMutation.isPending}
+                    >
+                      新增一条
+                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-8 px-3 text-xs font-semibold"
+                        onClick={() => setRollbackEditOpen(false)}
+                        disabled={rollbackEditApplyMutation.isPending}
+                      >
+                        取消
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        className="h-8 px-3 text-xs font-semibold"
+                        onClick={() => {
+                          if (!currentSessionId || !selectedTimelineSnapshotId) return;
+                          setRollbackEditOpen(false);
+                          rollbackEditApplyMutation.mutate({
+                            sessionId: currentSessionId,
+                            snapshotId: selectedTimelineSnapshotId,
+                            turns: rollbackEditTurns
+                              .map((t) => ({ speaker: String(t.speaker || "speaker"), text: String(t.text || "") }))
+                              .filter((t) => t.text.trim().length > 0),
+                          });
+                        }}
+                        disabled={
+                          !currentSessionId ||
+                          !selectedTimelineSnapshotId ||
+                          rollbackEditApplyMutation.isPending ||
+                          currentSessionClosed
+                        }
+                      >
+                        {rollbackEditApplyMutation.isPending ? "保存中…" : "保存并重算"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </div>,
+            document.body,
+          )
+        : null}
 
       <div className="flex h-full flex-col overflow-hidden space-y-4">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
@@ -3007,7 +3615,7 @@ export function RealtimeStudio() {
             <p className="hidden max-w-md text-[11px] leading-snug text-theme-4 md:block">
               开麦或发送 Transcript 后，主图与结构视图会更新。
             </p>
-            </div>
+          </div>
           <div className="ml-auto flex min-w-0 items-center justify-end gap-2 pr-12 sm:pr-14">
             <div className="group relative">
               <Badge
@@ -3075,7 +3683,7 @@ export function RealtimeStudio() {
             </div>
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-hidden pb-0 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(280px,3fr)_minmax(0,7fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
+        <div className="flex-1 min-h-0 overflow-hidden pb-0 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(300px,3fr)_minmax(0,7fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
         {studioPage === 1 ? (
           <Card className="soft-enter relative order-1 flex min-h-0 min-w-0 flex-col space-y-3 text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none">
           <div
@@ -3096,10 +3704,7 @@ export function RealtimeStudio() {
                 onClick={() => setInputSourceMenuOpen((open) => !open)}
               >
                 <span className="truncate">
-                  {selectedOption.label}
-                  {shouldShowCapabilityStatus(selectedOption.source)
-                    ? ` · ${capabilityStatusLabel(selectedOption.capability_status)}`
-                    : ""}
+                  {selectedOption.label} · {selectedOption.capability_status}
                 </span>
                 <ChevronDown
                   className={`h-4 w-4 shrink-0 text-theme-4 transition-transform duration-200 ${inputSourceMenuOpen ? "rotate-180" : ""}`}
@@ -3135,11 +3740,7 @@ export function RealtimeStudio() {
                             </span>
                             <span className="truncate">{option.label}</span>
             </div>
-                          {shouldShowCapabilityStatus(option.source) ? (
-                            <span className="ml-2 shrink-0 text-xs text-theme-4">
-                              {capabilityStatusLabel(option.capability_status)}
-                            </span>
-                          ) : null}
+                          <span className="ml-2 shrink-0 text-xs text-theme-4">{option.capability_status}</span>
                         </button>
                       );
                     })}
@@ -3150,8 +3751,8 @@ export function RealtimeStudio() {
             <p className="text-[11px] leading-relaxed text-theme-3">
               {selectedOption.description}
             </p>
-            {/* 声纹盲认仅与语音/STT 相关；演示和文本模式不展示 */}
-            {!isTextOnlySource ? (
+            {/* 声纹盲认仅与语音/STT 相关；纯文本 Transcript 输入时不展示 */}
+            {selectedInputSource !== "transcript" ? (
               <div className="flex min-h-[2rem] items-center justify-between gap-2 rounded-lg border border-theme-subtle bg-surface-muted px-2 py-1">
                 {!isAdmin ? (
                   <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-theme-3">
@@ -3208,210 +3809,17 @@ export function RealtimeStudio() {
                 )}
               </div>
             ) : null}
-            {selectedInputSource !== "demo_mode" ? (
-              !audioContext?.is_desktop ? (
-                <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
+            {!audioContext?.is_desktop ? (
+              <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
                 移动端不提供系统声音相关采集入口。
               </div>
             ) : !systemAudioExperimentalVisible ? (
-                <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
-                  实验性「共享屏幕音频」仅 Chrome/Edge；要稳定听电脑里的声音请用「本机内录转写」并启动本机 audio helper。
+              <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
+                实验性「共享屏幕音频」仅 Chrome/Edge；可用「增强模式」+ 本机 audio helper。
               </div>
-              ) : null
             ) : null}
           </div>
 
-          {/* 纯文本 / 演示：Tab「当前输入」+「历史转写」（与语音侧一致） */}
-          {(selectedInputSource === "demo_mode" || selectedInputSource === "transcript") && (
-            <div
-              className={`relative z-[2] flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border px-2.5 py-2 transition-[border-color,box-shadow,background] border-theme-subtle bg-gradient-to-b from-[color:var(--accent)]/[0.06] to-surface-muted`}
-            >
-              <Tabs.Root
-                value={transcriptSidebarTab}
-                onValueChange={setTranscriptSidebarTab}
-                className="flex min-h-0 flex-1 flex-col"
-              >
-                <div className="flex shrink-0 flex-wrap items-end justify-between gap-x-3 gap-y-2 border-b border-theme-subtle">
-                  <Tabs.List className="flex min-w-0 gap-1 sm:gap-5" aria-label="文本与历史">
-                    <Tabs.Trigger
-                      value="panel-input"
-                      className="-mb-px border-b-2 border-transparent px-0.5 py-2 text-left text-sm font-semibold text-theme-3 outline-none transition-colors data-[state=active]:border-[color:var(--accent)] data-[state=active]:text-theme-1 data-[state=inactive]:hover:text-theme-2 focus-visible:ring-2 focus-visible:ring-theme-focus focus-visible:ring-offset-2"
-                    >
-                      当前输入
-                    </Tabs.Trigger>
-                    <Tabs.Trigger
-                      value="panel-history"
-                      className="-mb-px border-b-2 border-transparent px-0.5 py-2 text-left text-sm font-semibold text-theme-3 outline-none transition-colors data-[state=active]:border-[color:var(--accent)] data-[state=active]:text-theme-1 data-[state=inactive]:hover:text-theme-2 focus-visible:ring-2 focus-visible:ring-theme-focus focus-visible:ring-offset-2"
-                    >
-                      历史转写
-                    </Tabs.Trigger>
-                  </Tabs.List>
-                  <div className="flex flex-wrap items-center justify-end gap-1.5 pb-2">
-                    {currentSessionClosed ? <Badge className="text-[9px]">已结束</Badge> : null}
-                    {selectedInputSource === "demo_mode" ? (
-                      <Badge className="text-[9px]">演示脚本</Badge>
-                    ) : (
-                      <Badge className="text-[9px]">手动输入</Badge>
-                    )}
-            </div>
-                </div>
-                <div className="mt-1.5 flex shrink-0 flex-wrap gap-1.5">
-                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                    轮次：{transcriptState.turnCount}
-                  </Badge>
-                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                    说话人：{transcriptState.speakerCount}
-                  </Badge>
-                  <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                    Chunk：{transcriptState.chunkCount}
-                  </Badge>
-                </div>
-
-                <Tabs.Content
-                  value="panel-input"
-                  className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden outline-none data-[state=inactive]:hidden"
-                >
-                  <div className="flex min-h-0 flex-1 flex-col gap-2">
-                    {selectedInputSource === "demo_mode" && (
-                      <label className="text-[12px] font-medium text-theme-2">
-                        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-4">
-                          演示类型
-                        </span>
-                        <select
-                          className="flex h-9 w-full items-center justify-between rounded-md border border-theme-default bg-surface-2 px-3 text-sm text-theme-1 outline-none transition hover:border-theme-strong focus-visible:ring-2 focus-visible:ring-theme-focus"
-                          value={selectedTranscriptPresetId || DEFAULT_DEMO_PRESET_ID}
-                          onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                            switchDemoPreset(event.target.value);
-                          }}
-                        >
-                          {CURATED_DEMO_PRESETS.map((preset) => (
-                            <option key={preset.id} value={preset.id}>
-                              {preset.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
-                    {selectedInputSource === "transcript" && (
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-4">文本输入</div>
-                    )}
-                <Textarea
-                      className="min-h-[10rem] flex-1 resize-y text-[12px] leading-relaxed"
-                      rows={10}
-                  value={transcriptText}
-                      disabled={currentSessionClosed}
-                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
-                    const next = event.target.value;
-                    setTranscriptText(next);
-                    studioSend({ type: "transcript.preview", text: next });
-                  }}
-                />
-                  </div>
-                  <div className="flex min-w-0 shrink-0 flex-wrap items-stretch gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                      disabled={!canSendTranscriptChunk}
-                      className={`min-h-[2.75rem] min-w-0 flex-1 px-3 text-xs font-semibold transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-45 ${
-                        sendTranscriptPrimaryStyle
-                          ? "border-violet-200/90 bg-violet-700/70 text-violet-50 shadow-[0_0_0_1px_rgba(139,92,246,0.32)_inset,0_10px_22px_rgba(109,40,217,0.36)] hover:border-violet-200/95 hover:bg-violet-700/75 focus-visible:ring-violet-200/80"
-                          : "border-violet-900/50 bg-violet-950/45 text-violet-200 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-violet-700"
-                      }`}
-                      onClick={() => {
-                        sendTranscript.mutate();
-                      }}
-                    >
-                      <Send className="h-3.5 w-3.5 shrink-0" />
-                      {currentSessionClosed
-                        ? "会话已结束"
-                        : selectedInputSource === "demo_mode"
-                          ? "生成演示图表"
-                          : "发送文本"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="h-auto min-h-[2.75rem] shrink-0 px-3 text-xs font-semibold text-theme-3 hover:bg-surface-muted hover:text-theme-2"
-                      disabled={
-                        currentSessionClosed || sendTranscript.isPending || !transcriptText.trim()
-                      }
-                      onClick={() => {
-                        setTranscriptText("");
-                        studioSend({ type: "transcript.preview", text: "" });
-                      }}
-                    >
-                      清空输入
-                </Button>
-                  </div>
-                  <p className="text-[10px] leading-snug text-theme-4">
-                    {selectedInputSource === "demo_mode"
-                      ? "有内容时主按钮高亮；发送后恢复当前演示脚本。历史转写为只读，改图请再发一段或重建会话。"
-                      : "有内容时主按钮高亮；发送后清空输入框。历史转写仅展示已入库轮次，不能直接改图——请在本框继续发送新内容。"}
-                  </p>
-                </Tabs.Content>
-
-                <Tabs.Content
-                  value="panel-history"
-                  className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden outline-none data-[state=inactive]:hidden"
-                >
-                  <div className="flex min-h-[9rem] flex-1 flex-col overflow-hidden rounded-xl border border-theme-subtle bg-surface-muted/88">
-                    <div className="flex shrink-0 justify-end border-b border-theme-subtle px-3 py-1.5">
-                      <div className="text-[10px] text-theme-4">
-                        {archivedTranscriptTurns.length ? `${archivedTranscriptTurns.length} / 10` : "等待归档"}
-                      </div>
-                    </div>
-                    <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
-                      {archivedTranscriptTurns.length ? (
-                        <div className="space-y-2.5">
-                          {archivedTranscriptTurns.map((turn, index) => (
-                            <div
-                              key={turn.key || `${turn.speaker}-${turn.start_ms}-${index}`}
-                              className="rounded-lg border border-theme-subtle bg-surface-1/70 px-3 py-2"
-                            >
-                              <div className="flex items-center justify-between gap-2 text-[10px] text-theme-4">
-                                <span className="truncate font-semibold text-theme-2">{turn.speaker || "speaker"}</span>
-                                <span className="shrink-0">
-                                  {formatRelativeTranscriptTime(turn.start_ms)} -{" "}
-                                  {formatRelativeTranscriptTime(turn.end_ms)}
-                                </span>
-                              </div>
-                              <div className="mt-1 whitespace-pre-wrap text-[12px] leading-6 text-theme-2">{turn.text}</div>
-                              <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-theme-4">
-                                <span>
-                                  {turn.origin === "server"
-                                    ? "server transcript"
-                                    : turn.origin === "event"
-                                      ? "event fallback"
-                                      : "local instant"}
-                                </span>
-                                <span>{turn.is_final ? "final" : "pending"}</span>
-                              </div>
-                            </div>
-                          ))}
-              </div>
-            ) : (
-                        <div className="flex h-full min-h-[6rem] items-center justify-center rounded-lg border border-dashed border-[color:var(--accent)]/30 bg-[color:var(--accent)]/[0.04] px-3 py-3 text-center text-[12px] leading-relaxed text-theme-3">
-                          {currentSessionClosed
-                            ? "当前会话没有可回看的历史转写。"
-                            : "发送成功后的轮次会出现在这里；草稿在「当前输入」继续编辑。"}
-              </div>
-            )}
-                    </div>
-                  </div>
-                </Tabs.Content>
-              </Tabs.Root>
-              <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-theme-4">
-                {currentSessionClosed
-                  ? "会话结束后保留只读字幕和下载入口；如需继续，请重建会话。"
-                  : selectedInputSource === "demo_mode"
-                    ? "演示：在「当前输入」选脚本并生成；已发送内容在「历史转写」回看。"
-                    : "文本：在「当前输入」编辑并发送；归档在「历史转写」查看。"}
-            </p>
-          </div>
-          )}
-
-          {/* 语音输入：实时转写 UI */}
-          {selectedInputSource !== "demo_mode" && selectedInputSource !== "transcript" && (
           <div
             className={`relative z-[2] flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border px-2.5 py-2 transition-[border-color,box-shadow,background] ${
               activeCaptureSource
@@ -3419,154 +3827,191 @@ export function RealtimeStudio() {
                 : "border-theme-subtle bg-gradient-to-b from-[color:var(--accent)]/[0.06] to-surface-muted"
             }`}
           >
-            <Tabs.Root
-              value={transcriptSidebarTab}
-              onValueChange={setTranscriptSidebarTab}
-              className="flex min-h-0 flex-1 flex-col"
-            >
-              <div className="flex shrink-0 flex-wrap items-end justify-between gap-x-3 gap-y-2 border-b border-theme-subtle">
-                <Tabs.List className="flex min-w-0 gap-1 sm:gap-5" aria-label="实时转写">
-                  <Tabs.Trigger
-                    value="panel-input"
-                    className="-mb-px border-b-2 border-transparent px-0.5 py-2 text-left text-sm font-semibold text-theme-3 outline-none transition-colors data-[state=active]:border-[color:var(--accent)] data-[state=active]:text-theme-1 data-[state=inactive]:hover:text-theme-2 focus-visible:ring-2 focus-visible:ring-theme-focus focus-visible:ring-offset-2"
-                  >
-                    当前字幕
-                  </Tabs.Trigger>
-                  <Tabs.Trigger
-                    value="panel-history"
-                    className="-mb-px border-b-2 border-transparent px-0.5 py-2 text-left text-sm font-semibold text-theme-3 outline-none transition-colors data-[state=active]:border-[color:var(--accent)] data-[state=active]:text-theme-1 data-[state=inactive]:hover:text-theme-2 focus-visible:ring-2 focus-visible:ring-theme-focus focus-visible:ring-offset-2"
-                  >
-                    历史转写
-                  </Tabs.Trigger>
-                </Tabs.List>
-                <div className="flex flex-wrap items-center justify-end gap-1.5 pb-2">
-                  {currentSessionClosed ? <Badge className="text-[9px]">已结束</Badge> : null}
-                  <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
-                </div>
+            <div className="flex shrink-0 items-end justify-between gap-2 border-b border-theme-subtle pb-1.5">
+              <div className="inline-flex items-center gap-5">
+                <button
+                  type="button"
+                  onClick={() => setTranscriptPanelTab("live")}
+                  className={`border-b-2 px-0.5 py-1 text-[12px] font-semibold tracking-[0.02em] transition ${
+                    transcriptPanelTab === "live"
+                      ? "border-[color:var(--accent)] text-theme-1"
+                      : "border-transparent text-theme-4 hover:text-theme-2"
+                  }`}
+                >
+                  当前字幕
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTranscriptPanelTab("history")}
+                  className={`border-b-2 px-0.5 py-1 text-[12px] font-semibold tracking-[0.02em] transition ${
+                    transcriptPanelTab === "history"
+                      ? "border-[color:var(--accent)] text-theme-1"
+                      : "border-transparent text-theme-4 hover:text-theme-2"
+                  }`}
+                >
+                  历史转写
+                </button>
               </div>
-              <div className="mt-1.5 flex shrink-0 flex-wrap gap-1.5">
-                <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                  轮次：{transcriptState.turnCount}
-                </Badge>
-                <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                  说话人：{transcriptState.speakerCount}
-                </Badge>
-                <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                  Chunk：{transcriptState.chunkCount}
-                </Badge>
+              <div className="flex items-center gap-1.5">
+                {currentSessionClosed ? <Badge className="text-[9px]">已结束</Badge> : null}
+                <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
               </div>
-
-              <Tabs.Content
-                value="panel-input"
-                className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden outline-none data-[state=inactive]:hidden"
-              >
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[color:var(--accent)]/25 bg-[color:var(--accent)]/[0.05] px-3 py-3">
-                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--accent-strong)]/90">
-                    当前字幕
-                  </div>
-                  <div className="max-h-[min(12rem,38vh)] min-h-[4.5rem] flex-1 overflow-y-auto whitespace-pre-wrap text-[15px] leading-7 text-theme-1 sm:max-h-[min(18rem,42vh)] sm:min-h-[6.5rem] sm:text-[16px] md:max-h-none md:min-h-0 md:overflow-visible md:min-h-[7.5rem]">
-                    {currentSubtitleText}
-                  </div>
-                  <div className="mt-2 flex shrink-0 items-center justify-between gap-2 border-t border-[color:var(--accent)]/15 pt-2 text-[10px] text-theme-4">
-                    <span>
-                      {liveTranscript.trim()
-                        ? "优先显示本地实时预览"
-                        : currentSessionClosed
-                          ? "当前会话已结束，可切换到「历史转写」查看"
-                          : "开麦后此处显示当前一句；多条轮次在「历史转写」"}
-                    </span>
-                    {activeTranscriptTurn?.speaker ? (
-                      <span className="truncate">发言：{activeTranscriptTurn.speaker}</span>
-                    ) : null}
-                  </div>
-                </div>
-              </Tabs.Content>
-
-              <Tabs.Content
-                value="panel-history"
-                className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden outline-none data-[state=inactive]:hidden"
-              >
-                <div className="flex min-h-[9rem] flex-1 flex-col overflow-hidden rounded-xl border border-theme-subtle bg-surface-muted/88">
-                  <div className="flex shrink-0 justify-end border-b border-theme-subtle px-3 py-1.5">
-                    <div className="text-[10px] text-theme-4">
-                      {archivedTranscriptTurns.length ? `${archivedTranscriptTurns.length} / 10` : "等待归档"}
-                    </div>
-                  </div>
-                  <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
-                    {archivedTranscriptTurns.length ? (
-                      <div className="space-y-2.5">
-                        {archivedTranscriptTurns.map((turn, index) => (
-                          <div
-                            key={turn.key || `${turn.speaker}-${turn.start_ms}-${index}`}
-                            className="rounded-lg border border-theme-subtle bg-surface-1/70 px-3 py-2"
-                          >
-                            <div className="flex items-center justify-between gap-2 text-[10px] text-theme-4">
-                              <span className="truncate font-semibold text-theme-2">{turn.speaker || "speaker"}</span>
-                              <span className="shrink-0">
-                                {formatRelativeTranscriptTime(turn.start_ms)} -{" "}
-                                {formatRelativeTranscriptTime(turn.end_ms)}
-                              </span>
-                            </div>
-                            <div className="mt-1 whitespace-pre-wrap text-[12px] leading-6 text-theme-2">{turn.text}</div>
-                            <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-theme-4">
-                              <span>
-                                {turn.origin === "server"
-                                  ? "server transcript"
-                                  : turn.origin === "event"
-                                    ? "event fallback"
-                                    : "local instant"}
-                              </span>
-                              <span>{turn.is_final ? "final" : "pending"}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="flex h-full min-h-[6rem] items-center justify-center rounded-lg border border-dashed border-[color:var(--accent)]/30 bg-[color:var(--accent)]/[0.04] px-3 py-3 text-center text-[12px] leading-relaxed text-theme-3">
-                        {currentSessionClosed
-                          ? "当前会话没有可回看的历史转写。"
-                          : "稳定轮次会出现在这里；也可在「当前字幕」查看正在识别的一行。"}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Tabs.Content>
-            </Tabs.Root>
+            </div>
+            <div className="mt-1.5 flex shrink-0 flex-wrap gap-1.5">
+              <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
+                轮次：{transcriptState.turnCount}
+              </Badge>
+              <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
+                说话人：{transcriptState.speakerCount}
+              </Badge>
+              <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
+                Chunk：{transcriptState.chunkCount}
+              </Badge>
+            </div>
             <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-theme-4">
               {currentSessionClosed
                 ? "会话结束后保留只读字幕和下载入口；如需继续，请重建会话。"
-                : "开麦后「当前字幕」为大字预览；稳定轮次归档在「历史转写」。"}
+                : selectedInputSource === "transcript"
+                  ? "当前字幕显示输入预览，发送后会沉淀到下方转接记录。"
+                  : "本地预览用于当前字幕，服务端聚合后的最近轮次会保留在下方历史区。"}
             </p>
+            <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-subtle bg-surface-muted/88">
+                <div className="flex shrink-0 items-center justify-end gap-2 border-b border-theme-subtle px-3 py-2">
+                  <div className="text-[10px] text-theme-4">
+                    {transcriptPanelTab === "history"
+                      ? previewArchivedTranscriptTurns.length
+                        ? `${previewArchivedTranscriptTurns.length} / 10`
+                        : "等待归档"
+                      : activeTranscriptTurn?.speaker
+                        ? `当前发言：${activeTranscriptTurn.speaker}`
+                        : "实时预览"}
+                  </div>
+                </div>
+                <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
+                  {transcriptPanelTab === "live" ? (
+                    selectedInputSource === "transcript" ? (
+                      <div className="flex h-full min-h-[10rem] flex-col gap-2">
+                        <Textarea
+                          className="min-h-[8rem] flex-1 resize-y text-[12px] leading-relaxed"
+                          rows={8}
+                          value={transcriptText}
+                          disabled={currentSessionClosed}
+                          onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
+                            const next = event.target.value;
+                            setTranscriptText(next);
+                            studioSend({ type: "transcript.preview", text: next });
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="shrink-0 border-violet-900/50 bg-violet-950/45 py-2 text-xs text-violet-100 shadow-sm hover:border-violet-700/60 hover:bg-violet-950/65 hover:text-violet-50 focus-visible:ring-2 focus-visible:ring-violet-700"
+                          onClick={() => sendTranscript.mutate()}
+                          disabled={sendTranscript.isPending || !transcriptText.trim() || currentSessionClosed}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          {currentSessionClosed ? "会话已结束" : "发送文本"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-[color:var(--accent)]/25 bg-[color:var(--accent)]/[0.05] px-3 py-3">
+                        <div className="max-h-[min(12rem,38vh)] min-h-[4.5rem] overflow-y-auto whitespace-pre-wrap text-[15px] leading-7 text-theme-1 sm:max-h-[min(18rem,42vh)] sm:min-h-[6.5rem] sm:text-[16px] md:max-h-none md:overflow-visible md:min-h-[7.5rem]">
+                          {currentSubtitleText}
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-theme-4">
+                          <span>
+                            {liveTranscript.trim()
+                              ? "优先显示本地实时预览"
+                              : currentSessionClosed
+                                ? "当前会话已结束，可查看历史字幕与下载全文"
+                                : "最新一条稳定转写会先停留在这里，下一条到来后再转入历史区"}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  ) : previewArchivedTranscriptTurns.length ? (
+                    <div className="space-y-2.5">
+                      {previewArchivedTranscriptTurns.map((turn, index) => {
+                        const tone = transcriptSpeakerCardTone(turn.speaker);
+                        return (
+                          <div
+                            key={turn.key || `${turn.speaker}-${turn.start_ms}-${index}`}
+                            className={`rounded-lg border px-3 py-2 ${tone.card}`}
+                            style={tone.style}
+                          >
+                          <div className="flex items-center justify-between gap-2 text-[10px] text-theme-4">
+                            <span
+                              className={`truncate rounded-md border px-1.5 py-0.5 font-semibold ${tone.speaker}`}
+                              style={tone.speakerTagStyle}
+                            >
+                              {turn.speaker || "speaker"}
+                            </span>
+                            <span className="shrink-0">
+                              {formatRelativeTranscriptTime(turn.start_ms)} - {formatRelativeTranscriptTime(turn.end_ms)}
+                            </span>
+                          </div>
+                          <div
+                            className={`mt-1 rounded-md px-2 py-1.5 whitespace-pre-wrap text-[12px] leading-6 ${tone.body}`}
+                            style={tone.contentStyle}
+                          >
+                            {turn.text}
+                          </div>
+                          <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-theme-4">
+                            <span>
+                              {turn.origin === "server"
+                                ? "server transcript"
+                                : turn.origin === "event"
+                                  ? "event fallback"
+                                  : "local instant"}
+                            </span>
+                            <span>{turn.is_final ? "final" : "pending"}</span>
+                          </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex h-full min-h-[8rem] items-center justify-center rounded-lg border border-dashed border-[color:var(--accent)]/30 bg-[color:var(--accent)]/[0.04] px-3 py-3 text-center text-[12px] leading-relaxed text-theme-3">
+                      {currentSessionClosed
+                        ? "当前会话没有可回看的历史转写。"
+                        : "当前字幕会先显示在当前字幕页；当下一条出现或被预览替换后，它会转入历史转写页。"}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+
             <div
               className={`mt-2 shrink-0 border-t pt-2.5 ${
                 activeCaptureSource ? "border-theme-subtle" : "border-dashed border-[color:var(--accent)]/22"
               }`}
             >
-            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-2">
                 <div className="text-sm font-semibold text-theme-1">输入音量</div>
-              <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
-            </div>
-            <div className="mt-2 flex h-5 items-center gap-1.5">
-              {Array.from({ length: 16 }).map((_, index) => {
-                const level = Math.max(0, Math.min(1, inputLevel));
-                const threshold = (index + 1) / 16;
-                const isActive = level >= threshold;
+                <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
+              </div>
+              <div className="mt-2 flex h-5 items-center gap-1.5">
+                {Array.from({ length: 16 }).map((_, index) => {
+                  const level = Math.max(0, Math.min(1, inputLevel));
+                  const threshold = (index + 1) / 16;
+                  const isActive = level >= threshold;
                   const showActive = Boolean(activeCaptureSource) && isActive;
-                return (
-                  <span
-                    key={index}
+                  return (
+                    <span
+                      key={index}
                       className={`h-3 flex-1 rounded-sm border transition-colors duration-150 ${
                         showActive
                           ? "border-violet-800/70 bg-violet-700/80"
                           : "border-theme-subtle bg-surface-muted"
-                    }`}
-                  />
-                );
-              })}
+                      }`}
+                    />
+                  );
+                })}
+              </div>
             </div>
           </div>
-          </div>
-          )}
         </Card>
                 ) : null}
 
@@ -3590,15 +4035,15 @@ export function RealtimeStudio() {
                 className="pointer-events-none h-px w-full shrink-0 bg-gradient-to-r from-transparent via-[color:var(--accent)]/30 to-transparent"
                 aria-hidden
               />
-              <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-2 pt-3">
-                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                <Tabs.List className="workspace-tab-list w-full max-w-[760px] grid-cols-5 self-start">
+              <div className="relative flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-0 pt-0.5">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <Tabs.List className="workspace-tab-list w-full max-w-[460px] grid-cols-3 self-start">
               <span
                 aria-hidden
                 className="workspace-tab-indicator"
                 style={{
                   left: "0.25rem",
-                  width: "calc((100% - 0.5rem) / 5)",
+                  width: `calc((100% - 0.5rem) / ${stageTabCount})`,
                   transform: `translateX(calc(${activeStageTabIndex} * 100%))`,
                 }}
               />
@@ -3613,33 +4058,33 @@ export function RealtimeStudio() {
               ))}
             </Tabs.List>
                   <Tooltip.Provider delayDuration={120}>
-                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                  {pipelineStages.map((step) => (
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      {pipelineStages.map((step) => (
                         <Tooltip.Root key={step.abbr}>
                           <Tooltip.Trigger asChild>
-                        <button
-                          type="button"
+                            <button
+                              type="button"
                               className={`inline-flex items-center gap-1.5 rounded-md border bg-surface-2 px-2 py-1 text-[11px] font-medium text-theme-2 transition-[box-shadow,border-color] ${
                                 pipelineAllIdle && step.abbr === "CAP"
                                   ? "border-[color:var(--accent)]/40 ring-1 ring-[color:var(--accent)]/25"
                                   : "border-theme-default"
                               }`}
                               aria-label={`${step.label}：${step.value}`}
-                        >
-                          <span
-                            className={`h-2 w-2 shrink-0 rounded-full ${
-                              step.tone === "working"
+                            >
+                              <span
+                                className={`h-2 w-2 shrink-0 rounded-full ${
+                                  step.tone === "working"
                                     ? "bg-[color:var(--accent)]"
-                                : step.tone === "success"
-                                  ? "bg-emerald-500"
-                                  : step.tone === "error"
-                                    ? "bg-red-500"
+                                    : step.tone === "success"
+                                      ? "bg-emerald-500"
+                                      : step.tone === "error"
+                                        ? "bg-red-500"
                                         : "bg-surface-3"
-                            }`}
-                            aria-hidden
-                          />
-                          {step.label}
-                        </button>
+                                }`}
+                                aria-hidden
+                              />
+                              {step.label}
+                            </button>
                           </Tooltip.Trigger>
                           <Tooltip.Portal>
                             <Tooltip.Content
@@ -3655,30 +4100,374 @@ export function RealtimeStudio() {
                             </Tooltip.Content>
                           </Tooltip.Portal>
                         </Tooltip.Root>
-                  ))}
-                  </div>
+                      ))}
+                    </div>
                   </Tooltip.Provider>
+                  <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pt-1 pr-1 xl:absolute xl:right-4 xl:top-[3.45rem] xl:z-10 xl:max-w-[min(680px,calc(100%_-_30rem))] xl:justify-end xl:overflow-visible xl:pr-0 xl:pt-0">
+                    {/* 笔：横向展开，宽度随内容；高度固定一行 h-7 */}
+                    <div
+                      className={`inline-flex h-7 w-auto shrink-0 items-center overflow-hidden rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[max-width] duration-300 ease-out will-change-[max-width] ${
+                        activeAnnotationPanel === "pen"
+                          ? "max-w-[min(420px,calc(100vw-2rem))]"
+                          : "max-w-[56px]"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        disabled={!currentSessionId}
+                        className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 border-r border-theme-default text-[11px] font-semibold ${
+                          annotationsEnabled && annotationsTool === "pen" ? "bg-surface-3 text-theme-1" : "text-theme-2 hover:bg-surface-muted/40"
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                        onClick={() => {
+                          if (!currentSessionId) return;
+                          if (activeAnnotationPanel === "pen") {
+                            setActiveAnnotationPanel(null);
+                            return;
+                          }
+                          setAnnotationsEnabled(true);
+                          setAnnotationsTool("pen");
+                          setActiveAnnotationPanel("pen");
+                        }}
+                        title={!currentSessionId ? "请先创建会话" : "画笔"}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                          <path
+                            d="M2.2 11.8l2.7-.6 5.8-5.8-2.1-2.1-5.8 5.8-.6 2.7z"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                            strokeLinejoin="round"
+                          />
+                          <path d="M7.6 3.3l2.1 2.1" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                        </svg>
+                      </button>
+                      <div
+                        className={`flex min-w-0 flex-nowrap items-center overflow-hidden transition-[max-width,opacity] duration-300 ease-out ${
+                          activeAnnotationPanel === "pen" ? "max-w-[360px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
+                        }`}
+                      >
+                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-x-1.5 px-1.5">
+                            <AnnotationWidthSlider
+                              min={1}
+                              max={24}
+                              value={annotationPenWidth}
+                              onChange={setAnnotationPenWidth}
+                              thumbMinPx={5}
+                              thumbMaxPx={15}
+                              aria-label="画笔粗细"
+                            />
+                            <AnnotationColorPopover
+                              swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                              value={annotationPenColor}
+                              onChange={setAnnotationPenColor}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className="inline-flex h-7 min-w-[72px] shrink-0 items-center justify-center border-l border-theme-default px-2.5 text-[11px] font-semibold text-theme-2 hover:bg-surface-muted/40"
+                            onClick={() => {
+                              setAnnotationsEnabled(false);
+                              setActiveAnnotationPanel(null);
+                            }}
+                          >
+                            退出批注
+                          </button>
+                      </div>
+                    </div>
+
+                    {/* 框：横向展开，宽度随内容 */}
+                    <div
+                      className={`inline-flex h-7 w-auto shrink-0 items-center overflow-hidden rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[max-width] duration-300 ease-out will-change-[max-width] ${
+                        activeAnnotationPanel === "rect"
+                          ? "max-w-[min(420px,calc(100vw-2rem))]"
+                          : "max-w-[56px]"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        disabled={!currentSessionId}
+                        className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 border-r border-theme-default text-[11px] font-semibold ${
+                          annotationsEnabled && annotationsTool === "rect" ? "bg-surface-3 text-theme-1" : "text-theme-2 hover:bg-surface-muted/40"
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                        onClick={() => {
+                          if (!currentSessionId) return;
+                          if (activeAnnotationPanel === "rect") {
+                            setActiveAnnotationPanel(null);
+                            return;
+                          }
+                          setAnnotationsEnabled(true);
+                          setAnnotationsTool("rect");
+                          setActiveAnnotationPanel("rect");
+                        }}
+                        title={!currentSessionId ? "请先创建会话" : "框"}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                          <rect
+                            x="2.25"
+                            y="2.25"
+                            width="9.5"
+                            height="9.5"
+                            rx="1.8"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                          />
+                        </svg>
+                      </button>
+                      <div
+                        className={`flex min-w-0 flex-nowrap items-center overflow-hidden transition-[max-width,opacity] duration-300 ease-out ${
+                          activeAnnotationPanel === "rect" ? "max-w-[360px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
+                        }`}
+                      >
+                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-x-1.5 px-1.5">
+                            <AnnotationWidthSlider
+                              min={1}
+                              max={16}
+                              value={annotationRectStrokeWidth}
+                              onChange={setAnnotationRectStrokeWidth}
+                              thumbMinPx={5}
+                              thumbMaxPx={14}
+                              aria-label="框线粗细"
+                            />
+                            <AnnotationColorPopover
+                              swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                              value={annotationRectColor}
+                              onChange={setAnnotationRectColor}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className="inline-flex h-7 min-w-[72px] shrink-0 items-center justify-center border-l border-theme-default px-2.5 text-[11px] font-semibold text-theme-2 hover:bg-surface-muted/40"
+                            onClick={() => {
+                              setAnnotationsEnabled(false);
+                              setActiveAnnotationPanel(null);
+                            }}
+                          >
+                            退出批注
+                          </button>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`inline-flex h-7 w-auto shrink-0 items-center overflow-hidden rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[max-width] duration-300 ease-out will-change-[max-width] ${
+                        activeAnnotationPanel === "text"
+                          ? "max-w-[min(320px,calc(100vw-2rem))]"
+                          : "max-w-[56px]"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        disabled={!currentSessionId}
+                        className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 border-r border-theme-default text-[11px] font-semibold ${
+                          annotationsEnabled && annotationsTool === "text" ? "bg-surface-3 text-theme-1" : "text-theme-2 hover:bg-surface-muted/40"
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                        onClick={() => {
+                          if (!currentSessionId) return;
+                          if (activeAnnotationPanel === "text") {
+                            setActiveAnnotationPanel(null);
+                            return;
+                          }
+                          setAnnotationsEnabled(true);
+                          setAnnotationsTool("text");
+                          setActiveAnnotationPanel("text");
+                        }}
+                        title={!currentSessionId ? "请先创建会话" : "文字批注"}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                          <path
+                            d="M2.5 3.2h9M7 3.2v7.6M4.6 10.8h4.8"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.35"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                      <div
+                        className={`flex min-w-0 flex-nowrap items-center overflow-hidden transition-[max-width,opacity] duration-300 ease-out ${
+                          activeAnnotationPanel === "text" ? "max-w-[240px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
+                        }`}
+                      >
+                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-1.5 px-1.5">
+                            <AnnotationColorPopover
+                              swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                              value={annotationTextColor}
+                              onChange={setAnnotationTextColor}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className="inline-flex h-7 min-w-[72px] shrink-0 items-center justify-center border-l border-theme-default px-2.5 text-[11px] font-semibold text-theme-2 hover:bg-surface-muted/40"
+                            onClick={() => {
+                              setAnnotationsEnabled(false);
+                              setActiveAnnotationPanel(null);
+                            }}
+                          >
+                            退出批注
+                          </button>
+                      </div>
+                    </div>
+
+                    {/* 橡皮：横向展开，宽度随内容 */}
+                    <div
+                      className={`inline-flex h-7 w-auto shrink-0 items-center overflow-hidden rounded-md border border-theme-default bg-surface-2 shadow-sm transition-[max-width] duration-300 ease-out will-change-[max-width] ${
+                        activeAnnotationPanel === "eraser"
+                          ? "max-w-[min(360px,calc(100vw-2rem))]"
+                          : "max-w-[72px]"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        disabled={!currentSessionId}
+                        className={`inline-flex h-7 w-[72px] shrink-0 items-center justify-center border-r border-theme-default text-[11px] font-semibold ${
+                          annotationsEnabled && (annotationsTool === "erase_object" || annotationsTool === "erase_precise")
+                            ? "bg-surface-3 text-theme-1"
+                            : "text-theme-2 hover:bg-surface-muted/40"
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                        onClick={() => {
+                          if (!currentSessionId) return;
+                          if (activeAnnotationPanel === "eraser") {
+                            setActiveAnnotationPanel(null);
+                            return;
+                          }
+                          setAnnotationsEnabled(true);
+                          setAnnotationsTool(
+                            annotationsTool === "erase_object" || annotationsTool === "erase_precise"
+                              ? annotationsTool
+                              : "erase_object",
+                          );
+                          setActiveAnnotationPanel("eraser");
+                        }}
+                        title={!currentSessionId ? "请先创建会话" : "橡皮"}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                          <path
+                            d="M3.1 8.7l3.6-3.6a1.6 1.6 0 0 1 2.2 0l1.9 1.9a1.6 1.6 0 0 1 0 2.2L8.3 11.7H5.2z"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                            strokeLinejoin="round"
+                          />
+                          <path d="M4.2 11.7h6.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                        </svg>
+                      </button>
+                      <div
+                        className={`flex min-w-0 flex-nowrap items-center overflow-hidden transition-[max-width,opacity] duration-300 ease-out ${
+                          activeAnnotationPanel === "eraser" ? "max-w-[300px] opacity-100" : "pointer-events-none max-w-0 opacity-0"
+                        }`}
+                      >
+                          <div className="flex h-7 min-w-0 flex-1 flex-nowrap items-center gap-0.5 px-1">
+                            {ERASER_WIDTH_PRESETS.map(({ w, dot }) => {
+                              const active =
+                                annotationsTool === "erase_precise" &&
+                                nearestEraserPresetWidth(annotationEraserWidth) === w;
+                              return (
+                                <button
+                                  key={w}
+                                  type="button"
+                                  title={`精准擦 ${w}px`}
+                                  aria-label={`精准橡皮，宽度 ${w}`}
+                                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-sm transition-colors ${
+                                    active ? "bg-surface-3 text-theme-1" : "text-theme-3 hover:bg-surface-muted/40"
+                                  }`}
+                                  onClick={() => {
+                                    setAnnotationsEnabled(true);
+                                    setAnnotationsTool("erase_precise");
+                                    setAnnotationEraserWidth(w);
+                                  }}
+                                >
+                                  <span
+                                    className="shrink-0 rounded-full bg-current opacity-90"
+                                    style={{ width: dot, height: dot }}
+                                    aria-hidden
+                                  />
+                                </button>
+                              );
+                            })}
+                            <button
+                              type="button"
+                              title="对象擦：整段笔画 / 整框"
+                              aria-label="对象橡皮"
+                              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-theme-3 transition-colors ${
+                                annotationsTool === "erase_object"
+                                  ? "bg-surface-3 text-theme-1"
+                                  : "hover:bg-surface-muted/40"
+                              }`}
+                              onClick={() => {
+                                setAnnotationsEnabled(true);
+                                setAnnotationsTool("erase_object");
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                                <path
+                                  d="M3.5 3.5l7 7M10.5 3.5l-7 7"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.75"
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            className="inline-flex h-7 min-w-[72px] shrink-0 items-center justify-center border-l border-theme-default px-2.5 text-[11px] font-semibold text-theme-2 hover:bg-surface-muted/40"
+                            onClick={() => {
+                              setAnnotationsEnabled(false);
+                              setActiveAnnotationPanel(null);
+                            }}
+                          >
+                            退出批注
+                          </button>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-7 rounded-md px-2 text-[11px] font-semibold"
+                      onClick={undoAnnotations}
+                      disabled={!currentSessionId || annotationsUndoRef.current.length === 0}
+                    >
+                      撤销
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-7 rounded-md px-2 text-[11px] font-semibold"
+                      onClick={clearAnnotations}
+                      disabled={!currentSessionId || activeAnnotationEmpty}
+                    >
+                      清空
+                    </Button>
+                    <span className="ml-1 text-[10px] text-theme-4">
+                      {!currentSessionId
+                        ? "未建会话"
+                        : saveAnnotationsMutation.isPending
+                          ? "保存中…"
+                          : "已就绪"}
+                    </span>
+                  </div>
                 </div>
                 <Tooltip.Provider delayDuration={200}>
-                  <div className="flex w-full min-w-0 shrink-0 flex-col items-end gap-2 -mt-1 sm:ml-auto sm:max-w-md sm:gap-2.5 sm:pr-1">
-                    <div className="flex w-full min-w-0 flex-nowrap items-start justify-end gap-4 sm:gap-6">
+                  <div className="ml-auto flex w-auto shrink-0 flex-nowrap items-start justify-end gap-2 sm:gap-3 xl:-mt-2">
                     <div className="flex shrink-0 flex-col items-center">
                       <Tooltip.Root>
                         <Tooltip.Trigger asChild>
                           <span className="inline-flex">
-                      <button
-                    type="button"
-                    onClick={() => void stageStartCapture()}
-                    disabled={!canStartStageCapture}
-                              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
-                                startRecordingPrimaryStyle
-                                  ? "border-violet-200/90 bg-violet-700/70 text-violet-50 shadow-[0_0_0_1px_rgba(139,92,246,0.32)_inset,0_10px_22px_rgba(109,40,217,0.36)] hover:border-violet-200/95 hover:bg-violet-700/75 focus-visible:ring-violet-200/80"
+                            <button
+                              type="button"
+                              onClick={() => void stageStartCapture()}
+                              disabled={!canStartStageCapture}
+                              className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-12 sm:w-12 ${
+                                canStartStageCapture
+                                  ? "border-[rgb(76_29_149_/_0.5)] bg-[rgb(46_16_100_/_0.45)] text-white shadow-[0_1px_0_rgb(255_255_255_/_0.42)_inset,0_10px_22px_rgb(109_40_217_/_0.24)] hover:border-[rgb(76_29_149_/_0.62)] hover:bg-[rgb(46_16_100_/_0.55)] focus-visible:ring-[rgb(167_139_250_/_0.45)]"
                                   : "border-violet-900/50 bg-violet-950/45 text-violet-200 focus-visible:ring-violet-700"
                               }`}
-                        aria-label="开始录音"
-                      >
-                              <Mic className="h-6 w-6 sm:h-7 sm:w-7" />
-                      </button>
+                              aria-label="开始录音"
+                            >
+                              <Mic className="h-5 w-5 sm:h-6 sm:w-6" />
+                            </button>
                           </span>
                         </Tooltip.Trigger>
                         <Tooltip.Portal>
@@ -3687,9 +4476,11 @@ export function RealtimeStudio() {
                             align="center"
                             sideOffset={8}
                             collisionPadding={12}
-                            className="z-[24000] rounded-lg border border-theme-default bg-surface-2 px-2.5 py-1.5 text-left shadow-xl"
+                            className="z-[24000] max-w-[240px] rounded-lg border border-theme-default bg-surface-2 px-2.5 py-1.5 text-center text-xs font-medium text-theme-1 shadow-xl"
                           >
-                            <div className="text-[11px] font-medium text-theme-1">开始录音</div>
+                            {selectedInputSource === "transcript"
+                              ? "请先在左侧栏选择麦克风或系统音输入"
+                              : "开始录音"}
                           </Tooltip.Content>
                         </Tooltip.Portal>
                       </Tooltip.Root>
@@ -3699,19 +4490,19 @@ export function RealtimeStudio() {
                       <Tooltip.Root>
                         <Tooltip.Trigger asChild>
                           <span className="inline-flex">
-                      <button
-                    type="button"
-                    onClick={() => void stageStopCapture()}
-                    disabled={!canStopStageCapture}
-                              className={`inline-flex h-12 w-12 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-14 sm:w-14 ${
+                            <button
+                              type="button"
+                              onClick={() => void stageStopCapture()}
+                              disabled={!canStopStageCapture}
+                              className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 sm:h-12 sm:w-12 ${
                                 canStopStageCapture
                                   ? "border-red-200/90 bg-red-700/70 text-red-50 shadow-[0_0_0_1px_rgba(239,68,68,0.30)_inset,0_10px_22px_rgba(220,38,38,0.32)] hover:border-red-200/95 hover:bg-red-700/75 focus-visible:ring-red-200/80"
                                   : "border-red-900/50 bg-red-950/40 text-red-200 focus-visible:ring-red-800"
                               }`}
-                        aria-label="暂停录音"
-                      >
-                              <Pause className="h-6 w-6 sm:h-7 sm:w-7" />
-                      </button>
+                              aria-label="停止录音"
+                            >
+                              <Pause className="h-5 w-5 sm:h-6 sm:w-6" />
+                            </button>
                           </span>
                         </Tooltip.Trigger>
                         <Tooltip.Portal>
@@ -3720,9 +4511,11 @@ export function RealtimeStudio() {
                             align="center"
                             sideOffset={8}
                             collisionPadding={12}
-                            className="z-[24000] rounded-lg border border-theme-default bg-surface-2 px-2.5 py-1.5 text-left shadow-xl"
+                            className="z-[24000] max-w-[240px] rounded-lg border border-theme-default bg-surface-2 px-2.5 py-1.5 text-center text-xs font-medium text-theme-1 shadow-xl"
                           >
-                            <div className="text-[11px] font-medium text-theme-1">暂停录音</div>
+                            {selectedInputSource === "transcript"
+                              ? "请先在左侧栏选择麦克风或系统音输入"
+                              : "停止录音"}
                           </Tooltip.Content>
                         </Tooltip.Portal>
                       </Tooltip.Root>
@@ -3730,160 +4523,512 @@ export function RealtimeStudio() {
 
                     <div className="flex shrink-0 flex-col items-center">
                       <Button
-                    type="button"
+                        type="button"
                         variant="secondary"
-                        className="inline-flex h-12 shrink-0 gap-2 rounded-xl px-3 text-xs shadow-sm sm:h-14 sm:px-3.5 sm:text-sm"
+                        className="inline-flex h-10 shrink-0 gap-2 rounded-xl px-3 text-xs shadow-sm sm:h-12 sm:px-3.5 sm:text-sm"
                         onClick={() => setDetailDrawerOpen(true)}
                       >
                         <PanelRight className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
                         历史会话
                       </Button>
-                      </div>
                     </div>
-                    {renderCanvasSwitcher()}
                   </div>
                 </Tooltip.Provider>
               </div>
 
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <Tabs.Content value="mermaid" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-3 pt-1 sm:px-3">
-              <MermaidCard
-                title=""
-                embedded
-                  code={displayedMermaidState?.code || displayedMermaidState?.normalized_code || ""}
-                  rawOutputText={
-                    typeof displayedMermaidState?.raw_output_text === "string" ? displayedMermaidState.raw_output_text : null
+            <Tabs.Content value="mermaid" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-0 pt-3.5 sm:px-3">
+                <MermaidCard
+                  title=""
+                  embedded
+                  fixedLightCanvas
+                  code={displayedMermaidCode}
+                  rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
+                  repairRawOutputText={
+                    typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
                   }
-                repairRawOutputText={
-                    typeof displayedMermaidState?.repair_raw_output_text === "string"
-                      ? displayedMermaidState.repair_raw_output_text
-                      : null
-                  }
-                  provider={displayedMermaidState?.provider || selectedPlannerProfile?.label || null}
-                  model={displayedMermaidState?.model || plannerModel || null}
-                  latencyMs={typeof displayedMermaidState?.latency_ms === "number" ? displayedMermaidState.latency_ms : null}
-                  compileOk={typeof displayedMermaidState?.compile_ok === "boolean" ? displayedMermaidState.compile_ok : null}
-                  updatedAt={
-                    toLocalDateTimeLabel(
-                      displayedMermaidState?.updated_at
-                        ? String(displayedMermaidState.updated_at)
-                        : lastMermaidUpdatedAt || null,
-                    )
-                  }
-                  graphPayload={displayedGraphPayload}
-                  onNodeRelayout={isViewingHistoricalCanvas ? null : handleMermaidNodeRelayout}
-                  relayoutBusy={!isViewingHistoricalCanvas && relayoutMutation.isPending}
+                  provider={mermaidState?.provider || selectedPlannerProfile?.label || null}
+                  model={mermaidState?.model || plannerModel || null}
+                  latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
+                  compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
+                  updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null)}
+                  graphPayload={currentGraphPayload}
+                  onNodeRelayout={handleMermaidNodeRelayout}
+                  relayoutBusy={relayoutMutation.isPending}
                   exportRootId={mermaidExportRootId}
+                  annotationsEnabled={annotationsEnabled}
+                  annotationsTool={annotationsTool}
+                  annotationPenWidth={annotationPenWidth}
+                  annotationPenColor={annotationPenColor}
+                  annotationRectColor={annotationRectColor}
+                  annotationRectStrokeWidth={annotationRectStrokeWidth}
+                  annotationTextColor={annotationTextColor}
+                  annotationEraserWidth={annotationEraserWidth}
+                  annotationsDoc={mermaidAnnotationsDoc}
+                  onAnnotationsChange={onMermaidAnnotationsChange}
                 />
               </div>
             </Tabs.Content>
 
-            <Tabs.Content value="structure" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
-              <div className="flex min-h-0 flex-1 px-4 py-2">
-                <Card className="flex-1 min-h-0 rounded-xl border border-theme-default bg-surface-muted p-2">
-                  <div className="flex-1 min-h-0 overflow-hidden rounded-lg">
-              <GraphStage
-                embedded
-                title="结构图"
-                      nodes={displayedRendererState.nodes || []}
-                      edges={displayedRendererState.edges || []}
-                      groups={displayedRendererGroups}
-              />
-                  </div>
-                </Card>
+            <Tabs.Content value="structure" className="absolute inset-0 flex min-h-0 flex-col outline-none">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-0 pt-3.5 sm:px-3">
+                <GraphStage
+                  embedded
+                  fixedLightCanvas
+                  title="结构图"
+                  nodes={rendererState.nodes || []}
+                  edges={rendererState.edges || []}
+                  groups={rendererGroups}
+                  annotationsEnabled={annotationsEnabled}
+                  annotationsTool={annotationsTool}
+                  annotationPenWidth={annotationPenWidth}
+                  annotationPenColor={annotationPenColor}
+                  annotationRectColor={annotationRectColor}
+                  annotationRectStrokeWidth={annotationRectStrokeWidth}
+                  annotationTextColor={annotationTextColor}
+                  annotationEraserWidth={annotationEraserWidth}
+                  annotationsDoc={structureAnnotationsDoc}
+                  onAnnotationsChange={onStructureAnnotationsChange}
+                />
               </div>
             </Tabs.Content>
 
-            <Tabs.Content value="events" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
+            <Tabs.Content value="events" className="absolute inset-0 flex min-h-0 flex-col outline-none">
               <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <div className="mb-5 flex items-center justify-between gap-4">
+                <div className="mb-4 flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-sm font-semibold text-theme-1">更新记录</div>
-                    <p className="mt-1 text-xs leading-6 text-theme-2">只看最近几条，方便判断图有没有按预期变化。</p>
+                    <div className="text-sm font-semibold text-theme-1">更新时间轴</div>
+                    <p className="mt-1 text-xs leading-6 text-theme-2">选择节点后先预览，再确认回退到该时刻。</p>
                   </div>
-                  <Badge>{events.length} updates</Badge>
+                  <Badge>{timelineNodes.length} snapshots</Badge>
                 </div>
-                <div className="flex-1 min-h-0 space-y-3 overflow-auto pr-2">
-                  {events.length ? (
-                    events.slice(-12).map((event: Record<string, any>, index: number) => (
-                      <div
-                        key={`${event.update?.update_id}-${index}`}
-                        className="glass-panel p-4"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-theme-1">
-                            Update #{event.update?.update_id} · {event.gate?.action || event.update?.intent_type}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge>{event.e2e_latency_ms} ms</Badge>
-                            <Badge>{(event.planner?.delta_ops || []).length} delta ops</Badge>
+                <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.25fr)]">
+                  <div className="min-h-0 overflow-auto rounded-xl border border-theme-default bg-surface-2/70 p-2">
+                    {timelineNodes.length ? (
+                      <div className="space-y-2">
+                        {timelineNodes.map((node: RealtimeTimelineNode) => {
+                          const active = node.snapshot_id === selectedTimelineSnapshotId;
+                          return (
+                            <button
+                              key={node.snapshot_id}
+                              type="button"
+                              onClick={() => setSelectedTimelineSnapshotId(node.snapshot_id)}
+                              className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                                active
+                                  ? "border-[color:var(--accent)] bg-[color:var(--accent)]/[0.08]"
+                                  : "border-theme-default bg-surface-1 hover:border-theme-strong"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-xs font-semibold text-theme-1">{node.label || "关键节点"}</div>
+                                <div className="text-[10px] text-theme-4">
+                                  {new Date(node.created_at).toLocaleTimeString("zh-CN", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    second: "2-digit",
+                                  })}
+                                </div>
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-theme-3">
+                                <span>{node.chunk_count} chunks</span>
+                                <span>{node.event_count} events</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-theme-default px-3 py-4 text-xs text-theme-3">
+                        暂无可回退节点，先发送或采集内容生成快照。
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-h-0 overflow-auto rounded-xl border border-theme-default bg-surface-2/70 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs font-semibold text-theme-1">节点预览</div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() =>
+                            currentSessionId && selectedTimelineSnapshotId
+                              ? rollbackPreviewMutation.mutate({
+                                  sessionId: currentSessionId,
+                                  snapshotId: selectedTimelineSnapshotId,
+                                })
+                              : null
+                          }
+                          disabled={!currentSessionId || !selectedTimelineSnapshotId || rollbackPreviewMutation.isPending}
+                        >
+                          重新预览
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="danger"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() =>
+                            currentSessionId && selectedTimelineSnapshotId
+                              ? rollbackApplyMutation.mutate({
+                                  sessionId: currentSessionId,
+                                  snapshotId: selectedTimelineSnapshotId,
+                                })
+                              : null
+                          }
+                          disabled={
+                            !currentSessionId ||
+                            !selectedTimelineSnapshotId ||
+                            rollbackApplyMutation.isPending ||
+                            currentSessionClosed
+                          }
+                        >
+                          {rollbackApplyMutation.isPending ? "回退中..." : "确认回退"}
+                        </Button>
+                      </div>
+                    </div>
+                    {rollbackPreview ? (
+                      <div className="mt-3 space-y-2 text-xs text-theme-2">
+                        <div className="rounded-lg border border-theme-default bg-surface-1 px-3 py-2">
+                          <div className="font-medium text-theme-1">时间</div>
+                          <div className="mt-1 text-theme-3">{new Date(rollbackPreview.created_at).toLocaleString("zh-CN")}</div>
+                        </div>
+                        <div className="rounded-lg border border-theme-default bg-surface-1 px-3 py-2">
+                          <div className="font-medium text-theme-1">恢复范围</div>
+                          <div className="mt-1 text-theme-3">
+                            图状态 + 转写历史（{rollbackPreview.transcript_turn_count} turns）+ 批注 v{rollbackPreview.annotation_version}
                           </div>
                         </div>
-                        <div className="mt-2 text-xs leading-6 text-theme-2">
-                          {Array.isArray(event.pending_turns) && event.pending_turns.length
-                            ? event.pending_turns
-                                .map((turn: Record<string, any>) => `${turn.speaker || "speaker"}: ${turn.content || ""}`)
-                                .join("\n")
-                            : event.update?.transcript_text}
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-theme-2">
-                          <span>Gate: {event.gate?.reason || "-"}</span>
-                          <span>Planner: {event.planner?.notes || "-"}</span>
-                          <span>
-                            Graph: {event.graph_after?.node_count ?? 0} nodes / {event.graph_after?.edge_count ?? 0} edges
-                          </span>
+                        <div className="rounded-lg border border-theme-default bg-surface-1 px-3 py-2">
+                          <div className="font-medium text-theme-1">摘要</div>
+                          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-theme-3">
+                            {JSON.stringify(rollbackPreview.summary || {}, null, 2)}
+                          </pre>
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <div className="rounded-[22px] border border-dashed border-theme-default p-5 text-sm text-theme-2">
-                      还没有增量事件。创建会话后可打字发送、开浏览器麦克风，或启用本机内录转写。
+                    ) : (
+                      <div className="mt-3 rounded-lg border border-dashed border-theme-default px-3 py-4 text-xs text-theme-3">
+                        {selectedTimelineNode ? "正在加载该节点预览..." : "先在左侧选择一个时间节点。"}
+                      </div>
+                    )}
+                    <div className="mt-4 border-t border-theme-subtle pt-3">
+                      <div className="mb-2 text-xs font-semibold text-theme-1">最近更新记录</div>
+                      <div className="space-y-2">
+                        {events.length ? (
+                          events.slice(-6).map((event: Record<string, any>, index: number) => (
+                            <div key={`${event.update?.update_id}-${index}`} className="rounded-lg border border-theme-default bg-surface-1 px-3 py-2">
+                              <div className="text-xs font-semibold text-theme-1">
+                                Update #{event.update?.update_id} · {event.gate?.action || event.update?.intent_type}
+                              </div>
+                              <div className="mt-1 text-[11px] text-theme-3">
+                                {event.update?.transcript_text ||
+                                  (Array.isArray(event.pending_turns)
+                                    ? event.pending_turns
+                                        .map((turn: Record<string, any>) => `${turn.speaker || "speaker"}: ${turn.content || ""}`)
+                                        .join(" / ")
+                                    : "-")}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="rounded-lg border border-dashed border-theme-default px-3 py-3 text-xs text-theme-3">
+                            还没有增量事件。
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               </Card>
             </Tabs.Content>
 
-            <Tabs.Content value="metrics" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
-              <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-2">
-              <div className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  {summaryCards.map((item) => (
-                    <StatCard key={item.label} label={item.label} value={String(item.value)} />
-                  ))}
-                </div>
-                <Card>
-                    <div className="mb-4 text-sm font-semibold text-theme-1">效果数据</div>
-                    <pre className="rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
-                    {JSON.stringify(snapshot?.evaluation || {}, null, 2)}
-                  </pre>
-                </Card>
-                </div>
-              </div>
-            </Tabs.Content>
-
-            <Tabs.Content value="pipeline" className="absolute inset-0 flex min-h-0 flex-col outline-none data-[state=inactive]:pointer-events-none">
-              <div className="flex min-h-0 flex-1 flex-col">
-                <Card className="flex-1 min-h-0 overflow-hidden">
-                  <div className="mb-4 text-sm font-semibold text-theme-1 px-5 pt-5">处理步骤摘要</div>
-                  <pre className="max-h-full overflow-auto rounded-[24px] bg-surface-1 p-5 text-xs leading-6 text-theme-1">
-                  {JSON.stringify(snapshot?.pipeline?.summary || {}, null, 2)}
-                </pre>
-              </Card>
-              </div>
-            </Tabs.Content>
             </div>
-            <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 px-4 py-2.5">
+            <div className="relative z-0 shrink-0 translate-y-3.5 border-t border-theme-subtle px-4 py-1.5">
+              <div className="px-1 py-0.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] font-semibold text-theme-1">时间轴</div>
+                  <div className="text-[10px] text-theme-4">{orderedTimelineNodes.length} snapshots</div>
+                </div>
+                {isTimelineScrollable ? (
+                  <div className="mt-1.5">
+                    <div className="relative">
+                      <div ref={timelineScrollViewportRef} className="overflow-x-auto pb-1 [scrollbar-width:thin]">
+                        <div
+                          className="relative mx-1 h-8 px-2 py-1"
+                          style={{ width: `${timelineScrollableTrackWidth}px` }}
+                        >
+                          <div className="pointer-events-none absolute left-2 right-2 top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-[#d6ccf0]/85" />
+                          <div className="relative h-full">
+                            {orderedTimelineNodes.length ? (
+                              orderedTimelineNodes.map((node: RealtimeTimelineNode, index: number) => {
+                                const active = node.snapshot_id === selectedTimelineSnapshotId;
+                                const nodeName =
+                                  node.label ||
+                                  `快照 ${new Date(node.created_at).toLocaleTimeString("zh-CN", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    second: "2-digit",
+                                  })}`;
+                                return (
+                                  <button
+                                    key={node.snapshot_id}
+                                    type="button"
+                                    title={nodeName}
+                                    onClick={() => {
+                                      setSelectedTimelineSnapshotId(node.snapshot_id);
+                                      setAutoFollowLatestTimelineNode(node.snapshot_id === timelineNodes[0]?.snapshot_id);
+                                    }}
+                                  onMouseEnter={(e) => {
+                                    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                    setTimelineHoverTooltip({
+                                      text: nodeName,
+                                      x: rect.left + rect.width / 2,
+                                      y: rect.top - 6,
+                                    });
+                                  }}
+                                  onMouseMove={(e) => {
+                                    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                    setTimelineHoverTooltip({
+                                      text: nodeName,
+                                      x: rect.left + rect.width / 2,
+                                      y: rect.top - 6,
+                                    });
+                                  }}
+                                  onMouseLeave={() => setTimelineHoverTooltip(null)}
+                                    className={`group absolute top-1/2 z-[0] -translate-y-1/2 transition-all duration-300 ease-out ${
+                                      active
+                                        ? "h-3 w-8 rounded-full bg-[color:var(--accent)] shadow-[0_0_0_2px_rgba(167,139,250,0.16)]"
+                                        : "h-3 w-3 rounded-full bg-[#b7bdd0] hover:bg-[#a58bd4]"
+                                    }`}
+                                    style={{ left: `${6 + index * timelineScrollStep}px` }}
+                                    aria-label={nodeName}
+                                  >
+                                    <span className="hidden">{nodeName}</span>
+                                  </button>
+                                );
+                              })
+                            ) : (
+                              <div className="text-[10px] text-theme-3">暂无可用时间点</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {isTimelinePreviewActive && timelineScrollableSelectedLeft != null ? (
+                        <div
+                          className="pointer-events-none absolute z-[3]"
+                          style={{
+                            left: `${timelineScrollableSelectedLeft - timelineScrollLeft + 8}px`,
+                            top: "-0.35rem",
+                            transform: "translate(-50%, -100%)",
+                          }}
+                        >
+                          <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-[color:var(--accent)]/35 bg-surface-1/95 px-2 py-1 shadow-sm backdrop-blur-sm whitespace-nowrap">
+                            <div className="flex flex-nowrap items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                                onClick={() => setRollbackPreview(null)}
+                              >
+                                取消
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                                onClick={() => {
+                                  if (!selectedTimelineSnapshotId || rollbackPreview?.snapshot_id !== selectedTimelineSnapshotId) {
+                                    setNotice({ tone: "info", text: "正在加载该节点内容，请稍后再编辑。" });
+                                    return;
+                                  }
+                                  const turns = rollbackPreview?.turns;
+                                  if (!Array.isArray(turns) || !turns.length) {
+                                    setRollbackEditTurns([]);
+                                  } else {
+                                    setRollbackEditTurns(
+                                      turns.map((t) => ({
+                                        speaker: String(t.speaker || "speaker"),
+                                        text: String(t.text || ""),
+                                      })),
+                                    );
+                                  }
+                                  setRollbackEditOpen(true);
+                                }}
+                                disabled={!currentSessionId || !selectedTimelineSnapshotId || currentSessionClosed}
+                              >
+                                编辑
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="danger"
+                                className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                                onClick={() =>
+                                  currentSessionId && selectedTimelineSnapshotId
+                                    ? rollbackApplyMutation.mutate({
+                                        sessionId: currentSessionId,
+                                        snapshotId: selectedTimelineSnapshotId,
+                                      })
+                                    : null
+                                }
+                                disabled={
+                                  !currentSessionId ||
+                                  !selectedTimelineSnapshotId ||
+                                  rollbackPreview?.snapshot_id !== selectedTimelineSnapshotId ||
+                                  rollbackApplyMutation.isPending ||
+                                  currentSessionClosed
+                                }
+                              >
+                                {rollbackApplyMutation.isPending ? "回退中" : "回退"}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="text-[10px] text-theme-4">节点较多，可左右拖动时间轴查看</div>
+                  </div>
+                ) : (
+                  <div className="relative mt-1.5 px-0.5">
+                    <div className="pointer-events-none absolute left-[6px] right-[6px] top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-[#d6ccf0]/85" />
+                    <div className="relative flex items-center justify-between gap-1">
+                      {orderedTimelineNodes.length ? (
+                        orderedTimelineNodes.map((node: RealtimeTimelineNode) => {
+                          const active = node.snapshot_id === selectedTimelineSnapshotId;
+                          const nodeName =
+                            node.label ||
+                            `快照 ${new Date(node.created_at).toLocaleTimeString("zh-CN", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit",
+                            })}`;
+                          return (
+                            <button
+                              key={node.snapshot_id}
+                              type="button"
+                              title={nodeName}
+                              onClick={() => {
+                                setSelectedTimelineSnapshotId(node.snapshot_id);
+                                setAutoFollowLatestTimelineNode(node.snapshot_id === timelineNodes[0]?.snapshot_id);
+                              }}
+                              onMouseEnter={(e) => {
+                                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                setTimelineHoverTooltip({
+                                  text: nodeName,
+                                  x: rect.left + rect.width / 2,
+                                  y: rect.top - 6,
+                                });
+                              }}
+                              onMouseMove={(e) => {
+                                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                setTimelineHoverTooltip({
+                                  text: nodeName,
+                                  x: rect.left + rect.width / 2,
+                                  y: rect.top - 6,
+                                });
+                              }}
+                              onMouseLeave={() => setTimelineHoverTooltip(null)}
+                              className={`group relative z-[1] shrink-0 transition-all duration-300 ease-out ${
+                                active
+                                  ? "h-3 w-8 rounded-full bg-[color:var(--accent)] shadow-[0_0_0_2px_rgba(167,139,250,0.16)]"
+                                  : "h-3 w-3 rounded-full bg-[#b7bdd0] hover:bg-[#a58bd4]"
+                              }`}
+                              aria-label={nodeName}
+                            >
+                              <span className="hidden">{nodeName}</span>
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="text-[10px] text-theme-3">暂无可用时间点</div>
+                      )}
+                    </div>
+                    {isTimelinePreviewActive && selectedTimelineOrderedIndex >= 0 ? (
+                      <div
+                        className="pointer-events-none absolute z-[3]"
+                        style={{
+                          left:
+                            orderedTimelineNodes.length > 1
+                              ? `calc(6px + ((100% - 12px) * ${selectedTimelineOrderedIndex}) / ${orderedTimelineNodes.length - 1})`
+                              : "50%",
+                          top: "-0.35rem",
+                          transform: "translate(-50%, -100%)",
+                        }}
+                      >
+                        <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-[color:var(--accent)]/35 bg-surface-1/95 px-2 py-1 shadow-sm backdrop-blur-sm whitespace-nowrap">
+                          <div className="flex flex-nowrap items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                              onClick={() => setRollbackPreview(null)}
+                            >
+                              取消
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                              onClick={() => {
+                                if (
+                                  !selectedTimelineSnapshotId ||
+                                  rollbackPreview?.snapshot_id !== selectedTimelineSnapshotId
+                                ) {
+                                  setNotice({ tone: "info", text: "正在加载该节点内容，请稍后再编辑。" });
+                                  return;
+                                }
+                                const turns = rollbackPreview?.turns;
+                                if (!Array.isArray(turns) || !turns.length) {
+                                  setRollbackEditTurns([]);
+                                } else {
+                                  setRollbackEditTurns(
+                                    turns.map((t) => ({
+                                      speaker: String(t.speaker || "speaker"),
+                                      text: String(t.text || ""),
+                                    })),
+                                  );
+                                }
+                                setRollbackEditOpen(true);
+                              }}
+                              disabled={!currentSessionId || !selectedTimelineSnapshotId || currentSessionClosed}
+                            >
+                              编辑
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="danger"
+                              className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                              onClick={() =>
+                                currentSessionId && selectedTimelineSnapshotId
+                                  ? rollbackApplyMutation.mutate({
+                                      sessionId: currentSessionId,
+                                      snapshotId: selectedTimelineSnapshotId,
+                                    })
+                                  : null
+                              }
+                              disabled={
+                                !currentSessionId ||
+                                !selectedTimelineSnapshotId ||
+                                rollbackPreview?.snapshot_id !== selectedTimelineSnapshotId ||
+                                rollbackApplyMutation.isPending ||
+                                currentSessionClosed
+                              }
+                            >
+                              {rollbackApplyMutation.isPending ? "回退中" : "回退"}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex shrink-0 translate-y-3.5 flex-wrap items-end justify-between gap-3 px-4 py-2.5">
               <div className="flex w-full max-w-[min(100%,30rem)] flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   variant={currentSessionId ? "secondary" : "primary"}
-                  className={
-                    currentSessionId
-                      ? "h-8 shrink-0 gap-1 px-3 text-xs font-semibold"
-                      : "s2g-cta-create-session h-8 shrink-0 gap-1 px-3 text-xs font-semibold shadow-none"
-                  }
+                  className="s2g-cta-create-session h-8 shrink-0 gap-1 px-3 text-xs font-semibold shadow-none"
                   onClick={() => createSession.mutate()}
                   disabled={createSession.isPending}
                 >
@@ -3947,7 +5092,7 @@ export function RealtimeStudio() {
                     >
                       下载 Markdown
                     </a>
-              </div>
+                  </div>
                 ) : null}
               </div>
               <div className="grid w-[min(100%,20rem)] grid-cols-3 gap-2">
@@ -4059,11 +5204,33 @@ export function RealtimeStudio() {
                   ) : null}
                       </div>
                       </div>
+              <div className="rounded-lg border border-theme-default bg-surface-muted px-3 py-3">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-theme-4">评测指标</div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {summaryCards.map((item) => (
+                    <StatCard key={item.label} label={item.label} value={String(item.value)} />
+                  ))}
+                </div>
+                <div className="mt-2 overflow-hidden rounded-lg border border-theme-subtle bg-surface-1">
+                  <div className="border-b border-theme-subtle px-3 py-2 text-xs font-medium text-theme-2">效果数据</div>
+                  <pre className="max-h-56 overflow-auto px-3 py-2 text-xs leading-6 text-theme-1">
+                    {JSON.stringify(snapshot?.evaluation || {}, null, 2)}
+                  </pre>
+                </div>
+              </div>
+              <div className="rounded-lg border border-theme-default bg-surface-muted px-3 py-3">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-theme-4">运行摘要</div>
+                <div className="overflow-hidden rounded-lg border border-theme-subtle bg-surface-1">
+                  <pre className="max-h-56 overflow-auto px-3 py-2 text-xs leading-6 text-theme-1">
+                    {JSON.stringify(snapshot?.pipeline?.summary || {}, null, 2)}
+                  </pre>
+                </div>
+              </div>
               {sessions.data?.map((item) => {
                 const sessionSelected = currentSessionId === item.session_id;
                 return (
                   <div
-                  key={item.session_id}
+                    key={item.session_id}
                     className={`group flex w-full items-stretch gap-0 overflow-hidden rounded-lg border text-sm transition duration-200 ease-out ${
                       sessionSelected
                         ? "border-[color:var(--shell-nav-active-border)] bg-[var(--shell-nav-active-bg)] shadow-[var(--shell-nav-active-shadow)]"
@@ -4071,40 +5238,40 @@ export function RealtimeStudio() {
                     }`}
                   >
                     <button
-                  type="button"
+                      type="button"
                       className={`min-w-0 flex-1 px-3 py-3 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[color:var(--shell-nav-active-icon-border)] focus-visible:ring-offset-2 ${
                         sessionSelected
                           ? "focus-visible:ring-offset-[var(--shell-nav-active-bg)]"
                           : "focus-visible:ring-offset-surface-muted"
-                  }`}
-                  onClick={() => {
-                    setCurrentSessionId(item.session_id);
-                        setTitle(item.title || DEFAULT_REALTIME_SESSION_TITLE);
-                        setTitleDraft(item.title || DEFAULT_REALTIME_SESSION_TITLE);
-                    setIsTitleEditing(false);
-                    window.localStorage.setItem(LOCAL_SESSION_KEY, item.session_id);
-                    setDetailDrawerOpen(false);
-                  }}
-                >
+                      }`}
+                      onClick={() => {
+                        setCurrentSessionId(item.session_id);
+                        setTitle(item.title || "研究演示会话");
+                        setTitleDraft(item.title || "研究演示会话");
+                        setIsTitleEditing(false);
+                        window.localStorage.setItem(LOCAL_SESSION_KEY, item.session_id);
+                        setDetailDrawerOpen(false);
+                      }}
+                    >
                       <div
                         className={`font-semibold ${
                           sessionSelected ? "text-[color:var(--shell-nav-active-fg)]" : "text-theme-3"
                         }`}
                       >
-                    {item.title}
-                    </div>
+                        {item.title}
+                      </div>
                       <div className={`mt-1 text-xs ${sessionSelected ? "text-white/80" : "text-theme-4"}`}>
-                    {item.session_id}
-                    </div>
+                        {item.session_id}
+                      </div>
                       <div className={`mt-1 text-xs ${sessionSelected ? "text-white/70" : "text-theme-4"}`}>
                         状态：{item.status === "closed" ? "closed" : "active"}
-                    </div>
-                  {item.summary?.input_runtime?.input_source ? (
+                      </div>
+                      {item.summary?.input_runtime?.input_source ? (
                         <div className={`mt-2 text-xs ${sessionSelected ? "text-white/70" : "text-theme-4"}`}>
-                      输入源：{String(item.summary.input_runtime.input_source)}
-              </div>
-            ) : null}
-                </button>
+                          输入源：{String(item.summary.input_runtime.input_source)}
+                        </div>
+                      ) : null}
+                    </button>
                     <button
                       type="button"
                       className={`shrink-0 border-l px-2 transition disabled:pointer-events-none disabled:opacity-40 ${

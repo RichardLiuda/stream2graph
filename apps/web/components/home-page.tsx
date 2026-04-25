@@ -24,6 +24,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge, Button, Card } from "@stream2graph/ui";
 import { BackgroundPathLayer } from "@/components/ui/background-paths";
+import { ScrollLinkedCardsBlockSection, type ScrollLinkedCardsBlock } from "@/components/scroll-linked-cards";
 import { api } from "@/lib/api";
 
 const navItems = [
@@ -121,36 +122,41 @@ function ScrollZigzagHint({ className }: { className?: string }) {
 }
 
 function FlowPipelineOrnament() {
-  const labels = ["听/写", "成图", "对照"];
+  const labels = ["输入", "结构", "对照"];
+  const toneDots = ["bg-[#aeb8c6]", "bg-[#a7b3ad]", "bg-[#c6b8a1]"];
   return (
     <div className="mx-auto w-full max-w-[17rem] shrink-0 md:mx-0" aria-hidden>
-      <div className="rounded-2xl border border-theme-default/90 bg-gradient-to-b from-surface-1/95 to-surface-2/40 p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md">
+      <div className="rounded-2xl border border-[#b3bbc7]/70 bg-surface-1/95 p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-md">
         <div className="flex items-center gap-1.5">
           {labels.map((l, i) => (
             <Fragment key={l}>
-              <span className="grid min-h-[2.35rem] min-w-[2.75rem] place-items-center rounded-xl border border-theme-subtle bg-surface-2/90 px-2 text-center text-[11px] font-semibold uppercase tracking-wider text-theme-2">
+                <span
+                  className={`grid min-h-[2.35rem] min-w-[2.75rem] place-items-center rounded-xl border bg-surface-2/95 px-2 text-center text-[11px] font-semibold uppercase tracking-wider text-theme-2 ${
+                    i === 0 ? "border-[#aeb8c6]/80" : i === 1 ? "border-[#a7b3ad]/80" : "border-[#c6b8a1]/80"
+                  }`}
+                >
+                <span className="mb-1 flex items-center justify-center">
+                  <span className={`h-1.5 w-1.5 rounded-full ${toneDots[i] ?? "bg-[#d5dbe3]"}`} />
+                </span>
                 {l}
               </span>
               {i < labels.length - 1 ? (
-                <span className="h-0.5 min-w-[0.75rem] flex-1 rounded-full bg-gradient-to-r from-[color:var(--accent)]/55 to-[color:var(--accent)]/12" />
+                <span className={`h-0.5 min-w-[0.75rem] flex-1 rounded-full ${i === 0 ? "bg-[#aeb8c6]/70" : "bg-[#a7b3ad]/70"}`} />
               ) : null}
             </Fragment>
           ))}
         </div>
         <div className="mt-4 flex items-center justify-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-theme-4">
-          <span className="h-1 w-1 shrink-0 rounded-full bg-[color:var(--accent)]/90" />
+          <span className="h-1 w-1 shrink-0 rounded-full bg-[#aeb8c6]" />
           语流 → 图
-          <span className="h-1 w-1 shrink-0 rounded-full bg-[color:var(--accent)]/90" />
+          <span className="h-1 w-1 shrink-0 rounded-full bg-[#c6b8a1]" />
+        </div>
+        <div className="mt-3 flex items-center justify-center gap-1.5">
+          <span className="h-1.5 w-4 rounded-full bg-[#aeb8c6]/85" />
+          <span className="h-1.5 w-4 rounded-full bg-[#a7b3ad]/85" />
+          <span className="h-1.5 w-4 rounded-full bg-[#c6b8a1]/85" />
         </div>
       </div>
-    </div>
-  );
-}
-
-function SectionHairline() {
-  return (
-    <div className="mx-auto max-w-5xl px-6 md:px-10" aria-hidden>
-      <div className="h-px max-w-4xl bg-gradient-to-r from-transparent via-[color:var(--accent-muted)] to-transparent" />
     </div>
   );
 }
@@ -182,9 +188,9 @@ function ShowcaseStepCard({
       >
         {n}
       </div>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_45%_at_0%_0%,rgba(124,111,154,0.14),transparent_60%)] opacity-70 transition-opacity group-hover:opacity-100" />
+      <div className="pointer-events-none absolute inset-0 bg-[#e8ebf1]/55 opacity-85 transition-opacity group-hover:opacity-100" />
       <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[color:var(--accent-muted)] bg-gradient-to-br from-[color:var(--accent)]/22 to-transparent text-[color:var(--accent-strong)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07)]">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[color:var(--accent-muted)] bg-[color:var(--accent)]/14 text-[color:var(--accent-strong)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07)]">
           <Icon className="h-7 w-7" strokeWidth={1.65} />
         </div>
         <div className="min-w-0 flex-1">
@@ -193,7 +199,7 @@ function ShowcaseStepCard({
           <p className="mt-3 text-base leading-relaxed text-theme-3 md:text-lg md:leading-relaxed">{body}</p>
         </div>
       </div>
-      <div className="pointer-events-none absolute bottom-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-[color:var(--accent)]/35 to-transparent opacity-80" />
+      <div className="pointer-events-none absolute bottom-0 left-6 right-6 h-px bg-theme-subtle opacity-80" />
     </div>
   );
 }
@@ -213,7 +219,7 @@ function FeatureSpotlightCard({
 }) {
   return (
     <div className="group relative overflow-hidden rounded-3xl border border-theme-default bg-surface-1/75 p-6 shadow-lg backdrop-blur-md transition-[transform,border-color] duration-300 hover:-translate-y-0.5 hover:border-theme-strong md:p-8">
-      <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-[color:var(--accent)]/55 via-[color:var(--accent)]/15 to-transparent opacity-90" aria-hidden />
+      <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[color:var(--accent)]/35 opacity-90" aria-hidden />
       <div
         className="pointer-events-none absolute bottom-4 right-3 font-display text-5xl font-bold tabular-nums text-theme-1/[0.05] sm:text-6xl"
         aria-hidden
@@ -244,25 +250,25 @@ const FLOW_STEPS: Array<{
 }> = [
   {
     n: "01",
-    tag: "第一步",
-    title: "多种输入，任选其一",
-    body: "演示脚本、打字、浏览器麦克风，或本机内录转写（听电脑里正在播放的声音）；也可用固定样本做对照实验。",
+    tag: "Step 1",
+    title: "准备输入",
+    body: "语音或 Transcript；也可以用固定样本做对照。",
     icon: Mic,
     align: "left",
   },
   {
     n: "02",
-    tag: "第二步",
-    title: "实时成图与多画布",
-    body: "边说边改：内容在后台被整理后增量更新流程图；一次会话里若生成多版主图，可在工作台里切换画布逐张查看。",
+    tag: "Step 2",
+    title: "生成结构",
+    body: "Gate 过滤 → Planner 增量改图 → Mermaid 渲染。",
     icon: Cpu,
     align: "right",
   },
   {
     n: "03",
-    tag: "第三步",
-    title: "字幕、历史与留痕",
-    body: "语音与打字模式都支持「当前一句 / 当前输入」与「历史转写」分栏；再结合结构视图、更新记录、运行摘要和评测指标做核对。",
+    tag: "Step 3",
+    title: "追踪与对照",
+    body: "看结构视图、更新记录、运行摘要和评测指标。",
     icon: Activity,
     align: "left",
   },
@@ -277,31 +283,80 @@ const FEATURE_SPOTS: Array<{
 }> = [
   {
     mark: "A",
-    kind: "呈现",
-    title: "主图、结构与多画布",
-    body: "流程图和节点结构对照着看；多版主图生成后，可在画布间切换浏览，不必挤在同一张图上找差异。",
+    kind: "Feature",
+    title: "主图 + 结构视图",
+    body: "同一份输入，同时得到可读流程图与节点结构。",
     icon: LayoutGrid,
   },
   {
     mark: "B",
-    kind: "转写",
-    title: "当前一句 · 历史归档",
-    body: "语音侧看「当前字幕」与「历史转写」；打字与演示侧看「当前输入」与同一套历史列表——草稿与已发送轮次分开，更清楚。",
+    kind: "Feature",
+    title: "增量可追踪",
+    body: "更新记录 + 运行摘要，解释每次图结构变化。",
     icon: GitBranch,
   },
   {
     mark: "C",
-    kind: "评测",
-    title: "指标对照",
-    body: "延迟、稳定性、可读性等维度量化展示，方便比较不同配置或两次跑数谁更合适。",
+    kind: "Method",
+    title: "对照评测",
+    body: "延迟、准确率、抖动、好懂度，用数据对比配置。",
     icon: Gauge,
   },
   {
     mark: "D",
-    kind: "留档",
-    title: "样本、报告与复现",
-    body: "内置中文演示脚本可快速试跑；会话与配置可复用，实验报告可生成保存，便于留档和回溯。",
+    kind: "Method",
+    title: "复现与归档",
+    body: "固定样本与配置，保存报告，便于追溯与回归。",
     icon: Archive,
+  },
+];
+
+const LINKED_BLOCKS: ScrollLinkedCardsBlock[] = [
+  {
+    id: "block-core-flow",
+    kicker: "Block · 快速流程",
+    title: "把想法快速整理成清晰卡片图",
+    description:
+      "保留最核心四步：输入内容、整理重点、生成卡片图、保存分享。流程更短，上手更轻松。",
+    direction: "right",
+    cards: [
+      {
+        id: "core-input",
+        eyebrow: "Step 1",
+        title: "输入内容",
+        description: "可以直接说，也可以粘贴文本，先把内容放进来。",
+        tone: "chip",
+        meta: "先输入，后处理",
+        branches: [
+          { id: "core-input-br1", label: "语音", hint: "边说边记" },
+          { id: "core-input-br2", label: "文本", hint: "粘贴即用" },
+        ],
+      },
+      {
+        id: "core-clean",
+        eyebrow: "Step 2",
+        title: "整理重点",
+        description: "自动去重、分段，把长文本整理成更清楚的结构。",
+        tone: "paper",
+        meta: "重点一眼可见",
+      },
+      {
+        id: "core-graph",
+        eyebrow: "Step 3",
+        title: "生成并微调",
+        description: "先出第一版卡片图，再拖拽调整到你满意为止。",
+        tone: "code",
+        meta: "边看边改",
+      },
+      {
+        id: "core-share",
+        eyebrow: "Step 4",
+        title: "保存与分享",
+        description: "一键保存当前版本，也可以直接发给团队一起看。",
+        tone: "note",
+        meta: "结果马上可用",
+      },
+    ],
   },
 ];
 
@@ -376,9 +431,6 @@ export function HomePage() {
             <div className="rounded-xl border border-theme-default bg-surface-2 px-4 py-4">
               <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-theme-4">Stream2Graph</div>
               <div className="font-display mt-1 text-lg font-semibold tracking-tight text-theme-1">正式平台</div>
-              <p className="mt-2 text-xs leading-relaxed text-theme-3">
-                说话、打字或本机内录成字，实时生成流程图；分栏看转写历史，多画布回看主图，一站完成。
-              </p>
               <div className="mt-3 rounded-lg border border-theme-subtle bg-surface-1 px-3 py-2 text-xs text-theme-3">当前：首页</div>
             </div>
             <nav className="mt-3 rounded-xl border border-theme-default bg-surface-muted p-1.5" aria-label="导航">
@@ -417,7 +469,7 @@ export function HomePage() {
       </aside>
 
       <div className="pointer-events-none fixed inset-0 z-0" aria-hidden>
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_0%,var(--hero-radial-glow),transparent_70%)]" />
+        <div className="absolute inset-0 bg-[var(--hero-radial-glow)]/20" />
         <BackgroundPathLayer />
       </div>
 
@@ -425,14 +477,14 @@ export function HomePage() {
         <section className="soft-enter relative flex min-h-[100dvh] items-center justify-center">
           <div className="relative px-6 py-10 text-center text-theme-1 md:px-10 md:py-12">
             <Badge className="border-theme-default bg-surface-2 text-theme-2 normal-case tracking-normal">
-            Stream2Graph 正式平台
-          </Badge>
+              Stream2Graph 正式平台
+            </Badge>
             <h1 className="mt-8">
               <div className="text-center text-6xl font-semibold tracking-tight sm:text-7xl md:text-8xl lg:text-9xl">语流生图</div>
               <div className="mt-4 text-center text-xl font-semibold tracking-[0.12em] text-theme-4 sm:text-2xl md:text-3xl lg:text-4xl">
-              STREAM2GRAPH
+                STREAM2GRAPH
               </div>
-          </h1>
+            </h1>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               {authMeQuery.isLoading ? (
@@ -444,12 +496,12 @@ export function HomePage() {
                   <Button variant="primary" className="h-10 rounded-lg px-6 text-sm font-semibold">
                     开始使用
                     <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden />
-              </Button>
-            </Link>
+                  </Button>
+                </Link>
               )}
-              <div className="inline-flex items-center gap-1.5 rounded-md border border-theme-subtle bg-surface-muted px-2.5 py-1 text-[11px] text-theme-4">
-                <span className="inline-block h-1.5 w-1.5 rounded-sm bg-emerald-600" aria-hidden />
-                实时成图 · 多画布 · 转写分栏
+              <div className="inline-flex items-center gap-1.5 rounded-md border border-[#a7b3ad]/75 bg-surface-muted px-2.5 py-1 text-[11px] text-theme-4">
+                <span className="inline-block h-1.5 w-1.5 rounded-sm bg-[#a7b3ad]" aria-hidden />
+                实时管线就绪
               </div>
             </div>
           </div>
@@ -474,21 +526,23 @@ export function HomePage() {
             <div className="grid gap-10 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-14 lg:gap-20">
               <div className="relative min-w-0">
                 <div
-                  className="absolute -left-4 top-1 hidden h-[4.5rem] w-1 rounded-full bg-gradient-to-b from-[color:var(--accent)]/80 via-[color:var(--accent)]/25 to-transparent md:block"
+                  className="absolute -left-4 top-1 hidden h-[4.5rem] w-1 rounded-full bg-[color:var(--accent)]/45 md:block"
                   aria-hidden
                 />
-                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[color:var(--accent-strong)]">工作台</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[color:var(--accent-strong)]">Pipeline</p>
                 <h2 className="font-display mt-3 text-4xl font-semibold tracking-tight text-theme-1 sm:text-5xl md:text-6xl">
                   从语流到结构图
                 </h2>
                 <p className="mt-5 max-w-2xl text-lg leading-relaxed text-theme-3 md:text-xl md:leading-relaxed">
-                  选好输入方式 → 边看边生成流程图 → 用转写分栏、多画布和记录页对照每一步。把口述或打字内容，落成可读的主图与可追溯的变更。
+                  选择输入 → 生成与调整 → 对照与追踪。三步跑通实时管线，把口述内容落成可读的图与可追踪的变更。
                 </p>
                 <div className="mt-7 flex flex-wrap gap-2">
-                  {["多路输入", "字幕与历史", "多画布浏览"].map((t) => (
+                  {["实时语流", "增量 Planner", "报告归档"].map((t, i) => (
                     <span
                       key={t}
-                      className="rounded-full border border-theme-subtle bg-surface-2/70 px-3.5 py-1.5 text-xs font-medium text-theme-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
+                      className={`rounded-full border bg-surface-2/78 px-3.5 py-1.5 text-xs font-medium text-theme-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] ${
+                        i === 0 ? "border-[#aeb8c6]/80" : i === 1 ? "border-[#a7b3ad]/80" : "border-[#c6b8a1]/80"
+                      }`}
                     >
                       {t}
                     </span>
@@ -500,51 +554,58 @@ export function HomePage() {
           </Reveal>
         </section>
 
-        <SectionHairline />
-
-        {FLOW_STEPS.map((step) => (
-          <section
-            key={step.n}
-            className="relative mx-auto w-full max-w-5xl px-6 py-12 text-theme-2 md:px-10 md:py-14"
-          >
-            <Reveal rootRef={scrollRef} delayMs={0}>
-              <ShowcaseStepCard {...step} />
-            </Reveal>
-          </section>
+        {LINKED_BLOCKS.map((block) => (
+          <ScrollLinkedCardsBlockSection key={block.id} rootRef={scrollRef} block={block} />
         ))}
 
-        <div className="py-6 md:py-8">
-          <SectionHairline />
-        </div>
+        <div className="py-6 md:py-8" />
 
         <section className="relative mx-auto w-full max-w-5xl px-6 py-14 text-theme-2 md:px-10 md:py-16">
           <Reveal rootRef={scrollRef} delayMs={0}>
-            <div className="relative overflow-hidden rounded-[2rem] border border-theme-default bg-gradient-to-br from-surface-1/90 via-surface-2/30 to-surface-1/80 p-7 shadow-[0_28px_100px_-40px_rgba(124,111,154,0.35)] backdrop-blur-md md:p-10">
+            <div className="relative overflow-hidden rounded-[2rem] border border-theme-default bg-surface-1/90 p-7 shadow-[0_28px_100px_-40px_rgba(124,111,154,0.35)] backdrop-blur-md md:p-10">
               <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-[color:var(--accent)]/12 blur-3xl" aria-hidden />
               <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                 <div className="min-w-0 max-w-2xl lg:max-w-none lg:flex-1 lg:pr-8">
                   <div className="inline-flex items-center gap-2 rounded-full border border-theme-subtle bg-surface-muted/60 px-3 py-1 text-xs font-medium text-theme-3">
                     <Sparkles className="h-3.5 w-3.5 text-[color:var(--accent-strong)]" aria-hidden />
-                    你能用到的能力
+                    能力与原理
                   </div>
                   <h2 className="font-display mt-4 text-balance break-keep text-4xl font-semibold tracking-tight text-theme-1 sm:text-5xl md:text-6xl">
-                    一张工作台，把语流收成图
+                    语流成图，为什么从这里开始
                   </h2>
                   <p className="mt-4 max-w-2xl text-lg leading-relaxed text-theme-3 md:text-xl">
-                    输入、主图、结构、转写历史、多画布切换、运行摘要和评测——常用能力都收在实时工作台里，不必在多个工具间来回跳。
+                    把复杂管线拆成你能点得到、看得懂的模块：视图、追踪、评测、归档，一整条链路都在工作台里。
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
                   {[
-                    { t: "多画布", d: "切换主图版本" },
-                    { t: "转写分栏", d: "当前与历史" },
-                    { t: "好对比", d: "指标与报告" },
-                  ].map((x) => (
+                    { t: "双视图", d: "主图 & 结构" },
+                    { t: "可观测", d: "摘要与记录" },
+                    { t: "可量化", d: "指标对照" },
+                  ].map((x, i) => (
                     <div
                       key={x.t}
-                      className="min-w-[5.5rem] rounded-xl border border-theme-subtle bg-surface-2/70 px-3 py-2 text-center shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
+                      className={`min-w-[5.5rem] rounded-xl border bg-surface-2/70 px-3 py-2 text-center shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] ${
+                        i === 0
+                          ? "border-[#c8ced8]/75"
+                          : i === 1
+                            ? "border-[#c3cbc5]/75"
+                            : "border-[#d3c7b5]/75"
+                      }`}
                     >
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">{x.t}</div>
+                      <div className="flex items-center justify-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-theme-4">
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            i === 0
+                              ? "bg-[#c8ced8]"
+                              : i === 1
+                                ? "bg-[#c3cbc5]"
+                                : "bg-[#d3c7b5]"
+                          }`}
+                          aria-hidden
+                        />
+                        {x.t}
+                      </div>
                       <div className="mt-0.5 text-xs font-medium text-theme-2">{x.d}</div>
                     </div>
                   ))}
@@ -554,13 +615,7 @@ export function HomePage() {
           </Reveal>
         </section>
 
-        {FEATURE_SPOTS.map((f) => (
-          <section key={f.mark} className="relative mx-auto w-full max-w-5xl px-6 py-8 text-theme-2 md:px-10 md:py-10">
-            <Reveal rootRef={scrollRef} delayMs={0}>
-              <FeatureSpotlightCard {...f} />
-            </Reveal>
-          </section>
-        ))}
+        {/* 原本 FeatureSpotlightCard 是纵向 reveal；现在让 block 链表承担“分块叙事”，后续内容保持原节奏即可。 */}
 
         <section className="relative mx-auto w-full max-w-5xl px-6 py-10 text-theme-2 md:px-10 md:py-12">
           <Reveal rootRef={scrollRef} delayMs={0}>
@@ -569,12 +624,20 @@ export function HomePage() {
               <h3 className="font-display mt-2 text-2xl font-semibold tracking-tight text-theme-1 md:text-3xl">三分钟上手路径</h3>
               <ol className="mt-6 space-y-5">
                 {[
-                  "打开实时工作台：选演示脚本、打字、浏览器麦克风，或本机内录转写；创建会话后边说边看主图更新。",
-                  "主图 Tab 看流程图，按需切换到其他画布；结构视图里核对节点关系是否合乎预期。",
-                  "在「当前字幕 / 历史转写」或「当前输入 / 历史转写」里分栏查看转写；再结合更新记录、运行摘要和评测页核对每次变化。",
+                  "在实时工作台开麦或粘贴 Transcript",
+                  "对照主图 / 结构视图，确认节点关系",
+                  "用更新记录与运行摘要锁定每一次改动",
                 ].map((text, i) => (
                   <li key={text} className="flex gap-4">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:var(--accent-muted)] bg-[color:var(--accent)]/12 text-sm font-bold tabular-nums text-[color:var(--accent-strong)]">
+                    <span
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-bold tabular-nums ${
+                        i === 0
+                          ? "border-[#aeb8c6]/85 bg-[#e7eaf0]/85 text-[#5d6775]"
+                          : i === 1
+                            ? "border-[#a7b3ad]/85 bg-[#e6ebe7]/85 text-[#56625d]"
+                            : "border-[#c6b8a1]/85 bg-[#efe8dd]/85 text-[#6a6054]"
+                      }`}
+                    >
                       {i + 1}
                     </span>
                     <span className="pt-1.5 text-base leading-relaxed text-theme-3 md:text-lg">{text}</span>
@@ -588,19 +651,25 @@ export function HomePage() {
         <section className="relative mx-auto w-full max-w-5xl px-6 py-6 text-theme-2 md:px-10 md:py-8">
           <Reveal rootRef={scrollRef} delayMs={0}>
             <div className="rounded-3xl border border-theme-default bg-surface-1/70 p-7 shadow-lg backdrop-blur-md md:p-9">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-theme-4">原理速览</div>
-              <h3 className="font-display mt-2 text-2xl font-semibold tracking-tight text-theme-1 md:text-3xl">后台三步</h3>
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-theme-4">Principle</div>
+              <h3 className="font-display mt-2 text-2xl font-semibold tracking-tight text-theme-1 md:text-3xl">三条骨架</h3>
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 {[
-                  { k: "整理", v: "把连续语音或长段文字收成可用片段，滤掉噪声与重复。" },
-                  { k: "改图", v: "在已有流程图上做增量更新，而不是从零重画整张图。" },
-                  { k: "出图", v: "同时给出可视化流程图（Mermaid）与可展开的结构节点列表。" },
-                ].map((row) => (
+                  { k: "Gate", v: "过滤与归类输入片段" },
+                  { k: "Planner", v: "增量修改图结构" },
+                  { k: "Renderer", v: "Mermaid + 结构节点" },
+                ].map((row, i) => (
                   <div
                     key={row.k}
-                    className="rounded-2xl border border-theme-subtle bg-surface-2/55 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
+                    className={`rounded-2xl border bg-surface-2/60 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] ${
+                      i === 0 ? "border-[#aeb8c6]/80" : i === 1 ? "border-[#a7b3ad]/80" : "border-[#c6b8a1]/80"
+                    }`}
                   >
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--accent-strong)]">
+                    <div
+                      className={`font-mono text-[11px] font-semibold uppercase tracking-wider ${
+                        i === 0 ? "text-[#5d6775]" : i === 1 ? "text-[#56625d]" : "text-[#6a6054]"
+                      }`}
+                    >
                       {row.k}
                     </div>
                     <div className="mt-1.5 text-sm leading-relaxed text-theme-2 md:text-base">{row.v}</div>
@@ -613,7 +682,7 @@ export function HomePage() {
 
         <section className="relative mx-auto w-full max-w-5xl px-6 pb-24 pt-6 text-theme-2 md:px-10 md:pb-28 md:pt-8">
           <Reveal rootRef={scrollRef} delayMs={0}>
-            <div className="relative overflow-hidden rounded-3xl border border-[color:var(--accent-muted)]/70 bg-gradient-to-br from-[color:var(--accent)]/12 via-surface-1/45 to-surface-1/35 p-8 shadow-lg backdrop-blur-xl backdrop-saturate-150 md:p-10">
+            <div className="relative overflow-hidden rounded-3xl border border-[color:var(--accent-muted)] bg-surface-muted p-8 md:p-10">
               <span
                 className="pointer-events-none absolute left-2 top-0 translate-y-2 font-display text-[6.5rem] leading-none text-[color:var(--accent)] opacity-20"
                 aria-hidden
@@ -622,11 +691,11 @@ export function HomePage() {
               </span>
               <div className="relative text-xs font-semibold uppercase tracking-[0.2em] text-theme-4">Tip</div>
               <p className="font-display relative mt-4 pl-6 text-lg font-medium leading-relaxed text-theme-2 md:pl-8 md:text-xl">
-                想认真对比：同一套演示脚本或同一配置跑两遍，打开评测页看数字差异——哪种更稳、更省延迟，一目了然。
+                想严谨对照：用固定样本与配置跑两次，再用评测指标对比差异——偏差会自己说话。
               </p>
             </div>
           </Reveal>
-      </section>
+        </section>
       </div>
     </main>
   );

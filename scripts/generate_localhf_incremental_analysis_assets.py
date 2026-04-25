@@ -23,15 +23,15 @@ ABLATION_RUNS = [
 
 
 TEST_RUNS = [
-    {"id": "localhf_final_combo", "label": "LocalHF FT Combo", "dir": "incremental_localhf_qwen35_27b_planner_qwen35_4b_gate_test_full_public_clean"},
+    {"id": "localhf_final_combo", "label": "Stream2Graph Local", "dir": "incremental_localhf_qwen35_27b_planner_qwen35_4b_gate_test_full_public_clean"},
     {"id": "claude_sonnet45", "label": "Claude Sonnet 4.5", "dir": "incremental_claude_sonnet45_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
-    {"id": "gemini3flash_rerun2", "label": "Gemini 3 Flash r2", "dir": "incremental_gemini3flash_google_siliconflow_qwen35_4b_gate_test_full_public_clean_rerun2_official"},
-    {"id": "gpt54_gateway", "label": "GPT-5.4 gateway", "dir": "incremental_gpt54_gateway_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
+    {"id": "gemini3flash_rerun2", "label": "Gemini 3 Flash", "dir": "incremental_gemini3flash_google_siliconflow_qwen35_4b_gate_test_full_public_clean_rerun2_official"},
+    {"id": "gpt54_gateway", "label": "GPT-5.4", "dir": "incremental_gpt54_gateway_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
     {"id": "minimax_m27", "label": "MiniMax M2.7", "dir": "incremental_minimax_m27_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
     {"id": "moonshot_k25", "label": "Moonshot K2.5", "dir": "incremental_moonshot_k25_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
     {"id": "qwen35plus", "label": "Qwen3.5-Plus", "dir": "incremental_qwen35plus_dashscope_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
-    {"id": "qwen35plus_thinking_on", "label": "Qwen3.5-Plus thinking", "dir": "incremental_qwen35plus_dashscope_thinking_on_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
-    {"id": "qwen35_27b_dashscope", "label": "Qwen3.5-27B DashScope", "dir": "incremental_qwen35_27b_dashscope_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
+    {"id": "qwen35plus_thinking_on", "label": "Qwen3.5-Plus (thinking)", "dir": "incremental_qwen35plus_dashscope_thinking_on_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
+    {"id": "qwen35_27b_dashscope", "label": "Qwen3.5-27B", "dir": "incremental_qwen35_27b_dashscope_siliconflow_qwen35_4b_gate_test_full_public_clean_official"},
 ]
 
 

@@ -31,6 +31,16 @@ def _normalize_source(row: RealtimeChunk) -> tuple[str, str]:
     return source, capture_mode
 
 
+def _speaker_slot_key_from_metadata(metadata: dict[str, Any] | None) -> str:
+    if not isinstance(metadata, dict):
+        return ""
+    return str(metadata.get("speaker_slot_key", "") or "").strip()
+
+
+def _turn_speaker_slot_key(turn: dict[str, Any]) -> str:
+    return str(turn.get("speaker_slot_key", "") or "").strip()
+
+
 def _join_turn_text(left: str, right: str) -> str:
     left_value = (left or "").strip()
     right_value = (right or "").strip()
@@ -61,7 +71,13 @@ def _can_merge_turn(
     source: str,
     capture_mode: str,
 ) -> bool:
-    if current.get("speaker") != row.speaker:
+    row_metadata = _chunk_metadata(row)
+    current_slot_key = _turn_speaker_slot_key(current)
+    row_slot_key = _speaker_slot_key_from_metadata(row_metadata)
+    if current_slot_key and row_slot_key:
+        if current_slot_key != row_slot_key:
+            return False
+    elif current.get("speaker") != row.speaker:
         return False
     if current.get("source") != source or current.get("capture_mode") != capture_mode:
         return False
@@ -83,6 +99,7 @@ def build_transcript_turns(rows: list[RealtimeChunk]) -> list[dict[str, Any]]:
         if not text:
             continue
         source, capture_mode = _normalize_source(row)
+        metadata = _chunk_metadata(row)
         if current is not None and _can_merge_turn(current, row, source=source, capture_mode=capture_mode):
             current["text"] = _join_turn_text(str(current.get("text", "")), text)
             current["end_ms"] = int(row.timestamp_ms)
@@ -98,6 +115,10 @@ def build_transcript_turns(rows: list[RealtimeChunk]) -> list[dict[str, Any]]:
             "is_final": bool(row.is_final),
             "source": source,
             "capture_mode": capture_mode,
+            "speaker_slot_key": _speaker_slot_key_from_metadata(metadata),
+            "speaker_identity": str(metadata.get("speaker_identity", "") or "").strip(),
+            "raw_role_label": str(metadata.get("raw_role_label", "") or "").strip(),
+            "speaker_resolution_source": str(metadata.get("speaker_resolution_source", "") or "").strip(),
             "chunk_count": 1,
         }
         turns.append(current)

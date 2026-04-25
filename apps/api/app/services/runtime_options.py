@@ -39,6 +39,39 @@ DEFAULT_XFYUN_VOICEPRINT_BASE = "https://office-api-personal-dx.iflyaisol.com"
 LEGACY_XFYUN_VOICEPRINT_BASE = "https://api.xf-yun.com"
 LEGACY_XFYUN_ASR_ENDPOINT = "wss://iat-api.xfyun.cn/v2/iat"
 
+DEFAULT_GATE_PROFILES = [
+    {
+        "id": "gate-default",
+        "label": "Gate Default",
+        "provider_kind": "openai_compatible",
+        "endpoint": "https://api.openai.com/v1/chat/completions",
+        "models": ["gpt-4.1-mini"],
+        "default_model": "gpt-4.1-mini",
+        "api_key_env": "OPENAI_API_KEY",
+    }
+]
+DEFAULT_PLANNER_PROFILES = [
+    {
+        "id": "planner-default",
+        "label": "Planner Default",
+        "provider_kind": "openai_compatible",
+        "endpoint": "https://api.openai.com/v1/chat/completions",
+        "models": ["gpt-4.1-mini"],
+        "default_model": "gpt-4.1-mini",
+        "api_key_env": "OPENAI_API_KEY",
+    }
+]
+DEFAULT_STT_PROFILES = [
+    {
+        "id": "stt-default",
+        "label": "STT Default",
+        "provider_kind": XFYUN_ASR_PROVIDER_KIND,
+        "endpoint": DEFAULT_XFYUN_ASR_ENDPOINT,
+        "models": list(DEFAULT_XFYUN_ASR_MODELS),
+        "default_model": DEFAULT_XFYUN_ASR_MODELS[0],
+    }
+]
+
 
 def _normalize_stt_models(models: Any, default_model: str) -> tuple[list[str], str]:
     raw_models = models
@@ -216,11 +249,11 @@ def _persisted_profiles(db: Session, kind: str, *, include_secrets: bool = False
 def _env_profiles(kind: str, *, include_secrets: bool = False) -> list[dict[str, Any]]:
     settings = get_settings()
     if kind == "gate":
-        raw_profiles = settings.gate_profiles
+        raw_profiles = settings.gate_profiles or DEFAULT_GATE_PROFILES
     elif kind in {"planner", "llm"}:
-        raw_profiles = settings.planner_profiles
+        raw_profiles = settings.planner_profiles or DEFAULT_PLANNER_PROFILES
     else:
-        raw_profiles = settings.stt_profiles
+        raw_profiles = settings.stt_profiles or DEFAULT_STT_PROFILES
     rows: list[dict[str, Any]] = []
     for item in raw_profiles:
         normalized = _normalize_profile(item, kind=kind, include_secrets=include_secrets)

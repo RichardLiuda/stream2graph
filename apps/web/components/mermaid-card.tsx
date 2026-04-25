@@ -6,6 +6,8 @@ import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
 import { Badge, Card } from "@stream2graph/ui";
 import { PanZoomCanvas } from "@/components/pan-zoom-canvas";
+import { AnnotationLayer, type AnnotationDoc, type AnnotationTool } from "@/components/annotation-layer";
+import { cn } from "@/lib/utils";
 
 let mermaidReady: Promise<typeof import("mermaid")> | null = null;
 let mermaidInitialized = false;
@@ -81,16 +83,31 @@ svg path.flowchart-link {
 type MermaidGraphNode = {
   id: string;
   label: string;
+  kind?: string;
+  metadata?: Record<string, unknown>;
 };
 
 type MermaidGraphGroup = {
   id: string;
   label: string;
+  metadata?: Record<string, unknown>;
+};
+
+type MermaidGraphEdge = {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+  kind?: string;
+  source_index?: number;
+  metadata?: Record<string, unknown>;
 };
 
 export type MermaidGraphPayload = {
   nodes?: MermaidGraphNode[];
   groups?: MermaidGraphGroup[];
+  edges?: MermaidGraphEdge[];
+  metadata?: Record<string, unknown>;
 } | null;
 
 export type MermaidDiagramEntityPosition = {
@@ -123,6 +140,14 @@ type MermaidInteractiveEntity = MermaidDiagramEntityPosition & {
   element: SVGGElement;
 };
 
+type MermaidRenderedEdge = {
+  edge: MermaidGraphEdge;
+  path: SVGPathElement;
+  container: SVGGElement | SVGPathElement;
+  relationType: string;
+  crossLane: boolean;
+};
+
 type SvgPoint = {
   x: number;
   y: number;
@@ -134,6 +159,77 @@ function roundCoordinate(value: number) {
 
 function normalizeLabelText(value: string | null | undefined) {
   return (value || "").replace(/\s+/g, " ").trim();
+}
+
+function metadataString(metadata: Record<string, unknown> | undefined, key: string, fallback = "") {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function metadataNumber(metadata: Record<string, unknown> | undefined, key: string, fallback = 0) {
+  const value = metadata?.[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function metadataBoolean(metadata: Record<string, unknown> | undefined, key: string, fallback = false) {
+  const value = metadata?.[key];
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const lowered = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(lowered)) return true;
+    if (["false", "0", "no", "off"].includes(lowered)) return false;
+  }
+  return fallback;
+}
+
+function metadataStageIndex(metadata: Record<string, unknown> | undefined) {
+  const value = metadata?.incremental_stage_index;
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function metadataIncludesStage(metadata: Record<string, unknown> | undefined, stageIndex: number | null) {
+  if (!stageIndex) return false;
+  const values = metadata?.incremental_stage_indices;
+  if (Array.isArray(values)) {
+    return values.some((value) => {
+      const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+      return parsed === stageIndex;
+    });
+  }
+  return metadataStageIndex(metadata) === stageIndex;
+}
+
+function metadataStageColor(metadata: Record<string, unknown> | undefined, fallback = "") {
+  const value = metadata?.incremental_stage_color;
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function graphStageColor(graphPayload: MermaidGraphPayload, stageIndex: number | null, fallback = "#2563eb") {
+  if (!stageIndex) return fallback;
+  const stages = graphPayload?.metadata?.incremental_stages;
+  if (Array.isArray(stages)) {
+    for (const row of stages) {
+      if (!row || typeof row !== "object") continue;
+      const record = row as Record<string, unknown>;
+      const rawIndex = record.stage_index;
+      const parsed = typeof rawIndex === "number" ? rawIndex : typeof rawIndex === "string" ? Number(rawIndex) : NaN;
+      if (parsed !== stageIndex) continue;
+      const color = record.stage_color;
+      if (typeof color === "string" && color.trim()) return color.trim();
+    }
+  }
+  return fallback;
+}
+
+function fallbackLaneColor(index: number) {
+  const palette = ["#eff6ff", "#fef3c7", "#ecfccb", "#fce7f3", "#ede9fe", "#cffafe"];
+  return palette[index % palette.length] || "#eff6ff";
 }
 
 function buildLabelToIdMap(items: Array<{ id: string; label: string }> | undefined) {
@@ -255,6 +351,70 @@ function collectInteractiveEntities(
   }
 
   return { nodes, groups };
+}
+
+function collectRenderedEdges(svg: SVGSVGElement, graphPayload: MermaidGraphPayload): MermaidRenderedEdge[] {
+  const graphEdges = [...(graphPayload?.edges || [])].sort(
+    (left, right) => (left.source_index || 0) - (right.source_index || 0) || left.id.localeCompare(right.id),
+  );
+  const fallbackPaths = Array.from(svg.querySelectorAll<SVGPathElement>("path.flowchart-link"));
+
+  return graphEdges
+    .map((edge, index) => {
+      const metadata = edge.metadata || {};
+      const mermaidSourceId = metadataString(metadata, "mermaid_source_id");
+      const mermaidTargetId = metadataString(metadata, "mermaid_target_id");
+      const selector =
+        mermaidSourceId && mermaidTargetId ? `[id^="L_${mermaidSourceId}_${mermaidTargetId}_"]` : "";
+      const matchedElement = selector ? svg.querySelector<SVGElement>(selector) : null;
+      const candidatePath =
+        (matchedElement?.closest?.("g.edgePath")?.querySelector("path.path, path.flowchart-link") as SVGPathElement | null) ||
+        (matchedElement instanceof SVGPathElement ? matchedElement : null) ||
+        fallbackPaths[index] ||
+        null;
+      if (!(candidatePath instanceof SVGPathElement)) return null;
+      const container = candidatePath.closest("g.edgePath");
+      return {
+        edge,
+        path: candidatePath,
+        container: container instanceof SVGGElement ? container : candidatePath,
+        relationType: metadataString(metadata, "relation_type", edge.kind || "reply"),
+        crossLane: metadataBoolean(metadata, "cross_lane"),
+      };
+    })
+    .filter((item): item is MermaidRenderedEdge => Boolean(item));
+}
+
+function collectHighlightPath(startNodeId: string, edges: MermaidRenderedEdge[], maxDepth = 2) {
+  const edgesByNode = new Map<string, MermaidRenderedEdge[]>();
+  for (const edge of edges) {
+    const current = edgesByNode.get(edge.edge.source) || [];
+    current.push(edge);
+    edgesByNode.set(edge.edge.source, current);
+    const reverse = edgesByNode.get(edge.edge.target) || [];
+    reverse.push(edge);
+    edgesByNode.set(edge.edge.target, reverse);
+  }
+
+  const activeNodeIds = new Set<string>([startNodeId]);
+  const activeEdgeIds = new Set<string>();
+  const queue: Array<{ nodeId: string; depth: number }> = [{ nodeId: startNodeId, depth: 0 }];
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current) break;
+    if (current.depth >= maxDepth) continue;
+    for (const edge of edgesByNode.get(current.nodeId) || []) {
+      activeEdgeIds.add(edge.edge.id);
+      const neighbor = edge.edge.source === current.nodeId ? edge.edge.target : edge.edge.source;
+      if (!activeNodeIds.has(neighbor)) {
+        activeNodeIds.add(neighbor);
+        queue.push({ nodeId: neighbor, depth: current.depth + 1 });
+      }
+    }
+  }
+
+  return { activeNodeIds, activeEdgeIds };
 }
 
 function relationHintBetween(source: SvgPoint, target: SvgPoint | null) {
@@ -573,7 +733,21 @@ function MermaidCardBody({
   graphPayload = null,
   onNodeRelayout,
   relayoutBusy = false,
+  activeIncrementalStageIndex = null,
   exportRootId,
+  annotationsEnabled = false,
+  annotationsTool = "none",
+  annotationPenWidth = 2,
+  annotationPenColor = "rgba(229,231,235,0.92)",
+  annotationRectColor = "rgba(229,231,235,0.92)",
+  annotationRectStrokeWidth = 2,
+  annotationTextColor = "rgba(229,231,235,0.92)",
+  annotationEraserWidth = 12,
+  annotationsDoc,
+  onAnnotationsChange,
+  annotationExportHostId = "s2g-annotation-host-mermaid",
+  /** @description Realtime 嵌入时固定浅色画布 token */
+  fixedLightCanvas = false,
 }: {
   title: string;
   code: string;
@@ -595,7 +769,20 @@ function MermaidCardBody({
   graphPayload?: MermaidGraphPayload;
   onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
   relayoutBusy?: boolean;
+  activeIncrementalStageIndex?: number | null;
   exportRootId?: string | null;
+  annotationsEnabled?: boolean;
+  annotationsTool?: AnnotationTool;
+  annotationPenWidth?: number;
+  annotationPenColor?: string;
+  annotationRectColor?: string;
+  annotationRectStrokeWidth?: number;
+  annotationTextColor?: string;
+  annotationEraserWidth?: number;
+  annotationsDoc?: AnnotationDoc;
+  onAnnotationsChange?: (next: AnnotationDoc) => void;
+  annotationExportHostId?: string;
+  fixedLightCanvas?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
   const [diagramExpanded, setDiagramExpanded] = useState(defaultDiagramExpanded);
@@ -634,7 +821,7 @@ function MermaidCardBody({
       console.debug("[MermaidCard] render candidate", summarizeMermaid(candidate));
       if (!candidate) {
         setSvg("");
-        setError(null);
+        setError("暂无 Mermaid 内容");
         console.info("[MermaidCard] skipped: empty Mermaid content");
         console.groupEnd();
         return;
@@ -673,6 +860,274 @@ function MermaidCardBody({
       active = false;
     };
   }, [code, id, compileOk, height, latencyMs, model, provider, title, updatedAt, zoomRebuildNonce]);
+
+  useEffect(() => {
+    const host = renderSurfaceRef.current;
+    if (!host || !svg || !graphPayload) return;
+    const svgElement = host.querySelector("svg");
+    if (!(svgElement instanceof SVGSVGElement)) return;
+
+    const groupPayloadById = new Map((graphPayload.groups || []).map((group) => [group.id, group]));
+    const nodePayloadById = new Map((graphPayload.nodes || []).map((node) => [node.id, node]));
+    const collected = collectInteractiveEntities(svgElement, graphPayload);
+    const renderedEdges = collectRenderedEdges(svgElement, graphPayload);
+    const laneGroups = collected.groups.filter((group) => {
+      const payload = groupPayloadById.get(group.id);
+      return metadataString(payload?.metadata, "group_type") === "speaker_lane";
+    });
+
+    const svgNs = "http://www.w3.org/2000/svg";
+    const overlayRoot = document.createElementNS(svgNs, "g");
+    overlayRoot.setAttribute("data-s2g-overlay-layer", "lane-underlay");
+    overlayRoot.setAttribute("pointer-events", "none");
+
+    const firstRenderableChild =
+      Array.from(svgElement.children).find((child) => {
+        const tag = child.tagName.toLowerCase();
+        return tag !== "defs" && tag !== "style";
+      }) || svgElement.firstChild;
+    if (laneGroups.length) {
+      svgElement.insertBefore(overlayRoot, firstRenderableChild);
+    }
+
+    laneGroups.forEach((group, index) => {
+      const payload = groupPayloadById.get(group.id);
+      const rect = document.createElementNS(svgNs, "rect");
+      const laneColor = metadataString(payload?.metadata, "lane_color", fallbackLaneColor(index));
+      rect.setAttribute("data-s2g-lane-underlay", "true");
+      rect.setAttribute("x", `${group.x - group.width / 2 - 16}`);
+      rect.setAttribute("y", `${group.y - group.height / 2 - 18}`);
+      rect.setAttribute("width", `${group.width + 32}`);
+      rect.setAttribute("height", `${group.height + 36}`);
+      rect.setAttribute("rx", "18");
+      rect.setAttribute("ry", "18");
+      rect.setAttribute("fill", laneColor);
+      rect.setAttribute("fill-opacity", "0.32");
+      rect.setAttribute("stroke", "#cbd5e1");
+      rect.setAttribute("stroke-width", "1.5");
+      overlayRoot.appendChild(rect);
+    });
+
+    const nodeElementById = new Map(collected.nodes.map((entity) => [entity.id, entity]));
+    const groupElementById = new Map(collected.groups.map((entity) => [entity.id, entity]));
+    const activeStageIndex =
+      typeof activeIncrementalStageIndex === "number" && activeIncrementalStageIndex > 0
+        ? activeIncrementalStageIndex
+        : null;
+    const activeStageColor = graphStageColor(graphPayload, activeStageIndex);
+
+    const clearVisualState = () => {
+      for (const entity of collected.nodes) {
+        entity.element.style.opacity = "";
+        entity.element.style.filter = "";
+      }
+      for (const entity of collected.groups) {
+        entity.element.style.opacity = "";
+        entity.element.style.filter = "";
+      }
+      for (const renderedEdge of renderedEdges) {
+        renderedEdge.path.style.opacity = "";
+        renderedEdge.path.style.filter = "";
+        renderedEdge.path.style.strokeLinecap = "round";
+        renderedEdge.path.style.transition = "opacity 120ms ease, filter 120ms ease, stroke-width 120ms ease";
+        renderedEdge.container.style.opacity = "";
+      }
+    };
+
+    const applyBaseStyles = () => {
+      clearVisualState();
+      laneGroups.forEach((group, index) => {
+        const payload = groupPayloadById.get(group.id);
+        const laneColor = metadataString(payload?.metadata, "lane_color", fallbackLaneColor(index));
+        for (const shape of Array.from(group.element.querySelectorAll<SVGElement>("rect,polygon,path"))) {
+          shape.style.stroke = "#334155";
+          shape.style.strokeWidth = "2.2px";
+          shape.style.fill = laneColor;
+          shape.style.fillOpacity = "0.15";
+        }
+        for (const label of Array.from(group.element.querySelectorAll<SVGElement>("text,tspan"))) {
+          label.style.fontWeight = "700";
+          label.style.fill = "#0f172a";
+        }
+      });
+      renderedEdges.forEach((renderedEdge) => {
+        if (renderedEdge.relationType === "attack") {
+          renderedEdge.path.style.stroke = "#dc2626";
+          renderedEdge.path.style.strokeWidth = "2.8px";
+        } else if (renderedEdge.relationType === "support") {
+          renderedEdge.path.style.stroke = "#16a34a";
+          renderedEdge.path.style.strokeWidth = "2.6px";
+        } else if (renderedEdge.relationType === "reference") {
+          renderedEdge.path.style.stroke = "#2563eb";
+          renderedEdge.path.style.strokeWidth = "2.4px";
+        } else if (renderedEdge.relationType === "elaborate") {
+          renderedEdge.path.style.stroke = "#7c3aed";
+          renderedEdge.path.style.strokeWidth = "2.3px";
+        } else if (renderedEdge.crossLane) {
+          renderedEdge.path.style.stroke = "#0f172a";
+          renderedEdge.path.style.strokeWidth = "2.2px";
+        } else {
+          renderedEdge.path.style.strokeWidth = "2.1px";
+        }
+      });
+    };
+
+    const applyStageHighlight = () => {
+      if (!activeStageIndex) return;
+
+      for (const entity of collected.nodes) {
+        const payload = nodePayloadById.get(entity.id);
+        const stageColor = activeStageColor || metadataStageColor(payload?.metadata, "#2563eb");
+        const active = metadataIncludesStage(payload?.metadata, activeStageIndex);
+        entity.element.style.opacity = active ? "1" : "0.18";
+        entity.element.style.filter = active ? `drop-shadow(0 0 14px ${stageColor}44)` : "";
+        if (!active) continue;
+        for (const shape of Array.from(entity.element.querySelectorAll<SVGElement>("rect,polygon,path,circle,ellipse"))) {
+          shape.style.fill = stageColor;
+          shape.style.fillOpacity = "0.22";
+          shape.style.stroke = stageColor;
+          shape.style.strokeWidth = "3px";
+        }
+      }
+
+      for (const entity of collected.groups) {
+        const payload = groupPayloadById.get(entity.id);
+        const stageColor = activeStageColor || metadataStageColor(payload?.metadata, "#2563eb");
+        const active = metadataIncludesStage(payload?.metadata, activeStageIndex);
+        entity.element.style.opacity = active ? "1" : "0.18";
+        entity.element.style.filter = active ? `drop-shadow(0 0 14px ${stageColor}33)` : "";
+        if (!active) continue;
+        for (const shape of Array.from(entity.element.querySelectorAll<SVGElement>("rect,polygon,path"))) {
+          shape.style.fill = stageColor;
+          shape.style.fillOpacity = "0.18";
+          shape.style.stroke = stageColor;
+          shape.style.strokeWidth = "3px";
+        }
+      }
+
+      renderedEdges.forEach((renderedEdge) => {
+        const stageColor = activeStageColor || metadataStageColor(renderedEdge.edge.metadata, "#2563eb");
+        const active = metadataIncludesStage(renderedEdge.edge.metadata, activeStageIndex);
+        renderedEdge.container.style.opacity = active ? "1" : "0.14";
+        renderedEdge.path.style.opacity = active ? "1" : "0.14";
+        if (!active) return;
+        renderedEdge.path.style.stroke = stageColor;
+        renderedEdge.path.style.strokeWidth = "3.5px";
+        renderedEdge.path.style.filter = `drop-shadow(0 0 12px ${stageColor}44)`;
+      });
+    };
+
+    const resetVisualState = () => {
+      applyBaseStyles();
+      applyStageHighlight();
+    };
+
+    const dimEverything = () => {
+      collected.nodes.forEach((entity) => {
+        entity.element.style.opacity = "0.18";
+      });
+      collected.groups.forEach((entity) => {
+        entity.element.style.opacity = "0.18";
+      });
+      renderedEdges.forEach((renderedEdge) => {
+        renderedEdge.path.style.opacity = "0.14";
+        renderedEdge.container.style.opacity = "0.14";
+      });
+    };
+
+    const highlightLaneIds = (laneIds: Set<string>) => {
+      laneIds.forEach((laneId) => {
+        const group = groupElementById.get(laneId);
+        if (!group) return;
+        group.element.style.opacity = "1";
+        group.element.style.filter = "drop-shadow(0 0 12px rgba(15,23,42,0.12))";
+      });
+    };
+
+    const activateNodePath = (nodeId: string) => {
+      applyBaseStyles();
+      dimEverything();
+      const { activeNodeIds, activeEdgeIds } = collectHighlightPath(nodeId, renderedEdges, 2);
+      const laneIds = new Set<string>();
+
+      activeNodeIds.forEach((activeNodeId) => {
+        const activeNode = nodeElementById.get(activeNodeId);
+        const payload = nodePayloadById.get(activeNodeId);
+        const laneId = metadataString(payload?.metadata, "lane_id");
+        if (laneId) laneIds.add(laneId);
+        if (!activeNode) return;
+        activeNode.element.style.opacity = "1";
+        activeNode.element.style.filter = "drop-shadow(0 0 12px rgba(37,99,235,0.22))";
+      });
+
+      highlightLaneIds(laneIds);
+
+      renderedEdges.forEach((renderedEdge) => {
+        if (!activeEdgeIds.has(renderedEdge.edge.id)) return;
+        renderedEdge.container.style.opacity = "1";
+        renderedEdge.path.style.opacity = "1";
+        renderedEdge.path.style.filter = "drop-shadow(0 0 10px rgba(15,23,42,0.16))";
+        renderedEdge.path.style.strokeWidth = renderedEdge.relationType === "attack" ? "3.6px" : "3.2px";
+      });
+    };
+
+    const activateEdgeFocus = (targetEdge: MermaidRenderedEdge) => {
+      applyBaseStyles();
+      dimEverything();
+      targetEdge.container.style.opacity = "1";
+      targetEdge.path.style.opacity = "1";
+      targetEdge.path.style.filter = "drop-shadow(0 0 12px rgba(15,23,42,0.18))";
+      targetEdge.path.style.strokeWidth = targetEdge.relationType === "attack" ? "3.6px" : "3.2px";
+
+      const sourceNode = nodeElementById.get(targetEdge.edge.source);
+      const targetNode = nodeElementById.get(targetEdge.edge.target);
+      const sourceLaneId = metadataString(nodePayloadById.get(targetEdge.edge.source)?.metadata, "lane_id");
+      const targetLaneId = metadataString(nodePayloadById.get(targetEdge.edge.target)?.metadata, "lane_id");
+      if (sourceNode) {
+        sourceNode.element.style.opacity = "1";
+        sourceNode.element.style.filter = "drop-shadow(0 0 12px rgba(37,99,235,0.22))";
+      }
+      if (targetNode) {
+        targetNode.element.style.opacity = "1";
+        targetNode.element.style.filter = "drop-shadow(0 0 12px rgba(37,99,235,0.22))";
+      }
+      highlightLaneIds(new Set([sourceLaneId, targetLaneId].filter(Boolean)));
+    };
+
+    resetVisualState();
+
+    const cleanupFns: Array<() => void> = [];
+    for (const entity of collected.nodes) {
+      const handleEnter = () => activateNodePath(entity.id);
+      const handleLeave = () => resetVisualState();
+      entity.element.addEventListener("pointerenter", handleEnter);
+      entity.element.addEventListener("pointerleave", handleLeave);
+      cleanupFns.push(() => {
+        entity.element.removeEventListener("pointerenter", handleEnter);
+        entity.element.removeEventListener("pointerleave", handleLeave);
+      });
+    }
+
+    for (const renderedEdge of renderedEdges) {
+      if (!["attack", "support"].includes(renderedEdge.relationType)) continue;
+      const handleEnter = () => activateEdgeFocus(renderedEdge);
+      const handleLeave = () => resetVisualState();
+      renderedEdge.container.addEventListener("pointerenter", handleEnter);
+      renderedEdge.container.addEventListener("pointerleave", handleLeave);
+      cleanupFns.push(() => {
+        renderedEdge.container.removeEventListener("pointerenter", handleEnter);
+        renderedEdge.container.removeEventListener("pointerleave", handleLeave);
+      });
+    }
+
+    return () => {
+      cleanupFns.forEach((cleanup) => cleanup());
+      clearVisualState();
+      if (overlayRoot.parentNode) {
+        overlayRoot.parentNode.removeChild(overlayRoot);
+      }
+    };
+  }, [activeIncrementalStageIndex, graphPayload, svg, zoomRebuildNonce]);
 
   useEffect(() => {
     const host = renderSurfaceRef.current;
@@ -864,9 +1319,12 @@ function MermaidCardBody({
   const panZoomCanvasStyle = embedded ? { minHeight: 0 } : { minHeight: viewportMinCss };
   const showDiagram = !collapsible || diagramExpanded;
 
-  const panZoomChromeClass = embedded
-    ? "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-[var(--mindmap-canvas-bg)] p-2 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
-    : "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-theme-default bg-[var(--mindmap-canvas-bg)] p-3 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]";
+  const panZoomChromeClass = cn(
+    embedded
+      ? "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-[var(--mindmap-canvas-bg)] p-2 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]"
+      : "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-theme-default bg-[var(--mindmap-canvas-bg)] p-3 shadow-[inset_0_1px_0_var(--mindmap-inset-highlight)]",
+    fixedLightCanvas && "realtime-light-graph-surface",
+  );
 
   const body = (
     <div
@@ -874,7 +1332,7 @@ function MermaidCardBody({
         embedded ? "flex h-full min-h-0 min-w-0 flex-col bg-transparent" : "bg-surface-muted p-4"
       }
     >
-        {error ? (
+        {error && !embedded ? (
           <div
             className={`rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2.5 text-xs leading-relaxed text-amber-100 ${
               embedded ? "mx-1 mb-2 shrink-0 sm:mx-2" : "mb-3"
@@ -898,6 +1356,7 @@ function MermaidCardBody({
               contentClassName="min-h-0 flex-1"
               style={panZoomCanvasStyle}
               onZoomEnd={() => setZoomRebuildNonce((n) => n + 1)}
+              interactionMode={annotationsEnabled && annotationsTool !== "none" ? "annotate" : "panzoom"}
               minScale={0.55}
               maxScale={2.6}
               initialScale={1}
@@ -923,37 +1382,52 @@ function MermaidCardBody({
                   backgroundPosition: "10px 10px",
                 }}
               />
-              {!svg ? (
-                <div
-                  className={`pointer-events-none absolute z-[2] rounded-lg border border-theme-subtle bg-surface-2/90 px-3 py-2.5 text-center text-[12px] leading-relaxed text-theme-2 shadow-sm backdrop-blur-[2px] ${
-                    embedded ? "left-1/2 top-1/2 w-[min(92%,20rem)] -translate-x-1/2 -translate-y-1/2" : "left-3 right-3 top-3"
-                  }`}
-                >
-                  {embedded ? (
-                    <>
-                      暂无图形内容。
-                      <span className="mt-1 block text-[11px] text-theme-4">
-                        请在左侧输入或载入脚本后点击发送，或切换语音来源并开始采集，主图将在此处更新。
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      画布已就绪，但目前没有可渲染的 Mermaid。
-                      <span className="mt-1 block text-[11px] text-theme-4">
-                        发送 Transcript、开始录音或等待会话出图后，此处会自动更新。
-                      </span>
-                    </>
-                  )}
+              {embedded && error && error !== "暂无 Mermaid 内容" ? (
+                <div className="absolute left-2 right-2 top-2 z-[3] rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
+                  渲染错误：{error}
+                  {lastSuccessfulSvg ? " 已保留最近一次可用图。" : ""}
                 </div>
               ) : null}
-          {svg ? (
-            <div
+              {!svg ? (
+                <div
+                  className={`absolute z-[2] rounded-lg border border-amber-900/55 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100 ${
+                    embedded
+                      ? error && error !== "暂无 Mermaid 内容"
+                        ? "left-2 right-2 top-12"
+                        : "left-2 right-2 top-2"
+                      : "left-3 right-3 top-3"
+                  }`}
+                >
+                  画布已就绪，但目前没有可渲染的 Mermaid。
+                  <span className="text-amber-200/80">
+                    {" "}
+                    你可以：左侧发送 Transcript / 开始录音；会话建立后这里会自动更新。
+                  </span>
+                </div>
+              ) : null}
+              {svg ? (
+                <div
                   key={zoomRebuildNonce}
                   ref={renderSurfaceRef}
                   data-mermaid-export-root={exportRootId || undefined}
                   className="relative z-[1] min-h-0 flex-1 [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
-              dangerouslySetInnerHTML={{ __html: svg }}
-            />
+                  dangerouslySetInnerHTML={{ __html: svg }}
+                />
+              ) : null}
+              {annotationsDoc && onAnnotationsChange ? (
+                <AnnotationLayer
+                  enabled={annotationsEnabled}
+                  tool={annotationsTool}
+                  exportHostId={annotationExportHostId}
+                  penWidth={annotationPenWidth}
+                  penColor={annotationPenColor}
+                  rectColor={annotationRectColor}
+                  rectStrokeWidth={annotationRectStrokeWidth}
+                  textColor={annotationTextColor}
+                  eraserWidth={annotationEraserWidth}
+                  doc={annotationsDoc}
+                  onChange={onAnnotationsChange}
+                />
               ) : null}
             </PanZoomCanvas>
           </div>
@@ -1004,11 +1478,11 @@ function MermaidCardBody({
 
   const headerBadges = (
     <>
-            {provider ? <Badge>{provider}</Badge> : null}
-            {model ? <Badge>{model}</Badge> : null}
-            {typeof latencyMs === "number" ? <Badge>{latencyMs.toFixed(1)} ms</Badge> : null}
-            <MermaidCompileStatusBadge compileOk={compileOk} updatedAt={updatedAt} />
-            {headerExtra}
+      {provider ? <Badge>{provider}</Badge> : null}
+      {model ? <Badge>{model}</Badge> : null}
+      {typeof latencyMs === "number" ? <Badge>{latencyMs.toFixed(1)} ms</Badge> : null}
+      <MermaidCompileStatusBadge compileOk={compileOk} updatedAt={updatedAt} />
+      {headerExtra}
     </>
   );
 
@@ -1043,7 +1517,7 @@ function MermaidCardBody({
       ) : (
         <div className="border-b border-theme-default px-5 py-3 text-xs leading-snug text-theme-4">
           图预览已收起，点击标题栏可展开查看（画布内仍可平移与缩放）。
-      </div>
+        </div>
       )}
     </Card>
   );
@@ -1067,7 +1541,20 @@ export function MermaidCard(props: {
   graphPayload?: MermaidGraphPayload;
   onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
   relayoutBusy?: boolean;
+  activeIncrementalStageIndex?: number | null;
   exportRootId?: string | null;
+  annotationsEnabled?: boolean;
+  annotationsTool?: AnnotationTool;
+  annotationPenWidth?: number;
+  annotationPenColor?: string;
+  annotationRectColor?: string;
+  annotationRectStrokeWidth?: number;
+  annotationTextColor?: string;
+  annotationEraserWidth?: number;
+  annotationsDoc?: AnnotationDoc;
+  onAnnotationsChange?: (next: AnnotationDoc) => void;
+  annotationExportHostId?: string;
+  fixedLightCanvas?: boolean;
 }) {
   return (
     <ErrorBoundary

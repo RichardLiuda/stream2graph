@@ -25,6 +25,8 @@ export function PanZoomCanvas({
   style: styleProp,
   overlay,
   onZoomEnd,
+  interactionMode = "panzoom",
+  wheelZoomEnabled = true,
   minScale = 0.6,
   maxScale = 2.4,
   initialScale = 1,
@@ -39,6 +41,10 @@ export function PanZoomCanvas({
   overlay?: ReactNode;
   /** When pan/zoom interaction settles, notify parent to allow a re-paint/re-mount. */
   onZoomEnd?: () => void;
+  /** @description 'annotate' 时禁用拖拽平移，避免与画笔冲突（缩放控件仍可用）。 */
+  interactionMode?: "panzoom" | "annotate";
+  /** @description 是否启用滚轮缩放（批注模式可关闭）。 */
+  wheelZoomEnabled?: boolean;
   minScale?: number;
   maxScale?: number;
   initialScale?: number;
@@ -151,6 +157,7 @@ export function PanZoomCanvas({
     if (!el) return;
 
     const onWheel = (event: WheelEvent) => {
+      if (!wheelZoomEnabled) return;
       // 画布内滚轮：只做缩放，不做任何平移
       event.preventDefault();
       const { scale: currentScale } = stateRef.current;
@@ -164,13 +171,14 @@ export function PanZoomCanvas({
     // 关键：passive:false，确保 preventDefault 生效，页面不会上下移动
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel as EventListener);
-  }, []);
+  }, [wheelZoomEnabled]);
 
   return (
     <div
       ref={containerRef}
       className={`relative min-h-0 overflow-hidden ${className}`}
       onPointerDown={(event) => {
+        if (interactionMode === "annotate") return;
         // 鼠标只允许左键拖拽；触摸/笔则忽略 button
         if (event.pointerType === "mouse" && event.button !== 0) return;
         const target = event.target as HTMLElement | null;

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from sqlalchemy.orm import sessionmaker
 
 from app.models import RealtimeChunk, RealtimeSession
@@ -145,3 +148,21 @@ def test_generate_mermaid_state_repairs_failed_candidate(
     assert "APIGateway -- Auth[Auth]" in repaired["raw_output_text"]
     assert "APIGateway --> Auth[Auth]" in repaired["repair_raw_output_text"]
     assert repaired["normalized_code"] == "flowchart TD\nClient[Client] --> APIGateway[API Gateway]\nAPIGateway --> Auth[Auth]"
+
+
+def test_mermaid_runtime_version_is_aligned_across_prompt_and_web_runtime() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    web_package_json = repo_root / "apps" / "web" / "package.json"
+    pnpm_lock = repo_root / "pnpm-lock.yaml"
+    installed_mermaid_package = repo_root / "node_modules" / ".pnpm" / "mermaid@11.13.0" / "node_modules" / "mermaid" / "package.json"
+
+    package_payload = json.loads(web_package_json.read_text(encoding="utf-8"))
+    lock_text = pnpm_lock.read_text(encoding="utf-8")
+
+    assert MERMAID_RUNTIME_VERSION == "11.13.0"
+    assert package_payload["dependencies"]["mermaid"] == "11.13.0"
+    assert "specifier: 11.13.0" in lock_text
+    assert "mermaid@11.13.0:" in lock_text
+    if installed_mermaid_package.exists():
+        installed_payload = json.loads(installed_mermaid_package.read_text(encoding="utf-8"))
+        assert installed_payload["version"] == "11.13.0"

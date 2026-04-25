@@ -9,6 +9,8 @@ from app.services.xfyun_asr import (
     RTASRRealtimeSessionStream,
     _group_role_segments,
     build_xfyun_asr_auth_url,
+    close_rtasr_session_stream,
+    get_or_create_rtasr_session_stream,
 )
 
 
@@ -122,6 +124,7 @@ def test_transcribe_audio_chunk_dispatches_to_xfyun_provider(session_factory, mo
     assert captured["feature_ids"] == ["feature_alice"]
     assert captured["eng_spk_match"] == 1
     assert captured["is_final"] is False
+    assert captured["reuse_session_stream"] is True
     assert result["text"] == "你好，世界"
     assert result["speaker"] == "Alice"
     assert result["provider"] == "xfyun-stt"
@@ -162,6 +165,9 @@ def test_group_role_segments_splits_words_by_role_and_feature_mapping() -> None:
             "seg_id": 7,
             "text": "你好，",
             "speaker": "Alice",
+            "speaker_display_label": "Alice",
+            "speaker_identity": "Alice",
+            "raw_role_label": "role_1",
             "role_index": 1,
             "feature_id": "feature_alice",
             "speaker_resolution_source": "rtasr_feature",
@@ -172,7 +178,10 @@ def test_group_role_segments_splits_words_by_role_and_feature_mapping() -> None:
         {
             "seg_id": 7,
             "text": "我来补充",
-            "speaker": "role_2",
+            "speaker": "匿名说话人 B",
+            "speaker_display_label": "匿名说话人 B",
+            "speaker_identity": "",
+            "raw_role_label": "role_2",
             "role_index": 2,
             "feature_id": "",
             "speaker_resolution_source": "rtasr_role",
@@ -320,3 +329,52 @@ def test_rtasr_end_marker_omits_local_session_id_when_remote_missing() -> None:
         stream.close()
 
     assert sent == ['{"end": true}']
+
+
+def test_get_or_create_rtasr_session_stream_reuses_existing_instance(monkeypatch) -> None:
+    created: list[str] = []
+
+    class _DummyStream:
+        def __init__(self, **kwargs) -> None:
+            created.append(str(kwargs["session_id"]))
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.services.xfyun_asr.RTASRRealtimeSessionStream", _DummyStream)
+    close_rtasr_session_stream("session-reuse")
+
+    first = get_or_create_rtasr_session_stream(
+        session_id="session-reuse",
+        endpoint="wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1",
+        app_id="demo-app",
+        api_key="demo-key",
+        api_secret="demo-secret",
+        sample_rate=16000,
+        lang="autodialect",
+        role_type=2,
+        feature_ids=[],
+        eng_spk_match=None,
+        pd=None,
+        feature_label_by_id={},
+        fallback_speaker="speaker",
+    )
+    second = get_or_create_rtasr_session_stream(
+        session_id="session-reuse",
+        endpoint="wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1",
+        app_id="demo-app",
+        api_key="demo-key",
+        api_secret="demo-secret",
+        sample_rate=16000,
+        lang="autodialect",
+        role_type=2,
+        feature_ids=[],
+        eng_spk_match=None,
+        pd=None,
+        feature_label_by_id={},
+        fallback_speaker="speaker",
+    )
+    close_rtasr_session_stream("session-reuse")
+
+    assert first is second
+    assert created == ["session-reuse"]

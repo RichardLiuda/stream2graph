@@ -102,6 +102,24 @@ class RealtimeSession(Base):
     closed_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class RealtimeSessionAnnotations(Base):
+    __tablename__ = "realtime_session_annotations"
+    __table_args__ = (
+        UniqueConstraint("session_id", name="uq_realtime_session_annotations_session_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_id)
+    session_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("realtime_sessions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
 class RealtimeChunk(Base):
     __tablename__ = "realtime_chunks"
 

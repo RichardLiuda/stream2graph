@@ -2,27 +2,37 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db, utc_now
 from app.legacy import evaluate_payload
-from app.models import RealtimeChunk, RealtimeSession
+from app.models import RealtimeChunk, RealtimeEvent, RealtimeSession, RealtimeSessionAnnotations, RealtimeSnapshot as RealtimeSnapshotModel
 from app.schemas import (
     RealtimeAudioTranscriptionRequest,
     RealtimeAudioTranscriptionResponse,
     RealtimeChunkBatchCreateRequest,
     RealtimeChunkCreateRequest,
     RealtimeDiagramRelayoutRequest,
+    RealtimeRollbackApplyResponse,
+    RealtimeRollbackEditApplyResponse,
+    RealtimeRollbackEditRequest,
+    RealtimeRollbackPreviewResponse,
+    RealtimeRollbackRequest,
     RealtimeSessionCloseResponse,
     RealtimeSession as RealtimeSessionSchema,
     RealtimeSessionCreateRequest,
     RealtimeSessionUpdateRequest,
     RealtimeSnapshot,
+    RealtimeSessionAnnotations as RealtimeSessionAnnotationsSchema,
+    RealtimeSessionAnnotationsUpdateRequest,
+    RealtimeTimelineNode,
+    RealtimeTimelineResponse,
 )
 from app.services.realtime_ai import detect_diagram_type_from_transcript, transcribe_audio_chunk
 from app.services.reports import create_report
@@ -216,6 +226,172 @@ def _role_split_voiceprint_summary(segments: list[dict[str, Any]]) -> dict[str, 
     }
 
 
+def _timeline_checkpoint(snapshot: RealtimeSnapshotModel) -> dict[str, Any]:
+    summary = snapshot.summary_json if isinstance(snapshot.summary_json, dict) else {}
+    checkpoint = summary.get("timeline_checkpoint", {})
+    return checkpoint if isinstance(checkpoint, dict) else {}
+
+
+def _timeline_node_from_snapshot(snapshot: RealtimeSnapshotModel) -> RealtimeTimelineNode:
+    summary = snapshot.summary_json if isinstance(snapshot.summary_json, dict) else {}
+    checkpoint = _timeline_checkpoint(snapshot)
+    chunk_count = checkpoint.get("chunk_count")
+    if not isinstance(chunk_count, int):
+        chunks = checkpoint.get("chunks")
+        chunk_count = len(chunks) if isinstance(chunks, list) else 0
+    pipeline = snapshot.pipeline_payload if isinstance(snapshot.pipeline_payload, dict) else {}
+    events = pipeline.get("events")
+    event_count = len(events) if isinstance(events, list) else 0
+    label = summary.get("timeline_label")
+    return RealtimeTimelineNode(
+        snapshot_id=snapshot.id,
+        created_at=snapshot.created_at,
+        summary=summary,
+        event_count=event_count,
+        chunk_count=max(0, int(chunk_count)),
+        label=str(label) if isinstance(label, str) and label.strip() else None,
+    )
+
+
+def _coerce_turn_from_payload(item: dict[str, Any]) -> dict[str, Any] | None:
+    speaker = str(item.get("speaker") or "speaker").strip() or "speaker"
+    text = str(item.get("text") or item.get("content") or "").strip()
+    if not text:
+        return None
+    start_ms = int(item.get("start_ms", item.get("timestamp_ms", 0)) or 0)
+    end_ms = int(item.get("end_ms", item.get("timestamp_ms", start_ms)) or start_ms)
+    return {
+        "speaker": speaker,
+        "text": text,
+        "start_ms": max(0, start_ms),
+        "end_ms": max(0, end_ms),
+        "is_final": bool(item.get("is_final", True)),
+        "source": str(item.get("source") or "timeline_fallback"),
+        "capture_mode": str(item.get("capture_mode") or "snapshot"),
+    }
+
+
+def _speaker_priority(value: str) -> int:
+    speaker = str(value or "").strip().lower()
+    if not speaker or speaker == "speaker":
+        return 0
+    if speaker == "user":
+        return 1
+    return 2
+
+
+def _merge_turns_dedup(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[tuple[str, int, int], dict[str, Any]] = {}
+    for turn in rows:
+        text = str(turn.get("text") or "").strip()
+        if not text:
+            continue
+        start_ms = int(turn.get("start_ms", 0) or 0)
+        end_ms = int(turn.get("end_ms", start_ms) or start_ms)
+        key = (text, start_ms, end_ms)
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = dict(turn)
+            continue
+        next_priority = _speaker_priority(str(turn.get("speaker") or ""))
+        existing_priority = _speaker_priority(str(existing.get("speaker") or ""))
+        if next_priority > existing_priority:
+            merged[key] = {**existing, **turn}
+    return sorted(merged.values(), key=lambda item: (int(item.get("start_ms", 0)), int(item.get("end_ms", 0))))
+
+
+def _timeline_preview_turns(snapshot: RealtimeSnapshotModel, *, session_id: str, chunks: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if isinstance(chunks, list) and chunks:
+        rows = []
+        for index, item in enumerate(chunks):
+            if not isinstance(item, dict):
+                continue
+            rows.append(
+                RealtimeChunk(
+                    session_id=session_id,
+                    sequence_no=int(item.get("sequence_no", index)),
+                    timestamp_ms=int(item.get("timestamp_ms", 0)),
+                    speaker=str(item.get("speaker", "speaker")),
+                    text=str(item.get("text", "")),
+                    is_final=bool(item.get("is_final", True)),
+                    expected_intent=item.get("expected_intent"),
+                    meta_json=item.get("metadata", {}) if isinstance(item.get("metadata"), dict) else {},
+                )
+            )
+        return build_transcript_turns(rows)
+
+    pipeline = snapshot.pipeline_payload if isinstance(snapshot.pipeline_payload, dict) else {}
+    transcript_state = pipeline.get("transcript_state") if isinstance(pipeline.get("transcript_state"), dict) else {}
+    turns: list[dict[str, Any]] = []
+    for key in ("current_turn", "latest_final_turn"):
+        item = transcript_state.get(key)
+        if isinstance(item, dict):
+            turn = _coerce_turn_from_payload(item)
+            if turn is not None:
+                turns.append(turn)
+    for key in ("archived_recent_turns", "recent_turns"):
+        rows = transcript_state.get(key)
+        if isinstance(rows, list):
+            for item in rows:
+                if not isinstance(item, dict):
+                    continue
+                turn = _coerce_turn_from_payload(item)
+                if turn is None:
+                    continue
+                turns.append(turn)
+    if turns:
+        return _merge_turns_dedup(turns)
+
+    events = pipeline.get("events")
+    if isinstance(events, list):
+        fallback_turns: list[dict[str, Any]] = []
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            pending_turns = event.get("pending_turns")
+            if isinstance(pending_turns, list):
+                for turn_payload in pending_turns:
+                    if not isinstance(turn_payload, dict):
+                        continue
+                    turn = _coerce_turn_from_payload(turn_payload)
+                    if turn is not None:
+                        fallback_turns.append(turn)
+            update = event.get("update")
+            if isinstance(update, dict):
+                turn = _coerce_turn_from_payload(
+                    {
+                        "speaker": update.get("speaker", "speaker"),
+                        "text": update.get("transcript_text"),
+                        "start_ms": update.get("start_ms", 0),
+                        "end_ms": update.get("end_ms", update.get("start_ms", 0)),
+                        "is_final": True,
+                        "source": "timeline_event",
+                        "capture_mode": "event",
+                    }
+                )
+                if turn is not None:
+                    fallback_turns.append(turn)
+        if fallback_turns:
+            return _merge_turns_dedup(fallback_turns)[-24:]
+    return []
+
+
+def _has_mermaid_render_issue(pipeline: dict[str, Any] | None) -> bool:
+    if not isinstance(pipeline, dict):
+        return True
+    mermaid_state = pipeline.get("mermaid_state")
+    if not isinstance(mermaid_state, dict):
+        return True
+    if mermaid_state.get("error_message"):
+        return True
+    if mermaid_state.get("compile_ok") is False:
+        return True
+    if mermaid_state.get("render_ok") is False:
+        return True
+    code = str(mermaid_state.get("code") or mermaid_state.get("normalized_code") or "").strip()
+    return not bool(code)
+
+
 @router.get("", response_model=list[RealtimeSessionSchema])
 def list_sessions(db: Session = Depends(get_db)) -> list[RealtimeSessionSchema]:
     items = db.scalars(select(RealtimeSession).order_by(RealtimeSession.created_at.desc())).all()
@@ -231,6 +407,41 @@ def list_sessions(db: Session = Depends(get_db)) -> list[RealtimeSessionSchema]:
         )
         for item in items
     ]
+
+
+@router.get("/{session_id}/annotations", response_model=RealtimeSessionAnnotationsSchema)
+def get_session_annotations(session_id: str, db: Session = Depends(get_db)) -> RealtimeSessionAnnotationsSchema:
+    _get_session_or_404(db, session_id)
+    row = db.scalar(select(RealtimeSessionAnnotations).where(RealtimeSessionAnnotations.session_id == session_id))
+    if row is None:
+        return RealtimeSessionAnnotationsSchema(session_id=session_id, version=1, payload={})
+    return RealtimeSessionAnnotationsSchema(session_id=session_id, version=int(row.version or 1), payload=row.payload_json or {})
+
+
+@router.put("/{session_id}/annotations", response_model=RealtimeSessionAnnotationsSchema)
+def put_session_annotations(
+    session_id: str,
+    req: RealtimeSessionAnnotationsUpdateRequest,
+    db: Session = Depends(get_db),
+) -> RealtimeSessionAnnotationsSchema:
+    _get_session_or_404(db, session_id)
+    row = db.scalar(select(RealtimeSessionAnnotations).where(RealtimeSessionAnnotations.session_id == session_id))
+    if row is None:
+        row = RealtimeSessionAnnotations(
+            session_id=session_id,
+            version=max(1, int(req.version or 1)),
+            payload_json=req.payload or {},
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        db.add(row)
+        db.flush()
+    else:
+        row.version = max(1, int(req.version or 1))
+        row.payload_json = req.payload or {}
+        row.updated_at = utc_now()
+        db.add(row)
+    return RealtimeSessionAnnotationsSchema(session_id=session_id, version=int(row.version or 1), payload=row.payload_json or {})
 
 
 class DiagramTypeDetectionRequest(BaseModel):
@@ -493,6 +704,16 @@ def add_chunk_batch(session_id: str, payload: RealtimeChunkBatchCreateRequest, d
 
 @router.post("/{session_id}/audio/transcriptions", response_model=RealtimeAudioTranscriptionResponse)
 def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest, db: Session = Depends(get_db)) -> RealtimeAudioTranscriptionResponse:
+    request_started_at = time.perf_counter()
+    stt_started_at = request_started_at
+    stt_finished_at = request_started_at
+    post_stt_started_at = request_started_at
+    voiceprint_started_at = request_started_at
+    voiceprint_finished_at = request_started_at
+    ingest_started_at = request_started_at
+    ingest_finished_at = request_started_at
+    commit_started_at = request_started_at
+    commit_finished_at = request_started_at
     obj = _get_session_or_404(db, session_id)
     runtime_options = obj.config_snapshot.get("runtime_options", {}) if isinstance(obj.config_snapshot, dict) else {}
     stt_profile = resolve_profile(db, "stt", runtime_options.get("stt_profile_id"))
@@ -509,6 +730,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
         },
     )
     try:
+        stt_started_at = time.perf_counter()
         result = transcribe_audio_chunk(
             db,
             obj,
@@ -520,6 +742,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
                 "speaker": payload.speaker,
             },
         )
+        stt_finished_at = time.perf_counter()
     except Exception as exc:
         logger.exception(
             "Realtime audio transcription failed for session=%s stt_profile_id=%s stt_model=%s",
@@ -529,6 +752,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
         )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    post_stt_started_at = time.perf_counter()
     pipeline = attach_transcript_state(db, obj.id, obj.pipeline_payload if isinstance(obj.pipeline_payload, dict) else {})
     evaluation = obj.evaluation_payload if isinstance(obj.evaluation_payload, dict) else {}
     recognized_speaker = str(result.get("speaker", payload.speaker) or payload.speaker)
@@ -545,6 +769,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
         base_metadata["rtasr_sid"] = str(result.get("sid", "")).strip()
     should_defer_coordination = not bool(payload.is_final)
 
+    ingest_started_at = time.perf_counter()
     if normalized_segments:
         base_timestamp_ms = _timestamp_for_chunk(db, obj, payload.timestamp_ms)
         for index, segment in enumerate(normalized_segments):
@@ -579,7 +804,10 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
                     expected_intent=None,
                     metadata=merged_metadata,
                 )
+        commit_started_at = time.perf_counter()
+        commit_started_at = time.perf_counter()
         db.commit()
+        commit_finished_at = time.perf_counter()
         unique_speakers = {
             str(segment.get("speaker", "")).strip()
             for segment in normalized_segments
@@ -591,18 +819,20 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
             recognized_speaker = "multi_speaker"
         voiceprint_result = _role_split_voiceprint_summary(normalized_segments)
     else:
-        voiceprint_result = blind_recognize_speaker(
-            db,
-            stt_profile_id=str((stt_profile or {}).get("id", runtime_options.get("stt_profile_id") or "")),
-            profile=stt_profile,
-            pcm_s16le_base64=payload.pcm_s16le_base64,
-            sample_rate=payload.sample_rate,
-            channel_count=payload.channel_count,
-            fallback_speaker=payload.speaker,
-        )
-        if isinstance(voiceprint_result, dict) and voiceprint_result.get("matched"):
-            recognized_speaker = str(voiceprint_result.get("speaker_label", payload.speaker) or payload.speaker)
         if result["text"]:
+            voiceprint_started_at = time.perf_counter()
+            voiceprint_result = blind_recognize_speaker(
+                db,
+                stt_profile_id=str((stt_profile or {}).get("id", runtime_options.get("stt_profile_id") or "")),
+                profile=stt_profile,
+                pcm_s16le_base64=payload.pcm_s16le_base64,
+                sample_rate=payload.sample_rate,
+                channel_count=payload.channel_count,
+                fallback_speaker=payload.speaker,
+            )
+            voiceprint_finished_at = time.perf_counter()
+            if isinstance(voiceprint_result, dict) and voiceprint_result.get("matched"):
+                recognized_speaker = str(voiceprint_result.get("speaker_label", payload.speaker) or payload.speaker)
             merged_metadata = dict(base_metadata)
             if voiceprint_result is not None:
                 merged_metadata["voiceprint_result"] = voiceprint_result
@@ -628,7 +858,30 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
                     expected_intent=None,
                     metadata=merged_metadata,
                 )
+            commit_started_at = time.perf_counter()
             db.commit()
+            commit_finished_at = time.perf_counter()
+        else:
+            voiceprint_started_at = time.perf_counter()
+            voiceprint_finished_at = voiceprint_started_at
+    ingest_finished_at = time.perf_counter()
+    response_started_at = time.perf_counter()
+    diagnostics = {
+        "request_total_ms": round((response_started_at - request_started_at) * 1000.0, 3),
+        "stt_wall_ms": round((stt_finished_at - stt_started_at) * 1000.0, 3),
+        "stt_reported_latency_ms": float(result.get("latency_ms", 0.0) or 0.0),
+        "pre_response_post_stt_ms": round((response_started_at - post_stt_started_at) * 1000.0, 3),
+        "voiceprint_ms": round(max(0.0, voiceprint_finished_at - voiceprint_started_at) * 1000.0, 3),
+        "ingest_ms": round((ingest_finished_at - ingest_started_at) * 1000.0, 3),
+        "commit_ms": round(max(0.0, commit_finished_at - commit_started_at) * 1000.0, 3),
+        "payload_audio_ms": round((len(payload.pcm_s16le_base64) * 3 / 4 / 2 / max(1, payload.sample_rate)) * 1000.0, 3),
+        "payload_base64_chars": len(payload.pcm_s16le_base64),
+        "is_final": payload.is_final,
+        "stream_final": bool((payload.metadata or {}).get("api_stt_stream_final", payload.is_final)),
+        "result_text_chars": len(result.get("text", "") or ""),
+        "result_segment_count": len(normalized_segments),
+        "deferred_coordination": should_defer_coordination,
+    }
     _log_runtime_event(
         "Realtime audio transcription completed",
         {
@@ -642,6 +895,7 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
             "voiceprint_matched": bool((voiceprint_result or {}).get("matched")) if isinstance(voiceprint_result, dict) else False,
             "gate_state": pipeline.get("gate_state") if isinstance(pipeline, dict) else None,
             "planner_state": pipeline.get("planner_state") if isinstance(pipeline, dict) else None,
+            "diagnostics": diagnostics,
         },
     )
     return RealtimeAudioTranscriptionResponse(
@@ -653,7 +907,243 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
         provider=result["provider"],
         model=result["model"],
         latency_ms=result["latency_ms"],
+        diagnostics=diagnostics,
         segments=normalized_segments or None,
+        pipeline=pipeline,
+        evaluation=evaluation,
+    )
+
+
+@router.get("/{session_id}/timeline", response_model=RealtimeTimelineResponse)
+def get_timeline(session_id: str, db: Session = Depends(get_db)) -> RealtimeTimelineResponse:
+    _get_session_or_404(db, session_id)
+    snapshots = db.scalars(
+        select(RealtimeSnapshotModel)
+        .where(RealtimeSnapshotModel.session_id == session_id)
+        .order_by(RealtimeSnapshotModel.created_at.desc())
+        .limit(120)
+    ).all()
+    return RealtimeTimelineResponse(
+        session_id=session_id,
+        nodes=[_timeline_node_from_snapshot(item) for item in snapshots],
+    )
+
+
+@router.post("/{session_id}/rollback/preview", response_model=RealtimeRollbackPreviewResponse)
+def rollback_preview(
+    session_id: str,
+    req: RealtimeRollbackRequest,
+    db: Session = Depends(get_db),
+) -> RealtimeRollbackPreviewResponse:
+    _get_session_or_404(db, session_id)
+    snapshot = db.scalar(
+        select(RealtimeSnapshotModel).where(
+            RealtimeSnapshotModel.session_id == session_id,
+            RealtimeSnapshotModel.id == req.snapshot_id,
+        )
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="timeline snapshot not found")
+    checkpoint = _timeline_checkpoint(snapshot)
+    chunks = checkpoint.get("chunks")
+    annotations = checkpoint.get("annotations")
+    turns = _timeline_preview_turns(snapshot, session_id=session_id, chunks=chunks if isinstance(chunks, list) else None)
+    transcript_turn_count = len(chunks) if isinstance(chunks, list) and chunks else len(turns)
+    annotation_version = int(annotations.get("version") or 1) if isinstance(annotations, dict) else 1
+    return RealtimeRollbackPreviewResponse(
+        session_id=session_id,
+        snapshot_id=snapshot.id,
+        created_at=snapshot.created_at,
+        summary=snapshot.summary_json if isinstance(snapshot.summary_json, dict) else {},
+        pipeline=snapshot.pipeline_payload if isinstance(snapshot.pipeline_payload, dict) else {},
+        evaluation=snapshot.evaluation_payload if isinstance(snapshot.evaluation_payload, dict) else {},
+        transcript_turn_count=transcript_turn_count,
+        annotation_version=max(1, annotation_version),
+        turns=turns,
+    )
+
+
+@router.post("/{session_id}/rollback/apply", response_model=RealtimeRollbackApplyResponse)
+def rollback_apply(
+    session_id: str,
+    req: RealtimeRollbackRequest,
+    db: Session = Depends(get_db),
+) -> RealtimeRollbackApplyResponse:
+    obj = _get_session_or_404(db, session_id)
+    if obj.status == "closed":
+        raise HTTPException(status_code=409, detail="closed session cannot rollback")
+    snapshot = db.scalar(
+        select(RealtimeSnapshotModel).where(
+            RealtimeSnapshotModel.session_id == session_id,
+            RealtimeSnapshotModel.id == req.snapshot_id,
+        )
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="timeline snapshot not found")
+
+    pipeline = snapshot.pipeline_payload if isinstance(snapshot.pipeline_payload, dict) else {}
+    evaluation = snapshot.evaluation_payload if isinstance(snapshot.evaluation_payload, dict) else {}
+    summary = snapshot.summary_json if isinstance(snapshot.summary_json, dict) else {}
+    checkpoint = _timeline_checkpoint(snapshot)
+
+    obj.pipeline_payload = pipeline
+    obj.evaluation_payload = evaluation
+    obj.summary_json = summary
+    obj.updated_at = utc_now()
+    db.add(obj)
+
+    chunks = checkpoint.get("chunks")
+    if isinstance(chunks, list):
+        db.execute(delete(RealtimeChunk).where(RealtimeChunk.session_id == session_id))
+        for index, item in enumerate(chunks):
+            if not isinstance(item, dict):
+                continue
+            db.add(
+                RealtimeChunk(
+                    session_id=session_id,
+                    sequence_no=int(item.get("sequence_no", index)),
+                    timestamp_ms=int(item.get("timestamp_ms", 0)),
+                    speaker=str(item.get("speaker", "speaker")),
+                    text=str(item.get("text", "")),
+                    is_final=bool(item.get("is_final", True)),
+                    expected_intent=item.get("expected_intent"),
+                    meta_json=item.get("metadata", {}) if isinstance(item.get("metadata"), dict) else {},
+                )
+            )
+
+    events = pipeline.get("events")
+    if isinstance(events, list):
+        replace_events(db, session_id, events)
+    else:
+        db.execute(delete(RealtimeEvent).where(RealtimeEvent.session_id == session_id))
+
+    annotations = checkpoint.get("annotations")
+    if isinstance(annotations, dict):
+        row = db.scalar(select(RealtimeSessionAnnotations).where(RealtimeSessionAnnotations.session_id == session_id))
+        next_version = max(1, int(annotations.get("version") or 1))
+        next_payload = annotations.get("payload", {})
+        normalized_payload = next_payload if isinstance(next_payload, dict) else {}
+        if row is None:
+            row = RealtimeSessionAnnotations(
+                session_id=session_id,
+                version=next_version,
+                payload_json=normalized_payload,
+                created_at=utc_now(),
+                updated_at=utc_now(),
+            )
+            db.add(row)
+        else:
+            row.version = next_version
+            row.payload_json = normalized_payload
+            row.updated_at = utc_now()
+            db.add(row)
+
+    drop_runtime(session_id)
+    runtime = restore_runtime_if_needed(db, obj)
+    pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
+    db.commit()
+    return RealtimeRollbackApplyResponse(
+        session_id=session_id,
+        restored_from_snapshot_id=snapshot.id,
+        pipeline=pipeline,
+        evaluation=evaluation,
+    )
+
+
+@router.post("/{session_id}/rollback/edit_apply", response_model=RealtimeRollbackEditApplyResponse)
+def rollback_edit_apply(
+    session_id: str,
+    req: RealtimeRollbackEditRequest,
+    db: Session = Depends(get_db),
+) -> RealtimeRollbackEditApplyResponse:
+    obj = _get_session_or_404(db, session_id)
+    if obj.status == "closed":
+        raise HTTPException(status_code=409, detail="closed session cannot rollback")
+    snapshot = db.scalar(
+        select(RealtimeSnapshotModel).where(
+            RealtimeSnapshotModel.session_id == session_id,
+            RealtimeSnapshotModel.id == req.snapshot_id,
+        )
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="timeline snapshot not found")
+
+    # Overwrite-future semantics: drop snapshots created after the selected node.
+    db.execute(
+        delete(RealtimeSnapshotModel).where(
+            RealtimeSnapshotModel.session_id == session_id,
+            RealtimeSnapshotModel.created_at > snapshot.created_at,
+        )
+    )
+
+    pipeline = snapshot.pipeline_payload if isinstance(snapshot.pipeline_payload, dict) else {}
+    evaluation = snapshot.evaluation_payload if isinstance(snapshot.evaluation_payload, dict) else {}
+    summary = snapshot.summary_json if isinstance(snapshot.summary_json, dict) else {}
+    graph_state = pipeline.get("graph_state", {}) if isinstance(pipeline.get("graph_state"), dict) else {}
+    recompute_seed_pipeline = {
+        **pipeline,
+        "events": [],
+        "graph_state": {
+            **graph_state,
+            # Force edited turns to be pending so coordination/planner runs again.
+            "last_consumed_turn_id": 0,
+            "pending_turn_ids": [],
+        },
+    }
+
+    obj.pipeline_payload = recompute_seed_pipeline
+    obj.evaluation_payload = evaluation
+    obj.summary_json = summary
+    obj.updated_at = utc_now()
+    db.add(obj)
+
+    # Replace chunks with manual transcript turns to prevent server-side merging.
+    db.execute(delete(RealtimeChunk).where(RealtimeChunk.session_id == session_id))
+    base_ts = 0
+    for index, turn in enumerate(req.turns):
+        speaker = str(turn.speaker or "speaker")
+        text = str(turn.text or "").strip()
+        if not text:
+            continue
+        start_ms = turn.start_ms if turn.start_ms is not None else base_ts + index * 450
+        is_final = True if turn.is_final is None else bool(turn.is_final)
+        db.add(
+            RealtimeChunk(
+                session_id=session_id,
+                sequence_no=index,
+                timestamp_ms=int(start_ms),
+                speaker=speaker,
+                text=text,
+                is_final=is_final,
+                expected_intent=None,
+                meta_json={"input_source": "transcript", "capture_mode": "manual_text"},
+            )
+        )
+    db.flush()
+
+    # Reset runtime + recompute from the restored graph state + edited turns.
+    db.execute(delete(RealtimeEvent).where(RealtimeEvent.session_id == session_id))
+    drop_runtime(session_id)
+    runtime = restore_runtime_if_needed(db, obj)
+    # Ensure edited turns are treated as pending input for forced recompute.
+    runtime.last_consumed_turn_id = 0
+    runtime.pending_turn_ids = [turn.turn_id for turn in runtime.turns]
+    runtime.flush(db, obj)
+    pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
+    if _has_mermaid_render_issue(pipeline):
+        # Retry once to reduce occasional unstable render/model failures.
+        drop_runtime(session_id)
+        runtime = restore_runtime_if_needed(db, obj)
+        runtime.last_consumed_turn_id = 0
+        runtime.pending_turn_ids = [turn.turn_id for turn in runtime.turns]
+        runtime.flush(db, obj)
+        pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
+    if _has_mermaid_render_issue(pipeline):
+        raise HTTPException(status_code=409, detail="rollback recompute produced unstable mermaid output; kept previous state")
+    db.commit()
+    return RealtimeRollbackEditApplyResponse(
+        session_id=session_id,
+        restored_from_snapshot_id=snapshot.id,
         pipeline=pipeline,
         evaluation=evaluation,
     )

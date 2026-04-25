@@ -8,9 +8,16 @@ import {
   reportDetailSchema,
   reportSummarySchema,
   realtimeAudioTranscriptionSchema,
+  realtimeRollbackApplySchema,
+  realtimeRollbackEditApplySchema,
+  realtimeRollbackEditRequestSchema,
+  realtimeRollbackPreviewSchema,
+  realtimeRollbackRequestSchema,
+  realtimeSessionAnnotationsSchema,
   realtimeSessionCloseSchema,
   realtimeSessionSchema,
   realtimeSnapshotSchema,
+  realtimeTimelineSchema,
   runtimeOptionsSchema,
   runArtifactSchema,
   runJobSchema,
@@ -118,12 +125,18 @@ export function directApiUrl(path: string): string {
 function logBrowserApiEvent(label: string, payload: Record<string, unknown>, level: "info" | "error" = "info") {
   if (typeof window === "undefined") return;
   const method = level === "error" ? console.error : console.info;
-  method(`[S2G][API] ${label}`, payload);
+  method(`[S2G][API] ${label}: ${JSON.stringify(payload)}`);
 }
 
 function apiErrorLogLevel(path: string, status: number) {
   // `/auth/me` returning 401 is part of the normal boot flow before redirecting to `/login`.
   if (path === "/api/v1/auth/me" && status === 401) {
+    return "info" as const;
+  }
+  if (
+    status === 404 &&
+    /^\/api\/v1\/realtime\/sessions\/[^/]+\/(?:annotations|timeline|rollback\/preview)$/.test(path)
+  ) {
     return "info" as const;
   }
   return "error" as const;
@@ -157,7 +170,7 @@ const REALTIME_PIPELINE_TIMEOUT_MS = 240_000;
 function isRealtimePipelinePath(path: string) {
   return (
     /^\/api\/v1\/realtime\/sessions\/[^/]+\/chunks(?:\/batch)?$/.test(path) ||
-    /^\/api\/v1\/realtime\/sessions\/[^/]+\/(?:snapshot|flush|diagram-relayout)$/.test(path)
+    /^\/api\/v1\/realtime\/sessions\/[^/]+\/(?:snapshot|flush|diagram-relayout|rollback\/(?:preview|apply))$/.test(path)
   );
 }
 
@@ -217,7 +230,7 @@ async function request<TSchema extends z.ZodTypeAny>(
           status: response.status,
           payload: raw,
         },
-        apiErrorLogLevel(path, response.status),
+        logLevel === "info" ? logLevel : apiErrorLogLevel(path, response.status),
       );
       throw new ApiError(response.status, messageFromErrorPayload(raw), raw);
     }
@@ -397,6 +410,20 @@ export const api = {
     }),
   getRealtimeSession: async (sessionId: string) =>
     request(`/api/v1/realtime/sessions/${sessionId}`, realtimeSessionSchema),
+  getRealtimeSessionAnnotations: async (sessionId: string) =>
+    request(
+      `/api/v1/realtime/sessions/${sessionId}/annotations`,
+      realtimeSessionAnnotationsSchema,
+    ),
+  putRealtimeSessionAnnotations: async (sessionId: string, payload: { version: number; payload: Record<string, unknown> }) =>
+    request(
+      `/api/v1/realtime/sessions/${sessionId}/annotations`,
+      realtimeSessionAnnotationsSchema,
+      {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      },
+    ),
   /** 更新会话标题（后端提供 PUT，与 PATCH 等价；统一用 PUT 避免部分环境对 PATCH 支持异常） */
   patchRealtimeSession: async (sessionId: string, payload: { title: string }) =>
     request(`/api/v1/realtime/sessions/${sessionId}`, realtimeSessionSchema, {
@@ -459,8 +486,36 @@ export const api = {
     requestRealtime(`/api/v1/realtime/sessions/${sessionId}/flush`, realtimeSnapshotSchema, {
       method: "POST",
     }),
+  closeRealtimeAudioStream: async (sessionId: string) =>
+    request(
+      `/api/v1/realtime/sessions/${sessionId}/audio/transcriptions/stream/close`,
+      z.object({ ok: z.boolean(), session_id: z.string() }),
+      {
+        method: "POST",
+      },
+    ),
   relayoutRealtimeDiagram: async (sessionId: string, payload: Record<string, unknown>) =>
     requestRealtime(`/api/v1/realtime/sessions/${sessionId}/diagram-relayout`, realtimeSnapshotSchema, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  listRealtimeTimeline: async (sessionId: string) =>
+    request(`/api/v1/realtime/sessions/${sessionId}/timeline`, realtimeTimelineSchema),
+  previewRealtimeRollback: async (sessionId: string, payload: z.infer<typeof realtimeRollbackRequestSchema>) =>
+    requestRealtime(`/api/v1/realtime/sessions/${sessionId}/rollback/preview`, realtimeRollbackPreviewSchema, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  applyRealtimeRollback: async (sessionId: string, payload: z.infer<typeof realtimeRollbackRequestSchema>) =>
+    requestRealtime(`/api/v1/realtime/sessions/${sessionId}/rollback/apply`, realtimeRollbackApplySchema, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  editApplyRealtimeRollback: async (
+    sessionId: string,
+    payload: z.infer<typeof realtimeRollbackEditRequestSchema>,
+  ) =>
+    requestRealtime(`/api/v1/realtime/sessions/${sessionId}/rollback/edit_apply`, realtimeRollbackEditApplySchema, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

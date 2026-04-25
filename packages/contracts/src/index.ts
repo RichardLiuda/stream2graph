@@ -68,6 +68,174 @@ export const realtimeSnapshotSchema = z.object({
   evaluation: z.record(z.any()).nullable().optional(),
 });
 
+export const realtimeTimelineNodeSchema = z.object({
+  snapshot_id: z.string(),
+  created_at: z.string(),
+  summary: z.record(z.any()),
+  event_count: z.number().int().nonnegative().default(0),
+  chunk_count: z.number().int().nonnegative().default(0),
+  label: z.string().nullable().optional(),
+});
+
+export const realtimeTimelineSchema = z.object({
+  session_id: z.string(),
+  nodes: z.array(realtimeTimelineNodeSchema),
+});
+
+export const realtimeRollbackRequestSchema = z.object({
+  snapshot_id: z.string(),
+});
+
+export const realtimeRollbackPreviewSchema = z.object({
+  session_id: z.string(),
+  snapshot_id: z.string(),
+  created_at: z.string(),
+  summary: z.record(z.any()),
+  pipeline: z.record(z.any()),
+  evaluation: z.record(z.any()).nullable().optional(),
+  transcript_turn_count: z.number().int().nonnegative().default(0),
+  annotation_version: z.number().int().nonnegative().default(1),
+  turns: z
+    .array(
+      z.object({
+        speaker: z.string(),
+        text: z.string(),
+        start_ms: z.number(),
+        end_ms: z.number(),
+        is_final: z.boolean(),
+        source: z.string(),
+        capture_mode: z.string().optional().default(""),
+      }),
+    )
+    .default([]),
+});
+
+export const realtimeRollbackApplySchema = z.object({
+  session_id: z.string(),
+  restored_from_snapshot_id: z.string(),
+  pipeline: z.record(z.any()),
+  evaluation: z.record(z.any()).nullable().optional(),
+});
+
+export const realtimeTranscriptTurnEditableSchema = z.object({
+  speaker: z.string(),
+  text: z.string(),
+  start_ms: z.number().int().nonnegative().optional(),
+  end_ms: z.number().int().nonnegative().optional(),
+  is_final: z.boolean().optional(),
+});
+
+export const realtimeRollbackEditRequestSchema = z.object({
+  snapshot_id: z.string(),
+  turns: z.array(realtimeTranscriptTurnEditableSchema).default([]),
+});
+
+export const realtimeRollbackEditApplySchema = z.object({
+  session_id: z.string(),
+  restored_from_snapshot_id: z.string(),
+  pipeline: z.record(z.any()),
+  evaluation: z.record(z.any()).nullable().optional(),
+});
+
+// Realtime session annotations (canvas/world coordinates)
+export const annotationPointSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
+
+export const annotationPenPathSchema = z.object({
+  kind: z.literal("pen"),
+  id: z.string(),
+  points: z.array(annotationPointSchema),
+  color: z.string().optional().default("#e5e7eb"),
+  width: z.number().optional().default(2),
+  opacity: z.number().optional().default(1),
+});
+
+export const annotationRectSchema = z.object({
+  kind: z.literal("rect"),
+  id: z.string(),
+  x: z.number(),
+  y: z.number(),
+  w: z.number(),
+  h: z.number(),
+  mode: z.enum(["highlight", "outline"]).optional().default("outline"),
+  stroke: z.string().optional().default("#e5e7eb"),
+  fill: z.string().optional().default("transparent"),
+  strokeWidth: z.number().optional().default(2),
+  opacity: z.number().optional().default(1),
+  radius: z.number().optional().default(8),
+});
+
+export const annotationTextSchema = z.object({
+  kind: z.literal("text"),
+  id: z.string(),
+  x: z.number(),
+  y: z.number(),
+  text: z.string(),
+  fontSize: z.number().optional().default(14),
+  color: z.string().optional().default("#e5e7eb"),
+  align: z.enum(["left", "center", "right"]).optional().default("left"),
+});
+
+export const annotationItemSchema = z.discriminatedUnion("kind", [
+  annotationPenPathSchema,
+  annotationRectSchema,
+  annotationTextSchema,
+]);
+
+export const annotationEraseMaskStrokeSchema = z.object({
+  id: z.string(),
+  points: z.array(annotationPointSchema),
+  width: z.number(),
+});
+
+export const annotationMaskStrokeSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["erase", "reveal"]),
+  points: z.array(annotationPointSchema),
+  width: z.number(),
+});
+
+const annotationCanvasPayloadSchema = z.object({
+  items: z.array(annotationItemSchema).default([]),
+  maskStrokes: z.array(annotationMaskStrokeSchema).optional().default([]),
+  eraseMaskPaths: z.array(annotationEraseMaskStrokeSchema).optional().default([]),
+});
+
+function maskStrokesFromCanvasPayload(p: z.infer<typeof annotationCanvasPayloadSchema>) {
+  const ms = p.maskStrokes ?? [];
+  const legacy = p.eraseMaskPaths ?? [];
+  if (ms.length > 0) return ms;
+  if (legacy.length > 0) {
+    return legacy.map((e) => ({
+      id: e.id,
+      kind: "erase" as const,
+      points: e.points,
+      width: e.width,
+    }));
+  }
+  return ms;
+}
+
+/** 新版：主图 + 结构双画布；旧版：仅顶层 items → 归入主图 */
+export const sessionAnnotationsPayloadSchema = z.union([
+  z.object({
+    mermaid: annotationCanvasPayloadSchema,
+    structure: annotationCanvasPayloadSchema,
+  }),
+  annotationCanvasPayloadSchema.transform((p) => ({
+    mermaid: { items: p.items, maskStrokes: maskStrokesFromCanvasPayload(p) },
+    structure: { items: [], maskStrokes: [] },
+  })),
+]);
+
+export const realtimeSessionAnnotationsSchema = z.object({
+  session_id: z.string(),
+  version: z.number().int().nonnegative().default(1),
+  payload: sessionAnnotationsPayloadSchema,
+});
+
 export const realtimeTranscriptTurnSchema = z.object({
   speaker: z.string(),
   text: z.string(),
@@ -76,6 +244,10 @@ export const realtimeTranscriptTurnSchema = z.object({
   is_final: z.boolean(),
   source: z.string(),
   capture_mode: z.string().optional().default(""),
+  speaker_slot_key: z.string().optional().default(""),
+  speaker_identity: z.string().optional().default(""),
+  raw_role_label: z.string().optional().default(""),
+  speaker_resolution_source: z.string().optional().default(""),
 });
 
 export const realtimeSessionCloseSchema = z.object({
@@ -99,6 +271,7 @@ export const realtimeAudioTranscriptionSchema = z.object({
   provider: z.string(),
   model: z.string(),
   latency_ms: z.number(),
+  diagnostics: z.record(z.any()).optional().default({}),
   pipeline: z.record(z.any()),
   evaluation: z.record(z.any()).nullable().optional(),
 });
@@ -222,6 +395,14 @@ export type SampleListItem = z.infer<typeof sampleListItemSchema>;
 export type SampleDetail = z.infer<typeof sampleDetailSchema>;
 export type RealtimeSession = z.infer<typeof realtimeSessionSchema>;
 export type RealtimeSnapshot = z.infer<typeof realtimeSnapshotSchema>;
+export type RealtimeTimelineNode = z.infer<typeof realtimeTimelineNodeSchema>;
+export type RealtimeTimeline = z.infer<typeof realtimeTimelineSchema>;
+export type RealtimeRollbackRequest = z.infer<typeof realtimeRollbackRequestSchema>;
+export type RealtimeRollbackPreview = z.infer<typeof realtimeRollbackPreviewSchema>;
+export type RealtimeRollbackApply = z.infer<typeof realtimeRollbackApplySchema>;
+export type RealtimeTranscriptTurnEditable = z.infer<typeof realtimeTranscriptTurnEditableSchema>;
+export type RealtimeRollbackEditRequest = z.infer<typeof realtimeRollbackEditRequestSchema>;
+export type RealtimeRollbackEditApply = z.infer<typeof realtimeRollbackEditApplySchema>;
 export type RealtimeTranscriptTurn = z.infer<typeof realtimeTranscriptTurnSchema>;
 export type RealtimeSessionClose = z.infer<typeof realtimeSessionCloseSchema>;
 export type RealtimeAudioTranscription = z.infer<typeof realtimeAudioTranscriptionSchema>;
