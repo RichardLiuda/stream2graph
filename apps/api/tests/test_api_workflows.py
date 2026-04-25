@@ -1257,26 +1257,26 @@ def test_runtime_options_can_be_saved_from_admin_ui(admin_client: TestClient) ->
         json={
             "gate_profiles": [
                 {
-                    "id": "openai-gate",
-                    "label": "OpenAI Gate",
+                    "id": "compat-gate",
+                    "label": "Compat Gate",
                     "provider_kind": "openai_compatible",
-                    "endpoint": "https://api.openai.com/v1/chat/completions",
-                    "models": ["gpt-4.1-mini", "gpt-4.1"],
-                    "default_model": "gpt-4.1-mini",
-                    "api_key": "test-openai-key",
+                    "endpoint": "http://example.local/v1/chat/completions",
+                    "models": ["default"],
+                    "default_model": "default",
+                    "api_key": "test-key",
                     "api_key_env": "",
                 }
             ],
             "planner_profiles": [
                 {
-                    "id": "openai-planner",
-                    "label": "OpenAI Planner",
+                    "id": "compat-planner",
+                    "label": "Compat Planner",
                     "provider_kind": "openai_compatible",
-                    "endpoint": "https://api.openai.com/v1/chat/completions",
-                    "models": ["gpt-4.1-mini", "gpt-4.1"],
-                    "default_model": "gpt-4.1-mini",
+                    "endpoint": "http://example.local/v1/chat/completions",
+                    "models": ["default"],
+                    "default_model": "default",
                     "extra_body_json": '{"enable_thinking": false}',
-                    "api_key": "test-openai-key",
+                    "api_key": "test-key",
                     "api_key_env": "",
                 }
             ],
@@ -1299,9 +1299,9 @@ def test_runtime_options_can_be_saved_from_admin_ui(admin_client: TestClient) ->
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["gate_profiles"][0]["endpoint"] == "https://api.openai.com/v1/chat/completions"
-    assert payload["gate_profiles"][0]["api_key"] == "test-openai-key"
-    assert payload["planner_profiles"][0]["id"] == "openai-planner"
+    assert payload["gate_profiles"][0]["endpoint"] == "http://example.local/v1/chat/completions"
+    assert payload["gate_profiles"][0]["api_key"] == "test-key"
+    assert payload["planner_profiles"][0]["id"] == "compat-planner"
     assert payload["planner_profiles"][0]["extra_body_json"] == '{"enable_thinking": false}'
     assert payload["stt_profiles"][0]["provider_kind"] == "xfyun_asr"
     assert payload["stt_profiles"][0]["app_id"] == "xfyun-app"
@@ -1310,15 +1310,15 @@ def test_runtime_options_can_be_saved_from_admin_ui(admin_client: TestClient) ->
 
     admin_view = admin_client.get("/api/v1/catalog/runtime-options/admin")
     assert admin_view.status_code == 200
-    assert admin_view.json()["gate_profiles"][0]["id"] == "openai-gate"
-    assert admin_view.json()["planner_profiles"][0]["id"] == "openai-planner"
+    assert admin_view.json()["gate_profiles"][0]["id"] == "compat-gate"
+    assert admin_view.json()["planner_profiles"][0]["id"] == "compat-planner"
     assert admin_view.json()["planner_profiles"][0]["extra_body_json"] == '{"enable_thinking": false}'
     assert admin_view.json()["stt_profiles"][0]["endpoint"] == "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1"
 
     public_view = admin_client.get("/api/v1/catalog/runtime-options")
     assert public_view.status_code == 200
-    assert public_view.json()["gate_profiles"][0]["id"] == "openai-gate"
-    assert public_view.json()["planner_profiles"][0]["id"] == "openai-planner"
+    assert public_view.json()["gate_profiles"][0]["id"] == "compat-gate"
+    assert public_view.json()["planner_profiles"][0]["id"] == "compat-planner"
     assert "api_key" not in public_view.text
 
 
@@ -1362,15 +1362,15 @@ def test_runtime_model_probe_endpoint(admin_client: TestClient, monkeypatch) -> 
         "app.routers.catalog.probe_runtime_models",
         lambda **kwargs: {
             "provider_kind": kwargs["provider_kind"],
-            "models_endpoint": "https://api.openai.com/v1/models",
-            "models": ["gpt-4.1", "gpt-4.1-mini"],
+            "models_endpoint": "http://example.local/v1/models",
+            "models": ["default"],
         },
     )
 
     response = admin_client.post(
         "/api/v1/catalog/runtime-options/admin/probe-models",
         json={
-            "endpoint": "https://api.openai.com/v1/chat/completions",
+            "endpoint": "http://example.local/v1/chat/completions",
             "provider_kind": "openai_compatible",
             "api_key": "test-key",
         },
@@ -1378,8 +1378,8 @@ def test_runtime_model_probe_endpoint(admin_client: TestClient, monkeypatch) -> 
     assert response.status_code == 200
     payload = response.json()
     assert payload["ok"] is True
-    assert payload["models_endpoint"] == "https://api.openai.com/v1/models"
-    assert payload["models"] == ["gpt-4.1", "gpt-4.1-mini"]
+    assert payload["models_endpoint"] == "http://example.local/v1/models"
+    assert payload["models"] == ["default"]
 
 
 def test_runtime_model_probe_endpoint_for_xfyun_stt(admin_client: TestClient) -> None:
@@ -1414,7 +1414,7 @@ def test_runtime_connection_test_endpoint(admin_client: TestClient, monkeypatch)
     response = admin_client.post(
         "/api/v1/catalog/runtime-options/admin/test-connection",
         json={
-            "endpoint": "https://api.openai.com/v1/chat/completions",
+            "endpoint": "http://example.local/v1/chat/completions",
             "provider_kind": "openai_compatible",
             "api_key": "test-key",
         },

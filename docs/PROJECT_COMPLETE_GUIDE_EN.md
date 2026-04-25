@@ -49,7 +49,7 @@ ICMI 2026 (International Conference on Multimodal Interaction), framed as an "In
 |---|---|
 | Backend | Python 3.12 + FastAPI + SQLAlchemy 2 + PostgreSQL 16 |
 | Frontend | Next.js 15 + React 19 + TypeScript + TailwindCSS + XState |
-| AI | Multi-model via OpenAI-compatible API: Claude, GPT, Gemini, Kimi, Qwen, MiniMax |
+| AI | Multi-model via a compatibility API / gateway: Kimi, Qwen, MiniMax, DeepSeek (depending on deployment config) |
 | Database | PostgreSQL 16 + Alembic migrations |
 | Deployment | Docker Compose (PostgreSQL) + native process management |
 | Voice | iFlytek RTASR (streaming ASR) + iFlytek Voiceprint Recognition |
@@ -294,11 +294,10 @@ Backend connects to multiple models via OpenAI-compatible protocol:
 
 | Model | Interface | Usage |
 |---|---|---|
-| Claude Sonnet 4.5 | Third-party gateway | Gate / Planner / Quality ceiling |
 | Kimi 2.5 (Moonshot) | Official API | Gate / Planner |
-| Gemini 3 Flash | Google official API | Gate / Planner |
 | Qwen 3.5 Series | DashScope compatible | Gate / Planner (fine-tuned) |
 | MiniMax 2.5 | MiniMax compatible | Gate / Planner |
+| DeepSeek Series | Compatibility API | Gate / Planner (optional) |
 
 ---
 
@@ -438,17 +437,13 @@ Test set: 963 samples (test split)
 
 | Model | First Pass Failures | Final Failures | Avg Latency(ms) | Norm Sim | Line F1 | Edge F1 | Compile Rate |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| **Claude Sonnet 4.5** | 59 | 0 | 20,635 | **0.5013** | **0.4045** | **0.6666** | **0.3520** |
 | Kimi 2.5 | 39 | 0 | 87,830 | 0.4953 | 0.3759 | 0.6597 | 0.3001 |
-| **Gemini 3 Flash** | 0 | 0 | 26,323 | 0.4859 | 0.3676 | 0.6384 | 0.3323 |
 | Qwen 3.5 Thinking Off | 0 | 0 | **6,681** | 0.4685 | 0.3742 | 0.6399 | 0.3032 |
 | Qwen 3.5 Thinking On | 39 | 0 | 86,230 | 0.4464 | 0.3479 | 0.6267 | 0.2835 |
 | MiniMax 2.5 | 3 | 0 | 22,253 | 0.3922 | 0.2828 | 0.5204 | 0.2690 |
 
 **Key Findings**:
-- Claude Sonnet 4.5 has the best final quality
 - Qwen 3.5 Thinking Off is fastest and most stable
-- Gemini 3 Flash is the most balanced (0 first-pass failures + high quality)
 - Qwen 3.5 Thinking On performs worse than Off (thinking mode adds cost without benefit here)
 
 ### 8.3 2x2 Ablation Study

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# AI辅助生成：豆包（IDE智能编程辅助），2026-04-02
+
 import asyncio
 import json
 import os
@@ -44,10 +46,10 @@ DEFAULT_GATE_PROFILES = [
         "id": "gate-default",
         "label": "Gate Default",
         "provider_kind": "openai_compatible",
-        "endpoint": "https://api.openai.com/v1/chat/completions",
-        "models": ["gpt-4.1-mini"],
-        "default_model": "gpt-4.1-mini",
-        "api_key_env": "OPENAI_API_KEY",
+        "endpoint": "",
+        "models": ["default"],
+        "default_model": "default",
+        "api_key_env": "S2G_DOMESTIC_LLM_API_KEY",
     }
 ]
 DEFAULT_PLANNER_PROFILES = [
@@ -55,10 +57,10 @@ DEFAULT_PLANNER_PROFILES = [
         "id": "planner-default",
         "label": "Planner Default",
         "provider_kind": "openai_compatible",
-        "endpoint": "https://api.openai.com/v1/chat/completions",
-        "models": ["gpt-4.1-mini"],
-        "default_model": "gpt-4.1-mini",
-        "api_key_env": "OPENAI_API_KEY",
+        "endpoint": "",
+        "models": ["default"],
+        "default_model": "default",
+        "api_key_env": "S2G_DOMESTIC_LLM_API_KEY",
     }
 ]
 DEFAULT_STT_PROFILES = [
@@ -530,7 +532,7 @@ async def _test_xfyun_websocket(auth_url: str, logs: list[str]) -> None:
         logs.append("RTASR WebSocket 已关闭测试连接")
 
 
-def _test_openai_connection(
+def _test_compatible_connection(
     *,
     endpoint: str,
     api_key: str | None,
@@ -547,7 +549,7 @@ def _test_openai_connection(
         logs=logs,
     )
     if not resolved_api_key:
-        raise RuntimeError("OpenAI Compatible 连接测试失败：缺少 API Key。")
+        raise RuntimeError("兼容接口连接测试失败：缺少 API Key。")
 
     headers = {
         "Accept": "application/json",
@@ -685,7 +687,7 @@ def test_runtime_connection(
                 logs=logs,
             )
         elif provider_kind == "openai_compatible":
-            ok, summary = _test_openai_connection(
+            ok, summary = _test_compatible_connection(
                 endpoint=endpoint,
                 api_key=api_key,
                 api_key_env=api_key_env,

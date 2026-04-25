@@ -1,5 +1,8 @@
 "use client";
 
+// AI辅助生成：豆包（IDE智能编程辅助），2026-04-06
+// 说明：事后补注（复现实录）。该文件在实时工作台 UI 迭代、布局与交互细节打磨阶段参考了智能编程辅助给出的组件拆分与样式建议。
+
 import * as Tabs from "@radix-ui/react-tabs";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -2384,7 +2387,7 @@ export function RealtimeStudio() {
     // Only bootstrap a snapshot when timeline data has loaded and is truly empty.
     if (!timelineQuery.isSuccess) return;
     if (timelineNodes.length > 0) return;
-    snapshotMutation.mutate(currentSessionId);
+      snapshotMutation.mutate(currentSessionId);
     // `useMutation()` returns a new object identity per render; this effect is driven by timeline state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSessionId, timelineNodes.length, timelineQuery.isSuccess]);
@@ -2509,13 +2512,13 @@ export function RealtimeStudio() {
         rows
           .map((row, index) => ({
             ...makeTranscriptTurn({
-              speaker: row.speaker,
-              text: row.text.trim(),
-              start_ms: index * 450,
-              end_ms: index * 450,
-              is_final: true,
-              source: "transcript",
-              capture_mode: "manual_text",
+            speaker: row.speaker,
+            text: row.text.trim(),
+            start_ms: index * 450,
+            end_ms: index * 450,
+            is_final: true,
+            source: "transcript",
+            capture_mode: "manual_text",
             }),
           }))
           .filter((row) => row.text),
@@ -3603,7 +3606,7 @@ export function RealtimeStudio() {
           )
         : null}
 
-      <div className="flex h-full flex-col overflow-hidden space-y-4">
+      <div className="flex min-h-[calc(100vh-5.5rem)] flex-col space-y-4">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2 pl-3 md:gap-3 md:pl-6 lg:pl-8">
             <h1 className="page-title">实时工作台</h1>
@@ -3683,7 +3686,7 @@ export function RealtimeStudio() {
             </div>
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-hidden pb-0 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(300px,3fr)_minmax(0,7fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
+        <div className="min-h-0 pb-0 grid grid-cols-1 gap-4 xl:flex-1 xl:overflow-hidden xl:grid-cols-[minmax(300px,3fr)_minmax(0,7fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
         {studioPage === 1 ? (
           <Card className="soft-enter relative order-1 flex min-h-0 min-w-0 flex-col space-y-3 text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none">
           <div
@@ -3886,7 +3889,7 @@ export function RealtimeStudio() {
                       : activeTranscriptTurn?.speaker
                         ? `当前发言：${activeTranscriptTurn.speaker}`
                         : "实时预览"}
-                  </div>
+                </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
                   {transcriptPanelTab === "live" ? (
@@ -3916,30 +3919,30 @@ export function RealtimeStudio() {
                       </div>
                     ) : (
                       <div className="rounded-xl border border-[color:var(--accent)]/25 bg-[color:var(--accent)]/[0.05] px-3 py-3">
-                        <div className="max-h-[min(12rem,38vh)] min-h-[4.5rem] overflow-y-auto whitespace-pre-wrap text-[15px] leading-7 text-theme-1 sm:max-h-[min(18rem,42vh)] sm:min-h-[6.5rem] sm:text-[16px] md:max-h-none md:overflow-visible md:min-h-[7.5rem]">
-                          {currentSubtitleText}
-                        </div>
-                        <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-theme-4">
-                          <span>
-                            {liveTranscript.trim()
-                              ? "优先显示本地实时预览"
-                              : currentSessionClosed
-                                ? "当前会话已结束，可查看历史字幕与下载全文"
-                                : "最新一条稳定转写会先停留在这里，下一条到来后再转入历史区"}
-                          </span>
-                        </div>
-                      </div>
+                <div className="max-h-[min(12rem,38vh)] min-h-[4.5rem] overflow-y-auto whitespace-pre-wrap text-[15px] leading-7 text-theme-1 sm:max-h-[min(18rem,42vh)] sm:min-h-[6.5rem] sm:text-[16px] md:max-h-none md:overflow-visible md:min-h-[7.5rem]">
+                  {currentSubtitleText}
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-theme-4">
+                  <span>
+                    {liveTranscript.trim()
+                      ? "优先显示本地实时预览"
+                      : currentSessionClosed
+                        ? "当前会话已结束，可查看历史字幕与下载全文"
+                        : "最新一条稳定转写会先停留在这里，下一条到来后再转入历史区"}
+                  </span>
+                </div>
+              </div>
                     )
                   ) : previewArchivedTranscriptTurns.length ? (
                     <div className="space-y-2.5">
                       {previewArchivedTranscriptTurns.map((turn, index) => {
                         const tone = transcriptSpeakerCardTone(turn.speaker);
                         return (
-                          <div
-                            key={turn.key || `${turn.speaker}-${turn.start_ms}-${index}`}
+                        <div
+                          key={turn.key || `${turn.speaker}-${turn.start_ms}-${index}`}
                             className={`rounded-lg border px-3 py-2 ${tone.card}`}
                             style={tone.style}
-                          >
+                        >
                           <div className="flex items-center justify-between gap-2 text-[10px] text-theme-4">
                             <span
                               className={`truncate rounded-md border px-1.5 py-0.5 font-semibold ${tone.speaker}`}
@@ -3967,7 +3970,7 @@ export function RealtimeStudio() {
                             </span>
                             <span>{turn.is_final ? "final" : "pending"}</span>
                           </div>
-                          </div>
+                        </div>
                         );
                       })}
                     </div>
@@ -4016,7 +4019,7 @@ export function RealtimeStudio() {
                 ) : null}
 
         <div
-          className={`order-3 flex min-h-0 min-w-0 flex-1 flex-col xl:row-start-2 xl:min-h-0 ${
+          className={`order-3 flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overscroll-x-contain xl:row-start-2 xl:min-h-0 ${
             studioPage === 1 ? "xl:col-start-2" : "xl:col-start-1 xl:col-span-2"
           }`}
         >
@@ -4030,7 +4033,7 @@ export function RealtimeStudio() {
         >
           <div className="soft-enter soft-enter-delay-1 flex min-h-0 min-w-0 flex-1 flex-col">
             <Tabs.Root value={stageTab} onValueChange={setStageTab} className="flex min-h-0 flex-1 flex-col">
-            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-surface-1 p-0 shadow-lg">
+            <Card className="flex min-h-0 min-w-[960px] flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-surface-1 p-0 shadow-lg">
               <div
                 className="pointer-events-none h-px w-full shrink-0 bg-gradient-to-r from-transparent via-[color:var(--accent)]/30 to-transparent"
                 aria-hidden
@@ -4058,7 +4061,7 @@ export function RealtimeStudio() {
               ))}
             </Tabs.List>
                   <Tooltip.Provider delayDuration={120}>
-                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1 pt-0.5 [-webkit-overflow-scrolling:touch] sm:flex-wrap sm:overflow-x-visible sm:pb-0">
                       {pipelineStages.map((step) => (
                         <Tooltip.Root key={step.abbr}>
                           <Tooltip.Trigger asChild>
@@ -4107,139 +4110,139 @@ export function RealtimeStudio() {
                     <div className="relative inline-flex items-center rounded-lg border border-[#4f3a86]/90 bg-[#d9d0ef]/95 px-2 py-0.5 shadow-[0_12px_26px_-18px_rgba(83,67,126,0.55)] backdrop-blur-sm">
                       <div className="flex min-w-0 flex-nowrap items-center gap-1.5">
 
-                    <button
-                      type="button"
-                      disabled={!currentSessionId}
+                      <button
+                        type="button"
+                        disabled={!currentSessionId}
                       className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#8fa79b] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "pen"
                           ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(143,167,155,0.22)]"
                           : "bg-white text-[#111827] hover:bg-white/95"
                       }`}
-                      onClick={() => {
-                        if (!currentSessionId) return;
-                        if (activeAnnotationPanel === "pen") {
-                          setActiveAnnotationPanel(null);
-                          return;
-                        }
-                        setAnnotationsEnabled(true);
-                        setAnnotationsTool("pen");
-                        setActiveAnnotationPanel("pen");
-                      }}
-                      title={!currentSessionId ? "请先创建会话" : "画笔"}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                        <path
-                          d="M2.2 11.8l2.7-.6 5.8-5.8-2.1-2.1-5.8 5.8-.6 2.7z"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.3"
-                          strokeLinejoin="round"
-                        />
-                        <path d="M7.6 3.3l2.1 2.1" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                      </svg>
-                    </button>
+                        onClick={() => {
+                          if (!currentSessionId) return;
+                          if (activeAnnotationPanel === "pen") {
+                            setActiveAnnotationPanel(null);
+                            return;
+                          }
+                          setAnnotationsEnabled(true);
+                          setAnnotationsTool("pen");
+                          setActiveAnnotationPanel("pen");
+                        }}
+                        title={!currentSessionId ? "请先创建会话" : "画笔"}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                          <path
+                            d="M2.2 11.8l2.7-.6 5.8-5.8-2.1-2.1-5.8 5.8-.6 2.7z"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                            strokeLinejoin="round"
+                          />
+                          <path d="M7.6 3.3l2.1 2.1" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                        </svg>
+                      </button>
 
-                    <button
-                      type="button"
-                      disabled={!currentSessionId}
+                      <button
+                        type="button"
+                        disabled={!currentSessionId}
                       className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#bba98d] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "rect"
                           ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(187,169,141,0.22)]"
                           : "bg-white text-[#111827] hover:bg-white/95"
                       }`}
-                      onClick={() => {
-                        if (!currentSessionId) return;
-                        if (activeAnnotationPanel === "rect") {
-                          setActiveAnnotationPanel(null);
-                          return;
-                        }
-                        setAnnotationsEnabled(true);
-                        setAnnotationsTool("rect");
-                        setActiveAnnotationPanel("rect");
-                      }}
-                      title={!currentSessionId ? "请先创建会话" : "框"}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                        <rect
-                          x="2.25"
-                          y="2.25"
-                          width="9.5"
-                          height="9.5"
-                          rx="1.8"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.3"
-                        />
-                      </svg>
-                    </button>
+                        onClick={() => {
+                          if (!currentSessionId) return;
+                          if (activeAnnotationPanel === "rect") {
+                            setActiveAnnotationPanel(null);
+                            return;
+                          }
+                          setAnnotationsEnabled(true);
+                          setAnnotationsTool("rect");
+                          setActiveAnnotationPanel("rect");
+                        }}
+                        title={!currentSessionId ? "请先创建会话" : "框"}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                          <rect
+                            x="2.25"
+                            y="2.25"
+                            width="9.5"
+                            height="9.5"
+                            rx="1.8"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                          />
+                        </svg>
+                      </button>
 
-                    <button
-                      type="button"
-                      disabled={!currentSessionId}
+                      <button
+                        type="button"
+                        disabled={!currentSessionId}
                       className={`inline-flex h-7 w-[56px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#9fb2c4] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "text"
                           ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(159,178,196,0.22)]"
                           : "bg-white text-[#111827] hover:bg-white/95"
                       }`}
-                      onClick={() => {
-                        if (!currentSessionId) return;
-                        if (activeAnnotationPanel === "text") {
-                          setActiveAnnotationPanel(null);
-                          return;
-                        }
-                        setAnnotationsEnabled(true);
-                        setAnnotationsTool("text");
-                        setActiveAnnotationPanel("text");
-                      }}
-                      title={!currentSessionId ? "请先创建会话" : "文字批注"}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                        <path
-                          d="M2.5 3.2h9M7 3.2v7.6M4.6 10.8h4.8"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.35"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
+                        onClick={() => {
+                          if (!currentSessionId) return;
+                          if (activeAnnotationPanel === "text") {
+                            setActiveAnnotationPanel(null);
+                            return;
+                          }
+                          setAnnotationsEnabled(true);
+                          setAnnotationsTool("text");
+                          setActiveAnnotationPanel("text");
+                        }}
+                        title={!currentSessionId ? "请先创建会话" : "文字批注"}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                          <path
+                            d="M2.5 3.2h9M7 3.2v7.6M4.6 10.8h4.8"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.35"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
 
-                    <button
-                      type="button"
-                      disabled={!currentSessionId}
+                      <button
+                        type="button"
+                        disabled={!currentSessionId}
                       className={`inline-flex h-7 w-[72px] shrink-0 items-center justify-center rounded-md border border-[#b7aba1] text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                         activeAnnotationPanel === "eraser"
                           ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(183,171,161,0.22)]"
                           : "bg-white text-[#111827] hover:bg-white/95"
                       }`}
-                      onClick={() => {
-                        if (!currentSessionId) return;
-                        if (activeAnnotationPanel === "eraser") {
-                          setActiveAnnotationPanel(null);
-                          return;
-                        }
-                        setAnnotationsEnabled(true);
-                        setAnnotationsTool(
-                          annotationsTool === "erase_object" || annotationsTool === "erase_precise"
-                            ? annotationsTool
-                            : "erase_object",
-                        );
-                        setActiveAnnotationPanel("eraser");
-                      }}
-                      title={!currentSessionId ? "请先创建会话" : "橡皮"}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                        <path
-                          d="M3.1 8.7l3.6-3.6a1.6 1.6 0 0 1 2.2 0l1.9 1.9a1.6 1.6 0 0 1 0 2.2L8.3 11.7H5.2z"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.3"
-                          strokeLinejoin="round"
-                        />
-                        <path d="M4.2 11.7h6.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                      </svg>
-                    </button>
+                        onClick={() => {
+                          if (!currentSessionId) return;
+                          if (activeAnnotationPanel === "eraser") {
+                            setActiveAnnotationPanel(null);
+                            return;
+                          }
+                          setAnnotationsEnabled(true);
+                          setAnnotationsTool(
+                            annotationsTool === "erase_object" || annotationsTool === "erase_precise"
+                              ? annotationsTool
+                              : "erase_object",
+                          );
+                          setActiveAnnotationPanel("eraser");
+                        }}
+                        title={!currentSessionId ? "请先创建会话" : "橡皮"}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                          <path
+                            d="M3.1 8.7l3.6-3.6a1.6 1.6 0 0 1 2.2 0l1.9 1.9a1.6 1.6 0 0 1 0 2.2L8.3 11.7H5.2z"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                            strokeLinejoin="round"
+                          />
+                          <path d="M4.2 11.7h6.3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                        </svg>
+                      </button>
 
                     {activeAnnotationPanel ? (
                       <div
@@ -4308,59 +4311,59 @@ export function RealtimeStudio() {
 
                             {activeAnnotationPanel === "eraser" ? (
                               <div className="flex flex-wrap items-center gap-1.5">
-                                {ERASER_WIDTH_PRESETS.map(({ w, dot }) => {
-                                  const active =
-                                    annotationsTool === "erase_precise" &&
-                                    nearestEraserPresetWidth(annotationEraserWidth) === w;
-                                  return (
-                                    <button
-                                      key={w}
-                                      type="button"
-                                      title={`精准擦 ${w}px`}
-                                      aria-label={`精准橡皮，宽度 ${w}`}
+                            {ERASER_WIDTH_PRESETS.map(({ w, dot }) => {
+                              const active =
+                                annotationsTool === "erase_precise" &&
+                                nearestEraserPresetWidth(annotationEraserWidth) === w;
+                              return (
+                                <button
+                                  key={w}
+                                  type="button"
+                                  title={`精准擦 ${w}px`}
+                                  aria-label={`精准橡皮，宽度 ${w}`}
                                       className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
                                         active
                                           ? "border-[#b7aba1] bg-[#d7d0c9] text-[#3f3832]"
                                           : "border-[#c7bdb5] bg-[#efeae6] text-[#564d46] hover:bg-[#e5dfda]"
-                                      }`}
-                                      onClick={() => {
-                                        setAnnotationsEnabled(true);
-                                        setAnnotationsTool("erase_precise");
-                                        setAnnotationEraserWidth(w);
-                                      }}
-                                    >
-                                      <span
-                                        className="shrink-0 rounded-full bg-current opacity-90"
-                                        style={{ width: dot, height: dot }}
-                                        aria-hidden
-                                      />
-                                    </button>
-                                  );
-                                })}
-                                <button
-                                  type="button"
-                                  title="对象擦：整段笔画 / 整框"
-                                  aria-label="对象橡皮"
-                                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
-                                    annotationsTool === "erase_object"
-                                      ? "border-[#b7aba1] bg-[#d7d0c9] text-[#3f3832]"
-                                      : "border-[#c7bdb5] bg-[#efeae6] text-[#564d46] hover:bg-[#e5dfda]"
                                   }`}
                                   onClick={() => {
                                     setAnnotationsEnabled(true);
-                                    setAnnotationsTool("erase_object");
+                                    setAnnotationsTool("erase_precise");
+                                    setAnnotationEraserWidth(w);
                                   }}
                                 >
-                                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                                    <path
-                                      d="M3.5 3.5l7 7M10.5 3.5l-7 7"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="1.75"
-                                      strokeLinecap="round"
-                                    />
-                                  </svg>
+                                  <span
+                                    className="shrink-0 rounded-full bg-current opacity-90"
+                                    style={{ width: dot, height: dot }}
+                                    aria-hidden
+                                  />
                                 </button>
+                              );
+                            })}
+                            <button
+                              type="button"
+                              title="对象擦：整段笔画 / 整框"
+                              aria-label="对象橡皮"
+                                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                                annotationsTool === "erase_object"
+                                      ? "border-[#b7aba1] bg-[#d7d0c9] text-[#3f3832]"
+                                      : "border-[#c7bdb5] bg-[#efeae6] text-[#564d46] hover:bg-[#e5dfda]"
+                              }`}
+                              onClick={() => {
+                                setAnnotationsEnabled(true);
+                                setAnnotationsTool("erase_object");
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                                <path
+                                  d="M3.5 3.5l7 7M10.5 3.5l-7 7"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.75"
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                            </button>
                               </div>
                             ) : null}
                           </div>
@@ -4382,8 +4385,8 @@ export function RealtimeStudio() {
                           >
                             退出批注
                           </button>
-                        </div>
                       </div>
+                    </div>
                     ) : null}
                     <Button
                       type="button"
@@ -4406,7 +4409,7 @@ export function RealtimeStudio() {
                     {!currentSessionId || saveAnnotationsMutation.isPending ? (
                       <span className="ml-1 text-[10px] text-[#6a627b]">
                         {!currentSessionId ? "未建会话" : "保存中…"}
-                      </span>
+                    </span>
                     ) : null}
                       </div>
                     </div>
@@ -4591,12 +4594,12 @@ export function RealtimeStudio() {
                                     minute: "2-digit",
                                     second: "2-digit",
                                   })}
-                                </div>
-                              </div>
+                          </div>
+                          </div>
                               <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-theme-3">
                                 <span>{node.chunk_count} chunks</span>
                                 <span>{node.event_count} events</span>
-                              </div>
+                        </div>
                             </button>
                           );
                         })}
@@ -4686,18 +4689,18 @@ export function RealtimeStudio() {
                               <div className="mt-1 text-[11px] text-theme-3">
                                 {event.update?.transcript_text ||
                                   (Array.isArray(event.pending_turns)
-                                    ? event.pending_turns
-                                        .map((turn: Record<string, any>) => `${turn.speaker || "speaker"}: ${turn.content || ""}`)
+                            ? event.pending_turns
+                                .map((turn: Record<string, any>) => `${turn.speaker || "speaker"}: ${turn.content || ""}`)
                                         .join(" / ")
                                     : "-")}
-                              </div>
-                            </div>
-                          ))
-                        ) : (
+                        </div>
+                      </div>
+                    ))
+                  ) : (
                           <div className="rounded-lg border border-dashed border-theme-default px-3 py-3 text-xs text-theme-3">
                             还没有增量事件。
-                          </div>
-                        )}
+                    </div>
+                  )}
                       </div>
                     </div>
                   </div>

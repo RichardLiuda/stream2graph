@@ -300,81 +300,6 @@ class JSONHttpPredictor(Predictor):
         raise RuntimeError(str(last_error) if last_error else "request failed without details")
 
 
-class OpenAIResponsesPredictor(JSONHttpPredictor):
-    provider = "openai_responses"
-
-    def __init__(self, config: dict[str, Any]) -> None:
-        endpoint = str(config.get("endpoint", "https://api.openai.com/v1/responses"))
-        config = {**config, "endpoint": endpoint}
-        super().__init__(config)
-        self.api_key_env = str(config.get("api_key_env", "OPENAI_API_KEY"))
-        self.temperature = float(config.get("temperature", 0.0))
-        self.max_output_tokens = int(config.get("max_output_tokens", 2048))
-
-    def predict(self, sample: EvaluationSample) -> PredictionResult:
-        api_key = _resolve_api_key(self.api_key_env)
-        if not api_key:
-            return PredictionResult(
-                provider=self.provider,
-                model_name=self.model_name,
-                generated_code="",
-                raw_output_text="",
-                latency_ms=0.0,
-                error=f"missing environment variable: {self.api_key_env}",
-            )
-
-        try:
-            messages = build_messages(sample)
-            payload = {
-                "model": self.model_name,
-                "input": [
-                    {
-                        "role": messages[0]["role"],
-                        "content": [{"type": "input_text", "text": messages[0]["content"]}],
-                    },
-                    {
-                        "role": messages[1]["role"],
-                        "content": [{"type": "input_text", "text": messages[1]["content"]}],
-                    },
-                ],
-                "max_output_tokens": self.max_output_tokens,
-                "temperature": self.temperature,
-            }
-            t0 = time.time()
-            response = self._post_json(payload, {"Authorization": f"Bearer {api_key}"})
-            latency_ms = (time.time() - t0) * 1000.0
-            raw_text = self._extract_text(response)
-            return PredictionResult(
-                provider=self.provider,
-                model_name=self.model_name,
-                generated_code=extract_mermaid_candidate(raw_text),
-                raw_output_text=raw_text,
-                latency_ms=round(latency_ms, 4),
-                finish_reason=response.get("status"),
-                usage=response.get("usage", {}) if isinstance(response.get("usage"), dict) else {},
-            )
-        except Exception as exc:
-            return PredictionResult(
-                provider=self.provider,
-                model_name=self.model_name,
-                generated_code="",
-                raw_output_text="",
-                latency_ms=0.0,
-                error=str(exc),
-            )
-
-    def _extract_text(self, response: dict[str, Any]) -> str:
-        if isinstance(response.get("output_text"), str):
-            return response["output_text"]
-        chunks: list[str] = []
-        for item in response.get("output", []):
-            for content in item.get("content", []):
-                text = content.get("text")
-                if isinstance(text, str):
-                    chunks.append(text)
-        return "\n".join(chunks).strip()
-
-
 class OpenAICompatibleChatPredictor(JSONHttpPredictor):
     provider = "openai_compatible_chat"
 
@@ -383,7 +308,7 @@ class OpenAICompatibleChatPredictor(JSONHttpPredictor):
             raise ValueError("OpenAI-compatible chat predictor requires an endpoint.")
         super().__init__(config)
         self.provider_name = str(config.get("provider_name", config.get("provider", self.provider)))
-        self.api_key_env = str(config.get("api_key_env", "OPENAI_API_KEY"))
+        self.api_key_env = str(config.get("api_key_env", "S2G_DOMESTIC_LLM_API_KEY"))
         self.temperature = float(config.get("temperature", 0.0))
         self.max_tokens = int(config.get("max_tokens", config.get("max_output_tokens", 2048)))
         self.extra_body = config.get("extra_body", {}) if isinstance(config.get("extra_body"), dict) else {}
@@ -461,163 +386,15 @@ class OpenAICompatibleChatPredictor(JSONHttpPredictor):
         return "\n".join(chunks).strip()
 
 
-class AnthropicMessagesPredictor(JSONHttpPredictor):
-    provider = "anthropic_messages"
-
-    def __init__(self, config: dict[str, Any]) -> None:
-        endpoint = str(config.get("endpoint", "https://api.anthropic.com/v1/messages"))
-        config = {**config, "endpoint": endpoint}
-        super().__init__(config)
-        self.api_key_env = str(config.get("api_key_env", "ANTHROPIC_API_KEY"))
-        self.temperature = float(config.get("temperature", 0.0))
-        self.max_tokens = int(config.get("max_tokens", 2048))
-        self.api_version = str(config.get("anthropic_version", "2023-06-01"))
-
-    def predict(self, sample: EvaluationSample) -> PredictionResult:
-        api_key = _resolve_api_key(self.api_key_env)
-        if not api_key:
-            return PredictionResult(
-                provider=self.provider,
-                model_name=self.model_name,
-                generated_code="",
-                raw_output_text="",
-                latency_ms=0.0,
-                error=f"missing environment variable: {self.api_key_env}",
-            )
-        try:
-            payload = {
-                "model": self.model_name,
-                "system": SYSTEM_PROMPT,
-                "messages": [{"role": "user", "content": sample.prompt}],
-                "max_tokens": self.max_tokens,
-                "temperature": self.temperature,
-            }
-            t0 = time.time()
-            response = self._post_json(
-                payload,
-                {
-                    "x-api-key": api_key,
-                    "anthropic-version": self.api_version,
-                },
-            )
-            latency_ms = (time.time() - t0) * 1000.0
-            content_blocks = response.get("content", [])
-            raw_text = "\n".join(block.get("text", "") for block in content_blocks if isinstance(block, dict)).strip()
-            return PredictionResult(
-                provider=self.provider,
-                model_name=self.model_name,
-                generated_code=extract_mermaid_candidate(raw_text),
-                raw_output_text=raw_text,
-                latency_ms=round(latency_ms, 4),
-                finish_reason=response.get("stop_reason"),
-                usage=response.get("usage", {}) if isinstance(response.get("usage"), dict) else {},
-            )
-        except Exception as exc:
-            return PredictionResult(
-                provider=self.provider,
-                model_name=self.model_name,
-                generated_code="",
-                raw_output_text="",
-                latency_ms=0.0,
-                error=str(exc),
-            )
-
-
-class GeminiGenerateContentPredictor(JSONHttpPredictor):
-    provider = "google_generate_content"
-
-    def __init__(self, config: dict[str, Any]) -> None:
-        api_key_env = str(config.get("api_key_env", "GOOGLE_API_KEY"))
-        model_name = str(config["model"])
-        api_key = _resolve_api_key(api_key_env)
-        endpoint = str(config.get("endpoint", "")).strip()
-        if not endpoint:
-            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-            if api_key:
-                endpoint = f"{endpoint}?key={api_key}"
-        config = {**config, "endpoint": endpoint}
-        super().__init__(config)
-        self.api_key_env = api_key_env
-        self.temperature = float(config.get("temperature", 0.0))
-        self.max_output_tokens = int(config.get("max_output_tokens", 2048))
-        self.thinking_level = str(config.get("thinking_level", "")).strip().lower()
-
-    def predict(self, sample: EvaluationSample) -> PredictionResult:
-        api_key = _resolve_api_key(self.api_key_env)
-        endpoint_key = ""
-        try:
-            endpoint_key = urllib.parse.parse_qs(urllib.parse.urlparse(self.endpoint).query).get("key", [""])[0]
-        except Exception:
-            endpoint_key = ""
-        if not api_key and not endpoint_key:
-            return PredictionResult(
-                provider=self.provider,
-                model_name=self.model_name,
-                generated_code="",
-                raw_output_text="",
-                latency_ms=0.0,
-                error=f"missing environment variable: {self.api_key_env}",
-            )
-
-        try:
-            payload = {
-                "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-                "contents": [{"role": "user", "parts": [{"text": sample.prompt}]}],
-                "generationConfig": {
-                    "temperature": self.temperature,
-                    "maxOutputTokens": self.max_output_tokens,
-                },
-            }
-            if self.thinking_level in {"low", "medium", "high"}:
-                payload["generationConfig"]["thinkingConfig"] = {"thinkingLevel": self.thinking_level}
-            t0 = time.time()
-            response = self._post_json(payload, {})
-            latency_ms = (time.time() - t0) * 1000.0
-            raw_text = self._extract_text(response)
-            return PredictionResult(
-                provider=self.provider,
-                model_name=self.model_name,
-                generated_code=extract_mermaid_candidate(raw_text),
-                raw_output_text=raw_text,
-                latency_ms=round(latency_ms, 4),
-                finish_reason=(
-                    response.get("candidates", [{}])[0].get("finishReason")
-                    if isinstance(response.get("candidates"), list) and response.get("candidates")
-                    else None
-                ),
-                usage=response.get("usageMetadata", {}) if isinstance(response.get("usageMetadata"), dict) else {},
-            )
-        except Exception as exc:
-            return PredictionResult(
-                provider=self.provider,
-                model_name=self.model_name,
-                generated_code="",
-                raw_output_text="",
-                latency_ms=0.0,
-                error=str(exc),
-            )
-
-    def _extract_text(self, response: dict[str, Any]) -> str:
-        chunks: list[str] = []
-        for candidate in response.get("candidates", []):
-            for part in candidate.get("content", {}).get("parts", []):
-                text = part.get("text")
-                if isinstance(text, str):
-                    chunks.append(text)
-        return "\n".join(chunks).strip()
-
-
 def build_predictor(config: dict[str, Any], static_rows: Optional[list[dict]] = None) -> Predictor:
     provider = str(config.get("provider", "gold_reference"))
     openai_compatible_providers = {
         "openai_compatible_chat",
-        "claude_chat_completions",
         "moonshot_chat_completions",
         "deepseek_chat_completions",
         "minimax_chat_completions",
         "dashscope_chat_completions",
         "siliconflow_chat_completions",
-        "openrouter_chat_completions",
     }
     if provider == "gold_reference":
         return GoldReferencePredictor()
@@ -627,12 +404,6 @@ def build_predictor(config: dict[str, Any], static_rows: Optional[list[dict]] = 
         return TraditionalRuleBasedPredictor(config)
     if provider == "huggingface_local":
         return LocalHFPredictor(config)
-    if provider == "openai_responses":
-        return OpenAIResponsesPredictor(config)
     if provider in openai_compatible_providers:
         return OpenAICompatibleChatPredictor(config)
-    if provider == "anthropic_messages":
-        return AnthropicMessagesPredictor(config)
-    if provider == "google_generate_content":
-        return GeminiGenerateContentPredictor(config)
     raise ValueError(f"Unsupported predictor provider: {provider}")

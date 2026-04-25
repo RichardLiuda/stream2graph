@@ -13,5 +13,5 @@ Recommended workflow:
 
 1. Run experiments under `reports/evaluation/runs/`.
 2. Export only the bundle you want to keep with `tools/eval/export_run_bundle.py`
-   or `tools/eval/run_openai_benchmark.py --publish-bundle`.
+   or use your runner's `--publish-bundle` option if available.
 3. Commit the resulting folder under `reports/evaluation/published/`.
