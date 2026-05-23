@@ -62,6 +62,7 @@ import {
   type InputSource,
   type InputSourceOption,
 } from "@/lib/audio-input";
+import { languageText, useLanguagePreference, type LanguagePreference, type LocalizedText } from "@/lib/language";
 import { type RecognitionBackend, realtimeStudioMachine } from "@/lib/realtime-machine";
 import {
   loadRuntimePreferences,
@@ -282,16 +283,65 @@ function getNoticeClassName(tone: NoticeTone) {
   return "border-theme-default bg-surface-2 text-theme-2";
 }
 
-function getSourceBadgeLabel(source: InputSource | null) {
+function t(language: LanguagePreference, copy: LocalizedText) {
+  return languageText(language, copy);
+}
+
+function dateLocale(language: LanguagePreference) {
+  switch (language) {
+    case "en-US":
+      return "en-US";
+    case "es-ES":
+      return "es-ES";
+    case "pt-BR":
+      return "pt-BR";
+    case "de-DE":
+      return "de-DE";
+    case "ja-JP":
+      return "ja-JP";
+    default:
+      return "zh-CN";
+  }
+}
+
+function getSourceBadgeLabel(source: InputSource | null, language: LanguagePreference = "zh-CN") {
   switch (source) {
     case "microphone_browser":
-      return "浏览器麦克风采集中";
+      return t(language, {
+        zh: "浏览器麦克风采集中",
+        en: "Browser microphone capturing",
+        es: "Capturando micrófono del navegador",
+        pt: "Capturando microfone do navegador",
+        de: "Browser-Mikrofon wird erfasst",
+        ja: "ブラウザマイクを取得中",
+      });
     case "system_audio_browser_experimental":
-      return "共享音频验证中";
+      return t(language, {
+        zh: "共享音频验证中",
+        en: "Shared audio validating",
+        es: "Validando audio compartido",
+        pt: "Validando áudio compartilhado",
+        de: "Geteiltes Audio wird geprüft",
+        ja: "共有音声を検証中",
+      });
     case "system_audio_helper":
-      return "增强模式运行中";
+      return t(language, {
+        zh: "增强模式运行中",
+        en: "Enhanced mode running",
+        es: "Modo mejorado activo",
+        pt: "Modo aprimorado em execução",
+        de: "Erweiterter Modus läuft",
+        ja: "拡張モード実行中",
+      });
     default:
-      return "当前未进行实时采集";
+      return t(language, {
+        zh: "当前未进行实时采集",
+        en: "No realtime capture",
+        es: "Sin captura en tiempo real",
+        pt: "Sem captura em tempo real",
+        de: "Keine Echtzeiterfassung",
+        ja: "リアルタイム取得なし",
+      });
   }
 }
 
@@ -436,8 +486,15 @@ function audioSegmentDiag(state: AudioSegmentState, sampleRate: number) {
   };
 }
 
-function formatLiveTranscript(text: string) {
-  return text.trim() || "等待识别结果...";
+function formatLiveTranscript(text: string, language: LanguagePreference = "zh-CN") {
+  return text.trim() || t(language, {
+    zh: "等待识别结果...",
+    en: "Waiting for recognition...",
+    es: "Esperando reconocimiento...",
+    pt: "Aguardando reconhecimento...",
+    de: "Warte auf Erkennung...",
+    ja: "認識結果を待っています...",
+  });
 }
 
 function makeTranscriptTurn(
@@ -747,26 +804,26 @@ function preserveCoordinationSnapshot(
   };
 }
 
-function backendLabel(backend: RecognitionBackend) {
+function backendLabel(backend: RecognitionBackend, language: LanguagePreference = "zh-CN") {
   switch (backend) {
     case "browser_speech":
-      return "浏览器听写";
+      return t(language, { zh: "浏览器听写", en: "Browser Dictation", es: "Dictado del navegador", pt: "Ditado do navegador", de: "Browser-Diktat", ja: "ブラウザ音声入力" });
     case "browser_display_validation":
-      return "试共享声音";
+      return t(language, { zh: "试共享声音", en: "Shared Audio Trial", es: "Prueba de audio compartido", pt: "Teste de áudio compartilhado", de: "Shared-Audio-Test", ja: "共有音声テスト" });
     case "local_helper":
-      return "本机处理";
+      return t(language, { zh: "本机处理", en: "Local Processing", es: "Procesamiento local", pt: "Processamento local", de: "Lokale Verarbeitung", ja: "ローカル処理" });
     case "api_stt":
       return "讯飞 RTASR";
     default:
-      return "手动输入";
+      return t(language, { zh: "手动输入", en: "Manual Input", es: "Entrada manual", pt: "Entrada manual", de: "Manuelle Eingabe", ja: "手動入力" });
   }
 }
 
-function backendStatusLabel(status: "idle" | "working" | "success" | "error") {
-  if (status === "working") return "进行中";
-  if (status === "success") return "成功";
-  if (status === "error") return "失败";
-  return "空闲";
+function backendStatusLabel(status: "idle" | "working" | "success" | "error", language: LanguagePreference = "zh-CN") {
+  if (status === "working") return t(language, { zh: "进行中", en: "Working", es: "En curso", pt: "Em andamento", de: "Läuft", ja: "処理中" });
+  if (status === "success") return t(language, { zh: "成功", en: "Success", es: "Correcto", pt: "Sucesso", de: "Erfolg", ja: "成功" });
+  if (status === "error") return t(language, { zh: "失败", en: "Failed", es: "Falló", pt: "Falhou", de: "Fehlgeschlagen", ja: "失敗" });
+  return t(language, { zh: "空闲", en: "Idle", es: "Inactivo", pt: "Ocioso", de: "Leerlauf", ja: "待機" });
 }
 
 function backendStatusTone(status: "idle" | "working" | "success" | "error") {
@@ -849,10 +906,10 @@ function buildBackendOptions(source: InputSource, helperCapabilities: HelperCapa
   return options;
 }
 
-function captureStatusLabel(status: "idle" | "capturing" | "uploading") {
-  if (status === "capturing") return "采集中";
-  if (status === "uploading") return "上传中";
-  return "空闲";
+function captureStatusLabel(status: "idle" | "capturing" | "uploading", language: LanguagePreference = "zh-CN") {
+  if (status === "capturing") return t(language, { zh: "采集中", en: "Capturing", es: "Capturando", pt: "Capturando", de: "Erfasst", ja: "取得中" });
+  if (status === "uploading") return t(language, { zh: "上传中", en: "Uploading", es: "Subiendo", pt: "Enviando", de: "Lädt hoch", ja: "アップロード中" });
+  return t(language, { zh: "空闲", en: "Idle", es: "Inactivo", pt: "Ocioso", de: "Leerlauf", ja: "待機" });
 }
 
 function capabilityBadgeTone(status: string) {
@@ -913,14 +970,11 @@ function transcriptSpeakerCardTone(speaker: string | undefined) {
   return tones[hash % tones.length] ?? tones[0];
 }
 
-const STAGE_TABS: ReadonlyArray<readonly [string, string]> = [
-  ["mermaid", "主图"],
-  ["structure", "结构视图"],
-  ["events", "更新记录"],
-] as const;
-
 export function RealtimeStudio() {
   const queryClient = useQueryClient();
+  const [language] = useLanguagePreference();
+  const tr = (copy: LocalizedText) => t(language, copy);
+  const currentDateLocale = dateLocale(language);
   const [studioState, studioSend] = useMachine(realtimeStudioMachine);
   const [title, setTitle] = useState("研究演示会话");
   const [titleDraft, setTitleDraft] = useState("研究演示会话");
@@ -1058,11 +1112,20 @@ export function RealtimeStudio() {
   const mermaidStatus = studioState.context.mermaidStatus;
   const machineError = studioState.context.error;
   const lastMermaidUpdatedAt = studioState.context.lastMermaidUpdatedAt;
+  const stageTabs = useMemo(
+    () =>
+      [
+        ["mermaid", tr({ zh: "主图", en: "Main Graph", es: "Gráfico principal", pt: "Grafo principal", de: "Hauptdiagramm", ja: "メイングラフ" })],
+        ["structure", tr({ zh: "结构视图", en: "Structure View", es: "Vista estructural", pt: "Visualização estrutural", de: "Strukturansicht", ja: "構造ビュー" })],
+        ["events", tr({ zh: "更新记录", en: "Updates", es: "Actualizaciones", pt: "Atualizações", de: "Updates", ja: "更新" })],
+      ] as const,
+    [language],
+  );
   const activeStageTabIndex = Math.max(
     0,
-    STAGE_TABS.findIndex(([value]) => value === stageTab),
+    stageTabs.findIndex(([value]) => value === stageTab),
   );
-  const stageTabCount = STAGE_TABS.length;
+  const stageTabCount = stageTabs.length;
 
   const authQuery = useQuery({
     queryKey: ["auth", "me"],
@@ -1274,7 +1337,7 @@ export function RealtimeStudio() {
     if (stored) setCurrentSessionId(stored);
   }, []);
 
-  const inputOptions = useMemo(() => getInputSourceOptions(audioContext), [audioContext]);
+  const inputOptions = useMemo(() => getInputSourceOptions(audioContext, language), [audioContext, language]);
   const selectedOption = useMemo<InputSourceOption>(() => {
     return inputOptions.find((item) => item.source === selectedInputSource) || inputOptions[0];
   }, [inputOptions, selectedInputSource]);
@@ -2236,7 +2299,7 @@ export function RealtimeStudio() {
           ? err instanceof Error
             ? err.message
             : "无法开启麦克风。"
-          : getDisplayAudioErrorMessage(err instanceof DOMException ? err.name : undefined),
+          : getDisplayAudioErrorMessage(err instanceof DOMException ? err.name : undefined, language),
       );
       return;
     }
@@ -2846,8 +2909,8 @@ export function RealtimeStudio() {
       setListening(false);
       void teardownMicrophoneAudioGraph();
       if (activeCaptureSource === "microphone_browser") studioSend({ type: "capture.stop" });
-      studioSend({ type: "stt.error", message: getSpeechRecognitionErrorMessage(evt?.error) });
-      setError(getSpeechRecognitionErrorMessage(evt?.error));
+      studioSend({ type: "stt.error", message: getSpeechRecognitionErrorMessage(evt?.error, language) });
+      setError(getSpeechRecognitionErrorMessage(evt?.error, language));
     };
     try {
       await startMicrophoneAudioGraph();
@@ -2903,7 +2966,7 @@ export function RealtimeStudio() {
         text: "浏览器已成功提供共享音频轨道，但当前版本只做能力验证，尚未把共享音频直接转成文本 chunk。请改用增强模式或 Transcript 输入。",
       });
     } catch (err) {
-      setError(getDisplayAudioErrorMessage(err instanceof DOMException ? err.name : undefined));
+      setError(getDisplayAudioErrorMessage(err instanceof DOMException ? err.name : undefined, language));
     }
   }
 
@@ -2942,7 +3005,7 @@ export function RealtimeStudio() {
         return;
       }
     } catch (err) {
-      setError(getDisplayAudioErrorMessage(err instanceof DOMException ? err.name : undefined));
+      setError(getDisplayAudioErrorMessage(err instanceof DOMException ? err.name : undefined, language));
       return;
     }
 
@@ -3097,8 +3160,8 @@ export function RealtimeStudio() {
   const currentSubtitleText = useMemo(() => {
     const live = liveTranscript.trim();
     if (live) return live;
-    return activeTranscriptTurn?.text?.trim() || transcriptState.latestFinalTurn?.text?.trim() || "等待识别结果...";
-  }, [activeTranscriptTurn, liveTranscript, transcriptState.latestFinalTurn]);
+    return activeTranscriptTurn?.text?.trim() || transcriptState.latestFinalTurn?.text?.trim() || formatLiveTranscript("", language);
+  }, [activeTranscriptTurn, language, liveTranscript, transcriptState.latestFinalTurn]);
 
   function downloadCurrentGraph() {
     if (!currentSessionId) {
@@ -3187,12 +3250,52 @@ export function RealtimeStudio() {
   const summaryCards = useMemo(() => {
     const metrics = snapshot?.evaluation?.metrics ?? {};
     return [
-      { label: "端到端延迟", value: metrics.e2e_latency_p95_ms ?? "-" },
-      { label: "意图准确率", value: metrics.intent_accuracy ?? "-" },
-      { label: "画面抖动", value: metrics.flicker_mean ?? "-" },
-      { label: "结构好懂度", value: metrics.mental_map_mean ?? "-" },
+      {
+        label: tr({
+          zh: "端到端延迟",
+          en: "End-to-end Latency",
+          es: "Latencia extremo a extremo",
+          pt: "Latência ponta a ponta",
+          de: "Ende-zu-Ende-Latenz",
+          ja: "エンドツーエンド遅延",
+        }),
+        value: metrics.e2e_latency_p95_ms ?? "-",
+      },
+      {
+        label: tr({
+          zh: "意图准确率",
+          en: "Intent Accuracy",
+          es: "Precisión de intención",
+          pt: "Precisão de intenção",
+          de: "Intentionsgenauigkeit",
+          ja: "意図精度",
+        }),
+        value: metrics.intent_accuracy ?? "-",
+      },
+      {
+        label: tr({
+          zh: "画面抖动",
+          en: "Visual Flicker",
+          es: "Parpadeo visual",
+          pt: "Oscilação visual",
+          de: "Visuelles Flackern",
+          ja: "表示のちらつき",
+        }),
+        value: metrics.flicker_mean ?? "-",
+      },
+      {
+        label: tr({
+          zh: "结构好懂度",
+          en: "Structure Clarity",
+          es: "Claridad estructural",
+          pt: "Clareza estrutural",
+          de: "Strukturklarheit",
+          ja: "構造の分かりやすさ",
+        }),
+        value: metrics.mental_map_mean ?? "-",
+      },
     ];
-  }, [snapshot?.evaluation?.metrics]);
+  }, [language, snapshot?.evaluation?.metrics]);
 
   /** @description 主舞台顶栏：CAP/STT/GATE/PLAN/MER/model 步骤徽章（空闲=灰色，失败=红色） */
   const pipelineStages = useMemo(() => {
@@ -3238,57 +3341,132 @@ export function RealtimeStudio() {
             ? "success"
             : "idle";
 
+    const noModelLabel = tr({
+      zh: "未选择模型",
+      en: "No model selected",
+      es: "Sin modelo seleccionado",
+      pt: "Nenhum modelo selecionado",
+      de: "Kein Modell ausgewählt",
+      ja: "モデル未選択",
+    });
+    const graphWaitingLabel = tr({
+      zh: "等待中",
+      en: "Waiting",
+      es: "En espera",
+      pt: "Aguardando",
+      de: "Wartet",
+      ja: "待機中",
+    });
+
     return [
       {
         abbr: "CAP",
-        label: "采集",
-        value: captureStatusLabel(captureStatus),
+        label: tr({ zh: "采集", en: "Capture", es: "Captura", pt: "Captura", de: "Erfassung", ja: "取得" }),
+        value: captureStatusLabel(captureStatus, language),
         tone: capTone,
-        help: "是否在录音或上传声音。",
+        help: tr({
+          zh: "是否在录音或上传声音。",
+          en: "Whether audio is being recorded or uploaded.",
+          es: "Indica si se está grabando o subiendo audio.",
+          pt: "Indica se o áudio está sendo gravado ou enviado.",
+          de: "Zeigt, ob Audio aufgenommen oder hochgeladen wird.",
+          ja: "音声を録音中またはアップロード中かを示します。",
+        }),
       },
       {
         abbr: "STT",
-        label: "转写",
-        value: backendStatusLabel(sttStatus),
+        label: tr({ zh: "转写", en: "STT", es: "STT", pt: "STT", de: "STT", ja: "文字起こし" }),
+        value: backendStatusLabel(sttStatus, language),
         tone: sttTone,
-        help: `转写方式：${backendLabel(selectedRecognitionBackend)}`,
+        help: `${tr({
+          zh: "转写方式：",
+          en: "Recognition backend: ",
+          es: "Motor de reconocimiento: ",
+          pt: "Backend de reconhecimento: ",
+          de: "Erkennungs-Backend: ",
+          ja: "認識バックエンド: ",
+        })}${backendLabel(selectedRecognitionBackend, language)}`,
       },
       {
         abbr: "GATE",
         label: "Gate",
-        value: backendStatusLabel(gateStatus),
+        value: backendStatusLabel(gateStatus, language),
         tone: gateTone,
-        help: selectedGateProfile ? `${selectedGateProfile.label} / ${gateModel || "未选择模型"}` : "尚未配置 Gate 模型。",
+        help: selectedGateProfile
+          ? `${selectedGateProfile.label} / ${gateModel || noModelLabel}`
+          : tr({
+              zh: "尚未配置 Gate 模型。",
+              en: "Gate model is not configured.",
+              es: "El modelo Gate no está configurado.",
+              pt: "O modelo Gate não está configurado.",
+              de: "Das Gate-Modell ist nicht konfiguriert.",
+              ja: "Gate モデルは未設定です。",
+            }),
       },
       {
         abbr: "PLAN",
         label: "Planner",
-        value: backendStatusLabel(plannerStatus),
+        value: backendStatusLabel(plannerStatus, language),
         tone: plannerTone,
         help: selectedPlannerProfile
-          ? `${selectedPlannerProfile.label} / ${plannerModel || "未选择模型"}`
-          : "尚未配置 Planner 模型。",
+          ? `${selectedPlannerProfile.label} / ${plannerModel || noModelLabel}`
+          : tr({
+              zh: "尚未配置 Planner 模型。",
+              en: "Planner model is not configured.",
+              es: "El modelo Planner no está configurado.",
+              pt: "O modelo Planner não está configurado.",
+              de: "Das Planner-Modell ist nicht konfiguriert.",
+              ja: "Planner モデルは未設定です。",
+            }),
       },
       {
         abbr: "MER",
-        label: "出图",
-        value: lastMermaidUpdatedAt ? "已更新" : "等待中",
+        label: tr({ zh: "出图", en: "Graph", es: "Gráfico", pt: "Grafo", de: "Graph", ja: "グラフ" }),
+        value: lastMermaidUpdatedAt
+          ? tr({ zh: "已更新", en: "Updated", es: "Actualizado", pt: "Atualizado", de: "Aktualisiert", ja: "更新済み" })
+          : graphWaitingLabel,
         tone: merTone,
-        help: lastMermaidUpdatedAt || "还没有生成流程图。",
+        help:
+          lastMermaidUpdatedAt ||
+          tr({
+            zh: "还没有生成流程图。",
+            en: "No flow graph generated yet.",
+            es: "Aún no se ha generado el diagrama de flujo.",
+            pt: "Nenhum fluxograma foi gerado ainda.",
+            de: "Es wurde noch kein Ablaufdiagramm erzeugt.",
+            ja: "フローグラフはまだ生成されていません。",
+          }),
       },
       {
         abbr: "MODEL",
-        label: "模型",
+        label: tr({ zh: "模型", en: "Model", es: "Modelo", pt: "Modelo", de: "Modell", ja: "モデル" }),
         value:
           modelStatus === "working"
-            ? "加载中"
+            ? tr({ zh: "加载中", en: "Loading", es: "Cargando", pt: "Carregando", de: "Lädt", ja: "読み込み中" })
             : modelStatus === "error"
-              ? "失败"
+              ? tr({ zh: "失败", en: "Failed", es: "Falló", pt: "Falhou", de: "Fehlgeschlagen", ja: "失敗" })
               : modelStatus === "success"
-                ? "已返回"
-                : "空闲",
+                ? tr({ zh: "已返回", en: "Returned", es: "Devuelto", pt: "Retornado", de: "Zurückgegeben", ja: "返答済み" })
+                : tr({ zh: "空闲", en: "Idle", es: "Inactivo", pt: "Ocioso", de: "Bereit", ja: "待機中" }),
         tone: backendStatusTone(modelStatus),
-        help: modelStatus === "working" ? "当前正在等待远端模型返回结果。" : "显示当前 Gate / Planner 的整体推理状态。",
+        help:
+          modelStatus === "working"
+            ? tr({
+                zh: "当前正在等待远端模型返回结果。",
+                en: "Waiting for the remote model to return.",
+                es: "Esperando la respuesta del modelo remoto.",
+                pt: "Aguardando o retorno do modelo remoto.",
+                de: "Wartet auf die Antwort des entfernten Modells.",
+                ja: "リモートモデルの応答を待っています。",
+              })
+            : tr({
+                zh: "显示当前 Gate / Planner 的整体推理状态。",
+                en: "Shows the overall Gate / Planner reasoning status.",
+                es: "Muestra el estado general de razonamiento de Gate / Planner.",
+                pt: "Mostra o estado geral de raciocínio de Gate / Planner.",
+                de: "Zeigt den gesamten Reasoning-Status von Gate / Planner.",
+                ja: "Gate / Planner 全体の推論状態を表示します。",
+              }),
       },
     ];
   }, [
@@ -3298,6 +3476,7 @@ export function RealtimeStudio() {
     plannerStatus,
     mermaidStatus,
     lastMermaidUpdatedAt,
+    language,
     mermaidState?.error_message,
     mermaidState?.compile_ok,
     selectedRecognitionBackend,
@@ -3392,7 +3571,16 @@ export function RealtimeStudio() {
 
   const canStartStageCapture = selectedInputSource !== "transcript" && canStartCapture;
   const canStopStageCapture = selectedInputSource !== "transcript" && canStopCapture;
-  const titleDisplay = title.trim() || "未命名会话";
+  const titleDisplay =
+    title.trim() ||
+    tr({
+      zh: "未命名会话",
+      en: "Untitled Session",
+      es: "Sesión sin título",
+      pt: "Sessão sem título",
+      de: "Unbenannte Sitzung",
+      ja: "無題のセッション",
+    });
 
   function startTitleEdit() {
     setTitleDraft(titleDisplay);
@@ -3430,7 +3618,14 @@ export function RealtimeStudio() {
   if (authQuery.isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center px-4 text-sm text-theme-4">
-        正在加载工作台…
+        {tr({
+          zh: "正在加载工作台…",
+          en: "Loading workbench...",
+          es: "Cargando banco de trabajo...",
+          pt: "Carregando ambiente...",
+          de: "Arbeitsfläche wird geladen...",
+          ja: "作業台を読み込み中...",
+        })}
       </div>
     );
   }
@@ -3612,33 +3807,53 @@ export function RealtimeStudio() {
       <div className="flex min-h-[calc(100vh-5.5rem)] flex-col space-y-4">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2 pl-3 md:gap-3 md:pl-6 lg:pl-8">
-            <h1 className="page-title">实时工作台</h1>
+            <h1 className="page-title">
+              {tr({ zh: "实时工作台", en: "Realtime Workbench", es: "Banco de trabajo en tiempo real", pt: "Ambiente em tempo real", de: "Echtzeit-Arbeitsfläche", ja: "リアルタイム作業台" })}
+            </h1>
             {isUnauthorizedGuest ? (
               <Badge className="border-amber-800/50 bg-amber-950/35 text-[10px] font-medium normal-case tracking-normal text-amber-100 theme-light:border-amber-200/60 theme-light:bg-amber-50 theme-light:text-amber-900">
-                访客体验 · 平台设置与声纹持久化需登录
+                {tr({
+                  zh: "访客体验 · 平台设置与声纹持久化需登录",
+                  en: "Guest preview · Settings and voiceprint persistence require login",
+                  es: "Vista de invitado · Ajustes y voz persistente requieren login",
+                  pt: "Prévia de visitante · Configurações e voz persistente exigem login",
+                  de: "Gastvorschau · Einstellungen und Stimmenpersistenz benötigen Anmeldung",
+                  ja: "ゲストプレビュー · 設定と声紋保存にはログインが必要です",
+                })}
               </Badge>
             ) : null}
             <p className="hidden max-w-md text-[11px] leading-snug text-theme-4 md:block">
-              开麦或发送 Transcript 后，主图与结构视图会更新。
+              {tr({
+                zh: "开麦或发送 Transcript 后，主图与结构视图会更新。",
+                en: "Start recording or send a transcript to update the main graph and structure view.",
+                es: "Inicia la grabación o envía una transcripción para actualizar el gráfico principal y la vista estructural.",
+                pt: "Inicie a gravação ou envie uma transcrição para atualizar o grafo principal e a visualização estrutural.",
+                de: "Starte die Aufnahme oder sende ein Transkript, um Hauptgraph und Strukturansicht zu aktualisieren.",
+                ja: "録音を開始するか Transcript を送信すると、メイングラフと構造ビューが更新されます。",
+              })}
             </p>
           </div>
           <div className="ml-auto flex min-w-0 items-center justify-end gap-2 pr-12 sm:pr-14">
             <div className="group relative">
               <Badge
                 className="cursor-default border-theme-default bg-surface-2 px-2.5 py-1 text-xs font-medium normal-case tracking-normal text-theme-2"
-                title="运行状态"
+                title={tr({ zh: "运行状态", en: "Runtime Status", es: "Estado de ejecución", pt: "Estado de execução", de: "Laufzeitstatus", ja: "実行状態" })}
               >
-                运行状态
+                {tr({ zh: "运行状态", en: "Runtime Status", es: "Estado", pt: "Estado", de: "Status", ja: "状態" })}
               </Badge>
               <div className="pointer-events-none invisible absolute right-0 top-[calc(100%+8px)] z-[120] w-[min(460px,82vw)] rounded-xl border border-theme-subtle bg-surface-1 p-3 opacity-0 shadow-xl transition duration-200 group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100">
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-theme-4">状态速览</div>
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-theme-4">
+                  {tr({ zh: "状态速览", en: "Status Overview", es: "Resumen de estado", pt: "Resumo de status", de: "Statusübersicht", ja: "状態概要" })}
+                </div>
                 <div className="flex flex-wrap gap-1.5">
                   <Badge
                     className="text-[10px] font-normal normal-case tracking-normal text-theme-2"
                     title={currentSessionId || undefined}
                   >
                     <span className="block max-w-[180px] min-w-0 truncate">
-                      {currentSessionId ? `Session ${currentSessionId}` : "未创建会话"}
+                      {currentSessionId
+                        ? `${tr({ zh: "会话", en: "Session", es: "Sesión", pt: "Sessão", de: "Sitzung", ja: "セッション" })} ${currentSessionId}`
+                        : tr({ zh: "未创建会话", en: "No session", es: "Sin sesión", pt: "Sem sessão", de: "Keine Sitzung", ja: "セッションなし" })}
                     </span>
                   </Badge>
                   {mermaidState?.provider || selectedPlannerProfile?.label ? (
@@ -3658,30 +3873,30 @@ export function RealtimeStudio() {
                     }`}
                   >
                     {gateStatus === "error" || plannerStatus === "error"
-                      ? "模型：失败"
+                      ? tr({ zh: "模型：失败", en: "Model: Failed", es: "Modelo: falló", pt: "Modelo: falhou", de: "Modell: fehlgeschlagen", ja: "モデル: 失敗" })
                       : gateStatus === "working" || plannerStatus === "working"
-                        ? "模型：加载中"
+                        ? tr({ zh: "模型：加载中", en: "Model: Loading", es: "Modelo: cargando", pt: "Modelo: carregando", de: "Modell: lädt", ja: "モデル: 読み込み中" })
                         : gateStatus === "success" || plannerStatus === "success"
-                          ? "模型：已返回"
-                          : "模型：空闲"}
+                          ? tr({ zh: "模型：已返回", en: "Model: Returned", es: "Modelo: respondió", pt: "Modelo: retornou", de: "Modell: geantwortet", ja: "モデル: 返答済み" })
+                          : tr({ zh: "模型：空闲", en: "Model: Idle", es: "Modelo: inactivo", pt: "Modelo: ocioso", de: "Modell: bereit", ja: "モデル: 待機中" })}
                   </Badge>
                   <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                    来源：{getSourceBadgeLabel(activeCaptureSource)}
+                    {tr({ zh: "来源：", en: "Source: ", es: "Fuente: ", pt: "Fonte: ", de: "Quelle: ", ja: "入力元: " })}{getSourceBadgeLabel(activeCaptureSource, language)}
                   </Badge>
                   <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                    转写：{backendLabel(selectedRecognitionBackend)}
+                    {tr({ zh: "转写：", en: "STT: ", es: "STT: ", pt: "STT: ", de: "STT: ", ja: "文字起こし: " })}{backendLabel(selectedRecognitionBackend, language)}
                   </Badge>
                   <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                    出图：
+                    {tr({ zh: "出图：", en: "Graph: ", es: "Gráfico: ", pt: "Grafo: ", de: "Graph: ", ja: "グラフ: " })}
                     {typeof mermaidState?.compile_ok === "boolean"
                       ? mermaidState.compile_ok
-                        ? "编译通过"
-                        : "编译失败"
-                      : "等待中"}
+                        ? tr({ zh: "编译通过", en: "Compiled", es: "Compilado", pt: "Compilado", de: "Kompiliert", ja: "コンパイル済み" })
+                        : tr({ zh: "编译失败", en: "Compile failed", es: "Error de compilación", pt: "Falha ao compilar", de: "Kompilierung fehlgeschlagen", ja: "コンパイル失敗" })
+                      : tr({ zh: "等待中", en: "Waiting", es: "En espera", pt: "Aguardando", de: "Wartet", ja: "待機中" })}
                   </Badge>
                   {snapshot?.evaluation?.realtime_eval_pass === true ? (
                     <Badge className="border-emerald-900/55 bg-emerald-950/40 text-[10px] font-normal normal-case tracking-normal text-emerald-200">
-                      评测通过
+                      {tr({ zh: "评测通过", en: "Evaluation passed", es: "Evaluación aprobada", pt: "Avaliação aprovada", de: "Auswertung bestanden", ja: "評価合格" })}
                     </Badge>
                   ) : null}
                 </div>
@@ -3698,8 +3913,14 @@ export function RealtimeStudio() {
           />
           <div className={`relative shrink-0 space-y-2 ${inputSourceMenuOpen ? "z-[100]" : "z-[2]"}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="text-sm font-semibold text-theme-1">输入来源</label>
-              <Badge className="shrink-0 text-[10px]">{audioContext ? `${audioContext.platform} / ${getBrowserFamilyLabel(audioContext)}` : "检测中"}</Badge>
+              <label className="text-sm font-semibold text-theme-1">
+                {tr({ zh: "输入来源", en: "Input Source", es: "Fuente de entrada", pt: "Fonte de entrada", de: "Eingangsquelle", ja: "入力元" })}
+              </label>
+              <Badge className="shrink-0 text-[10px]">
+                {audioContext
+                  ? `${audioContext.platform} / ${getBrowserFamilyLabel(audioContext)}`
+                  : tr({ zh: "检测中", en: "Detecting", es: "Detectando", pt: "Detectando", de: "Erkennt", ja: "検出中" })}
+              </Badge>
             </div>
             <div ref={inputSourceMenuRef} className="relative">
               <button
@@ -3718,7 +3939,11 @@ export function RealtimeStudio() {
               </button>
               {inputSourceMenuOpen ? (
                 <div className="absolute z-10 mt-2 w-full rounded-lg border border-theme-subtle bg-surface-1 p-1.5 shadow-xl">
-                  <div className="space-y-0.5" role="listbox" aria-label="输入来源">
+                  <div
+                    className="space-y-0.5"
+                    role="listbox"
+                    aria-label={tr({ zh: "输入来源", en: "Input Source", es: "Fuente de entrada", pt: "Fonte de entrada", de: "Eingangsquelle", ja: "入力元" })}
+                  >
                     {inputOptions.map((option) => {
                       const active = option.source === selectedInputSource;
                       return (
@@ -3762,24 +3987,31 @@ export function RealtimeStudio() {
               <div className="flex min-h-[2rem] items-center justify-between gap-2 rounded-lg border border-theme-subtle bg-surface-muted px-2 py-1">
                 {!isAdmin ? (
                   <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-theme-3">
-                    声纹盲认与服务端 Profile 微调需{" "}
+                    {tr({
+                      zh: "声纹盲认与服务端 Profile 微调需 ",
+                      en: "Voiceprint blind recognition and server Profile tuning require ",
+                      es: "El reconocimiento ciego de voz y el ajuste del perfil del servidor requieren ",
+                      pt: "O reconhecimento cego de voz e o ajuste do perfil do servidor exigem ",
+                      de: "Stimmen-Blinderkennung und Server-Profilabstimmung benötigen ",
+                      ja: "声紋ブラインド認識とサーバープロファイル調整には",
+                    })}
                     <Link href="/login" className="link-accent">
-                      管理员登录
+                      {tr({ zh: "管理员登录", en: "admin login", es: "login de administrador", pt: "login de administrador", de: "Admin-Anmeldung", ja: "管理者ログイン" })}
                     </Link>
-                    后在平台设置中配置。
+                    {tr({ zh: "后在平台设置中配置。", en: " in Platform Settings.", es: " en ajustes de plataforma.", pt: " nas configurações da plataforma.", de: " in den Plattformeinstellungen.", ja: "が必要です。" })}
                   </p>
                 ) : !hasSttProfiles ? (
                   <p className="min-w-0 flex-1 truncate text-[11px] leading-tight text-theme-3">
-                    声纹盲认需先配置 STT，{" "}
+                    {tr({ zh: "声纹盲认需先配置 STT，", en: "Voiceprint requires STT configuration first, ", es: "La voz requiere configurar STT primero, ", pt: "A voz requer configurar STT primeiro, ", de: "Stimmenfunktion benötigt zuerst STT-Konfiguration, ", ja: "声紋には先に STT 設定が必要です。" })}
                     <Link href="/app/settings" className="link-accent">
-                      平台设置
+                      {tr({ zh: "平台设置", en: "Settings", es: "Ajustes", pt: "Configurações", de: "Einstellungen", ja: "設定" })}
                     </Link>
                   </p>
                 ) : !selectedSttProfile ? (
                   <p className="min-w-0 flex-1 truncate text-[11px] leading-tight text-theme-3">
-                    声纹盲认：STT 未同步，请刷新或{" "}
+                    {tr({ zh: "声纹盲认：STT 未同步，请刷新或", en: "Voiceprint: STT is not synced. Refresh or open ", es: "Voz: STT no está sincronizado. Actualiza o abre ", pt: "Voz: STT não está sincronizado. Atualize ou abra ", de: "Stimmenfunktion: STT nicht synchronisiert. Aktualisiere oder öffne ", ja: "声紋: STT が同期されていません。更新するか" })}
                     <Link href="/app/settings" className="link-accent">
-                      设置
+                      {tr({ zh: "设置", en: "Settings", es: "Ajustes", pt: "Configurações", de: "Einstellungen", ja: "設定" })}
                     </Link>
                   </p>
                 ) : (
@@ -3787,7 +4019,7 @@ export function RealtimeStudio() {
                     <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-theme-2">
                       <Fingerprint className="h-3.5 w-3.5 shrink-0 text-theme-4" strokeWidth={2} aria-hidden />
                       <span className="truncate" title={`${selectedSttProfile.label} · 讯飞声纹 1:N 盲认`}>
-                        声纹盲认 · {selectedSttProfile.label}
+                        {tr({ zh: "声纹盲认", en: "Voiceprint blind recognition", es: "Reconocimiento ciego de voz", pt: "Reconhecimento cego de voz", de: "Stimmen-Blinderkennung", ja: "声紋ブラインド認識" })} · {selectedSttProfile.label}
                       </span>
                     </span>
                     <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[11px] font-medium text-theme-2">
@@ -3802,14 +4034,25 @@ export function RealtimeStudio() {
                           !sttProfileId
                         }
                         title={
-                          adminRuntimeOptions.isError ? "当前账号无法保存，请到平台设置修改" : undefined
+                          adminRuntimeOptions.isError
+                            ? tr({
+                                zh: "当前账号无法保存，请到平台设置修改",
+                                en: "This account cannot save here; edit in Platform Settings.",
+                                es: "Esta cuenta no puede guardar aquí; edita en ajustes de plataforma.",
+                                pt: "Esta conta não pode salvar aqui; edite nas configurações da plataforma.",
+                                de: "Dieses Konto kann hier nicht speichern; bearbeite in den Plattformeinstellungen.",
+                                ja: "このアカウントではここに保存できません。設定で編集してください。",
+                              })
+                            : undefined
                         }
                         onChange={(event: ChangeEvent<HTMLInputElement>) => {
                           if (adminRuntimeOptions.isError) return;
                           updateSttVoiceprintMutation.mutate(event.target.checked);
                         }}
                       />
-                      {updateSttVoiceprintMutation.isPending ? "…" : "启用"}
+                      {updateSttVoiceprintMutation.isPending
+                        ? "…"
+                        : tr({ zh: "启用", en: "Enable", es: "Activar", pt: "Ativar", de: "Aktivieren", ja: "有効化" })}
                     </label>
                   </>
                 )}
@@ -3817,11 +4060,25 @@ export function RealtimeStudio() {
             ) : null}
             {!audioContext?.is_desktop ? (
               <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
-                移动端不提供系统声音相关采集入口。
+                {tr({
+                  zh: "移动端不提供系统声音相关采集入口。",
+                  en: "System-audio capture entries are not available on mobile.",
+                  es: "La captura de audio del sistema no está disponible en móviles.",
+                  pt: "A captura de áudio do sistema não está disponível em dispositivos móveis.",
+                  de: "Systemaudio-Erfassung ist auf Mobilgeräten nicht verfügbar.",
+                  ja: "モバイルではシステム音声キャプチャを利用できません。",
+                })}
               </div>
             ) : !systemAudioExperimentalVisible ? (
               <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-[11px] leading-relaxed text-theme-4">
-                实验性「共享屏幕音频」仅 Chrome/Edge；可用「增强模式」+ 本机 audio helper。
+                {tr({
+                  zh: "实验性「共享屏幕音频」仅 Chrome/Edge；可用「增强模式」+ 本机 audio helper。",
+                  en: 'Experimental "shared screen audio" is Chrome/Edge only. You can use Enhanced Mode with the local audio helper.',
+                  es: 'El "audio de pantalla compartida" experimental solo está en Chrome/Edge. Puedes usar el modo mejorado con audio helper local.',
+                  pt: 'O "áudio de tela compartilhada" experimental só está no Chrome/Edge. Use o modo aprimorado com o audio helper local.',
+                  de: 'Experimentelles "geteiltes Bildschirm-Audio" gibt es nur in Chrome/Edge. Du kannst den erweiterten Modus mit lokalem Audio Helper nutzen.',
+                  ja: "実験的な「共有画面音声」は Chrome/Edge のみ対応です。ローカル audio helper の拡張モードを利用できます。",
+                })}
               </div>
             ) : null}
           </div>
@@ -3844,7 +4101,7 @@ export function RealtimeStudio() {
                       : "border-transparent text-theme-4 hover:text-theme-2"
                   }`}
                 >
-                  当前字幕
+                  {tr({ zh: "当前字幕", en: "Live Caption", es: "Subtítulo en vivo", pt: "Legenda ao vivo", de: "Live-Untertitel", ja: "ライブ字幕" })}
                 </button>
                 <button
                   type="button"
@@ -3855,31 +4112,54 @@ export function RealtimeStudio() {
                       : "border-transparent text-theme-4 hover:text-theme-2"
                   }`}
                 >
-                  历史转写
+                  {tr({ zh: "历史转写", en: "Transcript History", es: "Historial de transcripción", pt: "Histórico de transcrição", de: "Transkriptverlauf", ja: "文字起こし履歴" })}
                 </button>
               </div>
               <div className="flex items-center gap-1.5">
-                {currentSessionClosed ? <Badge className="text-[9px]">已结束</Badge> : null}
-                <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend)}</Badge>
+                {currentSessionClosed ? (
+                  <Badge className="text-[9px]">{tr({ zh: "已结束", en: "Closed", es: "Cerrada", pt: "Encerrada", de: "Geschlossen", ja: "終了" })}</Badge>
+                ) : null}
+                <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend, language)}</Badge>
               </div>
             </div>
             <div className="mt-1.5 flex shrink-0 flex-wrap gap-1.5">
               <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                轮次：{transcriptState.turnCount}
+                {tr({ zh: "轮次：", en: "Turns: ", es: "Turnos: ", pt: "Turnos: ", de: "Turns: ", ja: "ターン: " })}{transcriptState.turnCount}
               </Badge>
               <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                说话人：{transcriptState.speakerCount}
+                {tr({ zh: "说话人：", en: "Speakers: ", es: "Hablantes: ", pt: "Falantes: ", de: "Sprecher: ", ja: "話者: " })}{transcriptState.speakerCount}
               </Badge>
               <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                Chunk：{transcriptState.chunkCount}
+                Chunk: {transcriptState.chunkCount}
               </Badge>
             </div>
             <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-theme-4">
               {currentSessionClosed
-                ? "会话结束后保留只读字幕和下载入口；如需继续，请重建会话。"
+                ? tr({
+                    zh: "会话结束后保留只读字幕和下载入口；如需继续，请重建会话。",
+                    en: "After a session is closed, captions and downloads remain read-only. Rebuild the session to continue.",
+                    es: "Tras cerrar la sesión, subtítulos y descargas quedan en solo lectura. Reconstruye la sesión para continuar.",
+                    pt: "Depois que a sessão é encerrada, legendas e downloads ficam somente leitura. Reconstrua a sessão para continuar.",
+                    de: "Nach dem Schließen bleiben Untertitel und Downloads schreibgeschützt. Erstelle die Sitzung neu, um fortzufahren.",
+                    ja: "セッション終了後、字幕とダウンロードは読み取り専用です。続けるにはセッションを再構築してください。",
+                  })
                 : selectedInputSource === "transcript"
-                  ? "当前字幕显示输入预览，发送后会沉淀到下方转接记录。"
-                  : "本地预览用于当前字幕，服务端聚合后的最近轮次会保留在下方历史区。"}
+                  ? tr({
+                      zh: "当前字幕显示输入预览，发送后会沉淀到下方转写记录。",
+                      en: "The live caption shows your input preview. After sending, it is added to the transcript history.",
+                      es: "El subtítulo en vivo muestra la vista previa. Al enviar, pasa al historial de transcripción.",
+                      pt: "A legenda ao vivo mostra a prévia da entrada. Depois do envio, ela vai para o histórico de transcrição.",
+                      de: "Der Live-Untertitel zeigt die Eingabevorschau. Nach dem Senden wird sie im Transkriptverlauf abgelegt.",
+                      ja: "ライブ字幕には入力プレビューが表示され、送信後に履歴へ追加されます。",
+                    })
+                  : tr({
+                      zh: "本地预览用于当前字幕，服务端聚合后的最近轮次会保留在下方历史区。",
+                      en: "Local preview appears as the live caption. Recent server-aggregated turns are kept in history.",
+                      es: "La vista local aparece como subtítulo en vivo. Los turnos recientes agregados por el servidor quedan en el historial.",
+                      pt: "A prévia local aparece como legenda ao vivo. Turnos recentes agregados pelo servidor ficam no histórico.",
+                      de: "Die lokale Vorschau erscheint als Live-Untertitel. Kürzlich serverseitig zusammengeführte Turns bleiben im Verlauf.",
+                      ja: "ローカルプレビューはライブ字幕として表示され、サーバー集約後の最新ターンは履歴に残ります。",
+                    })}
             </p>
             <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-subtle bg-surface-muted/88">
@@ -3888,7 +4168,7 @@ export function RealtimeStudio() {
                     {transcriptPanelTab === "history"
                       ? previewArchivedTranscriptTurns.length
                         ? `${previewArchivedTranscriptTurns.length} / 10`
-                        : "等待归档"
+                        : tr({ zh: "等待归档", en: "Waiting for archive", es: "Esperando archivo", pt: "Aguardando arquivo", de: "Wartet auf Archiv", ja: "アーカイブ待ち" })
                       : activeTranscriptTurn?.speaker
                         ? `当前发言：${activeTranscriptTurn.speaker}`
                         : "实时预览"}
@@ -3917,7 +4197,9 @@ export function RealtimeStudio() {
                           disabled={sendTranscript.isPending || !transcriptText.trim() || currentSessionClosed}
                         >
                           <Send className="h-3.5 w-3.5" />
-                          {currentSessionClosed ? "会话已结束" : "发送文本"}
+                          {currentSessionClosed
+                            ? tr({ zh: "会话已结束", en: "Session Closed", es: "Sesión cerrada", pt: "Sessão encerrada", de: "Sitzung geschlossen", ja: "セッション終了" })
+                            : tr({ zh: "发送文本", en: "Send Text", es: "Enviar texto", pt: "Enviar texto", de: "Text senden", ja: "テキスト送信" })}
                         </Button>
                       </div>
                     ) : (
@@ -3980,8 +4262,22 @@ export function RealtimeStudio() {
                   ) : (
                     <div className="flex h-full min-h-[8rem] items-center justify-center rounded-lg border border-dashed border-[color:var(--accent)]/30 bg-[color:var(--accent)]/[0.04] px-3 py-3 text-center text-[12px] leading-relaxed text-theme-3">
                       {currentSessionClosed
-                        ? "当前会话没有可回看的历史转写。"
-                        : "当前字幕会先显示在当前字幕页；当下一条出现或被预览替换后，它会转入历史转写页。"}
+                        ? tr({
+                            zh: "当前会话没有可回看的历史转写。",
+                            en: "This session has no transcript history to review.",
+                            es: "Esta sesión no tiene historial de transcripción para revisar.",
+                            pt: "Esta sessão não tem histórico de transcrição para revisar.",
+                            de: "Diese Sitzung hat keinen Transkriptverlauf zum Ansehen.",
+                            ja: "このセッションには確認できる文字起こし履歴がありません。",
+                          })
+                        : tr({
+                            zh: "当前字幕会先显示在当前字幕页；当下一条出现或被预览替换后，它会转入历史转写页。",
+                            en: "The current caption appears here first. When the next one arrives or replaces it, it moves to Transcript History.",
+                            es: "El subtítulo actual aparece aquí primero. Cuando llega o lo reemplaza el siguiente, pasa al historial.",
+                            pt: "A legenda atual aparece aqui primeiro. Quando a próxima chega ou a substitui, ela vai ao histórico.",
+                            de: "Der aktuelle Untertitel erscheint zuerst hier. Sobald der nächste kommt oder ihn ersetzt, wandert er in den Verlauf.",
+                            ja: "現在の字幕はまずここに表示され、次の字幕が来るか置き換えられると履歴へ移動します。",
+                          })}
                     </div>
                   )}
                 </div>
@@ -3995,7 +4291,9 @@ export function RealtimeStudio() {
               }`}
             >
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-theme-1">输入音量</div>
+                <div className="text-sm font-semibold text-theme-1">
+                  {tr({ zh: "输入音量", en: "Input Volume", es: "Volumen de entrada", pt: "Volume de entrada", de: "Eingangslautstärke", ja: "入力音量" })}
+                </div>
                 <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
               </div>
               <div className="mt-2 flex h-5 items-center gap-1.5">
@@ -4053,7 +4351,7 @@ export function RealtimeStudio() {
                   transform: `translateX(calc(${activeStageTabIndex} * 100%))`,
                 }}
               />
-              {STAGE_TABS.map(([value, label]) => (
+              {stageTabs.map(([value, label]) => (
                 <Tabs.Trigger
                   key={value}
                   value={value}
@@ -4131,10 +4429,14 @@ export function RealtimeStudio() {
                           setAnnotationsTool("pen");
                           setActiveAnnotationPanel("pen");
                         }}
-                        title={!currentSessionId ? "请先创建会话" : "画笔"}
+                        title={
+                          !currentSessionId
+                            ? tr({ zh: "请先创建会话", en: "Create a session first", es: "Crea una sesión primero", pt: "Crie uma sessão primeiro", de: "Erstelle zuerst eine Sitzung", ja: "先にセッションを作成してください" })
+                            : tr({ zh: "画笔", en: "Pen", es: "Pincel", pt: "Caneta", de: "Stift", ja: "ペン" })
+                        }
                       >
                         <Pencil className="h-3.5 w-3.5 shrink-0" />
-                        <span className="leading-none">画笔</span>
+                        <span className="leading-none">{tr({ zh: "画笔", en: "Pen", es: "Pincel", pt: "Caneta", de: "Stift", ja: "ペン" })}</span>
                       </button>
 
                       <button
@@ -4155,10 +4457,14 @@ export function RealtimeStudio() {
                           setAnnotationsTool("rect");
                           setActiveAnnotationPanel("rect");
                         }}
-                        title={!currentSessionId ? "请先创建会话" : "框"}
+                        title={
+                          !currentSessionId
+                            ? tr({ zh: "请先创建会话", en: "Create a session first", es: "Crea una sesión primero", pt: "Crie uma sessão primeiro", de: "Erstelle zuerst eine Sitzung", ja: "先にセッションを作成してください" })
+                            : tr({ zh: "框", en: "Frame", es: "Marco", pt: "Quadro", de: "Rahmen", ja: "枠" })
+                        }
                       >
                         <Square className="h-3.5 w-3.5 shrink-0" />
-                        <span className="leading-none">框图</span>
+                        <span className="leading-none">{tr({ zh: "框图", en: "Frame", es: "Marco", pt: "Quadro", de: "Rahmen", ja: "枠" })}</span>
                       </button>
 
                       <button
@@ -4179,10 +4485,14 @@ export function RealtimeStudio() {
                           setAnnotationsTool("text");
                           setActiveAnnotationPanel("text");
                         }}
-                        title={!currentSessionId ? "请先创建会话" : "文字批注"}
+                        title={
+                          !currentSessionId
+                            ? tr({ zh: "请先创建会话", en: "Create a session first", es: "Crea una sesión primero", pt: "Crie uma sessão primeiro", de: "Erstelle zuerst eine Sitzung", ja: "先にセッションを作成してください" })
+                            : tr({ zh: "文字批注", en: "Text note", es: "Nota de texto", pt: "Nota de texto", de: "Textnotiz", ja: "テキスト注釈" })
+                        }
                       >
                         <Type className="h-3.5 w-3.5 shrink-0" />
-                        <span className="leading-none">文字</span>
+                        <span className="leading-none">{tr({ zh: "文字", en: "Text", es: "Texto", pt: "Texto", de: "Text", ja: "文字" })}</span>
                       </button>
 
                       <button
@@ -4207,10 +4517,14 @@ export function RealtimeStudio() {
                           );
                           setActiveAnnotationPanel("eraser");
                         }}
-                        title={!currentSessionId ? "请先创建会话" : "橡皮"}
+                        title={
+                          !currentSessionId
+                            ? tr({ zh: "请先创建会话", en: "Create a session first", es: "Crea una sesión primero", pt: "Crie uma sessão primeiro", de: "Erstelle zuerst eine Sitzung", ja: "先にセッションを作成してください" })
+                            : tr({ zh: "橡皮", en: "Eraser", es: "Borrador", pt: "Borracha", de: "Radierer", ja: "消しゴム" })
+                        }
                       >
                         <Eraser className="h-3.5 w-3.5 shrink-0" />
-                        <span className="leading-none">橡皮</span>
+                        <span className="leading-none">{tr({ zh: "橡皮", en: "Eraser", es: "Borrador", pt: "Borracha", de: "Radierer", ja: "消しゴム" })}</span>
                       </button>
 
                     {activeAnnotationPanel ? (
@@ -4229,7 +4543,7 @@ export function RealtimeStudio() {
                                     onChange={setAnnotationPenWidth}
                                     thumbMinPx={5}
                                     thumbMaxPx={15}
-                                    aria-label="画笔粗细"
+                                    aria-label={tr({ zh: "画笔粗细", en: "Pen width", es: "Grosor del pincel", pt: "Largura da caneta", de: "Stiftbreite", ja: "ペン幅" })}
                                   />
                                   <AnnotationColorPopover
                                     swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
@@ -4249,7 +4563,7 @@ export function RealtimeStudio() {
                                   onChange={setAnnotationRectStrokeWidth}
                                   thumbMinPx={5}
                                   thumbMaxPx={14}
-                                  aria-label="框线粗细"
+                                  aria-label={tr({ zh: "框线粗细", en: "Frame stroke width", es: "Grosor del marco", pt: "Largura do traço do quadro", de: "Rahmenstrichbreite", ja: "枠線の太さ" })}
                                 />
                                 <AnnotationColorPopover
                                   swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
@@ -4266,7 +4580,9 @@ export function RealtimeStudio() {
                                   value={annotationTextColor}
                                   onChange={setAnnotationTextColor}
                                 />
-                                <span className="text-[10px] font-medium text-theme-3">文字颜色</span>
+                                <span className="text-[10px] font-medium text-theme-3">
+                                  {tr({ zh: "文字颜色", en: "Text color", es: "Color del texto", pt: "Cor do texto", de: "Textfarbe", ja: "文字色" })}
+                                </span>
                               </div>
                             ) : null}
 
@@ -4280,8 +4596,8 @@ export function RealtimeStudio() {
                                 <button
                                   key={w}
                                   type="button"
-                                  title={`精准擦 ${w}px`}
-                                  aria-label={`精准橡皮，宽度 ${w}`}
+                                  title={`${tr({ zh: "精准擦", en: "Precise erase", es: "Borrado preciso", pt: "Apagar preciso", de: "Präzise radieren", ja: "精密消去" })} ${w}px`}
+                                  aria-label={`${tr({ zh: "精准橡皮，宽度", en: "Precise eraser, width", es: "Borrador preciso, ancho", pt: "Borracha precisa, largura", de: "Präziser Radierer, Breite", ja: "精密消しゴム、幅" })} ${w}`}
                                       className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
                                         active
                                           ? "border-[#887bb1] bg-[#cec6e5] text-[#2d2545]"
@@ -4303,8 +4619,15 @@ export function RealtimeStudio() {
                             })}
                             <button
                               type="button"
-                              title="对象擦：整段笔画 / 整框"
-                              aria-label="对象橡皮"
+                              title={tr({
+                                zh: "对象擦：整段笔画 / 整框",
+                                en: "Object erase: whole stroke / whole frame",
+                                es: "Borrado de objeto: trazo o marco completo",
+                                pt: "Apagar objeto: traço inteiro / quadro inteiro",
+                                de: "Objekt radieren: ganzer Strich / ganzer Rahmen",
+                                ja: "オブジェクト消去: ストローク全体 / 枠全体",
+                              })}
+                              aria-label={tr({ zh: "对象橡皮", en: "Object eraser", es: "Borrador de objeto", pt: "Borracha de objeto", de: "Objekt-Radierer", ja: "オブジェクト消しゴム" })}
                                   className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
                                 annotationsTool === "erase_object"
                                       ? "border-[#887bb1] bg-[#cec6e5] text-[#2d2545]"
@@ -4336,7 +4659,7 @@ export function RealtimeStudio() {
                               setActiveAnnotationPanel(null);
                             }}
                           >
-                            退出批注
+                            {tr({ zh: "退出批注", en: "Exit", es: "Salir", pt: "Sair", de: "Beenden", ja: "終了" })}
                           </button>
                       </div>
                     </div>
@@ -4348,7 +4671,7 @@ export function RealtimeStudio() {
                       onClick={undoAnnotations}
                       disabled={!currentSessionId || annotationsUndoRef.current.length === 0}
                     >
-                      撤销
+                      {tr({ zh: "撤销", en: "Undo", es: "Deshacer", pt: "Desfazer", de: "Rückgängig", ja: "元に戻す" })}
                     </Button>
                     <Button
                       type="button"
@@ -4357,11 +4680,13 @@ export function RealtimeStudio() {
                       onClick={clearAnnotations}
                       disabled={!currentSessionId || activeAnnotationEmpty}
                     >
-                      清空
+                      {tr({ zh: "清空", en: "Clear", es: "Limpiar", pt: "Limpar", de: "Leeren", ja: "クリア" })}
                     </Button>
                     {!currentSessionId || saveAnnotationsMutation.isPending ? (
                       <span className="ml-1 text-[10px] text-[#6a627b]">
-                        {!currentSessionId ? "未建会话" : "保存中…"}
+                        {!currentSessionId
+                          ? tr({ zh: "未建会话", en: "No session", es: "Sin sesión", pt: "Sem sessão", de: "Keine Sitzung", ja: "セッションなし" })
+                          : tr({ zh: "保存中…", en: "Saving...", es: "Guardando...", pt: "Salvando...", de: "Speichert...", ja: "保存中..." })}
                     </span>
                     ) : null}
                       </div>
@@ -4383,7 +4708,7 @@ export function RealtimeStudio() {
                                   ? "border-[rgb(76_29_149_/_0.5)] bg-[rgb(46_16_100_/_0.45)] text-white shadow-[0_1px_0_rgb(255_255_255_/_0.42)_inset,0_10px_22px_rgb(109_40_217_/_0.24)] hover:border-[rgb(76_29_149_/_0.62)] hover:bg-[rgb(46_16_100_/_0.55)] focus-visible:ring-[rgb(167_139_250_/_0.45)]"
                                   : "border-violet-900/50 bg-violet-950/45 text-violet-200 focus-visible:ring-violet-700"
                               }`}
-                              aria-label="开始录音"
+                              aria-label={tr({ zh: "开始录音", en: "Start recording", es: "Iniciar grabación", pt: "Iniciar gravação", de: "Aufnahme starten", ja: "録音開始" })}
                             >
                               <Mic className="h-5 w-5 sm:h-6 sm:w-6" />
                             </button>
@@ -4398,8 +4723,15 @@ export function RealtimeStudio() {
                             className="z-[24000] max-w-[240px] rounded-lg border border-theme-default bg-surface-2 px-2.5 py-1.5 text-center text-xs font-medium text-theme-1 shadow-xl"
                           >
                             {selectedInputSource === "transcript"
-                              ? "请先在左侧栏选择麦克风或系统音输入"
-                              : "开始录音"}
+                              ? tr({
+                                  zh: "请先在左侧栏选择麦克风或系统音输入",
+                                  en: "Select microphone or system audio from the left panel first",
+                                  es: "Selecciona primero micrófono o audio del sistema en el panel izquierdo",
+                                  pt: "Selecione primeiro microfone ou áudio do sistema no painel esquerdo",
+                                  de: "Wähle zuerst Mikrofon oder Systemaudio im linken Bereich",
+                                  ja: "左側パネルでマイクまたはシステム音声を先に選択してください",
+                                })
+                              : tr({ zh: "开始录音", en: "Start recording", es: "Iniciar grabación", pt: "Iniciar gravação", de: "Aufnahme starten", ja: "録音開始" })}
                           </Tooltip.Content>
                         </Tooltip.Portal>
                       </Tooltip.Root>
@@ -4418,7 +4750,7 @@ export function RealtimeStudio() {
                                   ? "border-red-200/90 bg-red-700/70 text-red-50 shadow-[0_0_0_1px_rgba(239,68,68,0.30)_inset,0_10px_22px_rgba(220,38,38,0.32)] hover:border-red-200/95 hover:bg-red-700/75 focus-visible:ring-red-200/80"
                                   : "border-red-900/50 bg-red-950/40 text-red-200 focus-visible:ring-red-800"
                               }`}
-                              aria-label="停止录音"
+                              aria-label={tr({ zh: "停止录音", en: "Stop recording", es: "Detener grabación", pt: "Parar gravação", de: "Aufnahme stoppen", ja: "録音停止" })}
                             >
                               <Pause className="h-5 w-5 sm:h-6 sm:w-6" />
                             </button>
@@ -4433,8 +4765,15 @@ export function RealtimeStudio() {
                             className="z-[24000] max-w-[240px] rounded-lg border border-theme-default bg-surface-2 px-2.5 py-1.5 text-center text-xs font-medium text-theme-1 shadow-xl"
                           >
                             {selectedInputSource === "transcript"
-                              ? "请先在左侧栏选择麦克风或系统音输入"
-                              : "停止录音"}
+                              ? tr({
+                                  zh: "请先在左侧栏选择麦克风或系统音输入",
+                                  en: "Select microphone or system audio from the left panel first",
+                                  es: "Selecciona primero micrófono o audio del sistema en el panel izquierdo",
+                                  pt: "Selecione primeiro microfone ou áudio do sistema no painel esquerdo",
+                                  de: "Wähle zuerst Mikrofon oder Systemaudio im linken Bereich",
+                                  ja: "左側パネルでマイクまたはシステム音声を先に選択してください",
+                                })
+                              : tr({ zh: "停止录音", en: "Stop recording", es: "Detener grabación", pt: "Parar gravação", de: "Aufnahme stoppen", ja: "録音停止" })}
                           </Tooltip.Content>
                         </Tooltip.Portal>
                       </Tooltip.Root>
@@ -4448,7 +4787,7 @@ export function RealtimeStudio() {
                         onClick={() => setDetailDrawerOpen(true)}
                       >
                         <PanelRight className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
-                        历史会话
+                        {tr({ zh: "历史会话", en: "History", es: "Historial", pt: "Histórico", de: "Verlauf", ja: "履歴" })}
                       </Button>
                     </div>
                   </div>
@@ -4496,7 +4835,7 @@ export function RealtimeStudio() {
                 <GraphStage
                   embedded
                   fixedLightCanvas
-                  title="结构图"
+                  title={tr({ zh: "结构图", en: "Structure Graph", es: "Grafo estructural", pt: "Grafo estrutural", de: "Strukturgraph", ja: "構造グラフ" })}
                   nodes={rendererState.nodes || []}
                   edges={rendererState.edges || []}
                   groups={rendererGroups}
@@ -4519,8 +4858,19 @@ export function RealtimeStudio() {
               <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div className="mb-4 flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-sm font-semibold text-theme-1">更新时间轴</div>
-                    <p className="mt-1 text-xs leading-6 text-theme-2">选择节点后先预览，再确认回退到该时刻。</p>
+                    <div className="text-sm font-semibold text-theme-1">
+                      {tr({ zh: "更新时间轴", en: "Update Timeline", es: "Línea de actualizaciones", pt: "Linha do tempo de atualizações", de: "Aktualisierungszeitachse", ja: "更新タイムライン" })}
+                    </div>
+                    <p className="mt-1 text-xs leading-6 text-theme-2">
+                      {tr({
+                        zh: "选择节点后先预览，再确认回退到该时刻。",
+                        en: "Select a node to preview first, then confirm rollback to that moment.",
+                        es: "Selecciona un nodo para previsualizarlo y confirma el rollback a ese momento.",
+                        pt: "Selecione um nó para pré-visualizar e confirme o rollback para aquele momento.",
+                        de: "Wähle zuerst einen Knoten zur Vorschau und bestätige dann das Zurücksetzen auf diesen Moment.",
+                        ja: "ノードを選択してプレビューし、その時点へのロールバックを確認してください。",
+                      })}
+                    </p>
                   </div>
                   <Badge>{timelineNodes.length} snapshots</Badge>
                 </div>
@@ -4542,9 +4892,11 @@ export function RealtimeStudio() {
                               }`}
                             >
                               <div className="flex items-center justify-between gap-2">
-                                <div className="text-xs font-semibold text-theme-1">{node.label || "关键节点"}</div>
+                                <div className="text-xs font-semibold text-theme-1">
+                                  {node.label || tr({ zh: "关键节点", en: "Key node", es: "Nodo clave", pt: "Nó-chave", de: "Schlüsselknoten", ja: "キーノード" })}
+                                </div>
                                 <div className="text-[10px] text-theme-4">
-                                  {new Date(node.created_at).toLocaleTimeString("zh-CN", {
+                                  {new Date(node.created_at).toLocaleTimeString(currentDateLocale, {
                                     hour: "2-digit",
                                     minute: "2-digit",
                                     second: "2-digit",
@@ -4561,13 +4913,22 @@ export function RealtimeStudio() {
                       </div>
                     ) : (
                       <div className="rounded-lg border border-dashed border-theme-default px-3 py-4 text-xs text-theme-3">
-                        暂无可回退节点，先发送或采集内容生成快照。
+                        {tr({
+                          zh: "暂无可回退节点，先发送或采集内容生成快照。",
+                          en: "No rollback nodes yet. Send or capture content to generate snapshots.",
+                          es: "Aún no hay nodos de rollback. Envía o captura contenido para generar snapshots.",
+                          pt: "Ainda não há nós de rollback. Envie ou capture conteúdo para gerar snapshots.",
+                          de: "Noch keine Rollback-Knoten. Sende oder erfasse Inhalte, um Snapshots zu erzeugen.",
+                          ja: "ロールバック可能なノードはまだありません。内容を送信または取得してスナップショットを生成してください。",
+                        })}
                       </div>
                     )}
                   </div>
                   <div className="min-h-0 overflow-auto rounded-xl border border-theme-default bg-surface-2/70 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-xs font-semibold text-theme-1">节点预览</div>
+                      <div className="text-xs font-semibold text-theme-1">
+                        {tr({ zh: "节点预览", en: "Node Preview", es: "Vista del nodo", pt: "Prévia do nó", de: "Knotenvorschau", ja: "ノードプレビュー" })}
+                      </div>
                       <div className="flex items-center gap-2">
                         <Button
                           type="button"
@@ -4583,7 +4944,7 @@ export function RealtimeStudio() {
                           }
                           disabled={!currentSessionId || !selectedTimelineSnapshotId || rollbackPreviewMutation.isPending}
                         >
-                          重新预览
+                          {tr({ zh: "重新预览", en: "Preview Again", es: "Previsualizar de nuevo", pt: "Pré-visualizar novamente", de: "Erneut ansehen", ja: "再プレビュー" })}
                         </Button>
                         <Button
                           type="button"
@@ -4604,24 +4965,33 @@ export function RealtimeStudio() {
                             currentSessionClosed
                           }
                         >
-                          {rollbackApplyMutation.isPending ? "回退中..." : "确认回退"}
+                          {rollbackApplyMutation.isPending
+                            ? tr({ zh: "回退中...", en: "Rolling back...", es: "Revirtiendo...", pt: "Revertendo...", de: "Wird zurückgesetzt...", ja: "ロールバック中..." })
+                            : tr({ zh: "确认回退", en: "Confirm Rollback", es: "Confirmar rollback", pt: "Confirmar rollback", de: "Rollback bestätigen", ja: "ロールバック確認" })}
                         </Button>
                       </div>
                     </div>
                     {rollbackPreview ? (
                       <div className="mt-3 space-y-2 text-xs text-theme-2">
                         <div className="rounded-lg border border-theme-default bg-surface-1 px-3 py-2">
-                          <div className="font-medium text-theme-1">时间</div>
-                          <div className="mt-1 text-theme-3">{new Date(rollbackPreview.created_at).toLocaleString("zh-CN")}</div>
+                          <div className="font-medium text-theme-1">{tr({ zh: "时间", en: "Time", es: "Hora", pt: "Hora", de: "Zeit", ja: "時刻" })}</div>
+                          <div className="mt-1 text-theme-3">{new Date(rollbackPreview.created_at).toLocaleString(currentDateLocale)}</div>
                         </div>
                         <div className="rounded-lg border border-theme-default bg-surface-1 px-3 py-2">
-                          <div className="font-medium text-theme-1">恢复范围</div>
+                          <div className="font-medium text-theme-1">{tr({ zh: "恢复范围", en: "Restore Scope", es: "Alcance de restauración", pt: "Escopo da restauração", de: "Wiederherstellungsumfang", ja: "復元範囲" })}</div>
                           <div className="mt-1 text-theme-3">
-                            图状态 + 转写历史（{rollbackPreview.transcript_turn_count} turns）+ 批注 v{rollbackPreview.annotation_version}
+                            {tr({
+                              zh: "图状态 + 转写历史",
+                              en: "Graph state + transcript history",
+                              es: "Estado del grafo + historial de transcripción",
+                              pt: "Estado do grafo + histórico de transcrição",
+                              de: "Graphstatus + Transkriptverlauf",
+                              ja: "グラフ状態 + 文字起こし履歴",
+                            })} ({rollbackPreview.transcript_turn_count} {tr({ zh: "轮", en: "turns", es: "turnos", pt: "turnos", de: "Turns", ja: "ターン" })}) + {tr({ zh: "批注", en: "annotations", es: "anotaciones", pt: "anotações", de: "Anmerkungen", ja: "注釈" })} v{rollbackPreview.annotation_version}
                           </div>
                         </div>
                         <div className="rounded-lg border border-theme-default bg-surface-1 px-3 py-2">
-                          <div className="font-medium text-theme-1">摘要</div>
+                          <div className="font-medium text-theme-1">{tr({ zh: "摘要", en: "Summary", es: "Resumen", pt: "Resumo", de: "Zusammenfassung", ja: "概要" })}</div>
                           <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all text-[11px] leading-5 text-theme-3">
                             {JSON.stringify(rollbackPreview.summary || {}, null, 2)}
                           </pre>
@@ -4629,11 +4999,29 @@ export function RealtimeStudio() {
                       </div>
                     ) : (
                       <div className="mt-3 rounded-lg border border-dashed border-theme-default px-3 py-4 text-xs text-theme-3">
-                        {selectedTimelineNode ? "正在加载该节点预览..." : "先在左侧选择一个时间节点。"}
+                        {selectedTimelineNode
+                          ? tr({
+                              zh: "正在加载该节点预览...",
+                              en: "Loading this node preview...",
+                              es: "Cargando la vista de este nodo...",
+                              pt: "Carregando a prévia deste nó...",
+                              de: "Knotenvorschau wird geladen...",
+                              ja: "このノードのプレビューを読み込み中...",
+                            })
+                          : tr({
+                              zh: "先在左侧选择一个时间节点。",
+                              en: "Select a timeline node on the left first.",
+                              es: "Selecciona primero un nodo de la línea temporal a la izquierda.",
+                              pt: "Selecione primeiro um nó da linha do tempo à esquerda.",
+                              de: "Wähle zuerst links einen Zeitachsenknoten.",
+                              ja: "まず左側のタイムラインノードを選択してください。",
+                            })}
                       </div>
                     )}
                     <div className="mt-4 border-t border-theme-subtle pt-3">
-                      <div className="mb-2 text-xs font-semibold text-theme-1">最近更新记录</div>
+                      <div className="mb-2 text-xs font-semibold text-theme-1">
+                        {tr({ zh: "最近更新记录", en: "Recent Updates", es: "Actualizaciones recientes", pt: "Atualizações recentes", de: "Letzte Aktualisierungen", ja: "最近の更新" })}
+                      </div>
                       <div className="space-y-2">
                         {events.length ? (
                           events.slice(-6).map((event: Record<string, any>, index: number) => (
@@ -4667,7 +5055,9 @@ export function RealtimeStudio() {
             <div className="relative z-0 shrink-0 translate-y-3.5 border-t border-theme-subtle px-4 py-1.5">
               <div className="px-1 py-0.5">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-[11px] font-semibold text-theme-1">时间轴</div>
+                  <div className="text-[11px] font-semibold text-theme-1">
+                    {tr({ zh: "时间轴", en: "Timeline", es: "Línea temporal", pt: "Linha do tempo", de: "Zeitachse", ja: "タイムライン" })}
+                  </div>
                   <div className="text-[10px] text-theme-4">{orderedTimelineNodes.length} snapshots</div>
                 </div>
                 {isTimelineScrollable ? (
@@ -4685,7 +5075,7 @@ export function RealtimeStudio() {
                                 const active = node.snapshot_id === selectedTimelineSnapshotId;
                                 const nodeName =
                                   node.label ||
-                                  `快照 ${new Date(node.created_at).toLocaleTimeString("zh-CN", {
+                                  `${tr({ zh: "快照", en: "Snapshot", es: "Snapshot", pt: "Snapshot", de: "Snapshot", ja: "スナップショット" })} ${new Date(node.created_at).toLocaleTimeString(currentDateLocale, {
                                     hour: "2-digit",
                                     minute: "2-digit",
                                     second: "2-digit",
@@ -4729,7 +5119,9 @@ export function RealtimeStudio() {
                                 );
                               })
                             ) : (
-                              <div className="text-[10px] text-theme-3">暂无可用时间点</div>
+                              <div className="text-[10px] text-theme-3">
+                                {tr({ zh: "暂无可用时间点", en: "No available time points", es: "Sin puntos temporales disponibles", pt: "Sem pontos de tempo disponíveis", de: "Keine Zeitpunkte verfügbar", ja: "利用可能な時点がありません" })}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -4751,7 +5143,7 @@ export function RealtimeStudio() {
                                 className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
                                 onClick={() => setRollbackPreview(null)}
                               >
-                                取消
+                                {tr({ zh: "取消", en: "Cancel", es: "Cancelar", pt: "Cancelar", de: "Abbrechen", ja: "キャンセル" })}
                               </Button>
                               <Button
                                 type="button"
@@ -4777,7 +5169,7 @@ export function RealtimeStudio() {
                                 }}
                                 disabled={!currentSessionId || !selectedTimelineSnapshotId || currentSessionClosed}
                               >
-                                编辑
+                                {tr({ zh: "编辑", en: "Edit", es: "Editar", pt: "Editar", de: "Bearbeiten", ja: "編集" })}
                               </Button>
                               <Button
                                 type="button"
@@ -4799,14 +5191,25 @@ export function RealtimeStudio() {
                                   currentSessionClosed
                                 }
                               >
-                                {rollbackApplyMutation.isPending ? "回退中" : "回退"}
+                                {rollbackApplyMutation.isPending
+                                  ? tr({ zh: "回退中", en: "Rolling back", es: "Revirtiendo", pt: "Revertendo", de: "Wird zurückgesetzt", ja: "ロールバック中" })
+                                  : tr({ zh: "回退", en: "Rollback", es: "Rollback", pt: "Rollback", de: "Rollback", ja: "ロールバック" })}
                               </Button>
                             </div>
                           </div>
                         </div>
                       ) : null}
                     </div>
-                    <div className="text-[10px] text-theme-4">节点较多，可左右拖动时间轴查看</div>
+                    <div className="text-[10px] text-theme-4">
+                      {tr({
+                        zh: "节点较多，可左右拖动时间轴查看",
+                        en: "Drag horizontally to review more timeline nodes",
+                        es: "Arrastra horizontalmente para revisar más nodos",
+                        pt: "Arraste horizontalmente para revisar mais nós",
+                        de: "Horizontal ziehen, um weitere Zeitachsenknoten anzusehen",
+                        ja: "横にドラッグして他のタイムラインノードを確認できます",
+                      })}
+                    </div>
                   </div>
                 ) : (
                   <div className="relative mt-1.5 px-0.5">
@@ -4817,7 +5220,7 @@ export function RealtimeStudio() {
                           const active = node.snapshot_id === selectedTimelineSnapshotId;
                           const nodeName =
                             node.label ||
-                            `快照 ${new Date(node.created_at).toLocaleTimeString("zh-CN", {
+                            `${tr({ zh: "快照", en: "Snapshot", es: "Snapshot", pt: "Snapshot", de: "Snapshot", ja: "スナップショット" })} ${new Date(node.created_at).toLocaleTimeString(currentDateLocale, {
                               hour: "2-digit",
                               minute: "2-digit",
                               second: "2-digit",
@@ -4860,7 +5263,9 @@ export function RealtimeStudio() {
                           );
                         })
                       ) : (
-                        <div className="text-[10px] text-theme-3">暂无可用时间点</div>
+                        <div className="text-[10px] text-theme-3">
+                          {tr({ zh: "暂无可用时间点", en: "No available time points", es: "Sin puntos temporales disponibles", pt: "Sem pontos de tempo disponíveis", de: "Keine Zeitpunkte verfügbar", ja: "利用可能な時点がありません" })}
+                        </div>
                       )}
                     </div>
                     {isTimelinePreviewActive && selectedTimelineOrderedIndex >= 0 ? (
@@ -4883,7 +5288,7 @@ export function RealtimeStudio() {
                               className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
                               onClick={() => setRollbackPreview(null)}
                             >
-                              取消
+                                {tr({ zh: "取消", en: "Cancel", es: "Cancelar", pt: "Cancelar", de: "Abbrechen", ja: "キャンセル" })}
                             </Button>
                             <Button
                               type="button"
@@ -4912,7 +5317,7 @@ export function RealtimeStudio() {
                               }}
                               disabled={!currentSessionId || !selectedTimelineSnapshotId || currentSessionClosed}
                             >
-                              编辑
+                                {tr({ zh: "编辑", en: "Edit", es: "Editar", pt: "Editar", de: "Bearbeiten", ja: "編集" })}
                             </Button>
                             <Button
                               type="button"
@@ -4934,7 +5339,9 @@ export function RealtimeStudio() {
                                 currentSessionClosed
                               }
                             >
-                              {rollbackApplyMutation.isPending ? "回退中" : "回退"}
+                                {rollbackApplyMutation.isPending
+                                  ? tr({ zh: "回退中", en: "Rolling back", es: "Revirtiendo", pt: "Revertendo", de: "Wird zurückgesetzt", ja: "ロールバック中" })
+                                  : tr({ zh: "回退", en: "Rollback", es: "Rollback", pt: "Rollback", de: "Rollback", ja: "ロールバック" })}
                             </Button>
                           </div>
                         </div>
@@ -4954,7 +5361,11 @@ export function RealtimeStudio() {
                   disabled={createSession.isPending}
                 >
                   <WandSparkles className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{currentSessionId ? "重建会话" : "创建会话"}</span>
+                  <span className="truncate">
+                    {currentSessionId
+                      ? tr({ zh: "重建会话", en: "Rebuild Session", es: "Reconstruir sesión", pt: "Reconstruir sessão", de: "Sitzung neu erstellen", ja: "セッション再構築" })
+                      : tr({ zh: "创建会话", en: "Create Session", es: "Crear sesión", pt: "Criar sessão", de: "Sitzung erstellen", ja: "セッション作成" })}
+                  </span>
                 </Button>
                 {isTitleEditing ? (
                   <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -4962,7 +5373,7 @@ export function RealtimeStudio() {
                       value={titleDraft}
                       onChange={(event: ChangeEvent<HTMLInputElement>) => setTitleDraft(event.target.value)}
                       className="h-8 min-w-0 flex-1 rounded-lg border border-theme-default bg-surface-2 text-sm text-theme-1"
-                      placeholder="输入会话名称"
+                      placeholder={tr({ zh: "输入会话名称", en: "Enter session name", es: "Introduce el nombre de la sesión", pt: "Digite o nome da sessão", de: "Sitzungsnamen eingeben", ja: "セッション名を入力" })}
                     />
                     <Button
                       type="button"
@@ -4972,7 +5383,7 @@ export function RealtimeStudio() {
                       disabled={!titleDraft.trim() || renameSessionMutation.isPending || currentSessionClosed}
                     >
                       <Check className="h-3.5 w-3.5 shrink-0" />
-                      保存
+                      {tr({ zh: "保存", en: "Save", es: "Guardar", pt: "Salvar", de: "Speichern", ja: "保存" })}
                     </Button>
                     <Button
                       type="button"
@@ -4980,7 +5391,7 @@ export function RealtimeStudio() {
                       className="h-8 shrink-0 px-2 text-xs font-semibold"
                       onClick={cancelTitleEdit}
                     >
-                      取消
+                      {tr({ zh: "取消", en: "Cancel", es: "Cancelar", pt: "Cancelar", de: "Abbrechen", ja: "キャンセル" })}
                     </Button>
                   </div>
                 ) : (
@@ -4994,7 +5405,7 @@ export function RealtimeStudio() {
                         disabled={currentSessionClosed}
                       >
                         <Pencil className="h-3.5 w-3.5 shrink-0" />
-                        重命名
+                        {tr({ zh: "重命名", en: "Rename", es: "Renombrar", pt: "Renomear", de: "Umbenennen", ja: "名前変更" })}
                       </button>
                     </div>
                   </div>
@@ -5005,13 +5416,13 @@ export function RealtimeStudio() {
                       href={transcriptDownloads.txt_url}
                       className="inline-flex h-8 items-center justify-center rounded-lg border border-theme-default bg-surface-2 px-3 font-semibold text-theme-2 transition hover:border-theme-strong hover:bg-surface-3"
                     >
-                      下载 TXT
+                      {tr({ zh: "下载 TXT", en: "Download TXT", es: "Descargar TXT", pt: "Baixar TXT", de: "TXT laden", ja: "TXT ダウンロード" })}
                     </a>
                     <a
                       href={transcriptDownloads.markdown_url}
                       className="inline-flex h-8 items-center justify-center rounded-lg border border-theme-default bg-surface-2 px-3 font-semibold text-theme-2 transition hover:border-theme-strong hover:bg-surface-3"
                     >
-                      下载 Markdown
+                      {tr({ zh: "下载 Markdown", en: "Download Markdown", es: "Descargar Markdown", pt: "Baixar Markdown", de: "Markdown laden", ja: "Markdown ダウンロード" })}
                     </a>
                   </div>
                 ) : null}
@@ -5020,35 +5431,43 @@ export function RealtimeStudio() {
                 <Button
                   type="button"
                   variant="secondary"
-                  title="生成并保存报告"
+                  title={tr({ zh: "生成并保存报告", en: "Generate and save report", es: "Generar y guardar informe", pt: "Gerar e salvar relatório", de: "Bericht erzeugen und speichern", ja: "レポートを生成して保存" })}
                   className="h-8 min-w-0 gap-1 px-2 text-xs font-semibold"
                   onClick={() => (currentSessionId ? saveReportMutation.mutate(currentSessionId) : null)}
                   disabled={!currentSessionId || saveReportMutation.isPending}
                 >
                   <Save className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{saveReportMutation.isPending ? "生成中..." : "生成报告"}</span>
+                  <span className="truncate">
+                    {saveReportMutation.isPending
+                      ? tr({ zh: "生成中...", en: "Generating...", es: "Generando...", pt: "Gerando...", de: "Wird erzeugt...", ja: "生成中..." })
+                      : tr({ zh: "生成报告", en: "Generate Report", es: "Generar informe", pt: "Gerar relatório", de: "Bericht erzeugen", ja: "レポート生成" })}
+                  </span>
                 </Button>
                 <Button
                   type="button"
                   variant="secondary"
-                  title="下载当前图表"
+                  title={tr({ zh: "下载当前图表", en: "Download current graph", es: "Descargar gráfico actual", pt: "Baixar grafo atual", de: "Aktuellen Graph laden", ja: "現在のグラフをダウンロード" })}
                   className="h-8 min-w-0 gap-1 px-2 text-xs font-semibold"
                   onClick={downloadCurrentGraph}
                   disabled={!currentSessionId || !currentGraphPayload}
                 >
                   <Download className="h-3 w-3 shrink-0" />
-                  <span className="truncate">下载图表</span>
+                  <span className="truncate">{tr({ zh: "下载图表", en: "Download Graph", es: "Descargar gráfico", pt: "Baixar grafo", de: "Graph laden", ja: "グラフをダウンロード" })}</span>
                 </Button>
                 <Button
                   type="button"
                   variant="danger"
-                  title="关闭会话"
+                  title={tr({ zh: "关闭会话", en: "Close session", es: "Cerrar sesión", pt: "Encerrar sessão", de: "Sitzung schließen", ja: "セッションを閉じる" })}
                   className="h-8 min-w-0 gap-1 px-2 text-xs font-semibold"
                   onClick={() => void handleCloseSession()}
                   disabled={!currentSessionId || currentSessionClosed || closeMutation.isPending}
                 >
                   <StopCircle className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{currentSessionClosed ? "已结束" : "关闭"}</span>
+                  <span className="truncate">
+                    {currentSessionClosed
+                      ? tr({ zh: "已结束", en: "Closed", es: "Cerrada", pt: "Encerrada", de: "Geschlossen", ja: "終了" })
+                      : tr({ zh: "关闭", en: "Close", es: "Cerrar", pt: "Encerrar", de: "Schließen", ja: "閉じる" })}
+                  </span>
                 </Button>
               </div>
             </div>
@@ -5069,7 +5488,7 @@ export function RealtimeStudio() {
               {detailDrawerOpen ? (
                 <button
                   type="button"
-                  aria-label="关闭侧栏"
+                  aria-label={tr({ zh: "关闭侧栏", en: "Close sidebar", es: "Cerrar barra lateral", pt: "Fechar barra lateral", de: "Seitenleiste schließen", ja: "サイドバーを閉じる" })}
                   className="fixed inset-0 z-[100] bg-surface-muted backdrop-blur-[5px] transition-opacity"
                   onClick={() => setDetailDrawerOpen(false)}
                 />
@@ -5083,15 +5502,17 @@ export function RealtimeStudio() {
         <Card className="m-0 flex h-full w-full flex-col overflow-hidden rounded-none border-y-0 border-r-0 border-l border-theme-default bg-surface-1 p-3 shadow-none sm:my-4 sm:mr-4 sm:h-[calc(100vh-2rem)] sm:rounded-2xl sm:border sm:border-theme-default sm:shadow-xl">
           <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-surface-1">
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-theme-default px-2 py-2">
-              <div className="text-sm font-semibold text-theme-1">历史会话</div>
+              <div className="text-sm font-semibold text-theme-1">
+                {tr({ zh: "历史会话", en: "Session History", es: "Historial de sesiones", pt: "Histórico de sessões", de: "Sitzungsverlauf", ja: "セッション履歴" })}
+              </div>
                   <Button
               type="button"
                     variant="ghost"
               className="h-9 shrink-0 gap-2 rounded-lg px-3 text-xs"
               onClick={() => setDetailDrawerOpen(false)}
-              aria-label="收起历史记录"
+              aria-label={tr({ zh: "收起历史记录", en: "Collapse history", es: "Contraer historial", pt: "Recolher histórico", de: "Verlauf einklappen", ja: "履歴を折りたたむ" })}
                   >
-              收起历史记录
+              {tr({ zh: "收起历史记录", en: "Collapse History", es: "Contraer historial", pt: "Recolher histórico", de: "Verlauf einklappen", ja: "履歴を折りたたむ" })}
               <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
@@ -5134,11 +5555,14 @@ export function RealtimeStudio() {
                         {item.session_id}
                       </div>
                       <div className={`mt-1 text-xs ${sessionSelected ? "text-white/70" : "text-theme-4"}`}>
-                        状态：{item.status === "closed" ? "closed" : "active"}
+                        {tr({ zh: "状态：", en: "Status: ", es: "Estado: ", pt: "Status: ", de: "Status: ", ja: "状態: " })}
+                        {item.status === "closed"
+                          ? tr({ zh: "已结束", en: "closed", es: "cerrada", pt: "encerrada", de: "geschlossen", ja: "終了" })
+                          : tr({ zh: "进行中", en: "active", es: "activa", pt: "ativa", de: "aktiv", ja: "アクティブ" })}
                       </div>
                       {item.summary?.input_runtime?.input_source ? (
                         <div className={`mt-2 text-xs ${sessionSelected ? "text-white/70" : "text-theme-4"}`}>
-                          输入源：{String(item.summary.input_runtime.input_source)}
+                          {tr({ zh: "输入源：", en: "Input source: ", es: "Fuente de entrada: ", pt: "Fonte de entrada: ", de: "Eingangsquelle: ", ja: "入力元: " })}{String(item.summary.input_runtime.input_source)}
                         </div>
                       ) : null}
                     </button>
@@ -5149,7 +5573,7 @@ export function RealtimeStudio() {
                           ? "border-white/25 text-red-200 hover:bg-red-950/40 hover:text-red-100"
                           : "border-theme-default text-red-500 hover:bg-red-500/10 hover:text-red-400"
                       }`}
-                      aria-label="删除该会话"
+                      aria-label={tr({ zh: "删除该会话", en: "Delete this session", es: "Eliminar esta sesión", pt: "Excluir esta sessão", de: "Diese Sitzung löschen", ja: "このセッションを削除" })}
                       disabled={deleteSessionMutation.isPending}
                       onClick={(e) => handleDeleteHistorySession(e, item.session_id)}
                     >
@@ -5176,7 +5600,7 @@ export function RealtimeStudio() {
               <button
                 type="button"
                 className="absolute inset-0 bg-[var(--shell-backdrop)] backdrop-blur-[2px] transition-opacity"
-                aria-label="取消删除"
+                aria-label={tr({ zh: "取消删除", en: "Cancel delete", es: "Cancelar eliminación", pt: "Cancelar exclusão", de: "Löschen abbrechen", ja: "削除をキャンセル" })}
                 onClick={() => setDeleteSessionConfirmId(null)}
               />
               <div
@@ -5196,10 +5620,17 @@ export function RealtimeStudio() {
                     </div>
                     <div className="min-w-0 flex-1 pt-0.5">
                       <h2 id="delete-session-dialog-title" className="text-lg font-semibold tracking-tight text-theme-1">
-                        删除会话
+                        {tr({ zh: "删除会话", en: "Delete Session", es: "Eliminar sesión", pt: "Excluir sessão", de: "Sitzung löschen", ja: "セッションを削除" })}
                       </h2>
                       <p id="delete-session-dialog-desc" className="mt-3 text-base leading-relaxed text-theme-3">
-                        确定删除该会话？此操作不可恢复。
+                        {tr({
+                          zh: "确定删除该会话？此操作不可恢复。",
+                          en: "Delete this session? This action cannot be undone.",
+                          es: "¿Eliminar esta sesión? Esta acción no se puede deshacer.",
+                          pt: "Excluir esta sessão? Esta ação não pode ser desfeita.",
+                          de: "Diese Sitzung löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+                          ja: "このセッションを削除しますか？この操作は元に戻せません。",
+                        })}
                       </p>
                     </div>
                   </div>
@@ -5212,7 +5643,7 @@ export function RealtimeStudio() {
                     disabled={deleteSessionMutation.isPending}
                     onClick={() => setDeleteSessionConfirmId(null)}
                   >
-                    取消
+                    {tr({ zh: "取消", en: "Cancel", es: "Cancelar", pt: "Cancelar", de: "Abbrechen", ja: "キャンセル" })}
                   </Button>
                   <Button
                     type="button"
@@ -5221,7 +5652,9 @@ export function RealtimeStudio() {
                     disabled={deleteSessionMutation.isPending}
                     onClick={() => void confirmDeleteHistorySession()}
                   >
-                    {deleteSessionMutation.isPending ? "删除中…" : "删除会话"}
+                    {deleteSessionMutation.isPending
+                      ? tr({ zh: "删除中…", en: "Deleting...", es: "Eliminando...", pt: "Excluindo...", de: "Wird gelöscht...", ja: "削除中..." })
+                      : tr({ zh: "删除会话", en: "Delete Session", es: "Eliminar sesión", pt: "Excluir sessão", de: "Sitzung löschen", ja: "セッションを削除" })}
                   </Button>
                 </div>
               </div>
