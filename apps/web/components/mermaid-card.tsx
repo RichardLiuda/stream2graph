@@ -136,6 +136,30 @@ export type MermaidNodeRelayoutPayload = {
   spatial_summary: string;
 };
 
+export type MermaidEvidenceSelection =
+  | {
+      kind: "node";
+      id: string;
+      label: string;
+      metadata?: Record<string, unknown>;
+    }
+  | {
+      kind: "edge";
+      id: string;
+      label: string;
+      source: string;
+      target: string;
+      sourceLabel: string;
+      targetLabel: string;
+      metadata?: Record<string, unknown>;
+      source_index?: number;
+    };
+
+export type MermaidEvidenceTarget = {
+  kind: "node" | "edge";
+  id: string;
+};
+
 type MermaidInteractiveEntity = MermaidDiagramEntityPosition & {
   element: SVGGElement;
 };
@@ -733,6 +757,8 @@ function MermaidCardBody({
   annotationsDoc,
   onAnnotationsChange,
   annotationExportHostId = "s2g-annotation-host-mermaid",
+  onEvidenceSelect,
+  activeEvidenceTarget = null,
   /** @description Realtime 嵌入时固定浅色画布 token */
   fixedLightCanvas = false,
   panZoomControlsOffsetTop = 12,
@@ -770,6 +796,8 @@ function MermaidCardBody({
   annotationsDoc?: AnnotationDoc;
   onAnnotationsChange?: (next: AnnotationDoc) => void;
   annotationExportHostId?: string;
+  onEvidenceSelect?: ((selection: MermaidEvidenceSelection) => void) | null;
+  activeEvidenceTarget?: MermaidEvidenceTarget | null;
   fixedLightCanvas?: boolean;
   panZoomControlsOffsetTop?: number;
 }) {
@@ -913,14 +941,28 @@ function MermaidCardBody({
       for (const entity of collected.nodes) {
         entity.element.style.opacity = "";
         entity.element.style.filter = "";
+        for (const shape of Array.from(entity.element.querySelectorAll<SVGElement>("rect,polygon,path,circle,ellipse"))) {
+          shape.style.fill = "";
+          shape.style.fillOpacity = "";
+          shape.style.stroke = "";
+          shape.style.strokeWidth = "";
+        }
       }
       for (const entity of collected.groups) {
         entity.element.style.opacity = "";
         entity.element.style.filter = "";
+        for (const shape of Array.from(entity.element.querySelectorAll<SVGElement>("rect,polygon,path,circle,ellipse"))) {
+          shape.style.fill = "";
+          shape.style.fillOpacity = "";
+          shape.style.stroke = "";
+          shape.style.strokeWidth = "";
+        }
       }
       for (const renderedEdge of renderedEdges) {
         renderedEdge.path.style.opacity = "";
         renderedEdge.path.style.filter = "";
+        renderedEdge.path.style.stroke = "";
+        renderedEdge.path.style.strokeWidth = "";
         renderedEdge.path.style.strokeLinecap = "round";
         renderedEdge.path.style.transition = "opacity 120ms ease, filter 120ms ease, stroke-width 120ms ease";
         renderedEdge.container.style.opacity = "";
@@ -1010,9 +1052,42 @@ function MermaidCardBody({
       });
     };
 
+    const applyEvidenceSelectionHighlight = () => {
+      if (!activeEvidenceTarget) return;
+      const selectionColor = "#d97706";
+      if (activeEvidenceTarget.kind === "node") {
+        const selectedNode = nodeElementById.get(activeEvidenceTarget.id);
+        if (!selectedNode) return;
+        selectedNode.element.style.opacity = "1";
+        selectedNode.element.style.filter = "drop-shadow(0 0 14px rgba(217,119,6,0.24))";
+        for (const shape of Array.from(
+          selectedNode.element.querySelectorAll<SVGElement>("rect,polygon,path,circle,ellipse"),
+        )) {
+          shape.style.stroke = selectionColor;
+          shape.style.strokeWidth = "3.4px";
+        }
+        return;
+      }
+
+      const selectedEdge = renderedEdges.find((item) => item.edge.id === activeEvidenceTarget.id);
+      if (!selectedEdge) return;
+      selectedEdge.container.style.opacity = "1";
+      selectedEdge.path.style.opacity = "1";
+      selectedEdge.path.style.stroke = selectionColor;
+      selectedEdge.path.style.strokeWidth = "3.8px";
+      selectedEdge.path.style.filter = "drop-shadow(0 0 12px rgba(217,119,6,0.24))";
+      for (const nodeId of [selectedEdge.edge.source, selectedEdge.edge.target]) {
+        const node = nodeElementById.get(nodeId);
+        if (!node) continue;
+        node.element.style.opacity = "1";
+        node.element.style.filter = "drop-shadow(0 0 12px rgba(217,119,6,0.18))";
+      }
+    };
+
     const resetVisualState = () => {
       applyBaseStyles();
       applyStageHighlight();
+      applyEvidenceSelectionHighlight();
     };
 
     const dimEverything = () => {
@@ -1093,23 +1168,63 @@ function MermaidCardBody({
     for (const entity of collected.nodes) {
       const handleEnter = () => activateNodePath(entity.id);
       const handleLeave = () => resetVisualState();
+      const handleClick = (event: Event) => {
+        if (!onEvidenceSelect) return;
+        event.stopPropagation();
+        const payload = nodePayloadById.get(entity.id);
+        onEvidenceSelect({
+          kind: "node",
+          id: entity.id,
+          label: payload?.label || entity.label || entity.id,
+          metadata: payload?.metadata,
+        });
+      };
+      entity.element.setAttribute("data-s2g-evidence-target", "node");
+      if (onEvidenceSelect || interactiveRelayoutEnabled) {
+        entity.element.style.cursor = interactiveRelayoutEnabled ? (relayoutBusy ? "wait" : "grab") : "pointer";
+      }
       entity.element.addEventListener("pointerenter", handleEnter);
       entity.element.addEventListener("pointerleave", handleLeave);
+      entity.element.addEventListener("click", handleClick);
       cleanupFns.push(() => {
         entity.element.removeEventListener("pointerenter", handleEnter);
         entity.element.removeEventListener("pointerleave", handleLeave);
+        entity.element.removeEventListener("click", handleClick);
       });
     }
 
     for (const renderedEdge of renderedEdges) {
-      if (!["attack", "support"].includes(renderedEdge.relationType)) continue;
       const handleEnter = () => activateEdgeFocus(renderedEdge);
       const handleLeave = () => resetVisualState();
+      const handleClick = (event: Event) => {
+        if (!onEvidenceSelect) return;
+        event.stopPropagation();
+        const sourceLabel = nodePayloadById.get(renderedEdge.edge.source)?.label || renderedEdge.edge.source;
+        const targetLabel = nodePayloadById.get(renderedEdge.edge.target)?.label || renderedEdge.edge.target;
+        onEvidenceSelect({
+          kind: "edge",
+          id: renderedEdge.edge.id,
+          label: renderedEdge.edge.label || `${sourceLabel} -> ${targetLabel}`,
+          source: renderedEdge.edge.source,
+          target: renderedEdge.edge.target,
+          sourceLabel,
+          targetLabel,
+          metadata: renderedEdge.edge.metadata,
+          source_index: renderedEdge.edge.source_index,
+        });
+      };
+      if (onEvidenceSelect) {
+        renderedEdge.container.setAttribute("data-s2g-evidence-target", "edge");
+        renderedEdge.container.style.cursor = "pointer";
+        renderedEdge.path.style.pointerEvents = "stroke";
+      }
       renderedEdge.container.addEventListener("pointerenter", handleEnter);
       renderedEdge.container.addEventListener("pointerleave", handleLeave);
+      renderedEdge.container.addEventListener("click", handleClick);
       cleanupFns.push(() => {
         renderedEdge.container.removeEventListener("pointerenter", handleEnter);
         renderedEdge.container.removeEventListener("pointerleave", handleLeave);
+        renderedEdge.container.removeEventListener("click", handleClick);
       });
     }
 
@@ -1120,7 +1235,16 @@ function MermaidCardBody({
         overlayRoot.parentNode.removeChild(overlayRoot);
       }
     };
-  }, [activeIncrementalStageIndex, graphPayload, svg, zoomRebuildNonce]);
+  }, [
+    activeEvidenceTarget,
+    activeIncrementalStageIndex,
+    graphPayload,
+    interactiveRelayoutEnabled,
+    onEvidenceSelect,
+    relayoutBusy,
+    svg,
+    zoomRebuildNonce,
+  ]);
 
   useEffect(() => {
     const host = renderSurfaceRef.current;
@@ -1541,6 +1665,8 @@ export function MermaidCard(props: {
   annotationsDoc?: AnnotationDoc;
   onAnnotationsChange?: (next: AnnotationDoc) => void;
   annotationExportHostId?: string;
+  onEvidenceSelect?: ((selection: MermaidEvidenceSelection) => void) | null;
+  activeEvidenceTarget?: MermaidEvidenceTarget | null;
   fixedLightCanvas?: boolean;
   panZoomControlsOffsetTop?: number;
 }) {

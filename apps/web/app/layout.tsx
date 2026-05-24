@@ -1,20 +1,15 @@
 import type { Metadata } from "next";
-import { Noto_Sans_SC, Plus_Jakarta_Sans } from "next/font/google";
+import type { CSSProperties } from "react";
 
 import { Providers } from "./providers";
 import "./globals.css";
 
-const bodyFont = Noto_Sans_SC({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-body",
-});
-
-const displayFont = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["500", "600", "700", "800"],
-  variable: "--font-display",
-});
+const fontVariables = {
+  "--font-body":
+    '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  "--font-display":
+    '"Plus Jakarta Sans", Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+} as CSSProperties;
 
 export const metadata: Metadata = {
   title: "Stream2Graph Platform",
@@ -25,8 +20,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN" data-scroll-behavior="smooth" suppressHydrationWarning>
       <body
-        className={`${bodyFont.variable} ${displayFont.variable} font-sans text-theme-2 antialiased`}
-        style={{ fontFamily: "var(--font-body), sans-serif" }}
+        className="font-sans text-theme-2 antialiased"
+        style={{ ...fontVariables, fontFamily: "var(--font-body), sans-serif" }}
       >
         <script
           dangerouslySetInnerHTML={{

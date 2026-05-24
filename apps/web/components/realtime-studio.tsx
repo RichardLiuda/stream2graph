@@ -16,19 +16,26 @@ import {
   Eraser,
   Fingerprint,
   Headphones,
+  LocateFixed,
   Mic,
   MicOff,
   Pause,
   PanelRight,
   Pencil,
+  Play,
+  Quote,
   Download,
   Save,
   Send,
+  ShieldCheck,
+  SkipBack,
+  SkipForward,
   Square,
   StopCircle,
   Trash2,
   Type,
   WandSparkles,
+  X,
 } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -78,7 +85,7 @@ import {
 import { AnnotationColorPopover } from "@/components/annotation-color-popover";
 import { AnnotationWidthSlider } from "@/components/annotation-width-slider";
 import { GraphStage } from "@/components/graph-stage";
-import { MermaidCard, type MermaidNodeRelayoutPayload } from "@/components/mermaid-card";
+import { MermaidCard, type MermaidEvidenceSelection, type MermaidNodeRelayoutPayload } from "@/components/mermaid-card";
 
 const LOCAL_SESSION_KEY = "s2g:last-realtime-session";
 
@@ -187,6 +194,34 @@ type TranscriptHistoryItem = RealtimeTranscriptTurn & {
 type TranscriptDisplayState = {
   activeTurn: TranscriptHistoryItem | null;
   archivedTurns: TranscriptHistoryItem[];
+};
+
+type GraphEvidenceReason = "stage" | "explicit" | "text_match" | "recent";
+
+type GraphEvidenceTurn = {
+  key: string;
+  speaker: string;
+  text: string;
+  startMs: number;
+  endMs: number;
+  observedAt: number;
+  source: string;
+  captureMode: string;
+  reason: GraphEvidenceReason;
+  score: number;
+  stageIndex: number | null;
+  updateId: number | null;
+  turnId: number | null;
+  timelineSnapshotId: string | null;
+};
+
+type GraphEvidenceTarget = {
+  selection: MermaidEvidenceSelection;
+  title: string;
+  subtitle: string;
+  stageIndices: number[];
+  timelineNode: RealtimeTimelineNode | null;
+  turns: GraphEvidenceTurn[];
 };
 
 type NoticeTone = "info" | "success" | "warning";
@@ -499,6 +534,297 @@ function formatRelativeTranscriptTime(ms: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function coerceFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function coerceString(value: unknown, fallback = "") {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function collectNumbersFromUnknown(value: unknown): number[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectNumbersFromUnknown(item));
+  }
+  const parsed = coerceFiniteNumber(value);
+  return parsed == null ? [] : [parsed];
+}
+
+function uniqueSortedNumbers(values: number[]) {
+  return Array.from(new Set(values.filter((value) => Number.isFinite(value)).map((value) => Math.trunc(value)))).sort(
+    (left, right) => left - right,
+  );
+}
+
+function collectEvidenceStageIndices(metadata: Record<string, unknown> | undefined) {
+  if (!metadata) return [];
+  return uniqueSortedNumbers([
+    ...collectNumbersFromUnknown(metadata.incremental_stage_index),
+    ...collectNumbersFromUnknown(metadata.incremental_stage_indices),
+    ...collectNumbersFromUnknown(metadata.stage_index),
+    ...collectNumbersFromUnknown(metadata.stage_indices),
+    ...collectNumbersFromUnknown(metadata.update_id),
+    ...collectNumbersFromUnknown(metadata.update_ids),
+  ]).filter((value) => value > 0);
+}
+
+function collectExplicitTurnReferences(metadata: Record<string, unknown> | undefined) {
+  if (!metadata) return [];
+  const keys = [
+    "turn_id",
+    "turn_ids",
+    "source_turn_id",
+    "source_turn_ids",
+    "transcript_turn_id",
+    "transcript_turn_ids",
+    "evidence_turn_id",
+    "evidence_turn_ids",
+    "supporting_turn_id",
+    "supporting_turn_ids",
+  ];
+  return uniqueSortedNumbers(keys.flatMap((key) => collectNumbersFromUnknown(metadata[key]))).filter((value) => value > 0);
+}
+
+function timelineNodeSortValue(node: RealtimeTimelineNode) {
+  const parsed = Date.parse(node.created_at);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function findTimelineNodeForEvidence(
+  timelineNodes: RealtimeTimelineNode[],
+  params: { updateId?: number | null; turnId?: number | null; endMs?: number | null },
+) {
+  if (!timelineNodes.length) return null;
+  const ordered = [...timelineNodes].sort((left, right) => timelineNodeSortValue(left) - timelineNodeSortValue(right));
+  if (params.updateId != null) {
+    const byEvent = ordered.find((node) => node.event_count >= params.updateId!);
+    if (byEvent) return byEvent;
+  }
+  if (params.turnId != null) {
+    const byChunk = ordered.find((node) => node.chunk_count >= params.turnId!);
+    if (byChunk) return byChunk;
+  }
+  return ordered[ordered.length - 1] ?? null;
+}
+
+function normalizeEvidenceSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\u4e00-\u9fff]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function evidenceSearchTerms(values: string[]) {
+  const terms = new Set<string>();
+  for (const value of values) {
+    const normalized = normalizeEvidenceSearchText(value);
+    if (!normalized) continue;
+    if (normalized.length >= 2) terms.add(normalized);
+    normalized
+      .split(" ")
+      .map((part) => part.trim())
+      .filter((part) => part.length >= 3)
+      .forEach((part) => terms.add(part));
+  }
+  return Array.from(terms).slice(0, 12);
+}
+
+function scoreEvidenceMatch(text: string, terms: string[]) {
+  const normalized = normalizeEvidenceSearchText(text);
+  if (!normalized || !terms.length) return 0;
+  let score = 0;
+  for (const term of terms) {
+    if (!term) continue;
+    if (normalized === term) score += 4;
+    else if (normalized.includes(term)) score += term.length >= 6 ? 2.5 : 1.6;
+    else if (term.includes(normalized) && normalized.length >= 4) score += 1.2;
+  }
+  return score;
+}
+
+function uniqueEvidenceTurns(rows: GraphEvidenceTurn[]) {
+  const rank: Record<GraphEvidenceReason, number> = {
+    explicit: 4,
+    stage: 3,
+    text_match: 2,
+    recent: 1,
+  };
+  const byKey = new Map<string, GraphEvidenceTurn>();
+  for (const row of rows) {
+    const key = row.turnId != null ? `turn:${row.turnId}` : `${row.text}|${row.startMs}|${row.endMs}`;
+    const existing = byKey.get(key);
+    if (!existing || rank[row.reason] > rank[existing.reason] || row.score > existing.score) {
+      byKey.set(key, row);
+    }
+  }
+  return Array.from(byKey.values()).sort((left, right) => {
+    if (right.score !== left.score) return right.score - left.score;
+    if ((right.stageIndex ?? 0) !== (left.stageIndex ?? 0)) return (right.stageIndex ?? 0) - (left.stageIndex ?? 0);
+    return right.observedAt - left.observedAt;
+  });
+}
+
+function buildGraphEventEvidenceTurns(
+  events: Array<Record<string, any>>,
+  timelineNodes: RealtimeTimelineNode[],
+): GraphEvidenceTurn[] {
+  const rows: GraphEvidenceTurn[] = [];
+  events.forEach((event, eventIndex) => {
+    const eventRecord = isRecord(event) ? event : {};
+    const update = isRecord(eventRecord.update) ? eventRecord.update : {};
+    const updateId = coerceFiniteNumber(update.update_id);
+    const updateStartMs = coerceFiniteNumber(update.start_ms) ?? 0;
+    const updateEndMs = coerceFiniteNumber(update.end_ms) ?? updateStartMs;
+    const pendingTurns = Array.isArray(eventRecord.pending_turns) ? eventRecord.pending_turns : [];
+
+    if (pendingTurns.length) {
+      pendingTurns.forEach((payload, turnIndex) => {
+        const turn = isRecord(payload) ? payload : {};
+        const text = coerceString(turn.content, coerceString(turn.text));
+        if (!text) return;
+        const turnId = coerceFiniteNumber(turn.turn_id);
+        const startMs = coerceFiniteNumber(turn.timestamp_ms) ?? coerceFiniteNumber(turn.start_ms) ?? updateStartMs;
+        const endMs = coerceFiniteNumber(turn.end_ms) ?? coerceFiniteNumber(turn.timestamp_ms) ?? startMs;
+        const timelineNode = findTimelineNodeForEvidence(timelineNodes, { updateId, turnId, endMs });
+        rows.push({
+          key: `event:${updateId ?? eventIndex}:${turnId ?? turnIndex}:${startMs}:${text}`,
+          speaker: coerceString(turn.speaker, "speaker"),
+          text,
+          startMs,
+          endMs,
+          observedAt: endMs || startMs || (timelineNode ? timelineNodeSortValue(timelineNode) : 0),
+          source: "event",
+          captureMode: coerceString(turn.capture_mode),
+          reason: "stage",
+          score: 100,
+          stageIndex: updateId == null ? null : Math.trunc(updateId),
+          updateId: updateId == null ? null : Math.trunc(updateId),
+          turnId: turnId == null ? null : Math.trunc(turnId),
+          timelineSnapshotId: timelineNode?.snapshot_id ?? null,
+        });
+      });
+      return;
+    }
+
+    const transcriptText = coerceString(update.transcript_text);
+    if (!transcriptText) return;
+    const timelineNode = findTimelineNodeForEvidence(timelineNodes, { updateId, endMs: updateEndMs });
+    rows.push({
+      key: `event:${updateId ?? eventIndex}:update:${updateStartMs}:${transcriptText}`,
+      speaker: "speaker",
+      text: transcriptText,
+      startMs: updateStartMs,
+      endMs: updateEndMs,
+      observedAt: updateEndMs || updateStartMs || (timelineNode ? timelineNodeSortValue(timelineNode) : 0),
+      source: "event",
+      captureMode: "event",
+      reason: "stage",
+      score: 100,
+      stageIndex: updateId == null ? null : Math.trunc(updateId),
+      updateId: updateId == null ? null : Math.trunc(updateId),
+      turnId: null,
+      timelineSnapshotId: timelineNode?.snapshot_id ?? null,
+    });
+  });
+  return uniqueEvidenceTurns(rows);
+}
+
+function buildRecentTranscriptEvidenceTurns(
+  transcriptDisplayState: TranscriptDisplayState,
+  timelineNodes: RealtimeTimelineNode[],
+): GraphEvidenceTurn[] {
+  const turns = [transcriptDisplayState.activeTurn, ...transcriptDisplayState.archivedTurns].filter(
+    (turn): turn is TranscriptHistoryItem => Boolean(turn),
+  );
+  return uniqueEvidenceTurns(
+    turns.map((turn) => {
+      const timelineNode = findTimelineNodeForEvidence(timelineNodes, { endMs: turn.end_ms });
+      return {
+        key: `recent:${turn.key}`,
+        speaker: turn.speaker,
+        text: turn.text,
+        startMs: turn.start_ms,
+        endMs: turn.end_ms,
+        observedAt: turn.observedAt,
+        source: turn.source,
+        captureMode: turn.capture_mode || "",
+        reason: "recent",
+        score: 10,
+        stageIndex: null,
+        updateId: null,
+        turnId: null,
+        timelineSnapshotId: timelineNode?.snapshot_id ?? null,
+      };
+    }),
+  );
+}
+
+function buildGraphEvidenceTarget(params: {
+  selection: MermaidEvidenceSelection | null;
+  eventTurns: GraphEvidenceTurn[];
+  recentTurns: GraphEvidenceTurn[];
+  timelineNodes: RealtimeTimelineNode[];
+}): GraphEvidenceTarget | null {
+  const { selection, eventTurns, recentTurns, timelineNodes } = params;
+  if (!selection) return null;
+  const metadata = selection.metadata;
+  const stageIndices = collectEvidenceStageIndices(metadata);
+  const explicitTurnIds = collectExplicitTurnReferences(metadata);
+  const stageSet = new Set(stageIndices);
+  const explicitTurnSet = new Set(explicitTurnIds);
+  const terms =
+    selection.kind === "edge"
+      ? evidenceSearchTerms([selection.label, selection.sourceLabel, selection.targetLabel])
+      : evidenceSearchTerms([selection.label, selection.id]);
+
+  const stageMatches = eventTurns
+    .filter((turn) => turn.updateId != null && stageSet.has(turn.updateId))
+    .map((turn) => ({ ...turn, reason: "stage" as const, score: 100 }));
+  const explicitMatches = eventTurns
+    .filter((turn) => turn.turnId != null && explicitTurnSet.has(turn.turnId))
+    .map((turn) => ({ ...turn, reason: "explicit" as const, score: 100 }));
+  const textMatches = [...eventTurns, ...recentTurns]
+    .map((turn) => ({ turn, score: scoreEvidenceMatch(turn.text, terms) }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 4)
+    .map(({ turn, score }) => ({
+      ...turn,
+      reason: "text_match" as const,
+      score: Math.min(95, Math.round(score * 18)),
+    }));
+  const turns = uniqueEvidenceTurns([...explicitMatches, ...stageMatches, ...textMatches]).slice(0, 6);
+  const timelineNode =
+    turns
+      .map((turn) => timelineNodes.find((node) => node.snapshot_id === turn.timelineSnapshotId) ?? null)
+      .find((node): node is RealtimeTimelineNode => Boolean(node)) ??
+    (stageIndices.length
+      ? findTimelineNodeForEvidence(timelineNodes, { updateId: stageIndices[stageIndices.length - 1] })
+      : null);
+
+  return {
+    selection,
+    title: selection.label || selection.id,
+    subtitle:
+      selection.kind === "edge"
+        ? `${selection.sourceLabel || selection.source} -> ${selection.targetLabel || selection.target}`
+        : selection.id,
+    stageIndices,
+    timelineNode,
+    turns,
+  };
+}
+
 function makeTranscriptHistoryItem(
   turn: RealtimeTranscriptTurn,
   origin: TranscriptHistoryItem["origin"],
@@ -675,6 +1001,241 @@ function downloadCurrentMermaidSvg(exportRootId: string, filename: string, missi
   const serialized = new XMLSerializer().serializeToString(clone);
   const svgSource = `<?xml version="1.0" encoding="UTF-8"?>\n${serialized}`;
   downloadTextBlob(filename, svgSource, "image/svg+xml");
+}
+
+function graphEvidenceReasonLabel(reason: GraphEvidenceReason, tr: (key: I18nKey) => string) {
+  switch (reason) {
+    case "explicit":
+      return tr("realtimeStudio.evidence.reasonExplicit");
+    case "stage":
+      return tr("realtimeStudio.evidence.reasonStage");
+    case "text_match":
+      return tr("realtimeStudio.evidence.reasonTextMatch");
+    default:
+      return tr("realtimeStudio.evidence.reasonRecent");
+  }
+}
+
+function GraphEvidencePanel({
+  target,
+  tr,
+  currentDateLocale,
+  onClose,
+  onJumpToTimeline,
+}: {
+  target: GraphEvidenceTarget | null;
+  tr: (key: I18nKey, params?: Record<string, string | number>) => string;
+  currentDateLocale: string;
+  onClose: () => void;
+  onJumpToTimeline: (snapshotId: string) => void;
+}) {
+  if (!target) return null;
+  const primaryTimelineSnapshotId =
+    target.timelineNode?.snapshot_id || target.turns.find((turn) => turn.timelineSnapshotId)?.timelineSnapshotId || null;
+  const timelineLabel = target.timelineNode
+    ? target.timelineNode.label ||
+      new Date(target.timelineNode.created_at).toLocaleTimeString(currentDateLocale, {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    : "";
+
+  return (
+    <aside className="pointer-events-auto absolute bottom-4 right-4 top-20 z-[25] flex w-[min(380px,calc(100%-2rem))] flex-col overflow-hidden rounded-xl border border-theme-default bg-surface-1/95 shadow-2xl backdrop-blur-md">
+      <div className="flex items-start justify-between gap-3 border-b border-theme-subtle px-4 py-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-theme-4">
+            <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+            {tr("realtimeStudio.evidence.kicker")}
+          </div>
+          <div className="mt-1 truncate text-sm font-semibold text-theme-1">{target.title}</div>
+          <div className="mt-0.5 truncate text-[11px] text-theme-4">{target.subtitle}</div>
+        </div>
+        <button
+          type="button"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-theme-default bg-surface-2 text-theme-2 hover:bg-surface-muted"
+          onClick={onClose}
+          aria-label={tr("realtimeStudio.common.close")}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-b border-theme-subtle px-4 py-2">
+        <Badge>{target.selection.kind === "node" ? tr("realtimeStudio.evidence.node") : tr("realtimeStudio.evidence.edge")}</Badge>
+        <Badge>{tr("realtimeStudio.evidence.turnCount", { count: target.turns.length })}</Badge>
+        {target.stageIndices.slice(0, 3).map((stageIndex) => (
+          <Badge key={stageIndex}>{tr("realtimeStudio.evidence.stageBadge", { stage: stageIndex })}</Badge>
+        ))}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+        {target.turns.length ? (
+          <div className="space-y-2.5">
+            {target.turns.map((turn) => (
+              <div key={turn.key} className="rounded-lg border border-theme-default bg-surface-2/80 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Quote className="h-3.5 w-3.5 shrink-0 text-theme-4" />
+                    <span className="truncate text-xs font-semibold text-theme-1">{turn.speaker}</span>
+                  </div>
+                  <Badge>{graphEvidenceReasonLabel(turn.reason, tr)}</Badge>
+                </div>
+                <p className="mt-2 line-clamp-4 text-xs leading-5 text-theme-2">
+                  {turn.text || tr("realtimeStudio.evidence.noTranscriptText")}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-theme-4">
+                  <span>
+                    {formatRelativeTranscriptTime(turn.startMs)} - {formatRelativeTranscriptTime(turn.endMs)}
+                  </span>
+                  {turn.score > 0 ? (
+                    <span>{tr("realtimeStudio.evidence.matchScore", { score: Math.round(turn.score) })}</span>
+                  ) : null}
+                </div>
+                {turn.timelineSnapshotId ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="mt-2 h-7 gap-1.5 px-2 text-[11px]"
+                    onClick={() => onJumpToTimeline(turn.timelineSnapshotId as string)}
+                  >
+                    <LocateFixed className="h-3.5 w-3.5" />
+                    {tr("realtimeStudio.evidence.jumpTimeline")}
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-theme-default px-3 py-4 text-xs leading-5 text-theme-3">
+            {tr("realtimeStudio.evidence.noTurns")}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-theme-subtle px-4 py-3">
+        {primaryTimelineSnapshotId ? (
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-8 w-full justify-center gap-2 text-xs"
+            onClick={() => onJumpToTimeline(primaryTimelineSnapshotId)}
+          >
+            <LocateFixed className="h-3.5 w-3.5" />
+            {timelineLabel
+              ? tr("realtimeStudio.evidence.jumpNamedTimeline", { label: timelineLabel })
+              : tr("realtimeStudio.evidence.jumpTimeline")}
+          </Button>
+        ) : (
+          <div className="text-center text-[11px] text-theme-4">
+            {tr("realtimeStudio.evidence.timelineUnavailable")}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function readPipelineRecord(payload: Record<string, any> | null | undefined, key: string) {
+  const value = payload?.[key];
+  return isRecord(value) ? value : null;
+}
+
+function replayStateValue(record: Record<string, unknown> | null, keys: string[], fallback = "-") {
+  for (const key of keys) {
+    const value = record?.[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return fallback;
+}
+
+function ReplayStatusPanel({
+  active,
+  playing,
+  currentIndex,
+  total,
+  node,
+  turn,
+  gateState,
+  plannerState,
+  loaded,
+  tr,
+  currentDateLocale,
+}: {
+  active: boolean;
+  playing: boolean;
+  currentIndex: number;
+  total: number;
+  node: RealtimeTimelineNode | null;
+  turn: { speaker?: string; text?: string } | null;
+  gateState: Record<string, unknown> | null;
+  plannerState: Record<string, unknown> | null;
+  loaded: boolean;
+  tr: (key: I18nKey, params?: Record<string, string | number>) => string;
+  currentDateLocale: string;
+}) {
+  if (!active) return null;
+  const gateLabel = replayStateValue(gateState, ["last_action", "action", "status"]);
+  const plannerLabel = replayStateValue(plannerState, ["status"]);
+  const plannerDelta = replayStateValue(plannerState, ["delta_ops_count"], "0");
+  const nodeTime = node
+    ? new Date(node.created_at).toLocaleTimeString(currentDateLocale, {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    : "";
+
+  return (
+    <aside className="pointer-events-auto absolute left-4 top-20 z-[24] w-[min(360px,calc(100%-2rem))] rounded-xl border border-theme-default bg-surface-1/95 px-4 py-3 shadow-xl backdrop-blur-md">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-theme-4">
+          {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+          {tr("realtimeStudio.replay.kicker")}
+        </div>
+        <Badge>
+          {tr("realtimeStudio.replay.snapshotProgress", {
+            current: total ? currentIndex + 1 : 0,
+            total,
+          })}
+        </Badge>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Badge>{loaded ? tr("realtimeStudio.replay.loaded") : tr("realtimeStudio.replay.loading")}</Badge>
+        {node ? <Badge>{tr("realtimeStudio.replay.chunkBadge", { count: node.chunk_count })}</Badge> : null}
+        {nodeTime ? <Badge>{nodeTime}</Badge> : null}
+      </div>
+      <div className="mt-3 rounded-lg border border-theme-default bg-surface-2/80 px-3 py-2">
+        <div className="text-[11px] font-semibold text-theme-4">{tr("realtimeStudio.replay.currentTurn")}</div>
+        {turn ? (
+          <>
+            <div className="mt-1 text-xs font-semibold text-theme-1">{turn.speaker || "speaker"}</div>
+            <p className="mt-1 line-clamp-3 text-xs leading-5 text-theme-2">{turn.text}</p>
+          </>
+        ) : (
+          <div className="mt-1 text-xs text-theme-3">{tr("realtimeStudio.replay.noTurn")}</div>
+        )}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-lg border border-theme-default bg-surface-2/80 px-3 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-theme-4">
+            {tr("realtimeStudio.replay.gate")}
+          </div>
+          <div className="mt-1 truncate text-xs font-semibold text-theme-1">{gateLabel}</div>
+        </div>
+        <div className="rounded-lg border border-theme-default bg-surface-2/80 px-3 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-theme-4">
+            {tr("realtimeStudio.replay.planner")}
+          </div>
+          <div className="mt-1 truncate text-xs font-semibold text-theme-1">
+            {plannerLabel} · {tr("realtimeStudio.replay.deltaCount", { count: plannerDelta })}
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
 }
 
 function downloadAnnotationsSvg(filename: string, exportHostId: string, missingMessage: string) {
@@ -978,6 +1539,10 @@ export function RealtimeStudio() {
   const [selectedTimelineSnapshotId, setSelectedTimelineSnapshotId] = useState<string | null>(null);
   const [rollbackPreview, setRollbackPreview] = useState<RealtimeRollbackPreviewPayload | null>(null);
   const [autoFollowLatestTimelineNode, setAutoFollowLatestTimelineNode] = useState(true);
+  const [selectedGraphEvidence, setSelectedGraphEvidence] = useState<MermaidEvidenceSelection | null>(null);
+  const [replayMode, setReplayMode] = useState(false);
+  const [replayPlaying, setReplayPlaying] = useState(false);
+  const [replayIndex, setReplayIndex] = useState(0);
   const lastTimelineHeadSnapshotIdRef = useRef<string | null>(null);
   const timelineScrollViewportRef = useRef<HTMLDivElement | null>(null);
   const [timelineViewportWidth, setTimelineViewportWidth] = useState(0);
@@ -1273,6 +1838,13 @@ export function RealtimeStudio() {
     if (stored) setCurrentSessionId(stored);
   }, []);
 
+  useEffect(() => {
+    setSelectedGraphEvidence(null);
+    setReplayMode(false);
+    setReplayPlaying(false);
+    setReplayIndex(0);
+  }, [currentSessionId]);
+
   const inputOptions = useMemo(() => getInputSourceOptions(audioContext, language), [audioContext, language]);
   const selectedOption = useMemo<InputSourceOption>(() => {
     return inputOptions.find((item) => item.source === selectedInputSource) || inputOptions[0];
@@ -1330,6 +1902,22 @@ export function RealtimeStudio() {
   );
   const timelineScrollableSelectedLeft =
     selectedTimelineOrderedIndex >= 0 ? 6 + selectedTimelineOrderedIndex * timelineScrollStep : null;
+  const replayNodes = orderedTimelineNodes;
+  const activeReplayNode = replayMode ? replayNodes[replayIndex] ?? null : null;
+  const replaySnapshotLoaded = Boolean(
+    replayMode &&
+      activeReplayNode &&
+      rollbackPreview?.snapshot_id === activeReplayNode.snapshot_id,
+  );
+  const replayTurns =
+    replaySnapshotLoaded && Array.isArray(rollbackPreview?.turns) ? rollbackPreview.turns : [];
+  const replayCurrentTurn = replayTurns[replayTurns.length - 1] ?? null;
+  const replayPipeline =
+    replaySnapshotLoaded && rollbackPreview?.pipeline && typeof rollbackPreview.pipeline === "object"
+      ? (rollbackPreview.pipeline as Record<string, any>)
+      : null;
+  const replayGateState = readPipelineRecord(replayPipeline, "gate_state");
+  const replayPlannerState = readPipelineRecord(replayPipeline, "planner_state");
   const rollbackPreviewMermaidCode = useMemo(() => {
     if (!rollbackPreview?.pipeline || typeof rollbackPreview.pipeline !== "object") return "";
     const mermaidState = rollbackPreview.pipeline.mermaid_state;
@@ -1372,6 +1960,53 @@ export function RealtimeStudio() {
   }, [currentSessionId, selectedTimelineSnapshotId, timelineNodes]);
 
   useEffect(() => {
+    if (!replayMode) return;
+    if (!replayNodes.length) {
+      setReplayPlaying(false);
+      setReplayIndex(0);
+      return;
+    }
+    setReplayIndex((index) => Math.min(Math.max(index, 0), replayNodes.length - 1));
+  }, [replayMode, replayNodes.length]);
+
+  useEffect(() => {
+    if (!replayMode) return;
+    const node = replayNodes[replayIndex];
+    if (!node) return;
+    if (selectedTimelineSnapshotId !== node.snapshot_id) {
+      setSelectedTimelineSnapshotId(node.snapshot_id);
+      setAutoFollowLatestTimelineNode(false);
+    }
+  }, [replayIndex, replayMode, replayNodes, selectedTimelineSnapshotId]);
+
+  useEffect(() => {
+    if (!replayMode || !replayPlaying || !replayNodes.length) return;
+    if (!activeReplayNode) {
+      setReplayPlaying(false);
+      return;
+    }
+    if (!replaySnapshotLoaded && selectedTimelineSnapshotId === activeReplayNode.snapshot_id) return;
+
+    const timer = window.setTimeout(() => {
+      setReplayIndex((index) => {
+        if (index >= replayNodes.length - 1) {
+          setReplayPlaying(false);
+          return index;
+        }
+        return index + 1;
+      });
+    }, 1600);
+    return () => window.clearTimeout(timer);
+  }, [
+    activeReplayNode,
+    replayMode,
+    replayNodes.length,
+    replayPlaying,
+    replaySnapshotLoaded,
+    selectedTimelineSnapshotId,
+  ]);
+
+  useEffect(() => {
     const target = timelineScrollViewportRef.current;
     if (!target) return;
     const update = () => setTimelineViewportWidth(target.clientWidth);
@@ -1390,6 +2025,44 @@ export function RealtimeStudio() {
     target.addEventListener("scroll", onScroll, { passive: true });
     return () => target.removeEventListener("scroll", onScroll);
   }, [isTimelineScrollable]);
+
+  const handleTimelineNodeSelect = (node: RealtimeTimelineNode) => {
+    setSelectedTimelineSnapshotId(node.snapshot_id);
+    setAutoFollowLatestTimelineNode(!replayMode && node.snapshot_id === timelineNodes[0]?.snapshot_id);
+    if (replayMode) {
+      const nextIndex = replayNodes.findIndex((item) => item.snapshot_id === node.snapshot_id);
+      if (nextIndex >= 0) setReplayIndex(nextIndex);
+      setReplayPlaying(false);
+    }
+  };
+
+  const toggleReplayPlayback = () => {
+    if (!replayNodes.length) return;
+    setStageTab("mermaid");
+    if (replayMode && replayPlaying) {
+      setReplayPlaying(false);
+      return;
+    }
+    setReplayMode(true);
+    setReplayIndex((index) => {
+      if (replayMode) {
+        const clamped = Math.min(Math.max(index, 0), replayNodes.length - 1);
+        return clamped >= replayNodes.length - 1 ? 0 : clamped;
+      }
+      if (autoFollowLatestTimelineNode) return 0;
+      const selectedIndex = replayNodes.findIndex((node) => node.snapshot_id === selectedTimelineSnapshotId);
+      return selectedIndex >= 0 ? selectedIndex : 0;
+    });
+    setReplayPlaying(true);
+  };
+
+  const stepReplay = (direction: -1 | 1) => {
+    if (!replayNodes.length) return;
+    setStageTab("mermaid");
+    setReplayMode(true);
+    setReplayPlaying(false);
+    setReplayIndex((index) => Math.min(Math.max(index + direction, 0), replayNodes.length - 1));
+  };
 
   useEffect(() => {
     if (!effectiveError) return;
@@ -3069,6 +3742,41 @@ export function RealtimeStudio() {
   );
   const activeTranscriptTurn = transcriptDisplayState.activeTurn;
   const archivedTranscriptTurns = transcriptDisplayState.archivedTurns;
+  const graphEventEvidenceTurns = useMemo(
+    () => buildGraphEventEvidenceTurns(events, timelineNodes),
+    [events, timelineNodes],
+  );
+  const recentGraphEvidenceTurns = useMemo(
+    () => buildRecentTranscriptEvidenceTurns(transcriptDisplayState, timelineNodes),
+    [timelineNodes, transcriptDisplayState],
+  );
+  const graphEvidenceTarget = useMemo(
+    () =>
+      buildGraphEvidenceTarget({
+        selection: selectedGraphEvidence,
+        eventTurns: graphEventEvidenceTurns,
+        recentTurns: recentGraphEvidenceTurns,
+        timelineNodes,
+      }),
+    [graphEventEvidenceTurns, recentGraphEvidenceTurns, selectedGraphEvidence, timelineNodes],
+  );
+  const handleEvidenceTimelineJump = (snapshotId: string) => {
+    if (!snapshotId) return;
+    setSelectedTimelineSnapshotId(snapshotId);
+    setAutoFollowLatestTimelineNode(!replayMode && snapshotId === timelineNodes[0]?.snapshot_id);
+    if (replayMode) {
+      const nextIndex = replayNodes.findIndex((node) => node.snapshot_id === snapshotId);
+      if (nextIndex >= 0) setReplayIndex(nextIndex);
+      setReplayPlaying(false);
+    }
+    window.requestAnimationFrame(() => {
+      const index = orderedTimelineNodes.findIndex((node) => node.snapshot_id === snapshotId);
+      const viewport = timelineScrollViewportRef.current;
+      if (!viewport || index < 0) return;
+      const targetLeft = Math.max(0, 6 + index * timelineScrollStep - viewport.clientWidth / 2);
+      viewport.scrollTo({ left: targetLeft, behavior: "smooth" });
+    });
+  };
   const previewArchivedTranscriptTurns = useMemo(() => {
     if (selectedInputSource !== "transcript") return archivedTranscriptTurns;
     const rows = parseTranscriptInput(transcriptText).filter((row) => row.text.trim());
@@ -4559,6 +5267,8 @@ export function RealtimeStudio() {
                   graphPayload={currentGraphPayload}
                   onNodeRelayout={handleMermaidNodeRelayout}
                   relayoutBusy={relayoutMutation.isPending}
+                  onEvidenceSelect={setSelectedGraphEvidence}
+                  activeEvidenceTarget={selectedGraphEvidence}
                   exportRootId={mermaidExportRootId}
                   annotationsEnabled={annotationsEnabled}
                   annotationsTool={annotationsTool}
@@ -4571,6 +5281,26 @@ export function RealtimeStudio() {
                   annotationsDoc={mermaidAnnotationsDoc}
                   onAnnotationsChange={onMermaidAnnotationsChange}
                   panZoomControlsOffsetTop={activeAnnotationPanel ? 72 : 12}
+                />
+                <GraphEvidencePanel
+                  target={graphEvidenceTarget}
+                  tr={tr}
+                  currentDateLocale={currentDateLocale}
+                  onClose={() => setSelectedGraphEvidence(null)}
+                  onJumpToTimeline={handleEvidenceTimelineJump}
+                />
+                <ReplayStatusPanel
+                  active={replayMode}
+                  playing={replayPlaying}
+                  currentIndex={replayIndex}
+                  total={replayNodes.length}
+                  node={activeReplayNode}
+                  turn={replayCurrentTurn}
+                  gateState={replayGateState}
+                  plannerState={replayPlannerState}
+                  loaded={replaySnapshotLoaded}
+                  tr={tr}
+                  currentDateLocale={currentDateLocale}
                 />
               </div>
             </Tabs.Content>
@@ -4622,7 +5352,7 @@ export function RealtimeStudio() {
                             <button
                               key={node.snapshot_id}
                               type="button"
-                              onClick={() => setSelectedTimelineSnapshotId(node.snapshot_id)}
+                              onClick={() => handleTimelineNodeSelect(node)}
                               className={`w-full rounded-lg border px-3 py-2 text-left transition ${
                                 active
                                   ? "border-[color:var(--accent)] bg-[color:var(--accent)]/[0.08]"
@@ -4765,10 +5495,58 @@ export function RealtimeStudio() {
             <div className="relative z-0 shrink-0 translate-y-3.5 border-t border-theme-subtle px-4 py-1.5">
               <div className="px-1 py-0.5">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-[11px] font-semibold text-theme-1">
-                    {tr("realtimeStudio.text126")}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="text-[11px] font-semibold text-theme-1">
+                      {tr("realtimeStudio.text126")}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-theme-default bg-surface-1 text-theme-2 disabled:cursor-not-allowed disabled:opacity-45 hover:bg-surface-muted"
+                        onClick={() => stepReplay(-1)}
+                        disabled={!replayNodes.length || (replayMode && replayIndex <= 0)}
+                        aria-label={tr("realtimeStudio.replay.previous")}
+                        title={tr("realtimeStudio.replay.previous")}
+                      >
+                        <SkipBack className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        className={`inline-flex h-6 items-center justify-center gap-1.5 rounded-md border px-2 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                          replayPlaying
+                            ? "border-[color:var(--accent)] bg-[color:var(--accent)]/15 text-theme-1"
+                            : "border-theme-default bg-surface-1 text-theme-2 hover:bg-surface-muted"
+                        }`}
+                        onClick={toggleReplayPlayback}
+                        disabled={!replayNodes.length}
+                        aria-label={
+                          replayPlaying ? tr("realtimeStudio.replay.pause") : tr("realtimeStudio.replay.play")
+                        }
+                        title={replayPlaying ? tr("realtimeStudio.replay.pause") : tr("realtimeStudio.replay.play")}
+                      >
+                        {replayPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                        <span>{replayPlaying ? tr("realtimeStudio.replay.pause") : tr("realtimeStudio.replay.play")}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-theme-default bg-surface-1 text-theme-2 disabled:cursor-not-allowed disabled:opacity-45 hover:bg-surface-muted"
+                        onClick={() => stepReplay(1)}
+                        disabled={!replayNodes.length || (replayMode && replayIndex >= replayNodes.length - 1)}
+                        aria-label={tr("realtimeStudio.replay.next")}
+                        title={tr("realtimeStudio.replay.next")}
+                      >
+                        <SkipForward className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-[10px] text-theme-4">{orderedTimelineNodes.length} snapshots</div>
+                  <div className="text-[10px] text-theme-4">
+                    {replayMode
+                      ? tr("realtimeStudio.replay.snapshotProgress", {
+                          current: replayNodes.length ? replayIndex + 1 : 0,
+                          total: replayNodes.length,
+                        })
+                      : `${orderedTimelineNodes.length} snapshots`}
+                  </div>
                 </div>
                 {isTimelineScrollable ? (
                   <div className="mt-1.5">
@@ -4795,10 +5573,7 @@ export function RealtimeStudio() {
                                     key={node.snapshot_id}
                                     type="button"
                                     title={nodeName}
-                                    onClick={() => {
-                                      setSelectedTimelineSnapshotId(node.snapshot_id);
-                                      setAutoFollowLatestTimelineNode(node.snapshot_id === timelineNodes[0]?.snapshot_id);
-                                    }}
+                                    onClick={() => handleTimelineNodeSelect(node)}
                                   onMouseEnter={(e) => {
                                     const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
                                     setTimelineHoverTooltip({
@@ -4933,10 +5708,7 @@ export function RealtimeStudio() {
                               key={node.snapshot_id}
                               type="button"
                               title={nodeName}
-                              onClick={() => {
-                                setSelectedTimelineSnapshotId(node.snapshot_id);
-                                setAutoFollowLatestTimelineNode(node.snapshot_id === timelineNodes[0]?.snapshot_id);
-                              }}
+                              onClick={() => handleTimelineNodeSelect(node)}
                               onMouseEnter={(e) => {
                                 const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
                                 setTimelineHoverTooltip({
