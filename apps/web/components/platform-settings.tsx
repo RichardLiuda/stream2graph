@@ -13,10 +13,10 @@ import { ApiError, api } from "@/lib/api";
 import { decodeAudioFileToVoiceprintPayload } from "@/lib/audio";
 import {
   LANGUAGE_OPTIONS,
-  languageText,
+  translate,
   useLanguagePreference,
+  type I18nKey,
   type LanguagePreference,
-  type LocalizedText,
 } from "@/lib/language";
 import { loadRuntimePreferences, resolveRuntimePreferences, saveRuntimePreferences } from "@/lib/runtime-preferences";
 import { RealtimeDefaultConfig } from "@/components/realtime-default-config";
@@ -55,25 +55,25 @@ type ProfileDraft = {
 const DEFAULT_COMPAT_BASE = "";
 const DEFAULT_XFYUN_ASR_ENDPOINT = "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1";
 const DEFAULT_XFYUN_ASR_MODELS = ["rtasr_llm"];
-const MODEL_PROVIDER_KIND_OPTIONS: Array<{ value: ProviderKind; label: string }> = [
-  { value: "openai_compatible", label: "兼容接口（国内网关/厂商）" },
-  { value: "xfyun_asr", label: "讯飞 RTASR LLM" },
+const MODEL_PROVIDER_KIND_OPTIONS: Array<{ value: ProviderKind; labelKey: I18nKey }> = [
+  { value: "openai_compatible", labelKey: "platformSettings.modelProvider.openaiCompatible" },
+  { value: "xfyun_asr", labelKey: "platformSettings.modelProvider.xfyunRtasrLlm" },
 ];
 const DEFAULT_VOICEPRINT_BASE = "https://office-api-personal-dx.iflyaisol.com";
 const ENDPOINT_ROUTE_OPTIONS: Record<
   "gate" | "planner" | "stt",
-  Array<{ value: EndpointRouteMode; label: string; path: string }>
+  Array<{ value: EndpointRouteMode; label?: string; labelKey?: I18nKey; path: string }>
 > = {
   gate: [
     { value: "chat_completions", label: "/v1/chat/completions", path: "/v1/chat/completions" },
-    { value: "custom", label: "自定义路径", path: "" },
+    { value: "custom", labelKey: "platformSettings.endpointRoute.customPath", path: "" },
   ],
   planner: [
     { value: "chat_completions", label: "/v1/chat/completions", path: "/v1/chat/completions" },
-    { value: "custom", label: "自定义路径", path: "" },
+    { value: "custom", labelKey: "platformSettings.endpointRoute.customPath", path: "" },
   ],
   stt: [
-    { value: "custom", label: "讯飞固定地址", path: "" },
+    { value: "custom", labelKey: "platformSettings.endpointRoute.xfyunFixedAddress", path: "" },
   ],
 };
 
@@ -81,8 +81,8 @@ function selectClassName(disabled = false) {
   return `select-control ${disabled ? "cursor-not-allowed opacity-55" : ""}`;
 }
 
-function t(language: LanguagePreference, copy: LocalizedText) {
-  return languageText(language, copy);
+function t(language: LanguagePreference, key: I18nKey, params?: Record<string, string | number>) {
+  return translate(language, key, params);
 }
 
 function blankProfile(prefix: "gate" | "planner" | "stt", index: number): ProfileDraft {
@@ -272,46 +272,18 @@ function summarizeDefaults(
   diagramMode: "mermaid_primary" | "dual_view",
   language: LanguagePreference,
 ) {
-  const notConfigured = t(language, {
-    zh: "未配置",
-    en: "Not configured",
-    es: "No configurado",
-    pt: "Não configurado",
-    de: "Nicht konfiguriert",
-    ja: "未設定",
-  });
-  const noModel = t(language, {
-    zh: "未选择模型",
-    en: "No model selected",
-    es: "Sin modelo seleccionado",
-    pt: "Nenhum modelo selecionado",
-    de: "Kein Modell ausgewählt",
-    ja: "モデル未選択",
-  });
+  const notConfigured = t(language, "realtimeDefaultConfig.text012");
+  const noModel = t(language, "realtimeDefaultConfig.text011");
   return [
     { label: "Gate", value: gateLabel ? `${gateLabel} / ${gateModel || noModel}` : notConfigured },
     { label: "Planner", value: plannerLabel ? `${plannerLabel} / ${plannerModel || noModel}` : notConfigured },
     { label: "STT", value: sttLabel ? `${sttLabel} / ${sttModel || noModel}` : notConfigured },
     {
-      label: t(language, { zh: "视图", en: "View", es: "Vista", pt: "Visualização", de: "Ansicht", ja: "表示" }),
+      label: t(language, "platformSettings.text001"),
       value:
         diagramMode === "dual_view"
-          ? t(language, {
-              zh: "Mermaid + 结构视图",
-              en: "Mermaid + Structure View",
-              es: "Mermaid + vista estructural",
-              pt: "Mermaid + visualização estrutural",
-              de: "Mermaid + Strukturansicht",
-              ja: "Mermaid + 構造ビュー",
-            })
-          : t(language, {
-              zh: "Mermaid 主视图",
-              en: "Mermaid Main View",
-              es: "Vista principal Mermaid",
-              pt: "Vista principal Mermaid",
-              de: "Mermaid-Hauptansicht",
-              ja: "Mermaid メインビュー",
-            }),
+          ? t(language, "platformSettings.text002")
+          : t(language, "platformSettings.text003"),
     },
   ];
 }
@@ -319,7 +291,7 @@ function summarizeDefaults(
 export function PlatformSettings() {
   const queryClient = useQueryClient();
   const [language, setLanguage] = useLanguagePreference();
-  const tr = (copy: LocalizedText) => t(language, copy);
+  const tr = (key: I18nKey, params?: Record<string, string | number>) => t(language, key, params);
   const authQuery = useQuery({
     queryKey: ["auth", "me"],
     queryFn: api.me,
@@ -513,7 +485,12 @@ export function PlatformSettings() {
         modelsText,
         defaultModel: result.models.includes(current.defaultModel) ? current.defaultModel : result.models[0] || "",
       }));
-      setProbeFeedback(`已探测到 ${result.models.length} 个模型，来源：${result.models_endpoint}`);
+      setProbeFeedback(
+        tr("platformSettings.feedback.modelsProbed", {
+          count: result.models.length,
+          endpoint: result.models_endpoint,
+        }),
+      );
     },
     onError: (error) => {
       setProbeFeedback((error as Error).message);
@@ -574,7 +551,12 @@ export function PlatformSettings() {
         group_info: managedVoiceprintProfile?.label || voiceprintProfileId,
       }),
     onSuccess: (payload) => {
-      setVoiceprintFeedback(`已同步声纹组 ${payload.group.group_id}，远端特征数 ${payload.remote_features.length}。`);
+      setVoiceprintFeedback(
+        tr("platformSettings.voiceprint.groupSynced", {
+          groupId: payload.group.group_id,
+          count: payload.remote_features.length,
+        }),
+      );
       queryClient.invalidateQueries({ queryKey: ["voiceprint-features", voiceprintProfileId] });
     },
     onError: (error) => setVoiceprintFeedback((error as Error).message),
@@ -583,10 +565,10 @@ export function PlatformSettings() {
   const createVoiceprintFeatureMutation = useMutation({
     mutationFn: async () => {
       if (!enrollmentFile) {
-        throw new Error("请先选择一段说话人样本音频。");
+        throw new Error(tr("platformSettings.voiceprint.selectSampleError"));
       }
       if (!speakerLabel.trim()) {
-        throw new Error("请填写说话人标签。");
+        throw new Error(tr("platformSettings.voiceprint.speakerRequiredError"));
       }
       const audioPayload = await decodeAudioFileToVoiceprintPayload(enrollmentFile);
       return api.createVoiceprintFeature(voiceprintProfileId, {
@@ -596,7 +578,7 @@ export function PlatformSettings() {
       });
     },
     onSuccess: () => {
-      setVoiceprintFeedback(`已为 ${speakerLabel.trim()} 注册声纹特征。`);
+      setVoiceprintFeedback(tr("platformSettings.voiceprint.featureRegistered", { speaker: speakerLabel.trim() }));
       setSpeakerLabel("");
       setFeatureInfo("");
       setEnrollmentFile(null);
@@ -608,7 +590,7 @@ export function PlatformSettings() {
   const deleteVoiceprintFeatureMutation = useMutation({
     mutationFn: (featureId: string) => api.deleteVoiceprintFeature(voiceprintProfileId, featureId),
     onSuccess: () => {
-      setVoiceprintFeedback("已删除声纹特征。");
+      setVoiceprintFeedback(tr("platformSettings.voiceprint.featureDeleted"));
       queryClient.invalidateQueries({ queryKey: ["voiceprint-features", voiceprintProfileId] });
     },
     onError: (error) => setVoiceprintFeedback((error as Error).message),
@@ -660,18 +642,11 @@ export function PlatformSettings() {
       {/* pr：与实时页「历史会话」同档，并为固定主题按钮留空 */}
       <div className="flex flex-wrap items-center justify-between gap-3 pr-12 sm:pr-14">
         <h1 className="page-title page-title--menu-clearance">
-          {tr({ zh: "设置", en: "Settings", es: "Ajustes", pt: "Configurações", de: "Einstellungen", ja: "設定" })}
+          {tr("platformSettings.text004")}
         </h1>
         <Link href="/app/realtime" className="shrink-0">
           <Button variant="secondary">
-            {tr({
-              zh: "返回实时工作",
-              en: "Back to Realtime",
-              es: "Volver a tiempo real",
-              pt: "Voltar ao tempo real",
-              de: "Zur Echtzeit zurück",
-              ja: "リアルタイムへ戻る",
-            })}
+            {tr("platformSettings.text005")}
             <ArrowRight className="h-4 w-4" />
           </Button>
         </Link>
@@ -685,23 +660,16 @@ export function PlatformSettings() {
             </div>
             <div>
               <div className="text-base font-semibold text-theme-1">
-                {tr({ zh: "界面语言", en: "Language", es: "Idioma", pt: "Idioma", de: "Sprache", ja: "言語" })}
+                {tr("platformSettings.text006")}
               </div>
               <p className="mt-2 text-sm leading-6 text-theme-4">
-                {tr({
-                  zh: "选择当前浏览器的界面语言。实时工作台与设置页会立即切换。",
-                  en: "Choose the interface language for this browser. Realtime workbench and settings update immediately.",
-                  es: "Elige el idioma de la interfaz para este navegador. El banco de trabajo en tiempo real y los ajustes se actualizan al instante.",
-                  pt: "Escolha o idioma da interface para este navegador. O ambiente em tempo real e as configurações são atualizados imediatamente.",
-                  de: "Wähle die Oberflächensprache für diesen Browser. Echtzeit-Arbeitsfläche und Einstellungen werden sofort aktualisiert.",
-                  ja: "このブラウザの表示言語を選択します。リアルタイム作業台と設定はすぐに切り替わります。",
-                })}
+                {tr("platformSettings.text007")}
               </p>
             </div>
           </div>
           <div className="w-full max-w-xs">
             <label className="sr-only" htmlFor="s2g-language-select">
-              {tr({ zh: "界面语言", en: "Language", es: "Idioma", pt: "Idioma", de: "Sprache", ja: "言語" })}
+              {tr("platformSettings.text006")}
             </label>
             <select
               id="s2g-language-select"
@@ -725,33 +693,19 @@ export function PlatformSettings() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="text-base font-semibold text-theme-1">
-              {tr({
-                zh: "服务端模型配置",
-                en: "Server Model Configuration",
-                es: "Configuración de modelos del servidor",
-                pt: "Configuração de modelos do servidor",
-                de: "Server-Modellkonfiguration",
-                ja: "サーバーモデル設定",
-              })}
+              {tr("platformSettings.text008")}
             </div>
             <p className="mt-2 text-sm leading-6 text-theme-4">
-              {tr({
-                zh: "保存后直接写入服务端。实时工作与样本页都会用这里的 Gate、Planner 和听写服务。",
-                en: "Changes are written to the server. Realtime and sample pages use the Gate, Planner, and STT services configured here.",
-                es: "Los cambios se escriben en el servidor. Las páginas de tiempo real y muestras usan aquí Gate, Planner y STT.",
-                pt: "As alterações são gravadas no servidor. As páginas em tempo real e de amostras usam Gate, Planner e STT configurados aqui.",
-                de: "Änderungen werden auf den Server geschrieben. Echtzeit- und Beispielseiten nutzen die hier konfigurierten Gate-, Planner- und STT-Dienste.",
-                ja: "保存後はサーバーへ直接書き込まれます。リアルタイム画面とサンプル画面はここで設定した Gate、Planner、STT を使用します。",
-              })}
+              {tr("platformSettings.text009")}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <Badge>
               {!adminReady
-                ? tr({ zh: "身份确认中", en: "Checking identity", es: "Verificando identidad", pt: "Verificando identidade", de: "Identität wird geprüft", ja: "認証確認中" })
+                ? tr("platformSettings.text010")
                 : adminRuntimeOptions.isFetching
-                  ? tr({ zh: "读取中", en: "Loading", es: "Cargando", pt: "Carregando", de: "Lädt", ja: "読み込み中" })
-                  : tr({ zh: "服务端持久化", en: "Server persisted", es: "Persistido en servidor", pt: "Persistido no servidor", de: "Serverseitig gespeichert", ja: "サーバー保存済み" })}
+                  ? tr("platformSettings.text011")
+                  : tr("platformSettings.text012")}
             </Badge>
             <Button
               onClick={() => saveProfilesMutation.mutate()}
@@ -759,34 +713,27 @@ export function PlatformSettings() {
             >
               <Save className="h-4 w-4" />
               {saveProfilesMutation.isPending
-                ? tr({ zh: "保存中...", en: "Saving...", es: "Guardando...", pt: "Salvando...", de: "Speichert...", ja: "保存中..." })
-                : tr({ zh: "保存服务端配置", en: "Save Server Config", es: "Guardar config. del servidor", pt: "Salvar config. do servidor", de: "Serverkonfiguration speichern", ja: "サーバー設定を保存" })}
+                ? tr("platformSettings.text013")
+                : tr("platformSettings.text014")}
             </Button>
           </div>
         </div>
 
         {authQuery.isLoading ? (
           <div className="rounded-lg border border-theme-subtle bg-surface-muted px-4 py-3 text-sm text-theme-4">
-            {tr({ zh: "正在确认管理员登录状态…", en: "Checking admin sign-in...", es: "Comprobando inicio de administrador...", pt: "Verificando login de administrador...", de: "Admin-Anmeldung wird geprüft...", ja: "管理者ログインを確認中..." })}
+            {tr("platformSettings.text015")}
           </div>
         ) : null}
         {adminLoggedOut ? (
           <div className="rounded-lg border border-amber-800/60 bg-amber-950/35 px-4 py-3 text-sm leading-relaxed text-amber-100">
             <p>
-              {tr({
-                zh: "当前还没有管理员登录，无法读写服务端模型配置。",
-                en: "No admin is signed in, so server model configuration cannot be read or written.",
-                es: "No hay administrador conectado, por lo que no se puede leer ni escribir la configuración.",
-                pt: "Nenhum administrador está conectado, então a configuração não pode ser lida nem gravada.",
-                de: "Es ist kein Admin angemeldet; die Servermodell-Konfiguration kann nicht gelesen oder geschrieben werden.",
-                ja: "管理者がログインしていないため、サーバーモデル設定を読み書きできません。",
-              })}
+              {tr("platformSettings.text016")}
             </p>
             <Link
               href="/login"
               className="mt-2 inline-flex items-center gap-1 font-medium text-amber-200 underline underline-offset-4 theme-light:text-amber-900 hover:text-theme-1"
             >
-              {tr({ zh: "前往管理员登录", en: "Go to Admin Login", es: "Ir al inicio de administrador", pt: "Ir para login de administrador", de: "Zur Admin-Anmeldung", ja: "管理者ログインへ" })}
+              {tr("platformSettings.text017")}
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -798,7 +745,7 @@ export function PlatformSettings() {
         ) : null}
         {!adminReady && authQuery.isSuccess && !adminLoggedOut ? (
           <div className="rounded-lg border border-theme-subtle bg-surface-muted px-4 py-3 text-sm text-theme-4">
-            {tr({ zh: "正在启用服务端配置…", en: "Enabling server configuration...", es: "Activando configuración del servidor...", pt: "Ativando configuração do servidor...", de: "Serverkonfiguration wird aktiviert...", ja: "サーバー設定を有効化中..." })}
+            {tr("platformSettings.text018")}
           </div>
         ) : null}
 
@@ -817,17 +764,17 @@ export function PlatformSettings() {
           {[
             {
               kind: "gate" as const,
-              title: tr({ zh: "Gate 配置", en: "Gate Config", es: "Config. Gate", pt: "Config. Gate", de: "Gate-Konfiguration", ja: "Gate 設定" }),
+              title: tr("platformSettings.text019"),
               drafts: gateDrafts,
             },
             {
               kind: "planner" as const,
-              title: tr({ zh: "Planner 配置", en: "Planner Config", es: "Config. Planner", pt: "Config. Planner", de: "Planner-Konfiguration", ja: "Planner 設定" }),
+              title: tr("platformSettings.text020"),
               drafts: plannerDrafts,
             },
             {
               kind: "stt" as const,
-              title: tr({ zh: "听写服务配置", en: "STT Service Config", es: "Config. servicio STT", pt: "Config. serviço STT", de: "STT-Dienstkonfiguration", ja: "STT サービス設定" }),
+              title: tr("platformSettings.text021"),
               drafts: sttDrafts,
             },
           ].map((group) => (
@@ -836,7 +783,7 @@ export function PlatformSettings() {
                 <div className="text-sm font-semibold text-theme-2">{group.title}</div>
                 <Button variant="secondary" onClick={() => addDraft(group.kind)}>
                   <Plus className="h-4 w-4" />
-                  {tr({ zh: "添加", en: "Add", es: "Añadir", pt: "Adicionar", de: "Hinzufügen", ja: "追加" })}
+                  {tr("platformSettings.text022")}
                 </Button>
               </div>
 
@@ -879,10 +826,10 @@ export function PlatformSettings() {
                         >
                           <RefreshCcw className="h-4 w-4" />
                           {probeModelsMutation.isPending
-                            ? tr({ zh: "处理中...", en: "Processing...", es: "Procesando...", pt: "Processando...", de: "Wird verarbeitet...", ja: "処理中..." })
+                            ? tr("platformSettings.text023")
                             : isXfyunStt
-                              ? tr({ zh: "填充预设", en: "Fill Presets", es: "Rellenar preajustes", pt: "Preencher predefinições", de: "Vorgaben einfügen", ja: "プリセット入力" })
-                              : tr({ zh: "探测模型", en: "Probe Models", es: "Detectar modelos", pt: "Detectar modelos", de: "Modelle prüfen", ja: "モデル検出" })}
+                              ? tr("platformSettings.text024")
+                              : tr("platformSettings.text025")}
                         </Button>
                         <Button
                           variant="secondary"
@@ -902,12 +849,12 @@ export function PlatformSettings() {
                         >
                           <RefreshCcw className="h-4 w-4" />
                           {isTestingConnection
-                            ? tr({ zh: "测试中...", en: "Testing...", es: "Probando...", pt: "Testando...", de: "Test läuft...", ja: "テスト中..." })
-                            : tr({ zh: "测试连接", en: "Test Connection", es: "Probar conexión", pt: "Testar conexão", de: "Verbindung testen", ja: "接続テスト" })}
+                            ? tr("platformSettings.text026")
+                            : tr("platformSettings.text027")}
                         </Button>
                         <Button variant="ghost" onClick={() => removeDraft(group.kind, index)}>
                           <Trash2 className="h-4 w-4" />
-                          {tr({ zh: "删除", en: "Delete", es: "Eliminar", pt: "Excluir", de: "Löschen", ja: "削除" })}
+                          {tr("platformSettings.text028")}
                         </Button>
                       </div>
                     </div>
@@ -926,14 +873,14 @@ export function PlatformSettings() {
                           }`}
                         >
                           {connectionResult.ok
-                            ? tr({ zh: "连接测试成功", en: "Connection test succeeded", es: "Prueba de conexión correcta", pt: "Teste de conexão bem-sucedido", de: "Verbindungstest erfolgreich", ja: "接続テスト成功" })
-                            : tr({ zh: "连接测试失败", en: "Connection test failed", es: "Prueba de conexión fallida", pt: "Teste de conexão falhou", de: "Verbindungstest fehlgeschlagen", ja: "接続テスト失敗" })}
+                            ? tr("platformSettings.text029")
+                            : tr("platformSettings.text030")}
                         </div>
                         <div className="mt-1 text-sm leading-6 text-zinc-200">{connectionResult.summary}</div>
                         {connectionResult.logs.length ? (
                           <div className="mt-3 rounded-lg border border-zinc-800/80 bg-zinc-950/80 p-3">
                             <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
-                              {tr({ zh: "详细日志", en: "Detailed Logs", es: "Registros detallados", pt: "Logs detalhados", de: "Detailprotokolle", ja: "詳細ログ" })}
+                              {tr("platformSettings.text031")}
                             </div>
                             <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-6 text-zinc-300">
                               {connectionResult.logs.join("\n")}
@@ -956,14 +903,14 @@ export function PlatformSettings() {
                       </div>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-theme-2">
-                          {tr({ zh: "显示名称", en: "Display Name", es: "Nombre visible", pt: "Nome de exibição", de: "Anzeigename", ja: "表示名" })}
+                          {tr("platformSettings.text032")}
                         </label>
                         <Input variant="dark"
                           value={draft.label}
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateDraft(group.kind, index, { label: event.target.value })
                           }
-                          placeholder={tr({ zh: "例如 Domestic Primary", en: "e.g. Domestic Primary", es: "p. ej. Domestic Primary", pt: "ex.: Domestic Primary", de: "z. B. Domestic Primary", ja: "例: Domestic Primary" })}
+                          placeholder={tr("platformSettings.text033")}
                         />
                       </div>
                       {isXfyunStt ? (
@@ -979,7 +926,7 @@ export function PlatformSettings() {
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                 updateDraft(group.kind, index, { appId: event.target.value })
                               }
-                              placeholder="讯飞应用 App ID"
+                              placeholder={tr("platformSettings.voiceprint.xfyunAppIdPlaceholder")}
                             />
                           </div>
                         </>
@@ -995,7 +942,7 @@ export function PlatformSettings() {
                               placeholder={DEFAULT_COMPAT_BASE || "http://127.0.0.1:9000"}
                             />
                             <p className="text-xs leading-6 text-theme-4">
-                              填写兼容接口的基座地址（不含 `/v1`），`/v1` 之后的路径由下方选项自动补全。
+                              {tr("platformSettings.endpointBaseHelp")}
                             </p>
                           </div>
                           <div className="space-y-2">
@@ -1011,14 +958,14 @@ export function PlatformSettings() {
                             >
                               {MODEL_PROVIDER_KIND_OPTIONS.filter((option) => option.value !== "xfyun_asr").map((option) => (
                                 <option key={option.value} value={option.value}>
-                                  {option.label}
+                                  {tr(option.labelKey)}
                                 </option>
                               ))}
                             </select>
                           </div>
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-theme-2">
-                              {tr({ zh: "Endpoint 路径", en: "Endpoint Path", es: "Ruta del endpoint", pt: "Caminho do endpoint", de: "Endpoint-Pfad", ja: "Endpoint パス" })}
+                              {tr("platformSettings.text034")}
                             </label>
                             <select
                               className={selectClassName(false)}
@@ -1031,20 +978,20 @@ export function PlatformSettings() {
                             >
                               {ENDPOINT_ROUTE_OPTIONS[group.kind].map((option) => (
                                 <option key={option.value} value={option.value}>
-                                  {option.label}
+                                  {option.labelKey ? tr(option.labelKey) : option.label}
                                 </option>
                               ))}
                             </select>
                             <p className="text-xs leading-6 text-theme-4">
                               {selectedRoute?.path
-                                ? `${tr({ zh: "当前会自动补全为 ", en: "Automatically appends ", es: "Añade automáticamente ", pt: "Adiciona automaticamente ", de: "Hängt automatisch an: ", ja: "自動で追加: " })}${selectedRoute.path}`
-                                : tr({ zh: "当前使用自定义路径。", en: "Using a custom path.", es: "Usando una ruta personalizada.", pt: "Usando um caminho personalizado.", de: "Benutzerdefinierter Pfad wird verwendet.", ja: "カスタムパスを使用中です。" })}
+                                ? `${tr("platformSettings.text035")}${selectedRoute.path}`
+                                : tr("platformSettings.text036")}
                             </p>
                           </div>
                           {draft.endpointRouteMode === "custom" ? (
                             <div className="space-y-2 md:col-span-2">
                               <label className="text-sm font-medium text-theme-2">
-                                {tr({ zh: "自定义路径", en: "Custom Path", es: "Ruta personalizada", pt: "Caminho personalizado", de: "Benutzerdefinierter Pfad", ja: "カスタムパス" })}
+                                {tr("platformSettings.text037")}
                               </label>
                               <Input variant="dark"
                                 value={draft.customEndpointPath}
@@ -1059,7 +1006,7 @@ export function PlatformSettings() {
                       )}
                       <div className="space-y-2 md:col-span-2">
                         <label className="text-sm font-medium text-theme-2">
-                          {tr({ zh: "最终 Endpoint", en: "Final Endpoint", es: "Endpoint final", pt: "Endpoint final", de: "Finaler Endpoint", ja: "最終 Endpoint" })}
+                          {tr("platformSettings.text038")}
                         </label>
                         <Input variant="dark" value={resolvedEndpoint} readOnly />
                       </div>
@@ -1076,7 +1023,7 @@ export function PlatformSettings() {
                                   updateDraft(group.kind, index, { disableThinking: event.target.checked })
                                 }
                               />
-                              <span>{tr({ zh: "更快返回", en: "Return faster", es: "Responder más rápido", pt: "Retornar mais rápido", de: "Schneller zurückgeben", ja: "より速く返す" })}</span>
+                              <span>{tr("platformSettings.text039")}</span>
                             </label>
                           </div>
                         </div>
@@ -1089,7 +1036,7 @@ export function PlatformSettings() {
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateDraft(group.kind, index, { apiKey: event.target.value })
                           }
-                          placeholder={tr({ zh: "直接保存到服务端", en: "Saved directly to server", es: "Guardado directamente en el servidor", pt: "Salvo diretamente no servidor", de: "Direkt auf dem Server gespeichert", ja: "サーバーへ直接保存" })}
+                          placeholder={tr("platformSettings.text040")}
                         />
                       </div>
                       <div className="space-y-2">
@@ -1101,8 +1048,8 @@ export function PlatformSettings() {
                           }
                           placeholder={
                             isXfyunStt
-                              ? tr({ zh: "可选，例如 XFYUN_API_KEY", en: "Optional, e.g. XFYUN_API_KEY", es: "Opcional, p. ej. XFYUN_API_KEY", pt: "Opcional, ex. XFYUN_API_KEY", de: "Optional, z. B. XFYUN_API_KEY", ja: "任意、例: XFYUN_API_KEY" })
-                              : tr({ zh: "可选，例如 S2G_DOMESTIC_LLM_API_KEY", en: "Optional, e.g. S2G_DOMESTIC_LLM_API_KEY", es: "Opcional, p. ej. S2G_DOMESTIC_LLM_API_KEY", pt: "Opcional, ex. S2G_DOMESTIC_LLM_API_KEY", de: "Optional, z. B. S2G_DOMESTIC_LLM_API_KEY", ja: "任意、例: S2G_DOMESTIC_LLM_API_KEY" })
+                              ? tr("platformSettings.text041")
+                              : tr("platformSettings.text042")
                           }
                         />
                       </div>
@@ -1116,7 +1063,7 @@ export function PlatformSettings() {
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                 updateDraft(group.kind, index, { apiSecret: event.target.value })
                               }
-                              placeholder={tr({ zh: "讯飞 API Secret", en: "XFYUN API Secret", es: "API Secret de XFYUN", pt: "API Secret da XFYUN", de: "XFYUN API Secret", ja: "XFYUN API Secret" })}
+                              placeholder={tr("platformSettings.text043")}
                             />
                           </div>
                           <div className="space-y-2">
@@ -1126,7 +1073,7 @@ export function PlatformSettings() {
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                 updateDraft(group.kind, index, { apiSecretEnv: event.target.value })
                               }
-                              placeholder={tr({ zh: "可选，例如 XFYUN_API_SECRET", en: "Optional, e.g. XFYUN_API_SECRET", es: "Opcional, p. ej. XFYUN_API_SECRET", pt: "Opcional, ex.: XFYUN_API_SECRET", de: "Optional, z. B. XFYUN_API_SECRET", ja: "任意、例: XFYUN_API_SECRET" })}
+                              placeholder={tr("platformSettings.text044")}
                             />
                           </div>
                         </>
@@ -1134,7 +1081,7 @@ export function PlatformSettings() {
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-theme-2">
                           {isXfyunStt
-                            ? tr({ zh: "默认识别域", en: "Default Recognition Domain", es: "Dominio de reconocimiento predeterminado", pt: "Domínio de reconhecimento padrão", de: "Standard-Erkennungsdomain", ja: "既定認識ドメイン" })
+                            ? tr("platformSettings.text045")
                             : "Default Model"}
                         </label>
                         <select
@@ -1153,7 +1100,7 @@ export function PlatformSettings() {
                             ))
                           ) : (
                             <option value="">
-                              {tr({ zh: "先填写或探测模型列表", en: "Fill or probe models first", es: "Rellena o detecta modelos primero", pt: "Preencha ou detecte modelos primeiro", de: "Zuerst Modelle eintragen oder prüfen", ja: "先にモデルを入力または検出" })}
+                              {tr("platformSettings.text046")}
                             </option>
                           )}
                         </select>
@@ -1161,8 +1108,8 @@ export function PlatformSettings() {
                       <div className="space-y-2 md:col-span-2">
                         <label className="text-sm font-medium text-theme-2">
                           {isXfyunStt
-                            ? tr({ zh: "识别域列表", en: "Recognition Domains", es: "Dominios de reconocimiento", pt: "Domínios de reconhecimento", de: "Erkennungsdomains", ja: "認識ドメイン一覧" })
-                            : tr({ zh: "模型列表", en: "Model List", es: "Lista de modelos", pt: "Lista de modelos", de: "Modellliste", ja: "モデル一覧" })}
+                            ? tr("platformSettings.text047")
+                            : tr("platformSettings.text048")}
                         </label>
                         <Textarea variant="dark"
                           rows={4}
@@ -1170,26 +1117,12 @@ export function PlatformSettings() {
                           onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
                             updateDraft(group.kind, index, { modelsText: event.target.value })
                           }
-                          placeholder={tr({ zh: "每行一个模型，或用逗号分隔", en: "One model per line, or comma separated", es: "Un modelo por línea o separado por comas", pt: "Um modelo por linha ou separado por vírgulas", de: "Ein Modell pro Zeile oder kommagetrennt", ja: "1行に1モデル、またはカンマ区切り" })}
+                          placeholder={tr("platformSettings.text049")}
                         />
                         <p className="text-xs leading-6 text-theme-4">
                           {isXfyunStt
-                            ? tr({
-                                zh: "默认内置讯飞听写识别域，可直接保存，也可以点“填充预设”恢复默认列表。",
-                                en: "The default XFYUN recognition domain is built in. Save directly or restore defaults with Fill Presets.",
-                                es: "El dominio de reconocimiento XFYUN predeterminado está incluido. Guarda directamente o restaura con Rellenar preajustes.",
-                                pt: "O domínio de reconhecimento XFYUN padrão já vem incluído. Salve diretamente ou restaure com Preencher predefinições.",
-                                de: "Die standardmäßige XFYUN-Erkennungsdomain ist integriert. Direkt speichern oder mit Vorgaben einfügen wiederherstellen.",
-                                ja: "既定の XFYUN 認識ドメインが組み込まれています。そのまま保存するか、プリセット入力で復元できます。",
-                              })
-                            : tr({
-                                zh: "可以手动填写，也可以先填好 Endpoint 和 API Key，再点“探测模型”自动回填。",
-                                en: "Enter models manually, or fill Endpoint and API Key then use Probe Models to backfill automatically.",
-                                es: "Introduce modelos manualmente o completa Endpoint y API Key, y usa Detectar modelos para rellenar automáticamente.",
-                                pt: "Insira modelos manualmente ou preencha Endpoint e API Key e use Detectar modelos para preencher automaticamente.",
-                                de: "Modelle manuell eingeben oder Endpoint und API Key ausfüllen und Modelle prüfen zum automatischen Befüllen nutzen.",
-                                ja: "モデルを手入力するか、Endpoint と API Key を入力してからモデル検出で自動補完できます。",
-                              })}
+                            ? tr("platformSettings.text050")
+                            : tr("platformSettings.text051")}
                         </p>
                       </div>
                       {group.kind === "stt" ? (
@@ -1197,17 +1130,10 @@ export function PlatformSettings() {
                           <div className="flex items-center justify-between gap-3">
                             <div>
                               <div className="text-sm font-semibold text-theme-1">
-                                {tr({ zh: "角色分离 / 声纹增强", en: "Speaker Separation / Voiceprint", es: "Separación de hablantes / huella de voz", pt: "Separação de falantes / voz", de: "Sprechertrennung / Stimmabdruck", ja: "話者分離 / 声紋" })}
+                                {tr("platformSettings.text052")}
                               </div>
                               <p className="mt-1 text-xs leading-6 text-theme-4">
-                                {tr({
-                                  zh: "RTASR 会优先开启角色分离；若已注册声纹特征，会自动写入 `feature_ids` 做声纹分离。",
-                                  en: "RTASR prefers speaker separation. Registered voiceprint features are sent as feature_ids.",
-                                  es: "RTASR prioriza la separación de hablantes. Las huellas registradas se envían como feature_ids.",
-                                  pt: "RTASR prioriza a separação de falantes. Recursos de voz registrados são enviados como feature_ids.",
-                                  de: "RTASR bevorzugt Sprechertrennung. Registrierte Stimmabdruck-Merkmale werden als feature_ids gesendet.",
-                                  ja: "RTASR は話者分離を優先します。登録済みの声紋特徴は feature_ids として送信されます。",
-                                })}
+                                {tr("platformSettings.text053")}
                               </p>
                             </div>
                             <label className="flex items-center gap-2 text-sm font-medium text-theme-2">
@@ -1220,28 +1146,14 @@ export function PlatformSettings() {
                                   })
                                 }
                               />
-                              {tr({ zh: "启用", en: "Enable", es: "Activar", pt: "Ativar", de: "Aktivieren", ja: "有効化" })}
+                              {tr("platformSettings.text054")}
                             </label>
                           </div>
                           <div className="rounded-[18px] border border-theme-default bg-surface-muted px-4 py-3 text-sm leading-6 text-theme-3">
-                            {tr({
-                              zh: "开启后会自动复用当前 STT Profile 的讯飞凭证；若声纹库已有特征，实时转写会自动带上 `feature_ids`。",
-                              en: "When enabled, the current STT Profile's XFYUN credentials are reused. Realtime transcription will include feature_ids when voiceprint features exist.",
-                              es: "Al activarlo, se reutilizan las credenciales XFYUN del perfil STT actual. La transcripción en tiempo real incluirá feature_ids si existen huellas.",
-                              pt: "Ao ativar, as credenciais XFYUN do STT Profile atual são reutilizadas. A transcrição em tempo real incluirá feature_ids quando houver vozes.",
-                              de: "Bei Aktivierung werden die XFYUN-Zugangsdaten des aktuellen STT-Profils wiederverwendet. Echtzeit-Transkription enthält feature_ids, wenn Merkmale vorhanden sind.",
-                              ja: "有効にすると現在の STT Profile の XFYUN 認証情報を再利用します。声紋特徴がある場合、リアルタイム文字起こしに feature_ids が含まれます。",
-                            })}
+                            {tr("platformSettings.text055")}
                           </div>
                           <p className="text-[11px] leading-snug text-theme-4">
-                            {tr({
-                              zh: "与「实时工作台」侧栏同一条配置：在实时页把输入来源选成麦克风/系统音等（不要用纯文本 Transcript）时，左侧会显示一行「声纹分离 / 盲分模式」相关状态，保存后立即生效。",
-                              en: "This is the same setting used by the Realtime Workbench sidebar. When the input source is microphone or system audio rather than plain Transcript, the left panel shows the voiceprint separation status and changes apply immediately after saving.",
-                              es: "Es la misma configuración usada por la barra lateral del banco en tiempo real. Si la fuente es micrófono o audio del sistema en lugar de Transcript, el panel izquierdo muestra el estado de separación de voz y se aplica al guardar.",
-                              pt: "É a mesma configuração usada pela barra lateral do ambiente em tempo real. Quando a fonte é microfone ou áudio do sistema em vez de Transcript, o painel esquerdo mostra o status de separação de voz e aplica ao salvar.",
-                              de: "Dies ist dieselbe Einstellung wie in der Seitenleiste der Echtzeit-Arbeitsfläche. Bei Mikrofon- oder Systemaudio statt reinem Transcript zeigt der linke Bereich den Stimmtrennungsstatus; Speichern wirkt sofort.",
-                              ja: "リアルタイム作業台のサイドバーと同じ設定です。入力元が純テキスト Transcript ではなくマイクやシステム音声の場合、左側に声紋分離状態が表示され、保存後すぐ反映されます。",
-                            })}
+                            {tr("platformSettings.text056")}
                           </p>
                         </div>
                       ) : null}
@@ -1277,17 +1189,10 @@ export function PlatformSettings() {
           </div>
           <div>
             <div className="text-base font-semibold text-theme-1">
-              {tr({ zh: "默认运行参数", en: "Default Runtime Parameters", es: "Parámetros predeterminados", pt: "Parâmetros padrão", de: "Standard-Laufzeitparameter", ja: "既定実行パラメータ" })}
+              {tr("platformSettings.text057")}
             </div>
             <div className="mt-1 text-sm text-theme-4">
-              {tr({
-                zh: "这些默认值会保存在当前浏览器，用于新建实时会话。",
-                en: "These defaults are saved in this browser and used for new realtime sessions.",
-                es: "Estos valores se guardan en este navegador y se usan para nuevas sesiones en tiempo real.",
-                pt: "Esses padrões são salvos neste navegador e usados em novas sessões em tempo real.",
-                de: "Diese Standardwerte werden in diesem Browser gespeichert und für neue Echtzeit-Sitzungen verwendet.",
-                ja: "これらの既定値はこのブラウザに保存され、新しいリアルタイムセッションで使用されます。",
-              })}
+              {tr("platformSettings.text058")}
             </div>
           </div>
         </div>
@@ -1309,7 +1214,7 @@ export function PlatformSettings() {
                 ))
               ) : (
                 <option value="">
-                  {tr({ zh: "未配置 Gate profile", en: "No Gate profile configured", es: "Sin perfil Gate configurado", pt: "Nenhum perfil Gate configurado", de: "Kein Gate-Profil konfiguriert", ja: "Gate profile 未設定" })}
+                  {tr("platformSettings.text059")}
                 </option>
               )}
             </select>
@@ -1332,8 +1237,8 @@ export function PlatformSettings() {
               ) : (
                 <option value="">
                   {hasGateProfiles
-                    ? tr({ zh: "当前 profile 无模型", en: "Current profile has no models", es: "El perfil actual no tiene modelos", pt: "O profile atual não tem modelos", de: "Aktuelles Profil hat keine Modelle", ja: "現在の profile にモデルがありません" })
-                    : tr({ zh: "等待 Gate profile", en: "Waiting for Gate profile", es: "Esperando perfil Gate", pt: "Aguardando profile Gate", de: "Wartet auf Gate-Profil", ja: "Gate profile 待ち" })}
+                    ? tr("platformSettings.text060")
+                    : tr("platformSettings.text061")}
                 </option>
               )}
             </select>
@@ -1355,7 +1260,7 @@ export function PlatformSettings() {
                 ))
               ) : (
                 <option value="">
-                  {tr({ zh: "未配置 Planner profile", en: "No Planner profile configured", es: "Sin perfil Planner configurado", pt: "Nenhum perfil Planner configurado", de: "Kein Planner-Profil konfiguriert", ja: "Planner profile 未設定" })}
+                  {tr("platformSettings.text062")}
                 </option>
               )}
             </select>
@@ -1378,8 +1283,8 @@ export function PlatformSettings() {
               ) : (
                 <option value="">
                   {hasPlannerProfiles
-                    ? tr({ zh: "当前 profile 无模型", en: "Current profile has no models", es: "El perfil actual no tiene modelos", pt: "O profile atual não tem modelos", de: "Aktuelles Profil hat keine Modelle", ja: "現在の profile にモデルがありません" })
-                    : tr({ zh: "等待 Planner profile", en: "Waiting for Planner profile", es: "Esperando perfil Planner", pt: "Aguardando profile Planner", de: "Wartet auf Planner-Profil", ja: "Planner profile 待ち" })}
+                    ? tr("platformSettings.text060")
+                    : tr("platformSettings.text063")}
                 </option>
               )}
             </select>
@@ -1401,7 +1306,7 @@ export function PlatformSettings() {
                 ))
               ) : (
                 <option value="">
-                  {tr({ zh: "未配置 STT profile", en: "No STT profile configured", es: "Sin perfil STT configurado", pt: "Nenhum perfil STT configurado", de: "Kein STT-Profil konfiguriert", ja: "STT profile 未設定" })}
+                  {tr("platformSettings.text064")}
                 </option>
               )}
             </select>
@@ -1424,8 +1329,8 @@ export function PlatformSettings() {
               ) : (
                 <option value="">
                   {hasSttProfiles
-                    ? tr({ zh: "当前 profile 无模型", en: "Current profile has no models", es: "El perfil actual no tiene modelos", pt: "O profile atual não tem modelos", de: "Aktuelles Profil hat keine Modelle", ja: "現在の profile にモデルがありません" })
-                    : tr({ zh: "等待 STT profile", en: "Waiting for STT profile", es: "Esperando perfil STT", pt: "Aguardando profile STT", de: "Wartet auf STT-Profil", ja: "STT profile 待ち" })}
+                    ? tr("platformSettings.text060")
+                    : tr("platformSettings.text065")}
                 </option>
               )}
             </select>
@@ -1433,7 +1338,7 @@ export function PlatformSettings() {
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-theme-2">
-              {tr({ zh: "视图模式", en: "View Mode", es: "Modo de vista", pt: "Modo de visualização", de: "Ansichtsmodus", ja: "表示モード" })}
+              {tr("platformSettings.text066")}
             </label>
             <select
               className={selectClassName(false)}
@@ -1443,10 +1348,10 @@ export function PlatformSettings() {
               }
             >
               <option value="mermaid_primary">
-                {tr({ zh: "Mermaid 主视图", en: "Mermaid Main View", es: "Vista principal Mermaid", pt: "Vista principal Mermaid", de: "Mermaid-Hauptansicht", ja: "Mermaid メインビュー" })}
+                {tr("platformSettings.text003")}
               </option>
               <option value="dual_view">
-                {tr({ zh: "Mermaid + 结构视图", en: "Mermaid + Structure View", es: "Mermaid + vista estructural", pt: "Mermaid + visualização estrutural", de: "Mermaid + Strukturansicht", ja: "Mermaid + 構造ビュー" })}
+                {tr("platformSettings.text002")}
               </option>
             </select>
           </div>
@@ -1466,17 +1371,10 @@ export function PlatformSettings() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="text-base font-semibold text-theme-1">
-              {tr({ zh: "声纹库管理", en: "Voiceprint Library", es: "Biblioteca de huellas de voz", pt: "Biblioteca de voz", de: "Stimmabdruck-Bibliothek", ja: "声紋ライブラリ" })}
+              {tr("platformSettings.text067")}
             </div>
             <p className="mt-2 text-sm leading-6 text-theme-4">
-              {tr({
-                zh: "为某个 STT profile 注册多位说话人的声纹特征。实时 API STT 上传时，RTASR 会优先做角色分离，并尽量把角色映射到已注册声纹。",
-                en: "Register voiceprint features for speakers under an STT profile. Realtime API STT prefers speaker separation and maps roles to registered voiceprints when possible.",
-                es: "Registra huellas de voz de hablantes en un perfil STT. La API STT en tiempo real prioriza separar hablantes y mapear roles a huellas registradas.",
-                pt: "Registre características de voz de falantes em um perfil STT. A API STT em tempo real prioriza separar falantes e mapear papéis para vozes registradas.",
-                de: "Registriere Stimmabdruck-Merkmale für Sprecher in einem STT-Profil. Die Echtzeit-STT-API bevorzugt Sprechertrennung und ordnet Rollen registrierten Stimmabdrücken zu.",
-                ja: "STT profile に話者の声紋特徴を登録します。リアルタイム API STT は話者分離を優先し、可能な場合は登録済み声紋へ役割を対応付けます。",
-              })}
+              {tr("platformSettings.text068")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1506,8 +1404,8 @@ export function PlatformSettings() {
             >
               <RefreshCcw className="h-4 w-4" />
               {syncVoiceprintGroupMutation.isPending
-                ? tr({ zh: "同步中...", en: "Syncing...", es: "Sincronizando...", pt: "Sincronizando...", de: "Synchronisiert...", ja: "同期中..." })
-                : tr({ zh: "同步 / 创建远端组", en: "Sync / Create Remote Group", es: "Sincronizar / crear grupo remoto", pt: "Sincronizar / criar grupo remoto", de: "Remote-Gruppe synchronisieren / erstellen", ja: "リモートグループ同期 / 作成" })}
+                ? tr("platformSettings.text069")
+                : tr("platformSettings.text070")}
             </Button>
           </div>
         </div>
@@ -1520,14 +1418,7 @@ export function PlatformSettings() {
 
         {!managedVoiceprintProfile?.voiceprint?.enabled ? (
           <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
-            {tr({
-              zh: "当前选中的 STT profile 还没有启用声纹增强。先在上方 STT Profile 里打开“角色分离 / 声纹增强”，填好讯飞配置并保存。",
-              en: "The selected STT profile has not enabled voiceprint enhancement. Enable Speaker Separation / Voiceprint above, fill the XFYUN configuration, and save.",
-              es: "El perfil STT seleccionado no tiene huella de voz activada. Activa Separación de hablantes / voz arriba, completa XFYUN y guarda.",
-              pt: "O perfil STT selecionado ainda não ativou voz. Ative Separação de falantes / voz acima, preencha XFYUN e salve.",
-              de: "Das ausgewählte STT-Profil hat Stimmabdruck noch nicht aktiviert. Aktiviere oben Sprechertrennung / Stimmabdruck, fülle XFYUN aus und speichere.",
-              ja: "選択した STT profile は声紋拡張が有効ではありません。上の話者分離 / 声紋を有効にし、XFYUN 設定を入力して保存してください。",
-            })}
+            {tr("platformSettings.text071")}
           </div>
         ) : (
           <>
@@ -1552,7 +1443,7 @@ export function PlatformSettings() {
               </div>
               <div className="rounded-lg border border-theme-default bg-surface-muted px-4 py-4">
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">
-                  {tr({ zh: "已注册特征", en: "Registered Features", es: "Características registradas", pt: "Recursos registrados", de: "Registrierte Merkmale", ja: "登録済み特徴" })}
+                  {tr("platformSettings.text072")}
                 </div>
                 <div className="mt-2 text-sm font-semibold text-theme-1">
                   {voiceprintFeaturesQuery.data?.length ?? 0}
@@ -1562,19 +1453,31 @@ export function PlatformSettings() {
 
             <div className="rounded-xl border border-theme-default bg-surface-muted p-4">
               <div className="text-sm font-semibold text-theme-1">
-                {tr({ zh: "注册新说话人特征", en: "Register New Speaker Feature", es: "Registrar nueva huella de hablante", pt: "Registrar novo recurso de falante", de: "Neues Sprechermerkmal registrieren", ja: "新しい話者特徴を登録" })}
+                {tr("platformSettings.text073")}
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-theme-2">Speaker Label</label>
-                  <Input variant="dark" value={speakerLabel} onChange={(event: ChangeEvent<HTMLInputElement>) => setSpeakerLabel(event.target.value)} placeholder="例如 张三" />
+                  <Input
+                    variant="dark"
+                    value={speakerLabel}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setSpeakerLabel(event.target.value)}
+                    placeholder={tr("platformSettings.voiceprint.speakerPlaceholder")}
+                  />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-theme-2">Feature Info</label>
-                  <Input variant="dark" value={featureInfo} onChange={(event: ChangeEvent<HTMLInputElement>) => setFeatureInfo(event.target.value)} placeholder="可选，默认同 speaker label" />
+                  <Input
+                    variant="dark"
+                    value={featureInfo}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setFeatureInfo(event.target.value)}
+                    placeholder={tr("platformSettings.voiceprint.featureInfoPlaceholder")}
+                  />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-medium text-theme-2">样本音频</label>
+                  <label className="text-sm font-medium text-theme-2">
+                    {tr("platformSettings.voiceprint.sampleAudio")}
+                  </label>
                   <Input variant="dark"
                     type="file"
                     accept="audio/*"
@@ -1582,7 +1485,9 @@ export function PlatformSettings() {
                       setEnrollmentFile(event.target.files?.[0] || null)
                     }
                   />
-                  <p className="text-xs leading-6 text-theme-4">浏览器会先把上传音频转成 16k 单声道 PCM，再由后端转成讯飞要求的 mp3 进行注册。</p>
+                  <p className="text-xs leading-6 text-theme-4">
+                    {tr("platformSettings.voiceprint.uploadHelp")}
+                  </p>
                 </div>
               </div>
               <div className="mt-4 flex justify-end">
@@ -1598,7 +1503,9 @@ export function PlatformSettings() {
                     !voiceprintProfileId
                   }
                 >
-                  {createVoiceprintFeatureMutation.isPending ? "注册中..." : "注册声纹特征"}
+                  {createVoiceprintFeatureMutation.isPending
+                    ? tr("platformSettings.voiceprint.registering")
+                    : tr("platformSettings.voiceprint.registerFeature")}
                 </Button>
               </div>
             </div>
@@ -1606,8 +1513,12 @@ export function PlatformSettings() {
             <div className="rounded-xl border border-theme-default bg-surface-muted p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-theme-1">已注册说话人</div>
-                  <div className="mt-1 text-xs leading-6 text-theme-4">删除后不会影响普通 STT，只会停止该说话人的声纹命中。</div>
+                  <div className="text-sm font-semibold text-theme-1">
+                    {tr("platformSettings.voiceprint.registeredSpeakers")}
+                  </div>
+                  <div className="mt-1 text-xs leading-6 text-theme-4">
+                    {tr("platformSettings.voiceprint.deleteHelp")}
+                  </div>
                 </div>
                 <Badge>{voiceprintFeaturesQuery.data?.length ?? 0} features</Badge>
               </div>
@@ -1621,7 +1532,9 @@ export function PlatformSettings() {
                         <div className="mt-1 text-xs leading-6 text-theme-4">
                           feature_id: {item.feature_id} · status: {item.status}
                         </div>
-                        <div className="text-xs leading-6 text-theme-4">{item.feature_info || "无额外描述"}</div>
+                        <div className="text-xs leading-6 text-theme-4">
+                          {item.feature_info || tr("platformSettings.voiceprint.noExtraDescription")}
+                        </div>
                       </div>
                       <Button
                         variant="ghost"
@@ -1632,13 +1545,13 @@ export function PlatformSettings() {
                         disabled={deleteVoiceprintFeatureMutation.isPending}
                       >
                         <Trash2 className="h-4 w-4" />
-                        删除
+                        {tr("platformSettings.text028")}
                       </Button>
                     </div>
                   ))
                 ) : (
                   <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
-                    还没有注册任何声纹特征。先同步远端组，再上传几段说话人样本音频。
+                    {tr("platformSettings.voiceprint.emptyFeatures")}
                   </div>
                 )}
               </div>

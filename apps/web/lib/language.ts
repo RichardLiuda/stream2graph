@@ -1,17 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { TRANSLATIONS, type I18nKey } from "@/locales";
 
 export type LanguagePreference = "zh-CN" | "en-US" | "es-ES" | "pt-BR" | "de-DE" | "ja-JP";
-
-export type LocalizedText = {
-  zh: string;
-  en: string;
-  es: string;
-  pt: string;
-  de: string;
-  ja: string;
-};
 
 export const DEFAULT_LANGUAGE: LanguagePreference = "zh-CN";
 
@@ -45,21 +38,22 @@ function normalizeLanguage(value: unknown): LanguagePreference {
   return DEFAULT_LANGUAGE;
 }
 
-export function languageText(language: LanguagePreference, copy: LocalizedText) {
-  switch (language) {
-    case "en-US":
-      return copy.en;
-    case "es-ES":
-      return copy.es;
-    case "pt-BR":
-      return copy.pt;
-    case "de-DE":
-      return copy.de;
-    case "ja-JP":
-      return copy.ja;
-    default:
-      return copy.zh;
-  }
+function formatTranslation(template: string, params?: Record<string, string | number>) {
+  if (!params) return template;
+  return template.replace(/\{(\w+)\}/g, (match, name) => {
+    const value = params[name];
+    return value == null ? match : String(value);
+  });
+}
+
+export function translate(
+  language: LanguagePreference,
+  key: I18nKey,
+  params?: Record<string, string | number>,
+) {
+  const table = TRANSLATIONS[language] ?? TRANSLATIONS[DEFAULT_LANGUAGE];
+  const fallback = TRANSLATIONS[DEFAULT_LANGUAGE][key] ?? key;
+  return formatTranslation(table[key] ?? fallback, params);
 }
 
 export function loadLanguagePreference(): LanguagePreference {
@@ -108,3 +102,15 @@ export function useLanguagePreference() {
 
   return [language, setLanguage] as const;
 }
+
+export function useI18n() {
+  const [language, setLanguage] = useLanguagePreference();
+  const t = useCallback(
+    (key: I18nKey, params?: Record<string, string | number>) => translate(language, key, params),
+    [language],
+  );
+
+  return { language, setLanguage, t } as const;
+}
+
+export type { I18nKey };

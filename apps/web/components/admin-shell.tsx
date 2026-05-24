@@ -11,49 +11,50 @@ import {
   RadioTower,
   Rows4,
   Settings2,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button, Card } from "@stream2graph/ui";
 
 import { ApiError, api } from "@/lib/api";
-import { languageText, useLanguagePreference, type LanguagePreference, type LocalizedText } from "@/lib/language";
+import { translate, useLanguagePreference, type I18nKey, type LanguagePreference } from "@/lib/language";
 
 const allNavItems = [
   {
     href: "/app/realtime",
-    label: { zh: "实时工作", en: "Realtime", es: "Tiempo real", pt: "Tempo real", de: "Echtzeit", ja: "リアルタイム" },
+    label: "adminShell.nav.realtime",
     icon: RadioTower,
     guest: true,
   },
   {
     href: "/app/samples",
-    label: { zh: "样本对照", en: "Samples", es: "Muestras", pt: "Amostras", de: "Beispiele", ja: "サンプル" },
+    label: "adminShell.nav.samples",
     icon: Rows4,
     guest: false,
   },
   {
     href: "/app/reports",
-    label: { zh: "实验报告", en: "Reports", es: "Informes", pt: "Relatórios", de: "Berichte", ja: "レポート" },
+    label: "adminShell.nav.reports",
     icon: BarChart3,
     guest: false,
   },
   {
     href: "/app/settings",
-    label: { zh: "设置", en: "Settings", es: "Ajustes", pt: "Configurações", de: "Einstellungen", ja: "設定" },
+    label: "adminShell.nav.settings",
     icon: Settings2,
     guest: false,
   },
   {
     href: "/",
-    label: { zh: "首页", en: "Home", es: "Inicio", pt: "Início", de: "Start", ja: "ホーム" },
+    label: "adminShell.nav.home",
     icon: BookOpenText,
     guest: true,
   },
-] as const;
+] satisfies Array<{ href: string; label: I18nKey; icon: LucideIcon; guest: boolean }>;
 
-function text(language: LanguagePreference, copy: LocalizedText) {
-  return languageText(language, copy);
+function text(language: LanguagePreference, key: I18nKey) {
+  return translate(language, key);
 }
 
 /** @description /app 区：统一内容宽度 + 侧滑导航（浮层保留轻微 blur） */
@@ -94,14 +95,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         type="button"
         aria-expanded={drawerOpen}
         aria-controls="workspace-nav-drawer"
-        aria-label={text(language, {
-          zh: "打开工作区导航",
-          en: "Open workspace navigation",
-          es: "Abrir navegación del espacio de trabajo",
-          pt: "Abrir navegação do espaço de trabalho",
-          de: "Workspace-Navigation öffnen",
-          ja: "ワークスペースナビゲーションを開く",
-        })}
+        aria-label={text(language, "adminShell.text001")}
         className={`fixed left-4 top-4 z-[105] flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-[color:var(--shell-control-border)] bg-[var(--shell-control-bg)] text-[color:var(--shell-control-fg)] shadow-md transition hover:border-[color:var(--shell-control-border-hover)] hover:bg-[var(--shell-control-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--shell-focus-ring)] ${
           drawerOpen ? "pointer-events-none opacity-0" : "opacity-100"
         }`}
@@ -113,14 +107,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       {drawerOpen ? (
         <button
           type="button"
-          aria-label={text(language, {
-            zh: "关闭工作区导航",
-            en: "Close workspace navigation",
-            es: "Cerrar navegación del espacio de trabajo",
-            pt: "Fechar navegação do espaço de trabalho",
-            de: "Workspace-Navigation schließen",
-            ja: "ワークスペースナビゲーションを閉じる",
-          })}
+          aria-label={text(language, "adminShell.text002")}
           className="fixed inset-0 z-[100] bg-[var(--shell-backdrop)] backdrop-blur-[2px] transition-opacity"
           onClick={() => setDrawerOpen(false)}
         />
@@ -142,25 +129,25 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               onClick={() => setDrawerOpen(false)}
             >
               <ChevronLeft className="h-4 w-4 shrink-0" />
-              {text(language, { zh: "收起导航", en: "Collapse Nav", es: "Contraer", pt: "Recolher", de: "Einklappen", ja: "閉じる" })}
+              {text(language, "adminShell.text003")}
             </Button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="rounded-xl border border-theme-default bg-surface-2 px-4 py-4">
               <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-theme-4">Stream2Graph</div>
               <div className="font-display mt-1 text-lg font-semibold tracking-tight text-theme-1">
-                {text(language, { zh: "正式平台", en: "Platform", es: "Plataforma", pt: "Plataforma", de: "Plattform", ja: "プラットフォーム" })}
+                {text(language, "adminShell.text004")}
               </div>
               {currentItem ? (
                 <div className="mt-3 rounded-lg border border-theme-subtle bg-surface-1 px-3 py-2 text-xs text-theme-3">
-                  {text(language, { zh: "当前：", en: "Current: ", es: "Actual: ", pt: "Atual: ", de: "Aktuell: ", ja: "現在: " })}
-                  {languageText(language, currentItem.label)}
+                  {text(language, "adminShell.text005")}
+                  {translate(language, currentItem.label)}
                 </div>
               ) : null}
             </div>
             <nav
               className="mt-3 rounded-xl border border-theme-default bg-surface-muted p-1.5"
-              aria-label={text(language, { zh: "工作区", en: "Workspace", es: "Espacio de trabajo", pt: "Espaço de trabalho", de: "Workspace", ja: "ワークスペース" })}
+              aria-label={text(language, "adminShell.text006")}
             >
               <div className="drawer-nav-animate flex flex-col gap-0.5">
                 {navItems.map((item) => {
@@ -186,7 +173,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                       >
                         <Icon className="h-4 w-4" strokeWidth={2} />
                       </span>
-                      {languageText(language, item.label)}
+                      {translate(language, item.label)}
                     </Link>
                   );
                 })}
@@ -195,31 +182,17 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <p className="mt-4 px-1 text-[11px] leading-relaxed text-theme-5">
               {isGuest ? (
                 <>
-                  {text(language, {
-                    zh: "访客模式仅开放实时工作台；样本、报告与平台设置需",
-                    en: "Guest mode only opens the realtime workbench. Samples, reports, and settings require ",
-                    es: "El modo invitado solo abre el banco de trabajo en tiempo real. Muestras, informes y ajustes requieren ",
-                    pt: "O modo visitante abre apenas o ambiente em tempo real. Amostras, relatórios e configurações exigem ",
-                    de: "Der Gastmodus öffnet nur die Echtzeit-Arbeitsfläche. Beispiele, Berichte und Einstellungen benötigen ",
-                    ja: "ゲストモードではリアルタイム作業台のみ利用できます。サンプル、レポート、設定には",
-                  })}
+                  {text(language, "adminShell.text007")}
                   <Link href="/login" className="link-accent mx-1 font-medium">
-                    {text(language, { zh: "管理员登录", en: "admin login", es: "inicio de administrador", pt: "login de administrador", de: "Admin-Anmeldung", ja: "管理者ログイン" })}
+                    {text(language, "adminShell.text008")}
                   </Link>
-                  {text(language, { zh: "。", en: ".", es: ".", pt: ".", de: ".", ja: "が必要です。" })}
+                  {text(language, "adminShell.text009")}
                 </>
               ) : (
                 <>
-                  {text(language, {
-                    zh: "已登录管理员，可使用全部工作区功能。",
-                    en: "Admin signed in. All workspace features are available.",
-                    es: "Administrador conectado. Todas las funciones están disponibles.",
-                    pt: "Administrador conectado. Todos os recursos estão disponíveis.",
-                    de: "Admin angemeldet. Alle Workspace-Funktionen sind verfügbar.",
-                    ja: "管理者としてログイン済みです。すべての機能を利用できます。",
-                  })}
+                  {text(language, "adminShell.text010")}
                   <Link href="/" className="link-accent ml-1 font-medium">
-                    {text(language, { zh: "返回首页", en: "Back Home", es: "Volver al inicio", pt: "Voltar ao início", de: "Zur Startseite", ja: "ホームへ戻る" })}
+                    {text(language, "adminShell.text011")}
                   </Link>
                 </>
               )}
