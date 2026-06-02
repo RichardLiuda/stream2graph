@@ -424,6 +424,8 @@ export const zhCN = {
   "realtimeStudio.transcript.stableHelp": "最新一条稳定转写会先停留在这里，下一条到来后再转入历史区",
   "realtimeStudio.error.boundaryPrefix": "本页异常：",
   "realtimeStudio.timeline.emptyEvents": "还没有增量事件。",
+  "realtimeStudio.dock.process": "当前进程",
+  "realtimeStudio.dock.notes": "笔记",
   "realtimeStudio.notice.timelinePreviewLoading": "正在加载该节点内容，请稍后再编辑。",
   "realtimeStudio.evidence.kicker": "图谱证据",
   "realtimeStudio.evidence.node": "节点",

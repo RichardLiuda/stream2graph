@@ -424,6 +424,8 @@ export const deDE = {
   "realtimeStudio.transcript.stableHelp": "The latest stable transcript stays here first, then moves to history when the next one arrives.",
   "realtimeStudio.error.boundaryPrefix": "Page error: ",
   "realtimeStudio.timeline.emptyEvents": "No incremental events yet.",
+  "realtimeStudio.dock.process": "Prozess",
+  "realtimeStudio.dock.notes": "Notizen",
   "realtimeStudio.notice.timelinePreviewLoading": "This node is still loading. Please wait before editing.",
   "realtimeStudio.evidence.kicker": "Graph-Nachweise",
   "realtimeStudio.evidence.node": "Knoten",

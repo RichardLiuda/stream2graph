@@ -424,6 +424,8 @@ export const esES = {
   "realtimeStudio.transcript.stableHelp": "La última transcripción estable queda aquí primero y pasa al historial cuando llega la siguiente.",
   "realtimeStudio.error.boundaryPrefix": "Error de página: ",
   "realtimeStudio.timeline.emptyEvents": "Aún no hay eventos incrementales.",
+  "realtimeStudio.dock.process": "Proceso",
+  "realtimeStudio.dock.notes": "Notas",
   "realtimeStudio.notice.timelinePreviewLoading": "Este nodo aún se está cargando. Espera antes de editar.",
   "realtimeStudio.evidence.kicker": "Evidencia del gráfico",
   "realtimeStudio.evidence.node": "Nodo",
