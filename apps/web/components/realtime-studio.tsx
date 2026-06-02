@@ -1,7 +1,6 @@
 "use client";
 
-// AI辅助生成：豆包（IDE智能编程辅助），2026-04-06
-// 说明：事后补注（复现实录）。该文件在实时工作台 UI 迭代、布局与交互细节打磨阶段参考了智能编程辅助给出的组件拆分与样式建议。
+// 实时工作台组件：提供实时语音对话、图形可视化、会话管理等核心功能
 
 import * as Tabs from "@radix-ui/react-tabs";
 import * as Tooltip from "@radix-ui/react-tooltip";
