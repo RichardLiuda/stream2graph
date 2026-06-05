@@ -129,7 +129,7 @@ function logBrowserApiEvent(label: string, payload: Record<string, unknown>, lev
 }
 
 function apiErrorLogLevel(path: string, status: number) {
-  // `/auth/me` returning 401 is part of the normal boot flow before redirecting to `/login`.
+  // Keep legacy `/auth/me` 401s quiet when talking to an older backend.
   if (path === "/api/v1/auth/me" && status === 401) {
     return "info" as const;
   }
@@ -178,7 +178,7 @@ function timeoutMessageForPath(path: string, timeoutMs: number) {
   if (isRealtimePipelinePath(path)) {
     return `请求超时（前端等待 ${Math.round(timeoutMs / 1000)} 秒）。实时成图、重排或快照在重型样本下可能仍在后端继续执行，这不一定表示 API 或 PostgreSQL 异常；可稍后刷新当前会话查看结果。`;
   }
-  return "请求超时。请确认：① API 已启动；② PostgreSQL 可连接（登录会查库，库不可达时会一直卡住）；③ 前端与 `NEXT_PUBLIC_API_BASE_URL` 指向同一套服务。";
+  return "请求超时。请确认：① API 已启动；② PostgreSQL 可连接；③ 前端与 `NEXT_PUBLIC_API_BASE_URL` 指向同一套服务。";
 }
 
 function shouldLogAsInfo(path: string, response: Response, raw: unknown) {

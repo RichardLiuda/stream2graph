@@ -2077,18 +2077,8 @@ export function RealtimeStudio() {
   );
   const stageTabCount = stageTabs.length;
 
-  const authQuery = useQuery({
-    queryKey: ["auth", "me"],
-    queryFn: api.me,
-    retry: false,
-  });
-  const isAdmin = authQuery.isSuccess;
-  const isUnauthorizedGuest =
-    authQuery.isFetched &&
-    authQuery.isError &&
-    authQuery.error instanceof ApiError &&
-    authQuery.error.status === 401;
-  const workbenchDataReady = authQuery.isFetched && (isAdmin || isUnauthorizedGuest);
+  const isUnauthorizedGuest = false;
+  const workbenchDataReady = true;
 
   const annotationsQuery = useQuery({
     queryKey: ["realtime-annotations", currentSessionId],
@@ -2231,7 +2221,7 @@ export function RealtimeStudio() {
   const adminRuntimeOptions = useQuery({
     queryKey: ["admin-runtime-options"],
     queryFn: api.getAdminRuntimeOptions,
-    enabled: isAdmin,
+    enabled: workbenchDataReady,
     retry: false,
   });
   const sessions = useQuery({
@@ -2595,9 +2585,16 @@ export function RealtimeStudio() {
 
   useEffect(() => {
     if (!inputOptions.some((item) => item.source === selectedInputSource)) {
-      studioSend({ type: "source.select", source: "transcript", backend: "manual" });
+      const fallback =
+        inputOptions.find((item) => item.source === "microphone_browser") ||
+        inputOptions.find((item) => item.source === "transcript") ||
+        inputOptions[0];
+      if (!fallback) return;
+      const opts = buildBackendOptions(fallback.source, helperCapabilities, language);
+      const nextBackend = opts.find((item) => !item.disabled)?.value ?? opts[0]?.value ?? "manual";
+      studioSend({ type: "source.select", source: fallback.source, backend: nextBackend });
     }
-  }, [inputOptions, selectedInputSource, studioSend]);
+  }, [helperCapabilities, inputOptions, language, selectedInputSource, studioSend]);
 
   useEffect(() => {
     if (!backendOptions.some((item) => item.value === selectedRecognitionBackend && !item.disabled)) {
@@ -4765,28 +4762,6 @@ export function RealtimeStudio() {
     setIsTitleEditing(false);
   }
 
-  if (authQuery.isLoading) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center px-4 text-sm text-theme-4">
-        {tr("realtimeStudio.text040")}
-      </div>
-    );
-  }
-
-  if (authQuery.isError) {
-    const err = authQuery.error;
-    if (!(err instanceof ApiError && err.status === 401)) {
-      return (
-        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-4 text-center">
-          <p className="max-w-md text-sm text-red-400 theme-light:text-red-700">{(err as Error).message}</p>
-          <Button type="button" variant="secondary" onClick={() => void authQuery.refetch()}>
-            {tr("realtimeStudio.common.retry")}
-          </Button>
-        </div>
-      );
-    }
-  }
-
   return (
   <div className="h-[100dvh] overflow-hidden text-theme-2 selection:bg-[rgba(124,111,154,0.22)] selection:text-theme-1">
       {effectiveError ? (
@@ -4967,13 +4942,90 @@ export function RealtimeStudio() {
             </p>
           </div>
           <div className="ml-auto flex min-w-0 items-center justify-end gap-2 pr-12 sm:pr-14">
+            <div
+              className="relative"
+              onMouseEnter={() => setHoveredWorkbenchPanel("process")}
+              onMouseLeave={() => setHoveredWorkbenchPanel(null)}
+            >
+              <button
+                type="button"
+                className={`inline-flex h-8 w-[5.35rem] items-center justify-center gap-1.5 rounded-lg border px-2 text-[11px] font-semibold shadow-sm transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--shell-focus-ring)] ${
+                  activeWorkbenchPanel === "process" || pinnedWorkbenchPanel === "process"
+                    ? "border-violet-500/65 bg-violet-950/70 text-violet-50 shadow-[0_0_18px_rgb(109_40_217_/_0.24)]"
+                    : pipelineDockTone === "error"
+                      ? "border-red-900/60 bg-red-950/50 text-red-100 hover:border-red-700/70"
+                      : pipelineDockTone === "working"
+                        ? "border-amber-900/60 bg-amber-950/45 text-amber-100 hover:border-amber-700/70"
+                        : "border-theme-default bg-surface-2 text-theme-2 hover:border-theme-strong hover:bg-surface-3"
+                }`}
+                aria-expanded={activeWorkbenchPanel === "process"}
+                aria-pressed={pinnedWorkbenchPanel === "process"}
+                onClick={() => toggleWorkbenchPanel("process")}
+              >
+                <AudioLines className="h-3.5 w-3.5 shrink-0" />
+                <span>{tr("realtimeStudio.dock.process")}</span>
+              </button>
+              {activeWorkbenchPanel === "process" ? (
+                <div className="absolute right-full top-0 z-[130] pr-2">
+                  <div className="w-[min(520px,calc(100vw-9rem))] rounded-lg border border-theme-default bg-surface-1/95 p-2 shadow-xl backdrop-blur-md">
+                    <Tooltip.Provider delayDuration={120}>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {pipelineStages.map((step) => (
+                          <Tooltip.Root key={step.abbr}>
+                            <Tooltip.Trigger asChild>
+                              <button
+                                type="button"
+                                className={`inline-flex h-7 items-center gap-1.5 rounded-md border bg-surface-2 px-2 text-[11px] font-medium text-theme-2 transition-[box-shadow,border-color] ${
+                                  pipelineAllIdle && step.abbr === "CAP"
+                                    ? "border-[color:var(--accent)]/40 ring-1 ring-[color:var(--accent)]/25"
+                                    : "border-theme-default"
+                                }`}
+                                aria-label={`${step.label}：${step.value}`}
+                              >
+                                <span
+                                  className={`h-2 w-2 shrink-0 rounded-full ${
+                                    step.tone === "working"
+                                      ? "bg-[color:var(--accent)]"
+                                      : step.tone === "success"
+                                        ? "bg-emerald-500"
+                                        : step.tone === "error"
+                                          ? "bg-red-500"
+                                          : "bg-surface-3"
+                                  }`}
+                                  aria-hidden
+                                />
+                                {step.label}
+                              </button>
+                            </Tooltip.Trigger>
+                            <Tooltip.Portal>
+                              <Tooltip.Content
+                                side="bottom"
+                                align="center"
+                                sideOffset={8}
+                                collisionPadding={12}
+                                className="z-[24000] w-[220px] rounded-lg border border-theme-default bg-surface-2 px-2.5 py-2 text-left shadow-xl"
+                              >
+                                <div className="text-[10px] font-semibold tracking-wide text-theme-2">{step.label}</div>
+                                <div className="mt-1 text-[11px] font-medium text-theme-1">{step.value}</div>
+                                <div className="mt-1.5 text-[10px] leading-4 text-theme-4">{step.help}</div>
+                              </Tooltip.Content>
+                            </Tooltip.Portal>
+                          </Tooltip.Root>
+                        ))}
+                      </div>
+                    </Tooltip.Provider>
+                  </div>
+                </div>
+              ) : null}
+            </div>
             <div className="group relative">
-              <Badge
-                className="cursor-default border-theme-default bg-surface-2 px-2.5 py-1 text-xs font-medium normal-case tracking-normal text-theme-2"
+              <button
+                type="button"
+                className="inline-flex h-10 min-w-[7.4rem] cursor-default items-center justify-center rounded-lg border border-theme-default bg-surface-2 px-4 text-xs font-semibold text-theme-2 shadow-sm transition hover:border-theme-strong hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus"
                 title={tr("realtimeStudio.text044")}
               >
                 {tr("realtimeStudio.text045")}
-              </Badge>
+              </button>
               <div className="pointer-events-none invisible absolute right-0 top-[calc(100%+8px)] z-[120] w-[min(460px,82vw)] rounded-xl border border-theme-subtle bg-surface-1 p-3 opacity-0 shadow-xl transition duration-200 group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100">
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-theme-4">
                   {tr("realtimeStudio.text046")}
@@ -5086,10 +5138,17 @@ export function RealtimeStudio() {
                           role="option"
                           aria-selected={active}
                           onClick={() => {
-                  clearFeedback();
+                            clearFeedback();
                             const opts = buildBackendOptions(option.source, helperCapabilities, language);
-                  const nextBackend = opts.find((item) => !item.disabled)?.value ?? opts[0].value;
+                            const nextBackend = opts.find((item) => !item.disabled)?.value ?? opts[0].value;
                             studioSend({ type: "source.select", source: option.source, backend: nextBackend });
+                            if (option.source === "demo_mode") {
+                              enterDemoMode();
+                              setDemoStep(0);
+                              setDemoPlaying(true);
+                            } else {
+                              exitDemoMode();
+                            }
                             setInputSourceMenuOpen(false);
                           }}
                           className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition ${
@@ -5103,7 +5162,7 @@ export function RealtimeStudio() {
                               {active ? <Check className="h-3.5 w-3.5" strokeWidth={2} /> : null}
                             </span>
                             <span className="truncate">{option.label}</span>
-            </div>
+                          </div>
                           <span className="ml-2 shrink-0 text-xs text-theme-4">{option.capability_status}</span>
                         </button>
                       );
@@ -5118,15 +5177,7 @@ export function RealtimeStudio() {
             {/* 声纹盲认仅与语音/STT 相关；纯文本 Transcript 输入时不展示 */}
             {selectedInputSource !== "transcript" ? (
               <div className="flex min-h-[2rem] items-center justify-between gap-2 rounded-lg border border-theme-subtle bg-surface-muted px-2 py-1">
-                {!isAdmin ? (
-                  <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-theme-3">
-                    {tr("realtimeStudio.text061")}
-                    <Link href="/login" className="link-accent">
-                      {tr("realtimeStudio.text062")}
-                    </Link>
-                    {tr("realtimeStudio.text063")}
-                  </p>
-                ) : !hasSttProfiles ? (
+                {!hasSttProfiles ? (
                   <p className="min-w-0 flex-1 truncate text-[11px] leading-tight text-theme-3">
                     {tr("realtimeStudio.text064")}
                     <Link href="/app/settings" className="link-accent">
@@ -5410,9 +5461,9 @@ export function RealtimeStudio() {
                 aria-hidden
               />
               <div className="relative flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-0 pt-0.5">
-                <div className="absolute left-3 top-2 z-[80] flex flex-col gap-2">
+                <div className="absolute left-[calc(1rem+460px+0.5rem)] top-2 z-[80] flex flex-col gap-2">
                   <div
-                    className="relative"
+                    className="hidden"
                     onMouseEnter={() => setHoveredWorkbenchPanel("process")}
                     onMouseLeave={() => setHoveredWorkbenchPanel(null)}
                   >
@@ -5770,7 +5821,7 @@ export function RealtimeStudio() {
                     ) : null}
                   </div>
                 </div>
-                <div className="flex min-w-0 flex-1 flex-col gap-1 pl-[6.25rem] pr-2">
+                <div className="flex min-w-0 flex-1 flex-col gap-1 pr-2">
                   <Tabs.List className="workspace-tab-list w-full max-w-[460px] grid-cols-3 self-start">
                     <span
                       aria-hidden

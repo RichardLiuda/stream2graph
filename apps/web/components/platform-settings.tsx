@@ -9,7 +9,7 @@ import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge, Button, Card, Input, Textarea } from "@stream2graph/ui";
 
-import { ApiError, api } from "@/lib/api";
+import { api } from "@/lib/api";
 import { decodeAudioFileToVoiceprintPayload } from "@/lib/audio";
 import {
   LANGUAGE_OPTIONS,
@@ -292,12 +292,6 @@ export function PlatformSettings() {
   const queryClient = useQueryClient();
   const [language, setLanguage] = useLanguagePreference();
   const tr = (key: I18nKey, params?: Record<string, string | number>) => t(language, key, params);
-  const authQuery = useQuery({
-    queryKey: ["auth", "me"],
-    queryFn: api.me,
-    retry: false,
-    refetchOnMount: "always",
-  });
   const runtimeOptions = useQuery({
     queryKey: ["runtime-options"],
     queryFn: api.listRuntimeOptions,
@@ -312,7 +306,6 @@ export function PlatformSettings() {
     queryKey: ["admin-runtime-options"],
     queryFn: api.getAdminRuntimeOptions,
     retry: false,
-    enabled: authQuery.isSuccess && authQuery.isFetchedAfterMount,
   });
 
   const preferenceInitRef = useRef(false);
@@ -391,9 +384,7 @@ export function PlatformSettings() {
   const hasGateProfiles = Boolean(runtimeOptions.data?.gate_profiles.length);
   const hasPlannerProfiles = Boolean(runtimeOptions.data?.planner_profiles.length);
   const hasSttProfiles = Boolean(runtimeOptions.data?.stt_profiles.length);
-  const adminReady = authQuery.isSuccess && authQuery.isFetchedAfterMount;
-  const authError = authQuery.error instanceof ApiError ? authQuery.error : null;
-  const adminLoggedOut = authError?.status === 401;
+  const adminReady = Boolean(adminRuntimeOptions.data) && !adminRuntimeOptions.isError;
 
   useEffect(() => {
     if (!selectedGateProfile) return;
@@ -701,11 +692,13 @@ export function PlatformSettings() {
           </div>
           <div className="flex items-center gap-2">
             <Badge>
-              {!adminReady
+              {adminRuntimeOptions.isLoading
                 ? tr("platformSettings.text010")
                 : adminRuntimeOptions.isFetching
                   ? tr("platformSettings.text011")
-                  : tr("platformSettings.text012")}
+                  : adminReady
+                    ? tr("platformSettings.text012")
+                    : tr("platformSettings.text011")}
             </Badge>
             <Button
               onClick={() => saveProfilesMutation.mutate()}
@@ -719,31 +712,17 @@ export function PlatformSettings() {
           </div>
         </div>
 
-        {authQuery.isLoading ? (
+        {adminRuntimeOptions.isLoading ? (
           <div className="rounded-lg border border-theme-subtle bg-surface-muted px-4 py-3 text-sm text-theme-4">
             {tr("platformSettings.text015")}
           </div>
         ) : null}
-        {adminLoggedOut ? (
-          <div className="rounded-lg border border-amber-800/60 bg-amber-950/35 px-4 py-3 text-sm leading-relaxed text-amber-100">
-            <p>
-              {tr("platformSettings.text016")}
-            </p>
-            <Link
-              href="/login"
-              className="mt-2 inline-flex items-center gap-1 font-medium text-amber-200 underline underline-offset-4 theme-light:text-amber-900 hover:text-theme-1"
-            >
-              {tr("platformSettings.text017")}
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-        ) : null}
-        {!adminReady && authQuery.isError && !adminLoggedOut ? (
+        {adminRuntimeOptions.isError ? (
           <div className="rounded-lg border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm text-red-200">
-            {(authQuery.error as Error).message}
+            {(adminRuntimeOptions.error as Error).message}
           </div>
         ) : null}
-        {!adminReady && authQuery.isSuccess && !adminLoggedOut ? (
+        {!adminReady && adminRuntimeOptions.isSuccess ? (
           <div className="rounded-lg border border-theme-subtle bg-surface-muted px-4 py-3 text-sm text-theme-4">
             {tr("platformSettings.text018")}
           </div>

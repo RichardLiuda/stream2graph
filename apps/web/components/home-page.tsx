@@ -19,13 +19,11 @@ import {
   Settings2,
   Sparkles,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge, Button, Card } from "@stream2graph/ui";
 import { BackgroundPathLayer } from "@/components/ui/background-paths";
 import { ScrollLinkedCardsBlockSection, type ScrollLinkedCardsBlock } from "@/components/scroll-linked-cards";
-import { api } from "@/lib/api";
 
 const navItems = [
   { href: "/app/realtime", label: "实时工作", icon: RadioTower },
@@ -367,14 +365,7 @@ export function HomePage() {
   const nextSectionRef = useRef<HTMLElement | null>(null);
   const [scrollHintVisible, setScrollHintVisible] = useState(true);
 
-  const authMeQuery = useQuery({
-    queryKey: ["auth", "me"],
-    queryFn: api.me,
-    retry: false,
-    staleTime: 60_000,
-  });
-
-  const startHref = authMeQuery.isSuccess ? "/app/realtime" : "/login";
+  const startHref = "/app/realtime";
 
   useEffect(() => {
     const root = scrollRef.current;
@@ -487,18 +478,12 @@ export function HomePage() {
             </h1>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              {authMeQuery.isLoading ? (
-                <Button variant="primary" className="h-10 rounded-lg px-6 text-sm font-semibold" disabled aria-busy>
-                  正在检测登录…
+              <Link href={startHref}>
+                <Button variant="primary" className="h-10 rounded-lg px-6 text-sm font-semibold">
+                  开始使用
+                  <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden />
                 </Button>
-              ) : (
-                <Link href={startHref}>
-                  <Button variant="primary" className="h-10 rounded-lg px-6 text-sm font-semibold">
-                    开始使用
-                    <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden />
-                  </Button>
-                </Link>
-              )}
+              </Link>
               <div className="inline-flex items-center gap-1.5 rounded-md border border-[#a7b3ad]/75 bg-surface-muted px-2.5 py-1 text-[11px] text-theme-4">
                 <span className="inline-block h-1.5 w-1.5 rounded-sm bg-[#a7b3ad]" aria-hidden />
                 实时管线就绪

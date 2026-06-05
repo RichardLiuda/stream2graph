@@ -54,8 +54,8 @@ export const realtimeStudioMachine = setup({
 }).createMachine({
   id: "realtimeStudio",
   context: {
-    selectedInputSource: "demo_mode",
-    recognitionBackend: "manual",
+    selectedInputSource: "microphone_browser",
+    recognitionBackend: "browser_speech",
     captureStatus: "idle",
     sttStatus: "idle",
     gateStatus: "idle",

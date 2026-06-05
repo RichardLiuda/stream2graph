@@ -145,7 +145,7 @@ export function getInputSourceOptions(
       : t(language, "audioInput.text016"),
   };
 
-  const options: InputSourceOption[] = [demoOption, transcriptOption, microphoneOption];
+  const options: InputSourceOption[] = [microphoneOption, demoOption, transcriptOption];
 
   if (supportsSystemAudioExperimentalUi(context)) {
     options.push({

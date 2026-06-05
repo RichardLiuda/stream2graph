@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -17,7 +16,6 @@ import { useEffect, useState } from "react";
 
 import { Button, Card } from "@stream2graph/ui";
 
-import { ApiError, api } from "@/lib/api";
 import { translate, useLanguagePreference, type I18nKey, type LanguagePreference } from "@/lib/language";
 
 const allNavItems = [
@@ -61,18 +59,7 @@ function text(language: LanguagePreference, key: I18nKey) {
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [language] = useLanguagePreference();
-  const authQuery = useQuery({
-    queryKey: ["auth", "me"],
-    queryFn: api.me,
-    retry: false,
-    staleTime: 60_000,
-  });
-  const isGuest =
-    authQuery.isFetched &&
-    authQuery.isError &&
-    authQuery.error instanceof ApiError &&
-    authQuery.error.status === 401;
-  const navItems = isGuest ? allNavItems.filter((item) => item.guest) : [...allNavItems];
+  const navItems = [...allNavItems];
   const currentItem = navItems.find((item) => pathname === item.href);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -180,22 +167,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               </div>
             </nav>
             <p className="mt-4 px-1 text-[11px] leading-relaxed text-theme-5">
-              {isGuest ? (
-                <>
-                  {text(language, "adminShell.text007")}
-                  <Link href="/login" className="link-accent mx-1 font-medium">
-                    {text(language, "adminShell.text008")}
-                  </Link>
-                  {text(language, "adminShell.text009")}
-                </>
-              ) : (
-                <>
-                  {text(language, "adminShell.text010")}
-                  <Link href="/" className="link-accent ml-1 font-medium">
-                    {text(language, "adminShell.text011")}
-                  </Link>
-                </>
-              )}
+              {text(language, "adminShell.text010")}
+              <Link href="/" className="link-accent ml-1 font-medium">
+                {text(language, "adminShell.text011")}
+              </Link>
             </p>
           </div>
         </Card>

@@ -13,6 +13,7 @@ from app.security import decode_session, encode_session, verify_password
 
 COOKIE_NAME = "s2g_admin_session"
 router = APIRouter(prefix="/auth", tags=["auth"])
+ANONYMOUS_IDENTITY = AdminIdentity(username="anonymous", display_name="Anonymous Visitor")
 
 
 def _request_scheme(request: Request) -> str:
@@ -100,5 +101,10 @@ def me(
     db: Session = Depends(get_db),
     session_token: str | None = Cookie(default=None, alias=COOKIE_NAME),
 ) -> AdminIdentity:
-    user = get_current_admin(db=db, session_token=session_token)
+    if not session_token:
+        return ANONYMOUS_IDENTITY
+    try:
+        user = get_current_admin(db=db, session_token=session_token)
+    except HTTPException:
+        return ANONYMOUS_IDENTITY
     return AdminIdentity(username=user.username, display_name=user.display_name)
