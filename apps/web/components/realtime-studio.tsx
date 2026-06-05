@@ -4327,6 +4327,10 @@ export function RealtimeStudio() {
     if (shouldForceDraftPreview) return draftTurns;
     return archivedTranscriptTurns.length ? archivedTranscriptTurns : draftTurns;
   }, [archivedTranscriptTurns, demoHistoryTurns, demoMode, selectedInputSource, transcriptText]);
+  const visiblePreviewArchivedTranscriptTurns = useMemo(
+    () => previewArchivedTranscriptTurns.slice(0, 10),
+    [previewArchivedTranscriptTurns],
+  );
   const currentSubtitleText = useMemo(() => {
     const live = liveTranscript.trim();
     if (live) return live;
@@ -4949,7 +4953,7 @@ export function RealtimeStudio() {
             >
               <button
                 type="button"
-                className={`inline-flex h-8 w-[5.35rem] items-center justify-center gap-1.5 rounded-lg border px-2 text-[11px] font-semibold shadow-sm transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--shell-focus-ring)] ${
+                className={`inline-flex h-10 w-[7.4rem] items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-semibold shadow-sm transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--shell-focus-ring)] ${
                   activeWorkbenchPanel === "process" || pinnedWorkbenchPanel === "process"
                     ? "border-violet-500/65 bg-violet-950/70 text-violet-50 shadow-[0_0_18px_rgb(109_40_217_/_0.24)]"
                     : pipelineDockTone === "error"
@@ -5021,7 +5025,7 @@ export function RealtimeStudio() {
             <div className="group relative">
               <button
                 type="button"
-                className="inline-flex h-10 min-w-[7.4rem] cursor-default items-center justify-center rounded-lg border border-theme-default bg-surface-2 px-4 text-xs font-semibold text-theme-2 shadow-sm transition hover:border-theme-strong hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus"
+                className="inline-flex h-10 w-[7.4rem] cursor-default items-center justify-center rounded-lg border border-theme-default bg-surface-2 px-3 text-xs font-semibold text-theme-2 shadow-sm transition hover:border-theme-strong hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-focus"
                 title={tr("realtimeStudio.text044")}
               >
                 {tr("realtimeStudio.text045")}
@@ -5091,7 +5095,7 @@ export function RealtimeStudio() {
         </div>
         <div className="min-h-0 pb-0 grid grid-cols-1 gap-4 xl:flex-1 xl:overflow-hidden xl:grid-cols-[minmax(300px,3fr)_minmax(0,7fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
         {studioPage === 1 ? (
-          <Card className="soft-enter relative order-1 flex min-h-0 min-w-0 flex-col space-y-3 text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none">
+          <Card className="soft-enter relative order-1 flex min-h-0 min-w-0 flex-col space-y-3 overflow-hidden text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none">
           <div
             className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[3px] bg-gradient-to-r from-[color:var(--accent)]/0 via-[color:var(--accent)]/45 to-[color:var(--accent)]/0"
             aria-hidden
@@ -5301,8 +5305,8 @@ export function RealtimeStudio() {
                 <div className="flex shrink-0 items-center justify-end gap-2 border-b border-theme-subtle px-3 py-2">
                   <div className="text-[10px] text-theme-4">
                     {transcriptPanelTab === "history"
-                      ? previewArchivedTranscriptTurns.length
-                        ? `${previewArchivedTranscriptTurns.length} / 10`
+                      ? visiblePreviewArchivedTranscriptTurns.length
+                        ? `${visiblePreviewArchivedTranscriptTurns.length} / 10`
                         : tr("realtimeStudio.text079")
                       : activeTranscriptTurn?.speaker
                         ? tr("realtimeStudio.transcript.currentSpeaker", { speaker: activeTranscriptTurn.speaker })
@@ -5353,9 +5357,9 @@ export function RealtimeStudio() {
                 </div>
               </div>
                     )
-                  ) : previewArchivedTranscriptTurns.length ? (
-                    <div className="space-y-2.5">
-                      {previewArchivedTranscriptTurns.map((turn, index) => {
+                  ) : visiblePreviewArchivedTranscriptTurns.length ? (
+                    <div className="h-full max-h-full space-y-2.5 overflow-y-auto pr-1">
+                      {visiblePreviewArchivedTranscriptTurns.map((turn, index) => {
                         const tone = transcriptSpeakerCardTone(turn.speaker);
                         return (
                         <div
@@ -5461,7 +5465,7 @@ export function RealtimeStudio() {
                 aria-hidden
               />
               <div className="relative flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-0 pt-0.5">
-                <div className="absolute left-[calc(1rem+460px+0.5rem)] top-2 z-[80] flex flex-col gap-2">
+                <div className="absolute left-[calc(1rem+460px+0.5rem)] top-[1.6rem] z-[80] flex -translate-y-1/2 flex-col gap-2">
                   <div
                     className="hidden"
                     onMouseEnter={() => setHoveredWorkbenchPanel("process")}
@@ -5561,8 +5565,8 @@ export function RealtimeStudio() {
                     </button>
                     {activeWorkbenchPanel === "notes" ? (
                       <div className="absolute left-full top-0 z-[90] pl-2">
-                        <div className="w-[min(760px,calc(100vw-8rem))] rounded-lg border border-[#4f3a86]/90 bg-[#d9d0ef]/95 p-2 shadow-xl backdrop-blur-md">
-                          <div className="flex min-w-0 flex-col gap-2">
+                        <div className="w-max max-w-[min(620px,calc(100vw-8rem))] rounded-lg border border-[#4f3a86]/90 bg-[#d9d0ef]/95 p-2 shadow-xl backdrop-blur-md">
+                          <div className="flex w-max max-w-full flex-col gap-2">
                             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                               <button
                                 type="button"
@@ -5690,11 +5694,11 @@ export function RealtimeStudio() {
                             </div>
 
                             {activeAnnotationPanel ? (
-                              <div className="rounded-lg border border-[#887bb1] bg-[#d9d2ea]/95 px-3 py-2 shadow-sm">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                              <div className="w-max max-w-full rounded-lg border border-[#887bb1] bg-[#d9d2ea]/95 px-3 py-2 shadow-sm">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <div className="flex min-w-0 flex-wrap items-center gap-2">
                                     {activeAnnotationPanel === "pen" ? (
-                                      <div className="flex min-w-[220px] flex-1 items-center gap-2">
+                                      <div className="flex min-w-[220px] items-center gap-2">
                                         <AnnotationWidthSlider
                                           min={1}
                                           max={24}
@@ -5713,7 +5717,7 @@ export function RealtimeStudio() {
                                     ) : null}
 
                                     {activeAnnotationPanel === "rect" ? (
-                                      <div className="flex min-w-[220px] flex-1 items-center gap-2">
+                                      <div className="flex min-w-[220px] items-center gap-2">
                                         <AnnotationWidthSlider
                                           min={1}
                                           max={16}
@@ -5933,39 +5937,64 @@ export function RealtimeStudio() {
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <Tabs.Content value="mermaid" className="absolute inset-0 flex min-h-0 flex-col outline-none">
               <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-0 pt-3.5 sm:px-3">
-                <MermaidCard
-                  title=""
-                  embedded
-                  fixedLightCanvas
-                  code={displayedMermaidCode}
-                  rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
-                  repairRawOutputText={
-                    typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
-                  }
-                  provider={mermaidState?.provider || selectedPlannerProfile?.label || null}
-                  model={mermaidState?.model || plannerModel || null}
-                  latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
-                  compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
-                  updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null, language)}
-                  graphPayload={currentGraphPayload}
-                  activeIncrementalStageIndex={activeIncrementalStageIndex}
-                  onNodeRelayout={handleMermaidNodeRelayout}
-                  relayoutBusy={relayoutMutation.isPending}
-                  onEvidenceSelect={setSelectedGraphEvidence}
-                  activeEvidenceTarget={selectedGraphEvidence}
-                  exportRootId={mermaidExportRootId}
-                  annotationsEnabled={annotationsEnabled}
-                  annotationsTool={annotationsTool}
-                  annotationPenWidth={annotationPenWidth}
-                  annotationPenColor={annotationPenColor}
-                  annotationRectColor={annotationRectColor}
-                  annotationRectStrokeWidth={annotationRectStrokeWidth}
-                  annotationTextColor={annotationTextColor}
-                  annotationEraserWidth={annotationEraserWidth}
-                  annotationsDoc={mermaidAnnotationsDoc}
-                  onAnnotationsChange={onMermaidAnnotationsChange}
-                  panZoomControlsOffsetTop={12}
-                />
+                {demoMode ? (
+                  <GraphStage
+                    embedded
+                    fixedLightCanvas
+                    title=""
+                    nodes={rendererState.nodes || []}
+                    edges={rendererState.edges || []}
+                    groups={rendererGroups}
+                    incrementalStages={graphIncrementalStages}
+                    activeIncrementalStageIndex={activeIncrementalStageIndex}
+                    annotationsEnabled={annotationsEnabled}
+                    annotationsTool={annotationsTool}
+                    annotationPenWidth={annotationPenWidth}
+                    annotationPenColor={annotationPenColor}
+                    annotationRectColor={annotationRectColor}
+                    annotationRectStrokeWidth={annotationRectStrokeWidth}
+                    annotationTextColor={annotationTextColor}
+                    annotationEraserWidth={annotationEraserWidth}
+                    annotationsDoc={mermaidAnnotationsDoc}
+                    onAnnotationsChange={onMermaidAnnotationsChange}
+                    annotationExportHostId={mermaidExportRootId}
+                    panZoomControlsOffsetTop={12}
+                  />
+                ) : (
+                  <MermaidCard
+                    title=""
+                    embedded
+                    fixedLightCanvas
+                    code={displayedMermaidCode}
+                    rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
+                    repairRawOutputText={
+                      typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
+                    }
+                    provider={mermaidState?.provider || selectedPlannerProfile?.label || null}
+                    model={mermaidState?.model || plannerModel || null}
+                    latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
+                    compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
+                    updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null, language)}
+                    graphPayload={currentGraphPayload}
+                    activeIncrementalStageIndex={activeIncrementalStageIndex}
+                    onNodeRelayout={handleMermaidNodeRelayout}
+                    relayoutBusy={relayoutMutation.isPending}
+                    onEvidenceSelect={setSelectedGraphEvidence}
+                    activeEvidenceTarget={selectedGraphEvidence}
+                    exportRootId={mermaidExportRootId}
+                    annotationsEnabled={annotationsEnabled}
+                    annotationsTool={annotationsTool}
+                    annotationPenWidth={annotationPenWidth}
+                    annotationPenColor={annotationPenColor}
+                    annotationRectColor={annotationRectColor}
+                    annotationRectStrokeWidth={annotationRectStrokeWidth}
+                    annotationTextColor={annotationTextColor}
+                    annotationEraserWidth={annotationEraserWidth}
+                    annotationsDoc={mermaidAnnotationsDoc}
+                    onAnnotationsChange={onMermaidAnnotationsChange}
+                    panZoomControlsOffsetTop={12}
+                  />
+                )}
                 <GraphEvidencePanel
                   target={graphEvidenceTarget}
                   tr={tr}
