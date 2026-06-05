@@ -4,49 +4,220 @@ on:
   push:
     branches: [master]
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10.30.3"
+  WEB_BUILD_ARCHIVE: web-build.tar.gz
+
 jobs:
   deploy:
-    name: Deploy to Cloud Server
+    name: Build Web and Deploy to Cloud Server
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
 
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script_stop: true
-          script: |
-            set -euo pipefail
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
 
-            DEPLOY_DIR="/root/workspace/stream2graph"
-            cd "$DEPLOY_DIR"
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
 
-            echo "==> [1/6] Pulling latest code..."
-            nice -n 19 ionice -c3 git pull
+      - name: Install dependencies on runner
+        run: pnpm install --frozen-lockfile
 
-            echo "==> [2/6] Installing frontend dependencies..."
-            nice -n 19 ionice -c3 pnpm install --frozen-lockfile
+      - name: Build frontend on runner
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: pnpm build:web
 
-            echo "==> [3/6] Building frontend (Next.js)..."
-            nice -n 19 ionice -c3 pnpm build:web
+      - name: Pack frontend build artifact
+        run: |
+          set -euo pipefail
+          tar -czf "$WEB_BUILD_ARCHIVE" \
+            --exclude="apps/web/.next/cache" \
+            apps/web/.next
+          du -h "$WEB_BUILD_ARCHIVE"
 
-            echo "==> [4/6] Setting up Python virtual environment..."
-            if [ ! -d ".venv-platform" ]; then
-              python3 -m venv .venv-platform
-              .venv-platform/bin/pip install --upgrade pip
-            fi
+      - name: Prepare SSH
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/stream2graph_deploy
+          chmod 600 ~/.ssh/stream2graph_deploy
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
 
-            echo "==> [5/6] Installing Python dependencies & running migrations..."
-            nice -n 19 ionice -c3 .venv-platform/bin/pip install -e "apps/api[test]"
-            PYTHONPATH=apps/api .venv-platform/bin/alembic -c apps/api/alembic.ini upgrade head
+      - name: Preflight server disk
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/stream2graph_deploy \
+            -o IdentitiesOnly=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            "$SERVER_USER@$SERVER_HOST" \
+            "DEPLOY_DIR='/root/workspace/stream2graph' MIN_FREE_MB='4096' bash -s" <<'REMOTE_SCRIPT'
+              set -euo pipefail
 
-            echo "==> [6/6] Restarting services..."
-            systemctl restart stream2graph-api
-            systemctl restart stream2graph-worker
-            systemctl restart stream2graph-web
+              available_mb() {
+                df -Pm "$DEPLOY_DIR" | awk "NR==2 {print \$4}"
+              }
 
-            echo "==> Deployment complete!"
-            systemctl is-active stream2graph-api stream2graph-worker stream2graph-web
+              show_disk() {
+                df -h "$DEPLOY_DIR" || true
+                du -xh --max-depth=1 \
+                  "$DEPLOY_DIR" \
+                  "$DEPLOY_DIR/apps/web" \
+                  "$DEPLOY_DIR/apps/web/.next" \
+                  "$DEPLOY_DIR/node_modules" \
+                  /tmp 2>/dev/null | sort -h | tail -40 || true
+              }
+
+              echo "==> Disk before deploy preflight"
+              show_disk
+              echo "==> Cleanup transient frontend build/cache files"
+              rm -rf "$DEPLOY_DIR/apps/web/.next/cache"
+              find /tmp -maxdepth 1 -type f -name "stream2graph-web-build-*.tar.gz" -delete 2>/dev/null || true
+
+              available="$(available_mb)"
+              echo "Available disk: ${available} MB; required: ${MIN_FREE_MB} MB"
+              if [ "$available" -lt "$MIN_FREE_MB" ]; then
+                echo "Not enough free disk space for deployment."
+                show_disk
+                exit 1
+              fi
+          REMOTE_SCRIPT
+
+      - name: Upload frontend build artifact
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          REMOTE_WEB_BUILD_ARCHIVE: /tmp/stream2graph-web-build-${{ github.sha }}.tar.gz
+        run: |
+          set -euo pipefail
+          scp \
+            -i ~/.ssh/stream2graph_deploy \
+            -o IdentitiesOnly=yes \
+            "$WEB_BUILD_ARCHIVE" \
+            "$SERVER_USER@$SERVER_HOST:$REMOTE_WEB_BUILD_ARCHIVE"
+
+      - name: Deploy artifact via SSH
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          REMOTE_WEB_BUILD_ARCHIVE: /tmp/stream2graph-web-build-${{ github.sha }}.tar.gz
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/stream2graph_deploy \
+            -o IdentitiesOnly=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            "$SERVER_USER@$SERVER_HOST" \
+            "REMOTE_WEB_BUILD_ARCHIVE='$REMOTE_WEB_BUILD_ARCHIVE' bash -s" <<'REMOTE_SCRIPT'
+              set -euo pipefail
+
+              DEPLOY_DIR="/root/workspace/stream2graph"
+              LOCK_FILE="/tmp/stream2graph-deploy.lock"
+              MIN_FREE_MB=4096
+
+              available_mb() {
+                df -Pm "$DEPLOY_DIR" | awk "NR==2 {print \$4}"
+              }
+
+              show_disk() {
+                df -h "$DEPLOY_DIR" || true
+                du -xh --max-depth=1 \
+                  "$DEPLOY_DIR" \
+                  "$DEPLOY_DIR/apps/web" \
+                  "$DEPLOY_DIR/apps/web/.next" \
+                  "$DEPLOY_DIR/node_modules" \
+                  /tmp 2>/dev/null | sort -h | tail -40 || true
+              }
+
+              require_free_space() {
+                required_mb="$1"
+                available="$(available_mb)"
+                echo "Available disk: ${available} MB; required: ${required_mb} MB"
+                if [ "$available" -lt "$required_mb" ]; then
+                  echo "Not enough free disk space for deployment."
+                  show_disk
+                  exit 1
+                fi
+              }
+
+              run_low_io() {
+                nice -n 19 ionice -c3 "$@"
+              }
+
+              exec 9>"$LOCK_FILE"
+              if ! flock -n 9; then
+                echo "Another Stream2Graph deployment is already running."
+                exit 1
+              fi
+              trap 'rm -f "$REMOTE_WEB_BUILD_ARCHIVE"' EXIT
+
+              cd "$DEPLOY_DIR"
+
+              echo "==> Disk before cleanup"
+              show_disk
+
+              echo "==> Cleanup transient frontend build/cache files"
+              rm -rf apps/web/.next/cache
+              find /tmp -maxdepth 1 -type f -name "stream2graph-web-build-*.tar.gz" -delete 2>/dev/null || true
+              require_free_space "$MIN_FREE_MB"
+
+              echo "==> [1/6] Pulling latest code..."
+              run_low_io git fetch origin master
+              run_low_io git checkout master
+              run_low_io git pull --ff-only origin master
+
+              echo "==> [2/6] Installing runtime dependencies..."
+              run_low_io pnpm install --frozen-lockfile --prefer-offline
+
+              echo "==> [3/6] Replacing frontend build artifact..."
+              rm -rf apps/web/.next
+              mkdir -p apps/web
+              tar -xzf "$REMOTE_WEB_BUILD_ARCHIVE" -C "$DEPLOY_DIR"
+              test -f apps/web/.next/BUILD_ID
+              rm -rf apps/web/.next/cache
+              require_free_space 1024
+
+              echo "==> [4/6] Setting up Python virtual environment..."
+              if [ ! -d ".venv-platform" ]; then
+                python3 -m venv .venv-platform
+                .venv-platform/bin/pip install --no-cache-dir --upgrade pip
+              fi
+
+              echo "==> [5/6] Installing Python dependencies & running migrations..."
+              run_low_io .venv-platform/bin/pip install --no-cache-dir -e "apps/api[test]"
+              PYTHONPATH=apps/api .venv-platform/bin/alembic -c apps/api/alembic.ini upgrade head
+
+              echo "==> [6/6] Restarting services..."
+              systemctl restart stream2graph-api
+              systemctl restart stream2graph-worker
+              systemctl restart stream2graph-web
+
+              echo "==> Deployment complete!"
+              systemctl is-active stream2graph-api stream2graph-worker stream2graph-web
+              echo "==> Disk after deployment"
+              show_disk
+          REMOTE_SCRIPT
