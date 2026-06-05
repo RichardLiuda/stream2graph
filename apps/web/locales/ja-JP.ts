@@ -424,6 +424,8 @@ export const jaJP = {
   "realtimeStudio.transcript.stableHelp": "The latest stable transcript stays here first, then moves to history when the next one arrives.",
   "realtimeStudio.error.boundaryPrefix": "Page error: ",
   "realtimeStudio.timeline.emptyEvents": "No incremental events yet.",
+  "realtimeStudio.dock.process": "進行状況",
+  "realtimeStudio.dock.notes": "ノート",
   "realtimeStudio.notice.timelinePreviewLoading": "This node is still loading. Please wait before editing.",
   "realtimeStudio.evidence.kicker": "グラフ根拠",
   "realtimeStudio.evidence.node": "ノード",

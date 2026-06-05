@@ -49,7 +49,7 @@ ICMI 2026（International Conference on Multimodal Interaction），定位为"�
 |---|---|
 | 后端 | Python 3.12 + FastAPI + SQLAlchemy 2 + PostgreSQL 16 |
 | 前端 | Next.js 15 + React 19 + TypeScript + TailwindCSS + XState |
-| AI 层 | 多模型接入（兼容协议/网关）：Kimi, Qwen, MiniMax, DeepSeek（按实际接入配置） |
+| AI 层 | 多模型接入（OpenAI 兼容协议）：Claude, GPT, Gemini, Kimi, Qwen, MiniMax |
 | 数据库 | PostgreSQL 16 + Alembic 迁移 |
 | 部署 | Docker Compose（PostgreSQL）+ 原生进程管理 |
 | 语音 | 讯飞 RTASR（流式 ASR）+ 讯飞声纹识别 |
@@ -365,10 +365,11 @@ stream2graph/
 
 | 模型 | 接口类型 | 用途 |
 |---|---|---|
+| Claude Sonnet 4.5 | 第三方兼容网关 | Gate / Planner / 质量上界 |
 | Kimi 2.5 (Moonshot) | 官方接口 | Gate / Planner |
+| Gemini 3 Flash | Google 官方接口 | Gate / Planner |
 | Qwen 3.5 系列 | DashScope 兼容 | Gate / Planner（微调版） |
 | MiniMax 2.5 | MiniMax 兼容 | Gate / Planner |
-| DeepSeek 系列 | 兼容接口 | Gate / Planner（按需接入） |
 
 ---
 
@@ -539,13 +540,17 @@ stream2graph/
 
 | 模型 | 首轮失败 | 最终失败 | 平均延迟(ms) | 归一化相似度 | 行级 F1 | 边 F1 | 编译率 |
 |---|---:|---:|---:|---:|---:|---:|---:|
+| **Claude Sonnet 4.5** | 59 | 0 | 20,635 | **0.5013** | **0.4045** | **0.6666** | **0.3520** |
 | Kimi 2.5 | 39 | 0 | 87,830 | 0.4953 | 0.3759 | 0.6597 | 0.3001 |
+| **Gemini 3 Flash** | 0 | 0 | 26,323 | 0.4859 | 0.3676 | 0.6384 | 0.3323 |
 | Qwen 3.5 Thinking Off | 0 | 0 | **6,681** | 0.4685 | 0.3742 | 0.6399 | 0.3032 |
 | Qwen 3.5 Thinking On | 39 | 0 | 86,230 | 0.4464 | 0.3479 | 0.6267 | 0.2835 |
 | MiniMax 2.5 | 3 | 0 | 22,253 | 0.3922 | 0.2828 | 0.5204 | 0.2690 |
 
 **关键发现**：
+- Claude Sonnet 4.5 是最终质量最强的模型
 - Qwen 3.5 Thinking Off 速度最快、最稳定
+- Gemini 3 Flash 综合最平衡（0 首轮失败 + 高质量）
 - Qwen 3.5 Thinking On 反而不如 Off（思考模式在此任务上无收益）
 
 ### 8.3 2×2 消融实验

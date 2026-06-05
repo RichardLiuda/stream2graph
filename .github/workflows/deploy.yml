@@ -1,0 +1,52 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    name: Deploy to Cloud Server
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            DEPLOY_DIR="/root/workspace/stream2graph"
+            cd "$DEPLOY_DIR"
+
+            echo "==> [1/6] Pulling latest code..."
+            nice -n 19 ionice -c3 git pull
+
+            echo "==> [2/6] Installing frontend dependencies..."
+            nice -n 19 ionice -c3 pnpm install --frozen-lockfile
+
+            echo "==> [3/6] Building frontend (Next.js)..."
+            nice -n 19 ionice -c3 pnpm build:web
+
+            echo "==> [4/6] Setting up Python virtual environment..."
+            if [ ! -d ".venv-platform" ]; then
+              python3 -m venv .venv-platform
+              .venv-platform/bin/pip install --upgrade pip
+            fi
+
+            echo "==> [5/6] Installing Python dependencies & running migrations..."
+            nice -n 19 ionice -c3 .venv-platform/bin/pip install -e "apps/api[test]"
+            PYTHONPATH=apps/api .venv-platform/bin/alembic -c apps/api/alembic.ini upgrade head
+
+            echo "==> [6/6] Restarting services..."
+            systemctl restart stream2graph-api
+            systemctl restart stream2graph-worker
+            systemctl restart stream2graph-web
+
+            echo "==> Deployment complete!"
+            systemctl is-active stream2graph-api stream2graph-worker stream2graph-web

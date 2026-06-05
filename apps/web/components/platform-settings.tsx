@@ -1,6 +1,6 @@
 "use client";
 
-// AI辅助生成：豆包（IDE智能编程辅助），2026-04-02
+// 平台设置组件：管理API密钥、模型配置、语音识别等系统设置
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
