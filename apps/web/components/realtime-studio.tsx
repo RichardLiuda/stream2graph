@@ -253,9 +253,7 @@ const TRANSCRIPT_PRESETS: TranscriptPreset[] = [
   },
 ];
 
-const DEMO_SESSION_ID = "demo-product-review-session";
 const DEMO_PLAYBACK_INTERVAL_MS = 1450;
-const DEMO_GRAPH_STAGE_COUNT = 4;
 const DEMO_STAGE_COLORS = ["#0ea5e9", "#22c55e", "#f97316", "#ec4899", "#8b5cf6", "#14b8a6"];
 const DEMO_GROUP_STYLES: Record<string, { fill: string; stroke: string }> = {
   intake: { fill: "#e0f2fe", stroke: "#0ea5e9" },
@@ -264,6 +262,18 @@ const DEMO_GROUP_STYLES: Record<string, { fill: string; stroke: string }> = {
   knowledge: { fill: "#fce7f3", stroke: "#db2777" },
   rollout: { fill: "#ede9fe", stroke: "#7c3aed" },
 };
+const DEMO_LONG_FLOW_GROUP_STYLES: Record<string, { fill: string; stroke: string }> = {
+  long_input: { fill: "#e0f2fe", stroke: "#0ea5e9" },
+  long_quality: { fill: "#dcfce7", stroke: "#16a34a" },
+  long_resilience: { fill: "#fff7ed", stroke: "#f97316" },
+  long_knowledge: { fill: "#fdf2f8", stroke: "#db2777" },
+  long_release: { fill: "#ede9fe", stroke: "#7c3aed" },
+};
+const DEMO_SEQUENCE_GROUP_STYLES: Record<string, { fill: string; stroke: string }> = {
+  seq_participants: { fill: "#ecfeff", stroke: "#0891b2" },
+};
+
+type DemoScenarioId = "support_release" | "long_multigraph";
 
 type DemoTurn = {
   speaker: string;
@@ -287,6 +297,43 @@ type DemoGraphEdge = {
   created_frame: number;
 };
 
+type DemoSequenceMessage = {
+  id: string;
+  from: string;
+  to: string;
+  fallbackLabel: string;
+  created_frame: number;
+  kind?: "call" | "reply";
+};
+
+type DemoGraphGroupDefinition = {
+  id: string;
+  fallbackLabel: string;
+};
+
+type DemoGraphDefinition = {
+  id: string;
+  fallbackLabel: string;
+  kind: "flowchart" | "sequence";
+  stageCount: number;
+  direction?: "LR" | "TB";
+  nodes: DemoGraphNode[];
+  edges: DemoGraphEdge[];
+  groups: DemoGraphGroupDefinition[];
+  groupStyles: Record<string, { fill: string; stroke: string }>;
+  messages?: DemoSequenceMessage[];
+};
+
+type DemoScenarioDefinition = {
+  id: DemoScenarioId;
+  sessionId: string;
+  labelKey: I18nKey;
+  turnsKey: I18nKey;
+  nodeLabelsKey: I18nKey;
+  groupLabelsKey: I18nKey;
+  graphs: DemoGraphDefinition[];
+};
+
 type LocalizedDemoGraphNode = DemoGraphNode & {
   label: string;
 };
@@ -294,6 +341,10 @@ type LocalizedDemoGraphNode = DemoGraphNode & {
 type LocalizedDemoGraphGroup = {
   id: string;
   fallbackLabel: string;
+  label: string;
+};
+
+type LocalizedDemoSequenceMessage = DemoSequenceMessage & {
   label: string;
 };
 
@@ -334,12 +385,138 @@ const DEMO_GRAPH_EDGES: DemoGraphEdge[] = [
   { from: "deploy_guardrail", to: "release_review", label: "", created_frame: 4 },
 ];
 
-const DEMO_GRAPH_GROUPS = [
+const DEMO_GRAPH_GROUPS: DemoGraphGroupDefinition[] = [
   { id: "intake", fallbackLabel: "Input signals" },
   { id: "quality", fallbackLabel: "Customer quality" },
   { id: "resilience", fallbackLabel: "Conversation resilience" },
   { id: "knowledge", fallbackLabel: "Knowledge update" },
   { id: "rollout", fallbackLabel: "Release verification" },
+];
+
+const DEMO_SUPPORT_GRAPH: DemoGraphDefinition = {
+  id: "support_release_graph",
+  fallbackLabel: "Support release graph",
+  kind: "flowchart",
+  stageCount: 4,
+  direction: "LR",
+  nodes: DEMO_GRAPH_NODES,
+  edges: DEMO_GRAPH_EDGES,
+  groups: DEMO_GRAPH_GROUPS,
+  groupStyles: DEMO_GROUP_STYLES,
+};
+
+const DEMO_LONG_FLOW_NODES: DemoGraphNode[] = [
+  { id: "long_browser_mic", fallbackLabel: "Browser microphone input", x: 95, y: 165, created_frame: 1, group: "long_input" },
+  { id: "long_live_transcript", fallbackLabel: "Live transcript buffer", x: 310, y: 120, created_frame: 1, group: "long_input" },
+  { id: "long_speaker_roles", fallbackLabel: "Speaker role tracking", x: 310, y: 235, created_frame: 1, group: "long_input" },
+  { id: "long_quality_board", fallbackLabel: "Quality metrics board", x: 555, y: 90, created_frame: 2, group: "long_quality" },
+  { id: "long_resolution_lift", fallbackLabel: "Resolution lift", x: 790, y: 55, created_frame: 2, group: "long_quality" },
+  { id: "long_handoff_drop", fallbackLabel: "Human handoff drop", x: 790, y: 128, created_frame: 2, group: "long_quality" },
+  { id: "long_knowledge_health", fallbackLabel: "Knowledge health", x: 790, y: 205, created_frame: 2, group: "long_quality" },
+  { id: "long_ambiguity_guard", fallbackLabel: "Ambiguity guard", x: 555, y: 318, created_frame: 3, group: "long_resilience" },
+  { id: "long_context_router", fallbackLabel: "Context reset router", x: 790, y: 318, created_frame: 3, group: "long_resilience" },
+  { id: "long_evidence_notes", fallbackLabel: "Notes and evidence layer", x: 1015, y: 318, created_frame: 3, group: "long_resilience" },
+  { id: "long_delta_queue", fallbackLabel: "Knowledge delta queue", x: 555, y: 455, created_frame: 4, group: "long_knowledge" },
+  { id: "long_low_priority_rebuild", fallbackLabel: "Low priority rebuild", x: 790, y: 455, created_frame: 4, group: "long_knowledge" },
+  { id: "long_release_window", fallbackLabel: "Release window", x: 1015, y: 455, created_frame: 4, group: "long_release" },
+  { id: "long_report_export", fallbackLabel: "Review report export", x: 1230, y: 375, created_frame: 4, group: "long_release" },
+  { id: "long_ops_followup", fallbackLabel: "Operations follow-up", x: 1230, y: 505, created_frame: 4, group: "long_release" },
+];
+
+const DEMO_LONG_FLOW_EDGES: DemoGraphEdge[] = [
+  { from: "long_browser_mic", to: "long_live_transcript", label: "", created_frame: 1 },
+  { from: "long_live_transcript", to: "long_speaker_roles", label: "", created_frame: 1 },
+  { from: "long_live_transcript", to: "long_quality_board", label: "", created_frame: 2 },
+  { from: "long_speaker_roles", to: "long_handoff_drop", label: "", created_frame: 2 },
+  { from: "long_quality_board", to: "long_resolution_lift", label: "", created_frame: 2 },
+  { from: "long_quality_board", to: "long_handoff_drop", label: "", created_frame: 2 },
+  { from: "long_quality_board", to: "long_knowledge_health", label: "", created_frame: 2 },
+  { from: "long_live_transcript", to: "long_ambiguity_guard", label: "", created_frame: 3 },
+  { from: "long_ambiguity_guard", to: "long_context_router", label: "", created_frame: 3 },
+  { from: "long_context_router", to: "long_evidence_notes", label: "", created_frame: 3 },
+  { from: "long_knowledge_health", to: "long_delta_queue", label: "", created_frame: 4 },
+  { from: "long_delta_queue", to: "long_low_priority_rebuild", label: "", created_frame: 4 },
+  { from: "long_low_priority_rebuild", to: "long_release_window", label: "", created_frame: 4 },
+  { from: "long_context_router", to: "long_release_window", label: "", created_frame: 4 },
+  { from: "long_release_window", to: "long_report_export", label: "", created_frame: 4 },
+  { from: "long_release_window", to: "long_ops_followup", label: "", created_frame: 4 },
+];
+
+const DEMO_LONG_FLOW_GROUPS: DemoGraphGroupDefinition[] = [
+  { id: "long_input", fallbackLabel: "Input and transcript" },
+  { id: "long_quality", fallbackLabel: "Quality metrics" },
+  { id: "long_resilience", fallbackLabel: "Conversation resilience" },
+  { id: "long_knowledge", fallbackLabel: "Knowledge rebuild" },
+  { id: "long_release", fallbackLabel: "Review and rollout" },
+];
+
+const DEMO_LONG_SEQUENCE_NODES: DemoGraphNode[] = [
+  { id: "seq_ops", fallbackLabel: "Operations", x: 120, y: 150, created_frame: 1, group: "seq_participants" },
+  { id: "seq_backend", fallbackLabel: "Backend service", x: 360, y: 150, created_frame: 1, group: "seq_participants" },
+  { id: "seq_queue", fallbackLabel: "Low priority queue", x: 600, y: 150, created_frame: 1, group: "seq_participants" },
+  { id: "seq_actions", fallbackLabel: "GitHub Actions deploy", x: 840, y: 150, created_frame: 1, group: "seq_participants" },
+  { id: "seq_reviewer", fallbackLabel: "Reviewer", x: 1080, y: 150, created_frame: 1, group: "seq_participants" },
+];
+
+const DEMO_LONG_SEQUENCE_MESSAGES: DemoSequenceMessage[] = [
+  { id: "seq_msg_collect", from: "seq_ops", to: "seq_backend", fallbackLabel: "Submit content edits with source notes", created_frame: 1 },
+  { id: "seq_msg_debounce", from: "seq_backend", to: "seq_queue", fallbackLabel: "Open two minute merge window", created_frame: 1 },
+  { id: "seq_msg_low_priority", from: "seq_queue", to: "seq_queue", fallbackLabel: "Keep rebuild as low priority work", created_frame: 1 },
+  { id: "seq_msg_preflight", from: "seq_actions", to: "seq_backend", fallbackLabel: "Run disk preflight before deploy", created_frame: 2 },
+  { id: "seq_msg_rebuild", from: "seq_queue", to: "seq_backend", fallbackLabel: "Rebuild merged knowledge index", created_frame: 2 },
+  { id: "seq_msg_cleanup", from: "seq_backend", to: "seq_actions", fallbackLabel: "Clean temporary package after extraction", created_frame: 2, kind: "reply" },
+  { id: "seq_msg_publish", from: "seq_actions", to: "seq_backend", fallbackLabel: "Publish new version pointer", created_frame: 3 },
+  { id: "seq_msg_smoke", from: "seq_reviewer", to: "seq_backend", fallbackLabel: "Run smoke checks from graph evidence", created_frame: 3 },
+  { id: "seq_msg_rollback", from: "seq_backend", to: "seq_actions", fallbackLabel: "Keep rollback path ready", created_frame: 3, kind: "reply" },
+];
+
+const DEMO_LONG_SEQUENCE_GROUPS: DemoGraphGroupDefinition[] = [
+  { id: "seq_participants", fallbackLabel: "Knowledge release sequence" },
+];
+
+const DEMO_LONG_FLOW_GRAPH: DemoGraphDefinition = {
+  id: "long_ops_graph",
+  fallbackLabel: "Customer operations structure",
+  kind: "flowchart",
+  stageCount: 4,
+  direction: "LR",
+  nodes: DEMO_LONG_FLOW_NODES,
+  edges: DEMO_LONG_FLOW_EDGES,
+  groups: DEMO_LONG_FLOW_GROUPS,
+  groupStyles: DEMO_LONG_FLOW_GROUP_STYLES,
+};
+
+const DEMO_LONG_SEQUENCE_GRAPH: DemoGraphDefinition = {
+  id: "long_release_sequence",
+  fallbackLabel: "Knowledge release sequence",
+  kind: "sequence",
+  stageCount: 3,
+  nodes: DEMO_LONG_SEQUENCE_NODES,
+  edges: [],
+  groups: DEMO_LONG_SEQUENCE_GROUPS,
+  groupStyles: DEMO_SEQUENCE_GROUP_STYLES,
+  messages: DEMO_LONG_SEQUENCE_MESSAGES,
+};
+
+const DEMO_SCENARIOS: DemoScenarioDefinition[] = [
+  {
+    id: "support_release",
+    sessionId: "demo-product-review-session",
+    labelKey: "realtimeStudio.demo.scenario.support",
+    turnsKey: "realtimeStudio.demo.scriptedTurns",
+    nodeLabelsKey: "realtimeStudio.demo.graphNodeLabels",
+    groupLabelsKey: "realtimeStudio.demo.graphGroupLabels",
+    graphs: [DEMO_SUPPORT_GRAPH],
+  },
+  {
+    id: "long_multigraph",
+    sessionId: "demo-long-multigraph-session",
+    labelKey: "realtimeStudio.demo.scenario.longMultigraph",
+    turnsKey: "realtimeStudio.demo.longScriptedTurns",
+    nodeLabelsKey: "realtimeStudio.demo.longGraphNodeLabels",
+    groupLabelsKey: "realtimeStudio.demo.longGraphGroupLabels",
+    graphs: [DEMO_LONG_FLOW_GRAPH, DEMO_LONG_SEQUENCE_GRAPH],
+  },
 ];
 
 function demoStageColor(stageIndex: number) {
@@ -390,23 +567,93 @@ function parseDemoLabelMap(raw: string) {
     }, {});
 }
 
-function demoGraphStageForStep(step: number, totalTurns: number) {
-  if (step <= 0) return 0;
-  const bucketSize = Math.max(1, Math.ceil(Math.max(1, totalTurns) / DEMO_GRAPH_STAGE_COUNT));
-  return Math.max(1, Math.min(DEMO_GRAPH_STAGE_COUNT, Math.ceil(step / bucketSize)));
+function getDemoScenario(id: DemoScenarioId) {
+  return DEMO_SCENARIOS.find((scenario) => scenario.id === id) ?? DEMO_SCENARIOS[0];
 }
 
-function localizeDemoGraphNodes(labels: Record<string, string>): LocalizedDemoGraphNode[] {
-  return DEMO_GRAPH_NODES.map((node) => ({
+function getDemoTotalGraphStages(scenario: DemoScenarioDefinition) {
+  return scenario.graphs.reduce((total, graph) => total + graph.stageCount, 0);
+}
+
+function demoGraphStageForStep(step: number, totalTurns: number, totalGraphStages: number) {
+  if (step <= 0) return 0;
+  const bucketSize = Math.max(1, Math.ceil(Math.max(1, totalTurns) / Math.max(1, totalGraphStages)));
+  return Math.max(1, Math.min(Math.max(1, totalGraphStages), Math.ceil(step / bucketSize)));
+}
+
+function demoStepForGraphStage(globalStage: number, totalTurns: number, totalGraphStages: number) {
+  if (globalStage <= 0) return 0;
+  return Math.max(1, Math.min(totalTurns, Math.ceil((globalStage * totalTurns) / Math.max(1, totalGraphStages))));
+}
+
+function resolveDemoGraphStageByGlobalStage(scenario: DemoScenarioDefinition, globalStage: number) {
+  const totalGraphStages = getDemoTotalGraphStages(scenario);
+  if (globalStage <= 0) {
+    return {
+      graph: scenario.graphs[0],
+      graphIndex: 0,
+      localStage: 0,
+      globalStage: 0,
+      totalGraphStages,
+    };
+  }
+  const normalizedStage = Math.max(1, Math.min(totalGraphStages, globalStage));
+  let stageOffset = 0;
+  for (const [graphIndex, graph] of scenario.graphs.entries()) {
+    const graphEnd = stageOffset + graph.stageCount;
+    if (normalizedStage <= graphEnd) {
+      return {
+        graph,
+        graphIndex,
+        localStage: normalizedStage - stageOffset,
+        globalStage: normalizedStage,
+        totalGraphStages,
+      };
+    }
+    stageOffset = graphEnd;
+  }
+  const fallbackGraph = scenario.graphs[scenario.graphs.length - 1];
+  return {
+    graph: fallbackGraph,
+    graphIndex: scenario.graphs.length - 1,
+    localStage: fallbackGraph.stageCount,
+    globalStage: totalGraphStages,
+    totalGraphStages,
+  };
+}
+
+function resolveDemoGraphStageForStep(step: number, totalTurns: number, scenario: DemoScenarioDefinition) {
+  const totalGraphStages = getDemoTotalGraphStages(scenario);
+  return resolveDemoGraphStageByGlobalStage(
+    scenario,
+    demoGraphStageForStep(step, totalTurns, totalGraphStages),
+  );
+}
+
+function localizeDemoGraphNodes(nodes: DemoGraphNode[], labels: Record<string, string>): LocalizedDemoGraphNode[] {
+  return nodes.map((node) => ({
     ...node,
     label: labels[node.id] || node.fallbackLabel,
   }));
 }
 
-function localizeDemoGraphGroups(labels: Record<string, string>): LocalizedDemoGraphGroup[] {
-  return DEMO_GRAPH_GROUPS.map((group) => ({
+function localizeDemoGraphGroups(
+  groups: DemoGraphGroupDefinition[],
+  labels: Record<string, string>,
+): LocalizedDemoGraphGroup[] {
+  return groups.map((group) => ({
     ...group,
     label: labels[group.id] || group.fallbackLabel,
+  }));
+}
+
+function localizeDemoSequenceMessages(
+  messages: DemoSequenceMessage[],
+  labels: Record<string, string>,
+): LocalizedDemoSequenceMessage[] {
+  return messages.map((message) => ({
+    ...message,
+    label: labels[message.id] || message.fallbackLabel,
   }));
 }
 
@@ -423,12 +670,13 @@ function buildDemoTranscriptTurn(turn: DemoTurn, index: number): RealtimeTranscr
   });
 }
 
-function buildDemoMermaidCode(
+function buildDemoFlowchartMermaidCode(
+  graph: DemoGraphDefinition,
   nodes: LocalizedDemoGraphNode[],
   edges: DemoGraphEdge[],
   groups: LocalizedDemoGraphGroup[],
 ) {
-  if (!nodes.length) return "flowchart LR\n  Empty[\"Waiting for demo playback\"]";
+  if (!nodes.length) return `flowchart ${graph.direction ?? "LR"}\n  Empty["Waiting for demo playback"]`;
   const nodesByGroup = new Map<string, LocalizedDemoGraphNode[]>();
   nodes.forEach((node) => {
     const bucket = nodesByGroup.get(node.group) || [];
@@ -436,7 +684,7 @@ function buildDemoMermaidCode(
     nodesByGroup.set(node.group, bucket);
   });
 
-  const lines = ["flowchart LR"];
+  const lines = [`flowchart ${graph.direction ?? "LR"}`];
   groups.forEach((group) => {
     const members = nodesByGroup.get(group.id);
     if (!members?.length) return;
@@ -445,7 +693,7 @@ function buildDemoMermaidCode(
       lines.push(`    ${node.id}["${mermaidEscape(node.label)}"]`);
     });
     lines.push("  end");
-    const style = DEMO_GROUP_STYLES[group.id];
+    const style = graph.groupStyles[group.id];
     if (style) {
       lines.push(`  style ${group.id} fill:${style.fill},stroke:${style.stroke},stroke-width:1.4px,color:#111827`);
     }
@@ -462,22 +710,55 @@ function buildDemoMermaidCode(
   return lines.join("\n");
 }
 
+function buildDemoSequenceMermaidCode(
+  graph: DemoGraphDefinition,
+  nodes: LocalizedDemoGraphNode[],
+  messages: LocalizedDemoSequenceMessage[],
+) {
+  if (!nodes.length) return "sequenceDiagram\n  %% Waiting for demo playback";
+  const lines = ["sequenceDiagram"];
+  nodes.forEach((node) => {
+    lines.push(`  participant ${node.id} as ${mermaidEscape(node.label)}`);
+  });
+  if (!messages.length) {
+    lines.push("  %% Waiting for staged messages");
+  }
+  messages.forEach((message) => {
+    const arrow = message.kind === "reply" ? "-->>" : "->>";
+    lines.push(`  ${message.from}${arrow}${message.to}: ${mermaidEscape(message.label)}`);
+  });
+  DEMO_STAGE_COLORS.forEach((color, index) => {
+    lines.push(`  %% stage ${index + 1}: ${color}`);
+  });
+  return lines.join("\n");
+}
+
 function buildDemoSnapshot(
   step: number,
   turns: DemoTurn[],
   nodeLabels: Record<string, string>,
   groupLabels: Record<string, string>,
+  scenario: DemoScenarioDefinition,
 ) {
   const totalTurns = Math.max(1, turns.length);
   const visibleStep = Math.max(0, Math.min(step, turns.length));
-  const visibleGraphStage = demoGraphStageForStep(visibleStep, totalTurns);
-  const graphNodesForLocale = localizeDemoGraphNodes(nodeLabels);
-  const graphGroupsForLocale = localizeDemoGraphGroups(groupLabels);
+  const stageState = resolveDemoGraphStageForStep(visibleStep, totalTurns, scenario);
+  const { graph, localStage: visibleGraphStage, globalStage: visibleGlobalStage, totalGraphStages } = stageState;
+  const graphLabel = nodeLabels[graph.id] || graph.fallbackLabel;
+  const graphNodesForLocale = localizeDemoGraphNodes(graph.nodes, nodeLabels);
+  const graphGroupsForLocale = localizeDemoGraphGroups(graph.groups, groupLabels);
+  const graphMessagesForLocale = localizeDemoSequenceMessages(graph.messages ?? [], nodeLabels);
   const visibleTurns = turns.slice(0, visibleStep).map(buildDemoTranscriptTurn);
   const visibleNodes = graphNodesForLocale.filter((node) => node.created_frame <= visibleGraphStage);
   const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
-  const visibleEdges = DEMO_GRAPH_EDGES.filter(
+  const visibleEdges = graph.edges.filter(
     (edge) => edge.created_frame <= visibleGraphStage && visibleNodeIds.has(edge.from) && visibleNodeIds.has(edge.to),
+  );
+  const visibleMessages = graphMessagesForLocale.filter(
+    (message) =>
+      message.created_frame <= visibleGraphStage &&
+      visibleNodeIds.has(message.from) &&
+      visibleNodeIds.has(message.to),
   );
   const visibleGroups = graphGroupsForLocale.map((group) => ({
     ...group,
@@ -489,46 +770,78 @@ function buildDemoSnapshot(
     stage_color: demoStageColor(index + 1),
     concepts: [
       ...visibleNodes.filter((node) => node.created_frame === index + 1).map((node) => node.label),
+      ...visibleMessages.filter((message) => message.created_frame === index + 1).map((message) => message.label),
     ],
     delta_ops_count:
       graphNodesForLocale.filter((node) => node.created_frame === index + 1).length +
-      DEMO_GRAPH_EDGES.filter((edge) => edge.created_frame === index + 1).length,
+      (graph.kind === "sequence"
+        ? graphMessagesForLocale.filter((message) => message.created_frame === index + 1).length
+        : graph.edges.filter((edge) => edge.created_frame === index + 1).length),
   }));
   const graphNodes = visibleNodes.map((node) => ({
     id: node.id,
     label: node.label,
     kind: "concept",
-    metadata: demoMetadata(node.created_frame),
+    metadata: demoMetadata(node.created_frame, { demo_graph_id: graph.id }),
   }));
-  const graphEdges = visibleEdges.map((edge, index) => ({
-    id: `${edge.from}_${edge.to}_${index}`,
-    source: edge.from,
-    target: edge.to,
-    label: edge.label,
-    kind: "relation",
-    source_index: index,
-    metadata: demoMetadata(edge.created_frame),
-  }));
+  const graphEdges =
+    graph.kind === "sequence"
+      ? visibleMessages.map((message, index) => ({
+          id: message.id,
+          source: message.from,
+          target: message.to,
+          label: message.label,
+          kind: "message",
+          source_index: index,
+          metadata: demoMetadata(message.created_frame, { demo_graph_id: graph.id }),
+        }))
+      : visibleEdges.map((edge, index) => ({
+          id: `${edge.from}_${edge.to}_${index}`,
+          source: edge.from,
+          target: edge.to,
+          label: edge.label,
+          kind: "relation",
+          source_index: index,
+          metadata: demoMetadata(edge.created_frame, { demo_graph_id: graph.id }),
+        }));
   const rendererNodes = visibleNodes.map((node) => ({
     id: node.id,
     label: node.label,
     x: node.x,
     y: node.y,
     created_frame: node.created_frame,
-    metadata: demoMetadata(node.created_frame),
+    metadata: demoMetadata(node.created_frame, { demo_graph_id: graph.id }),
   }));
-  const rendererEdges = visibleEdges.map((edge) => ({
-    from: edge.from,
-    to: edge.to,
-    created_frame: edge.created_frame,
-    metadata: demoMetadata(edge.created_frame, { label: edge.label }),
-  }));
+  const rendererEdges =
+    graph.kind === "sequence"
+      ? visibleMessages.map((message) => ({
+          from: message.from,
+          to: message.to,
+          created_frame: message.created_frame,
+          metadata: demoMetadata(message.created_frame, { label: message.label, demo_graph_id: graph.id }),
+        }))
+      : visibleEdges.map((edge) => ({
+          from: edge.from,
+          to: edge.to,
+          created_frame: edge.created_frame,
+          metadata: demoMetadata(edge.created_frame, { label: edge.label, demo_graph_id: graph.id }),
+        }));
   const now = Date.now();
   const latestTurn = visibleTurns[visibleTurns.length - 1] ?? null;
-  const mermaidCode = buildDemoMermaidCode(visibleNodes, visibleEdges, visibleGroups);
+  const mermaidCode =
+    graph.kind === "sequence"
+      ? buildDemoSequenceMermaidCode(graph, visibleNodes, visibleMessages)
+      : buildDemoFlowchartMermaidCode(graph, visibleNodes, visibleEdges, visibleGroups);
+  const currentStageDeltaOps =
+    visibleGraphStage <= 0
+      ? 0
+      : graphNodesForLocale.filter((node) => node.created_frame === visibleGraphStage).length +
+        (graph.kind === "sequence"
+          ? graphMessagesForLocale.filter((message) => message.created_frame === visibleGraphStage).length
+          : graph.edges.filter((edge) => edge.created_frame === visibleGraphStage).length);
 
   return {
-    session_id: DEMO_SESSION_ID,
+    session_id: scenario.sessionId,
     pipeline: {
       transcript_state: {
         latest_final_turn: latestTurn,
@@ -546,6 +859,9 @@ function buildDemoSnapshot(
           transcript_text: turn.text,
           start_ms: index * 1850,
           end_ms: index * 1850 + 1450,
+        },
+        metadata: {
+          demo_graph_id: resolveDemoGraphStageForStep(index + 1, totalTurns, scenario).graph.id,
         },
         gate: {
           action: turn.intent,
@@ -579,6 +895,12 @@ function buildDemoSnapshot(
           metadata: {
             incremental_stages: incrementalStages,
             demo_mode: true,
+            demo_scenario_id: scenario.id,
+            active_graph_id: graph.id,
+            active_graph_label: graphLabel,
+            active_graph_kind: graph.kind,
+            active_graph_stage: visibleGraphStage,
+            active_global_stage: visibleGlobalStage,
           },
         },
       },
@@ -589,15 +911,13 @@ function buildDemoSnapshot(
       },
       planner_state: {
         status: visibleStep ? "delta_applied" : "waiting",
-        delta_ops_count:
-          graphNodesForLocale.filter((node) => node.created_frame === visibleGraphStage).length +
-          DEMO_GRAPH_EDGES.filter((edge) => edge.created_frame === visibleGraphStage).length,
+        delta_ops_count: currentStageDeltaOps,
       },
       mermaid_state: {
         code: mermaidCode,
         normalized_code: mermaidCode,
         provider: "Scripted demo",
-        model: "Product review playback",
+        model: graphLabel,
         latency_ms: 180 + visibleStep * 11,
         compile_ok: true,
         render_ok: true,
@@ -608,7 +928,11 @@ function buildDemoSnapshot(
         visible_turns: visibleStep,
         total_turns: turns.length,
         visible_graph_stage: visibleGraphStage,
-        total_graph_stages: DEMO_GRAPH_STAGE_COUNT,
+        visible_global_stage: visibleGlobalStage,
+        total_graph_stages: totalGraphStages,
+        active_graph_id: graph.id,
+        active_graph_kind: graph.kind,
+        demo_scenario_id: scenario.id,
       },
     },
     evaluation: {
@@ -623,23 +947,39 @@ function buildDemoSnapshot(
   };
 }
 
-function buildDemoTimelineNodes(step: number, turns: DemoTurn[]): RealtimeTimelineNode[] {
+function buildDemoTimelineNodes(
+  step: number,
+  turns: DemoTurn[],
+  scenario: DemoScenarioDefinition,
+  nodeLabels: Record<string, string>,
+): RealtimeTimelineNode[] {
   const visibleStep = Math.max(0, Math.min(step, turns.length));
+  const totalTurns = Math.max(1, turns.length);
+  const totalGraphStages = getDemoTotalGraphStages(scenario);
+  const visibleGlobalStage = demoGraphStageForStep(visibleStep, totalTurns, totalGraphStages);
   const baseTime = Date.parse("2026-06-01T09:00:00.000Z");
-  return turns.slice(0, visibleStep)
-    .map((turn, index) => ({
-      snapshot_id: `${DEMO_SESSION_ID}-${index + 1}`,
-      created_at: new Date(baseTime + index * 1850).toISOString(),
+  return Array.from({ length: visibleGlobalStage }, (_, index) => {
+    const globalStage = index + 1;
+    const stageState = resolveDemoGraphStageByGlobalStage(scenario, globalStage);
+    const demoStep = demoStepForGraphStage(globalStage, totalTurns, totalGraphStages);
+    const turn = turns[Math.max(0, Math.min(demoStep - 1, turns.length - 1))] ?? turns[0];
+    const graphLabel = nodeLabels[stageState.graph.id] || stageState.graph.fallbackLabel;
+    return {
+      snapshot_id: `${scenario.sessionId}-${stageState.graph.id}-${stageState.localStage}`,
+      created_at: new Date(baseTime + demoStep * 1850).toISOString(),
       summary: {
-        demo_step: index + 1,
-        speaker: turn.speaker,
-        intent: turn.intent,
+        demo_step: demoStep,
+        demo_graph_id: stageState.graph.id,
+        demo_graph_stage: stageState.localStage,
+        demo_global_stage: globalStage,
+        speaker: turn?.speaker,
+        intent: turn?.intent,
       },
-      event_count: index + 1,
-      chunk_count: index + 1,
-      label: `Demo ${index + 1}`,
-    }))
-    .reverse();
+      event_count: demoStep,
+      chunk_count: demoStep,
+      label: `${graphLabel} ${stageState.localStage}/${stageState.graph.stageCount}`,
+    };
+  }).reverse();
 }
 
 function buildDemoHistoryTurns(step: number, turns: DemoTurn[]): TranscriptHistoryItem[] {
@@ -1662,29 +2002,86 @@ function ReplayStatusPanel({
 
 function DemoStatusPanel({
   active,
+  visible,
+  collapsed,
   playing,
   currentStep,
   turns,
   tr,
+  onClose,
+  onToggleCollapse,
 }: {
   active: boolean;
+  visible: boolean;
+  collapsed: boolean;
   playing: boolean;
   currentStep: number;
   turns: DemoTurn[];
   tr: (key: I18nKey, params?: Record<string, string | number>) => string;
+  onClose: () => void;
+  onToggleCollapse: () => void;
 }) {
-  if (!active) return null;
+  if (!active || !visible) return null;
   const turn = currentStep > 0 ? turns[currentStep - 1] : null;
+  const statusIcon = playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />;
+  if (collapsed) {
+    return (
+      <aside className="pointer-events-auto absolute right-4 top-20 z-[24] flex max-w-[calc(100%-2rem)] items-center gap-1.5 rounded-xl border border-theme-default bg-surface-1/95 px-2 py-2 shadow-xl backdrop-blur-md">
+        <button
+          type="button"
+          className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-theme-3 hover:bg-surface-2"
+          onClick={onToggleCollapse}
+          aria-label={tr("realtimeStudio.demo.panelExpand")}
+          title={tr("realtimeStudio.demo.panelExpand")}
+        >
+          {statusIcon}
+          <span>{tr("realtimeStudio.demo.panelTitle")}</span>
+          <Badge>
+            {currentStep}/{turns.length}
+          </Badge>
+        </button>
+        <button
+          type="button"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-theme-4 hover:bg-surface-2 hover:text-theme-1"
+          onClick={onClose}
+          aria-label={tr("realtimeStudio.demo.panelClose")}
+          title={tr("realtimeStudio.demo.panelClose")}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </aside>
+    );
+  }
   return (
     <aside className="pointer-events-auto absolute right-4 top-20 z-[24] w-[min(360px,calc(100%-2rem))] rounded-xl border border-theme-default bg-surface-1/95 px-4 py-3 shadow-xl backdrop-blur-md">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-theme-4">
-          {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+          {statusIcon}
           {tr("realtimeStudio.demo.panelTitle")}
         </div>
-        <Badge>
-          {currentStep}/{turns.length}
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          <Badge>
+            {currentStep}/{turns.length}
+          </Badge>
+          <button
+            type="button"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-theme-4 hover:bg-surface-2 hover:text-theme-1"
+            onClick={onToggleCollapse}
+            aria-label={tr("realtimeStudio.demo.panelCollapse")}
+            title={tr("realtimeStudio.demo.panelCollapse")}
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-theme-4 hover:bg-surface-2 hover:text-theme-1"
+            onClick={onClose}
+            aria-label={tr("realtimeStudio.demo.panelClose")}
+            title={tr("realtimeStudio.demo.panelClose")}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       <div className="mt-3 rounded-lg border border-theme-default bg-surface-2/80 px-3 py-2">
         <div className="text-[11px] font-semibold text-theme-4">{tr("realtimeStudio.demo.panelTurn")}</div>
@@ -1924,9 +2321,17 @@ export function RealtimeStudio() {
   const currentDateLocale = dateLocale(language);
   const defaultSessionTitle = tr("realtimeStudio.session.defaultTitle");
   const defaultDemoTranscript = tr("realtimeStudio.demo.defaultTranscript");
-  const demoTurns = useMemo(() => parseDemoTurns(t(language, "realtimeStudio.demo.scriptedTurns")), [language]);
-  const demoNodeLabels = useMemo(() => parseDemoLabelMap(t(language, "realtimeStudio.demo.graphNodeLabels")), [language]);
-  const demoGroupLabels = useMemo(() => parseDemoLabelMap(t(language, "realtimeStudio.demo.graphGroupLabels")), [language]);
+  const [demoScenarioId, setDemoScenarioId] = useState<DemoScenarioId>("support_release");
+  const demoScenario = useMemo(() => getDemoScenario(demoScenarioId), [demoScenarioId]);
+  const demoTurns = useMemo(() => parseDemoTurns(t(language, demoScenario.turnsKey)), [demoScenario.turnsKey, language]);
+  const demoNodeLabels = useMemo(
+    () => parseDemoLabelMap(t(language, demoScenario.nodeLabelsKey)),
+    [demoScenario.nodeLabelsKey, language],
+  );
+  const demoGroupLabels = useMemo(
+    () => parseDemoLabelMap(t(language, demoScenario.groupLabelsKey)),
+    [demoScenario.groupLabelsKey, language],
+  );
   const demoTotalSteps = demoTurns.length;
   const [studioState, studioSend] = useMachine(realtimeStudioMachine);
   const [title, setTitle] = useState(defaultSessionTitle);
@@ -2012,6 +2417,8 @@ export function RealtimeStudio() {
   const [demoMode, setDemoMode] = useState(false);
   const [demoPlaying, setDemoPlaying] = useState(false);
   const [demoStep, setDemoStep] = useState(0);
+  const [demoPanelVisible, setDemoPanelVisible] = useState(true);
+  const [demoPanelCollapsed, setDemoPanelCollapsed] = useState(false);
   const [replayMode, setReplayMode] = useState(false);
   const [replayPlaying, setReplayPlaying] = useState(false);
   const [replayIndex, setReplayIndex] = useState(0);
@@ -2346,7 +2753,10 @@ export function RealtimeStudio() {
     retry: false,
   });
   const serverTimelineNodes = timelineQuery.data?.session_id === currentSessionId ? timelineQuery.data.nodes : [];
-  const demoTimelineNodes = useMemo(() => buildDemoTimelineNodes(demoStep, demoTurns), [demoStep, demoTurns]);
+  const demoTimelineNodes = useMemo(
+    () => buildDemoTimelineNodes(demoStep, demoTurns, demoScenario, demoNodeLabels),
+    [demoNodeLabels, demoScenario, demoStep, demoTurns],
+  );
   const timelineNodes = demoMode ? demoTimelineNodes : serverTimelineNodes;
   const orderedTimelineNodes = useMemo(() => [...timelineNodes].reverse(), [timelineNodes]);
   const selectedTimelineNode = useMemo(
@@ -2553,6 +2963,7 @@ export function RealtimeStudio() {
     setSelectedGraphEvidence(null);
     setRollbackPreview(null);
     setAutoFollowLatestTimelineNode(true);
+    setDemoPanelVisible(true);
   };
 
   const toggleDemoPlayback = () => {
@@ -2596,6 +3007,10 @@ export function RealtimeStudio() {
     }, demoStep === 0 ? 250 : DEMO_PLAYBACK_INTERVAL_MS);
     return () => window.clearTimeout(timer);
   }, [demoMode, demoPlaying, demoStep, demoTotalSteps]);
+
+  useEffect(() => {
+    setDemoStep((step) => Math.min(step, demoTotalSteps));
+  }, [demoTotalSteps]);
 
   useEffect(() => {
     if (!effectiveError) return;
@@ -4234,8 +4649,8 @@ export function RealtimeStudio() {
   }
 
   const demoSnapshot = useMemo(
-    () => buildDemoSnapshot(demoStep, demoTurns, demoNodeLabels, demoGroupLabels),
-    [demoGroupLabels, demoNodeLabels, demoStep, demoTurns],
+    () => buildDemoSnapshot(demoStep, demoTurns, demoNodeLabels, demoGroupLabels, demoScenario),
+    [demoGroupLabels, demoNodeLabels, demoScenario, demoStep, demoTurns],
   );
   const activeSnapshot = demoMode ? demoSnapshot : snapshot?.session_id === currentSessionId ? snapshot : null;
   const rendererState = activeSnapshot?.pipeline?.renderer_state || {};
@@ -4259,7 +4674,11 @@ export function RealtimeStudio() {
     () => readIncrementalStageSummaries(currentGraphPayload),
     [currentGraphPayload],
   );
-  const activeIncrementalStageIndex = demoMode && demoStep > 0 ? demoGraphStageForStep(demoStep, demoTotalSteps) : null;
+  const activeDemoGraphStage = useMemo(
+    () => resolveDemoGraphStageForStep(demoStep, demoTotalSteps, demoScenario),
+    [demoScenario, demoStep, demoTotalSteps],
+  );
+  const activeIncrementalStageIndex = demoMode && demoStep > 0 ? activeDemoGraphStage.localStage : null;
   const mermaidExportRootId = "realtime-mermaid-export";
   const transcriptState = useMemo(() => readTranscriptState(activeSnapshot?.pipeline), [activeSnapshot?.pipeline]);
   const transcriptDownloads = useMemo(() => {
@@ -4353,10 +4772,7 @@ export function RealtimeStudio() {
     if (shouldForceDraftPreview) return draftTurns;
     return archivedTranscriptTurns.length ? archivedTranscriptTurns : draftTurns;
   }, [archivedTranscriptTurns, demoHistoryTurns, demoMode, selectedInputSource, transcriptText]);
-  const visiblePreviewArchivedTranscriptTurns = useMemo(
-    () => previewArchivedTranscriptTurns.slice(0, 10),
-    [previewArchivedTranscriptTurns],
-  );
+  const visiblePreviewArchivedTranscriptTurns = previewArchivedTranscriptTurns;
   const currentSubtitleText = useMemo(() => {
     const live = liveTranscript.trim();
     if (live) return live;
@@ -4369,7 +4785,7 @@ export function RealtimeStudio() {
       return;
     }
     try {
-      const base = sanitizeDownloadFileName(titleDisplay || currentSessionId || DEMO_SESSION_ID);
+      const base = sanitizeDownloadFileName(titleDisplay || currentSessionId || demoScenario.sessionId);
       const fileName = `${base}_graph.svg`;
       downloadCurrentMermaidSvg(mermaidExportRootId, fileName, tr("realtimeStudio.error.noDownloadableGraph"));
       const p = annotationsState.payload;
@@ -4522,7 +4938,7 @@ export function RealtimeStudio() {
           label: tr("realtimeStudio.text030"),
           value: demoStep > 0 ? tr("realtimeStudio.text031") : tr("realtimeStudio.text023"),
           tone: activeTone,
-          help: "The Mermaid graph is generated from the local demo snapshot.",
+          help: tr("realtimeStudio.demo.helpPlanner"),
         },
         {
           abbr: "MODEL",
@@ -5004,9 +5420,9 @@ export function RealtimeStudio() {
               </button>
               {activeWorkbenchPanel === "process" ? (
                 <div className="absolute right-full top-0 z-[130] pr-2">
-                  <div className="w-[min(520px,calc(100vw-9rem))] rounded-lg border border-theme-default bg-surface-1/95 p-2 shadow-xl backdrop-blur-md">
+                  <div className="w-max max-w-[min(520px,calc(100vw-9rem))] rounded-lg border border-theme-default bg-surface-1/95 p-2 shadow-xl backdrop-blur-md">
                     <Tooltip.Provider delayDuration={120}>
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex w-max max-w-full flex-wrap items-center gap-1.5">
                         {pipelineStages.map((step) => (
                           <Tooltip.Root key={step.abbr}>
                             <Tooltip.Trigger asChild>
@@ -5183,6 +5599,7 @@ export function RealtimeStudio() {
                               enterDemoMode();
                               setDemoStep(0);
                               setDemoPlaying(true);
+                              setSelectedTimelineSnapshotId(null);
                             } else {
                               exitDemoMode();
                             }
@@ -5211,6 +5628,33 @@ export function RealtimeStudio() {
             <p className="text-[11px] leading-relaxed text-theme-3">
               {selectedOption.description}
             </p>
+            {selectedInputSource === "demo_mode" ? (
+              <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-theme-subtle bg-surface-muted p-1">
+                {DEMO_SCENARIOS.map((scenario) => {
+                  const active = scenario.id === demoScenarioId;
+                  return (
+                    <button
+                      key={scenario.id}
+                      type="button"
+                      className={`h-8 rounded-md px-2 text-[11px] font-semibold transition ${
+                        active
+                          ? "border border-violet-500/60 bg-violet-950/55 text-violet-50 shadow-sm"
+                          : "border border-transparent bg-surface-2 text-theme-2 hover:border-theme-default hover:bg-surface-3"
+                      }`}
+                      onClick={() => {
+                        setDemoScenarioId(scenario.id);
+                        enterDemoMode();
+                        setDemoStep(0);
+                        setDemoPlaying(true);
+                        setSelectedTimelineSnapshotId(null);
+                      }}
+                    >
+                      {tr(scenario.labelKey)}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
             {/* 声纹盲认仅与语音/STT 相关；纯文本 Transcript 输入时不展示 */}
             {selectedInputSource !== "transcript" ? (
               <div className="flex min-h-[2rem] items-center justify-between gap-2 rounded-lg border border-theme-subtle bg-surface-muted px-2 py-1">
@@ -5339,7 +5783,7 @@ export function RealtimeStudio() {
                   <div className="text-[10px] text-theme-4">
                     {transcriptPanelTab === "history"
                       ? visiblePreviewArchivedTranscriptTurns.length
-                        ? `${visiblePreviewArchivedTranscriptTurns.length} / 10`
+                        ? `${visiblePreviewArchivedTranscriptTurns.length} / ${previewArchivedTranscriptTurns.length}`
                         : tr("realtimeStudio.text079")
                       : activeTranscriptTurn?.speaker
                         ? tr("realtimeStudio.transcript.currentSpeaker", { speaker: activeTranscriptTurn.speaker })
@@ -5524,9 +5968,9 @@ export function RealtimeStudio() {
                     </button>
                     {activeWorkbenchPanel === "process" ? (
                       <div className="absolute left-full top-0 z-[90] pl-2">
-                        <div className="w-[min(520px,calc(100vw-8rem))] rounded-lg border border-theme-default bg-surface-1/95 p-2 shadow-xl backdrop-blur-md">
+                        <div className="w-max max-w-[min(520px,calc(100vw-8rem))] rounded-lg border border-theme-default bg-surface-1/95 p-2 shadow-xl backdrop-blur-md">
                           <Tooltip.Provider delayDuration={120}>
-                            <div className="flex flex-wrap items-center gap-1.5">
+                            <div className="flex w-max max-w-full flex-wrap items-center gap-1.5">
                               {pipelineStages.map((step) => (
                                 <Tooltip.Root key={step.abbr}>
                                   <Tooltip.Trigger asChild>
@@ -5597,7 +6041,7 @@ export function RealtimeStudio() {
                       <span>{tr("realtimeStudio.dock.notes")}</span>
                     </button>
                     {activeWorkbenchPanel === "notes" ? (
-                      <div className="absolute left-full top-0 z-[90] pl-2">
+                      <div className="absolute left-full top-1/2 z-[90] -translate-y-1/2 pl-2">
                         <div className="w-max max-w-[min(620px,calc(100vw-8rem))] rounded-lg border border-[#4f3a86]/90 bg-[#d9d0ef]/95 p-2 shadow-xl backdrop-blur-md">
                           <div className="flex w-max max-w-full flex-col gap-2">
                             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -6023,7 +6467,17 @@ export function RealtimeStudio() {
                   tr={tr}
                   currentDateLocale={currentDateLocale}
                 />
-                <DemoStatusPanel active={demoMode} playing={demoPlaying} currentStep={demoStep} turns={demoTurns} tr={tr} />
+                <DemoStatusPanel
+                  active={demoMode}
+                  visible={demoPanelVisible}
+                  collapsed={demoPanelCollapsed}
+                  playing={demoPlaying}
+                  currentStep={demoStep}
+                  turns={demoTurns}
+                  tr={tr}
+                  onClose={() => setDemoPanelVisible(false)}
+                  onToggleCollapse={() => setDemoPanelCollapsed((collapsed) => !collapsed)}
+                />
               </div>
             </Tabs.Content>
 
