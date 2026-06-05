@@ -2,6 +2,7 @@
 
 > Version: 2026-04-05
 > Audience: Project members, reviewers, and potential collaborators.
+> Maintainer note: This guide tracks the project architecture, evaluation workflow, and deployment-facing usage.
 
 ---
 
