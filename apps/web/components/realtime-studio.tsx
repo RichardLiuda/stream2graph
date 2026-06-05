@@ -253,9 +253,17 @@ const TRANSCRIPT_PRESETS: TranscriptPreset[] = [
   },
 ];
 
-const DEMO_SESSION_ID = "demo-acmmm-scripted-session";
+const DEMO_SESSION_ID = "demo-product-review-session";
 const DEMO_PLAYBACK_INTERVAL_MS = 1450;
-const DEMO_STAGE_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#c2410c", "#be123c", "#475569"];
+const DEMO_GRAPH_STAGE_COUNT = 4;
+const DEMO_STAGE_COLORS = ["#0ea5e9", "#22c55e", "#f97316", "#ec4899", "#8b5cf6", "#14b8a6"];
+const DEMO_GROUP_STYLES: Record<string, { fill: string; stroke: string }> = {
+  intake: { fill: "#e0f2fe", stroke: "#0ea5e9" },
+  quality: { fill: "#dcfce7", stroke: "#16a34a" },
+  resilience: { fill: "#fef3c7", stroke: "#f97316" },
+  knowledge: { fill: "#fce7f3", stroke: "#db2777" },
+  rollout: { fill: "#ede9fe", stroke: "#7c3aed" },
+};
 
 type DemoTurn = {
   speaker: string;
@@ -265,7 +273,7 @@ type DemoTurn = {
 
 type DemoGraphNode = {
   id: string;
-  label: string;
+  fallbackLabel: string;
   x: number;
   y: number;
   created_frame: number;
@@ -279,120 +287,59 @@ type DemoGraphEdge = {
   created_frame: number;
 };
 
-const DEMO_TURNS: DemoTurn[] = [
-  {
-    speaker: "PI",
-    intent: "goal",
-    text: "For the demo track, I want the audience to see a long meeting transcript turn into an evolving graph without waiting for live typing.",
-  },
-  {
-    speaker: "Engineer",
-    intent: "streaming_input",
-    text: "The first layer is the streaming transcript. Every finalized turn is appended as evidence and the graph only exposes the stable structure.",
-  },
-  {
-    speaker: "Designer",
-    intent: "speaker_context",
-    text: "We should preserve speaker roles, because the audience needs to know which requirements came from the PI, the engineer, and the evaluator.",
-  },
-  {
-    speaker: "Engineer",
-    intent: "incremental_gate",
-    text: "A lightweight gate decides whether a turn adds a new concept, refines an existing relation, or should simply remain transcript evidence.",
-  },
-  {
-    speaker: "Researcher",
-    intent: "planner_update",
-    text: "Then the planner creates a small delta instead of redrawing the whole diagram, which is the core incremental behavior we want to highlight.",
-  },
-  {
-    speaker: "Engineer",
-    intent: "mental_map",
-    text: "The renderer keeps node positions stable, so the graph grows around existing anchors and the mental map does not jump between updates.",
-  },
-  {
-    speaker: "Evaluator",
-    intent: "metrics",
-    text: "For ACMMM, we should show measurable signals: latency, flicker, intent accuracy, and structure readability in the report panel.",
-  },
-  {
-    speaker: "PI",
-    intent: "dataset",
-    text: "The data story should mention dialogue samples, reference graphs, and replayable sessions, because reviewers will ask how the behavior is evaluated.",
-  },
-  {
-    speaker: "Designer",
-    intent: "evidence",
-    text: "When a viewer clicks a graph node, the demo should reveal the transcript turns that justify it instead of treating the graph as magic.",
-  },
-  {
-    speaker: "Engineer",
-    intent: "export",
-    text: "At the end, we export the final Mermaid graph, annotations, and a session report so the demo has a clean artifact trail.",
-  },
-  {
-    speaker: "Evaluator",
-    intent: "failure_modes",
-    text: "We also need to acknowledge failure modes: ambiguous turns, delayed updates, and rollback when a transcript correction changes the graph.",
-  },
-  {
-    speaker: "PI",
-    intent: "demo_script",
-    text: "The screen recording can now run this fixed script automatically, while I narrate how the graph grows from left to right.",
-  },
-  {
-    speaker: "Researcher",
-    intent: "paper_claim",
-    text: "The final claim is not that the system draws pretty diagrams, but that it maintains a continuously inspectable structure during conversation.",
-  },
-  {
-    speaker: "PI",
-    intent: "wrap_up",
-    text: "Great. Let the demo finish on the complete graph with evidence, metrics, and export controls visible for the reviewers.",
-  },
-];
+type LocalizedDemoGraphNode = DemoGraphNode & {
+  label: string;
+};
+
+type LocalizedDemoGraphGroup = {
+  id: string;
+  fallbackLabel: string;
+  label: string;
+};
 
 const DEMO_GRAPH_NODES: DemoGraphNode[] = [
-  { id: "demo_goal", label: "ACMMM Demo Goal", x: 80, y: 130, created_frame: 1, group: "framing" },
-  { id: "stream_transcript", label: "Streaming Transcript", x: 250, y: 90, created_frame: 2, group: "conversation" },
-  { id: "speaker_roles", label: "Speaker Roles", x: 250, y: 190, created_frame: 3, group: "conversation" },
-  { id: "gate", label: "Incremental Gate", x: 430, y: 95, created_frame: 4, group: "pipeline" },
-  { id: "planner_delta", label: "Planner Delta", x: 600, y: 95, created_frame: 5, group: "pipeline" },
-  { id: "stable_layout", label: "Stable Layout", x: 765, y: 95, created_frame: 6, group: "pipeline" },
-  { id: "metrics", label: "Live Metrics", x: 610, y: 230, created_frame: 7, group: "evaluation" },
-  { id: "dataset", label: "Dialogue Dataset", x: 430, y: 300, created_frame: 8, group: "evaluation" },
-  { id: "evidence", label: "Evidence Binding", x: 775, y: 230, created_frame: 9, group: "evaluation" },
-  { id: "exports", label: "Export Artifacts", x: 940, y: 230, created_frame: 10, group: "delivery" },
-  { id: "rollback", label: "Rollback Path", x: 610, y: 370, created_frame: 11, group: "resilience" },
-  { id: "scripted_demo", label: "Scripted Playback", x: 80, y: 300, created_frame: 12, group: "framing" },
-  { id: "paper_claim", label: "Paper Claim", x: 775, y: 370, created_frame: 13, group: "delivery" },
-  { id: "reviewer_view", label: "Reviewer View", x: 940, y: 370, created_frame: 14, group: "delivery" },
+  { id: "support_inbox", fallbackLabel: "Support inbox signal", x: 110, y: 130, created_frame: 1, group: "intake" },
+  { id: "satisfaction_board", fallbackLabel: "Satisfaction board", x: 330, y: 70, created_frame: 1, group: "quality" },
+  { id: "handoff_watch", fallbackLabel: "Human handoff watch", x: 330, y: 170, created_frame: 1, group: "quality" },
+  { id: "resolution_rate", fallbackLabel: "Resolution rate", x: 580, y: 48, created_frame: 2, group: "quality" },
+  { id: "sentiment_recovery", fallbackLabel: "Sentiment recovery", x: 580, y: 118, created_frame: 2, group: "quality" },
+  { id: "session_keepalive", fallbackLabel: "15 minute session memory", x: 580, y: 212, created_frame: 2, group: "resilience" },
+  { id: "topic_tag", fallbackLabel: "topic_tag routing", x: 580, y: 282, created_frame: 2, group: "resilience" },
+  { id: "context_reset", fallbackLabel: "Context reset path", x: 815, y: 212, created_frame: 3, group: "resilience" },
+  { id: "group_color", fallbackLabel: "Conversation group color", x: 815, y: 282, created_frame: 3, group: "resilience" },
+  { id: "kb_delta", fallbackLabel: "Knowledge delta queue", x: 330, y: 395, created_frame: 3, group: "knowledge" },
+  { id: "batch_rebuild", fallbackLabel: "Merged rebuild job", x: 580, y: 385, created_frame: 3, group: "knowledge" },
+  { id: "light_hint", fallbackLabel: "Lightweight update notice", x: 580, y: 455, created_frame: 3, group: "knowledge" },
+  { id: "qa_cases", fallbackLabel: "QA cases from graph", x: 815, y: 390, created_frame: 4, group: "rollout" },
+  { id: "deploy_guardrail", fallbackLabel: "Deployment guardrail", x: 815, y: 470, created_frame: 4, group: "rollout" },
+  { id: "release_review", fallbackLabel: "Release review view", x: 1030, y: 320, created_frame: 4, group: "rollout" },
 ];
 
 const DEMO_GRAPH_EDGES: DemoGraphEdge[] = [
-  { from: "demo_goal", to: "stream_transcript", label: "uses", created_frame: 2 },
-  { from: "stream_transcript", to: "speaker_roles", label: "keeps roles", created_frame: 3 },
-  { from: "stream_transcript", to: "gate", label: "feeds", created_frame: 4 },
-  { from: "gate", to: "planner_delta", label: "emits intent", created_frame: 5 },
-  { from: "planner_delta", to: "stable_layout", label: "updates", created_frame: 6 },
-  { from: "planner_delta", to: "metrics", label: "logs", created_frame: 7 },
-  { from: "dataset", to: "metrics", label: "validates", created_frame: 8 },
-  { from: "stream_transcript", to: "evidence", label: "supports", created_frame: 9 },
-  { from: "evidence", to: "exports", label: "packages", created_frame: 10 },
-  { from: "rollback", to: "planner_delta", label: "recomputes", created_frame: 11 },
-  { from: "scripted_demo", to: "stream_transcript", label: "replays", created_frame: 12 },
-  { from: "stable_layout", to: "paper_claim", label: "supports", created_frame: 13 },
-  { from: "exports", to: "reviewer_view", label: "shows", created_frame: 14 },
-  { from: "paper_claim", to: "reviewer_view", label: "frames", created_frame: 14 },
+  { from: "support_inbox", to: "satisfaction_board", label: "", created_frame: 1 },
+  { from: "support_inbox", to: "handoff_watch", label: "", created_frame: 1 },
+  { from: "satisfaction_board", to: "resolution_rate", label: "", created_frame: 2 },
+  { from: "satisfaction_board", to: "sentiment_recovery", label: "", created_frame: 2 },
+  { from: "handoff_watch", to: "session_keepalive", label: "", created_frame: 2 },
+  { from: "session_keepalive", to: "topic_tag", label: "", created_frame: 2 },
+  { from: "topic_tag", to: "context_reset", label: "", created_frame: 3 },
+  { from: "topic_tag", to: "group_color", label: "", created_frame: 3 },
+  { from: "support_inbox", to: "kb_delta", label: "", created_frame: 3 },
+  { from: "kb_delta", to: "batch_rebuild", label: "", created_frame: 3 },
+  { from: "batch_rebuild", to: "light_hint", label: "", created_frame: 3 },
+  { from: "resolution_rate", to: "qa_cases", label: "", created_frame: 4 },
+  { from: "context_reset", to: "qa_cases", label: "", created_frame: 4 },
+  { from: "batch_rebuild", to: "deploy_guardrail", label: "", created_frame: 4 },
+  { from: "qa_cases", to: "release_review", label: "", created_frame: 4 },
+  { from: "deploy_guardrail", to: "release_review", label: "", created_frame: 4 },
 ];
 
 const DEMO_GRAPH_GROUPS = [
-  { id: "framing", label: "Demo Framing" },
-  { id: "conversation", label: "Conversation Signal" },
-  { id: "pipeline", label: "Incremental Pipeline" },
-  { id: "evaluation", label: "Evidence + Evaluation" },
-  { id: "resilience", label: "Correction Path" },
-  { id: "delivery", label: "Demo Delivery" },
+  { id: "intake", fallbackLabel: "Input signals" },
+  { id: "quality", fallbackLabel: "Customer quality" },
+  { id: "resilience", fallbackLabel: "Conversation resilience" },
+  { id: "knowledge", fallbackLabel: "Knowledge update" },
+  { id: "rollout", fallbackLabel: "Release verification" },
 ];
 
 function demoStageColor(stageIndex: number) {
@@ -414,6 +361,55 @@ function mermaidEscape(value: string) {
   return value.replace(/"/g, '\\"');
 }
 
+function parseDemoTurns(raw: string): DemoTurn[] {
+  const turns = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [speaker = "", text = "", intent = "demo"] = line.split("|").map((part) => part.trim());
+      return {
+        speaker: speaker || "speaker",
+        text,
+        intent: intent || "demo",
+      };
+    })
+    .filter((turn) => turn.text);
+  return turns.length ? turns : [{ speaker: "speaker", text: raw.trim() || "Demo playback is ready.", intent: "demo" }];
+}
+
+function parseDemoLabelMap(raw: string) {
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .reduce<Record<string, string>>((acc, line) => {
+      const [id = "", label = ""] = line.split("|").map((part) => part.trim());
+      if (id && label) acc[id] = label;
+      return acc;
+    }, {});
+}
+
+function demoGraphStageForStep(step: number, totalTurns: number) {
+  if (step <= 0) return 0;
+  const bucketSize = Math.max(1, Math.ceil(Math.max(1, totalTurns) / DEMO_GRAPH_STAGE_COUNT));
+  return Math.max(1, Math.min(DEMO_GRAPH_STAGE_COUNT, Math.ceil(step / bucketSize)));
+}
+
+function localizeDemoGraphNodes(labels: Record<string, string>): LocalizedDemoGraphNode[] {
+  return DEMO_GRAPH_NODES.map((node) => ({
+    ...node,
+    label: labels[node.id] || node.fallbackLabel,
+  }));
+}
+
+function localizeDemoGraphGroups(labels: Record<string, string>): LocalizedDemoGraphGroup[] {
+  return DEMO_GRAPH_GROUPS.map((group) => ({
+    ...group,
+    label: labels[group.id] || group.fallbackLabel,
+  }));
+}
+
 function buildDemoTranscriptTurn(turn: DemoTurn, index: number): RealtimeTranscriptTurn {
   const startMs = index * 1850;
   return makeTranscriptTurn({
@@ -427,9 +423,13 @@ function buildDemoTranscriptTurn(turn: DemoTurn, index: number): RealtimeTranscr
   });
 }
 
-function buildDemoMermaidCode(nodes: DemoGraphNode[], edges: DemoGraphEdge[]) {
+function buildDemoMermaidCode(
+  nodes: LocalizedDemoGraphNode[],
+  edges: DemoGraphEdge[],
+  groups: LocalizedDemoGraphGroup[],
+) {
   if (!nodes.length) return "flowchart LR\n  Empty[\"Waiting for demo playback\"]";
-  const nodesByGroup = new Map<string, DemoGraphNode[]>();
+  const nodesByGroup = new Map<string, LocalizedDemoGraphNode[]>();
   nodes.forEach((node) => {
     const bucket = nodesByGroup.get(node.group) || [];
     bucket.push(node);
@@ -437,7 +437,7 @@ function buildDemoMermaidCode(nodes: DemoGraphNode[], edges: DemoGraphEdge[]) {
   });
 
   const lines = ["flowchart LR"];
-  DEMO_GRAPH_GROUPS.forEach((group) => {
+  groups.forEach((group) => {
     const members = nodesByGroup.get(group.id);
     if (!members?.length) return;
     lines.push(`  subgraph ${group.id}["${mermaidEscape(group.label)}"]`);
@@ -445,9 +445,13 @@ function buildDemoMermaidCode(nodes: DemoGraphNode[], edges: DemoGraphEdge[]) {
       lines.push(`    ${node.id}["${mermaidEscape(node.label)}"]`);
     });
     lines.push("  end");
+    const style = DEMO_GROUP_STYLES[group.id];
+    if (style) {
+      lines.push(`  style ${group.id} fill:${style.fill},stroke:${style.stroke},stroke-width:1.4px,color:#111827`);
+    }
   });
   edges.forEach((edge) => {
-    lines.push(`  ${edge.from} -->|${mermaidEscape(edge.label)}| ${edge.to}`);
+    lines.push(edge.label ? `  ${edge.from} -->|${mermaidEscape(edge.label)}| ${edge.to}` : `  ${edge.from} --> ${edge.to}`);
   });
   DEMO_STAGE_COLORS.forEach((color, index) => {
     lines.push(`  classDef demoStage${index + 1} fill:${color}22,stroke:${color},color:#111827,stroke-width:2px`);
@@ -458,35 +462,43 @@ function buildDemoMermaidCode(nodes: DemoGraphNode[], edges: DemoGraphEdge[]) {
   return lines.join("\n");
 }
 
-function buildDemoSnapshot(step: number) {
-  const visibleStep = Math.max(0, Math.min(step, DEMO_TURNS.length));
-  const visibleTurns = DEMO_TURNS.slice(0, visibleStep).map(buildDemoTranscriptTurn);
-  const visibleNodes = DEMO_GRAPH_NODES.filter((node) => node.created_frame <= visibleStep);
+function buildDemoSnapshot(
+  step: number,
+  turns: DemoTurn[],
+  nodeLabels: Record<string, string>,
+  groupLabels: Record<string, string>,
+) {
+  const totalTurns = Math.max(1, turns.length);
+  const visibleStep = Math.max(0, Math.min(step, turns.length));
+  const visibleGraphStage = demoGraphStageForStep(visibleStep, totalTurns);
+  const graphNodesForLocale = localizeDemoGraphNodes(nodeLabels);
+  const graphGroupsForLocale = localizeDemoGraphGroups(groupLabels);
+  const visibleTurns = turns.slice(0, visibleStep).map(buildDemoTranscriptTurn);
+  const visibleNodes = graphNodesForLocale.filter((node) => node.created_frame <= visibleGraphStage);
   const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
   const visibleEdges = DEMO_GRAPH_EDGES.filter(
-    (edge) => edge.created_frame <= visibleStep && visibleNodeIds.has(edge.from) && visibleNodeIds.has(edge.to),
+    (edge) => edge.created_frame <= visibleGraphStage && visibleNodeIds.has(edge.from) && visibleNodeIds.has(edge.to),
   );
-  const visibleGroups = DEMO_GRAPH_GROUPS.map((group) => ({
+  const visibleGroups = graphGroupsForLocale.map((group) => ({
     ...group,
     member_ids: visibleNodes.filter((node) => node.group === group.id).map((node) => node.id),
     metadata: demoMetadata(Math.max(1, visibleNodes.find((node) => node.group === group.id)?.created_frame || 1)),
   })).filter((group) => group.member_ids.length);
-  const incrementalStages = DEMO_TURNS.slice(0, visibleStep).map((turn, index) => ({
+  const incrementalStages = Array.from({ length: visibleGraphStage }, (_, index) => ({
     stage_index: index + 1,
     stage_color: demoStageColor(index + 1),
     concepts: [
-      turn.intent,
-      ...DEMO_GRAPH_NODES.filter((node) => node.created_frame === index + 1).map((node) => node.label),
+      ...visibleNodes.filter((node) => node.created_frame === index + 1).map((node) => node.label),
     ],
     delta_ops_count:
-      DEMO_GRAPH_NODES.filter((node) => node.created_frame === index + 1).length +
+      graphNodesForLocale.filter((node) => node.created_frame === index + 1).length +
       DEMO_GRAPH_EDGES.filter((edge) => edge.created_frame === index + 1).length,
   }));
   const graphNodes = visibleNodes.map((node) => ({
     id: node.id,
     label: node.label,
     kind: "concept",
-    metadata: demoMetadata(node.created_frame, { speaker: DEMO_TURNS[node.created_frame - 1]?.speaker || "" }),
+    metadata: demoMetadata(node.created_frame),
   }));
   const graphEdges = visibleEdges.map((edge, index) => ({
     id: `${edge.from}_${edge.to}_${index}`,
@@ -513,6 +525,7 @@ function buildDemoSnapshot(step: number) {
   }));
   const now = Date.now();
   const latestTurn = visibleTurns[visibleTurns.length - 1] ?? null;
+  const mermaidCode = buildDemoMermaidCode(visibleNodes, visibleEdges, visibleGroups);
 
   return {
     session_id: DEMO_SESSION_ID,
@@ -526,7 +539,7 @@ function buildDemoSnapshot(step: number) {
         speaker_count: new Set(visibleTurns.map((turn) => turn.speaker)).size,
         chunk_count: visibleTurns.length,
       },
-      events: DEMO_TURNS.slice(0, visibleStep).map((turn, index) => ({
+      events: turns.slice(0, visibleStep).map((turn, index) => ({
         update: {
           update_id: index + 1,
           intent_type: turn.intent,
@@ -571,20 +584,20 @@ function buildDemoSnapshot(step: number) {
       },
       gate_state: {
         status: visibleStep ? "success" : "idle",
-        action: latestTurn ? DEMO_TURNS[visibleStep - 1]?.intent : "waiting",
-        last_action: latestTurn ? DEMO_TURNS[visibleStep - 1]?.intent : "waiting",
+        action: latestTurn ? turns[visibleStep - 1]?.intent : "waiting",
+        last_action: latestTurn ? turns[visibleStep - 1]?.intent : "waiting",
       },
       planner_state: {
         status: visibleStep ? "delta_applied" : "waiting",
         delta_ops_count:
-          DEMO_GRAPH_NODES.filter((node) => node.created_frame === visibleStep).length +
-          DEMO_GRAPH_EDGES.filter((edge) => edge.created_frame === visibleStep).length,
+          graphNodesForLocale.filter((node) => node.created_frame === visibleGraphStage).length +
+          DEMO_GRAPH_EDGES.filter((edge) => edge.created_frame === visibleGraphStage).length,
       },
       mermaid_state: {
-        code: buildDemoMermaidCode(visibleNodes, visibleEdges),
-        normalized_code: buildDemoMermaidCode(visibleNodes, visibleEdges),
+        code: mermaidCode,
+        normalized_code: mermaidCode,
         provider: "Scripted demo",
-        model: "ACMMM playback",
+        model: "Product review playback",
         latency_ms: 180 + visibleStep * 11,
         compile_ok: true,
         render_ok: true,
@@ -593,7 +606,9 @@ function buildDemoSnapshot(step: number) {
       coordination_summary: {
         mode: "scripted_demo",
         visible_turns: visibleStep,
-        total_turns: DEMO_TURNS.length,
+        total_turns: turns.length,
+        visible_graph_stage: visibleGraphStage,
+        total_graph_stages: DEMO_GRAPH_STAGE_COUNT,
       },
     },
     evaluation: {
@@ -603,15 +618,15 @@ function buildDemoSnapshot(step: number) {
         flicker_mean: visibleStep >= 6 ? 0.08 : "-",
         mental_map_mean: visibleStep >= 6 ? 0.91 : "-",
       },
-      realtime_eval_pass: visibleStep >= DEMO_TURNS.length,
+      realtime_eval_pass: visibleStep >= turns.length,
     },
   };
 }
 
-function buildDemoTimelineNodes(step: number): RealtimeTimelineNode[] {
-  const visibleStep = Math.max(0, Math.min(step, DEMO_TURNS.length));
+function buildDemoTimelineNodes(step: number, turns: DemoTurn[]): RealtimeTimelineNode[] {
+  const visibleStep = Math.max(0, Math.min(step, turns.length));
   const baseTime = Date.parse("2026-06-01T09:00:00.000Z");
-  return DEMO_TURNS.slice(0, visibleStep)
+  return turns.slice(0, visibleStep)
     .map((turn, index) => ({
       snapshot_id: `${DEMO_SESSION_ID}-${index + 1}`,
       created_at: new Date(baseTime + index * 1850).toISOString(),
@@ -627,8 +642,8 @@ function buildDemoTimelineNodes(step: number): RealtimeTimelineNode[] {
     .reverse();
 }
 
-function buildDemoHistoryTurns(step: number): TranscriptHistoryItem[] {
-  return DEMO_TURNS.slice(0, Math.max(0, Math.min(step, DEMO_TURNS.length)))
+function buildDemoHistoryTurns(step: number, turns: DemoTurn[]): TranscriptHistoryItem[] {
+  return turns.slice(0, Math.max(0, Math.min(step, turns.length)))
     .map((turn, index) =>
       makeTranscriptHistoryItem(buildDemoTranscriptTurn(turn, index), "local", `demo_${index + 1}`, index * 1850 + 1450),
     )
@@ -1649,33 +1664,37 @@ function DemoStatusPanel({
   active,
   playing,
   currentStep,
+  turns,
+  tr,
 }: {
   active: boolean;
   playing: boolean;
   currentStep: number;
+  turns: DemoTurn[];
+  tr: (key: I18nKey, params?: Record<string, string | number>) => string;
 }) {
   if (!active) return null;
-  const turn = currentStep > 0 ? DEMO_TURNS[currentStep - 1] : null;
+  const turn = currentStep > 0 ? turns[currentStep - 1] : null;
   return (
     <aside className="pointer-events-auto absolute right-4 top-20 z-[24] w-[min(360px,calc(100%-2rem))] rounded-xl border border-theme-default bg-surface-1/95 px-4 py-3 shadow-xl backdrop-blur-md">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-theme-4">
           {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-          Demo Mode
+          {tr("realtimeStudio.demo.panelTitle")}
         </div>
         <Badge>
-          {currentStep}/{DEMO_TURNS.length}
+          {currentStep}/{turns.length}
         </Badge>
       </div>
       <div className="mt-3 rounded-lg border border-theme-default bg-surface-2/80 px-3 py-2">
-        <div className="text-[11px] font-semibold text-theme-4">Scripted turn</div>
+        <div className="text-[11px] font-semibold text-theme-4">{tr("realtimeStudio.demo.panelTurn")}</div>
         {turn ? (
           <>
             <div className="mt-1 text-xs font-semibold text-theme-1">{turn.speaker}</div>
             <p className="mt-1 line-clamp-3 text-xs leading-5 text-theme-2">{turn.text}</p>
           </>
         ) : (
-          <div className="mt-1 text-xs text-theme-3">Ready to play the fixed ACMMM walkthrough.</div>
+          <div className="mt-1 text-xs text-theme-3">{tr("realtimeStudio.demo.panelReady")}</div>
         )}
       </div>
     </aside>
@@ -1905,6 +1924,10 @@ export function RealtimeStudio() {
   const currentDateLocale = dateLocale(language);
   const defaultSessionTitle = tr("realtimeStudio.session.defaultTitle");
   const defaultDemoTranscript = tr("realtimeStudio.demo.defaultTranscript");
+  const demoTurns = useMemo(() => parseDemoTurns(t(language, "realtimeStudio.demo.scriptedTurns")), [language]);
+  const demoNodeLabels = useMemo(() => parseDemoLabelMap(t(language, "realtimeStudio.demo.graphNodeLabels")), [language]);
+  const demoGroupLabels = useMemo(() => parseDemoLabelMap(t(language, "realtimeStudio.demo.graphGroupLabels")), [language]);
+  const demoTotalSteps = demoTurns.length;
   const [studioState, studioSend] = useMachine(realtimeStudioMachine);
   const [title, setTitle] = useState(defaultSessionTitle);
   const [titleDraft, setTitleDraft] = useState(defaultSessionTitle);
@@ -2323,7 +2346,7 @@ export function RealtimeStudio() {
     retry: false,
   });
   const serverTimelineNodes = timelineQuery.data?.session_id === currentSessionId ? timelineQuery.data.nodes : [];
-  const demoTimelineNodes = useMemo(() => buildDemoTimelineNodes(demoStep), [demoStep]);
+  const demoTimelineNodes = useMemo(() => buildDemoTimelineNodes(demoStep, demoTurns), [demoStep, demoTurns]);
   const timelineNodes = demoMode ? demoTimelineNodes : serverTimelineNodes;
   const orderedTimelineNodes = useMemo(() => [...timelineNodes].reverse(), [timelineNodes]);
   const selectedTimelineNode = useMemo(
@@ -2476,7 +2499,7 @@ export function RealtimeStudio() {
     if (demoMode) {
       const nextStep = Number(node.summary?.demo_step ?? 0);
       if (Number.isFinite(nextStep) && nextStep > 0) {
-        setDemoStep(Math.min(nextStep, DEMO_TURNS.length));
+        setDemoStep(Math.min(nextStep, demoTotalSteps));
       }
       setDemoPlaying(false);
       setSelectedTimelineSnapshotId(node.snapshot_id);
@@ -2534,14 +2557,14 @@ export function RealtimeStudio() {
 
   const toggleDemoPlayback = () => {
     enterDemoMode();
-    setDemoStep((step) => (step >= DEMO_TURNS.length ? 0 : step));
+    setDemoStep((step) => (step >= demoTotalSteps ? 0 : step));
     setDemoPlaying((playing) => !playing);
   };
 
   const stepDemoPlayback = (direction: -1 | 1) => {
     enterDemoMode();
     setDemoPlaying(false);
-    setDemoStep((step) => Math.min(Math.max(step + direction, 0), DEMO_TURNS.length));
+    setDemoStep((step) => Math.min(Math.max(step + direction, 0), demoTotalSteps));
   };
 
   const resetDemoPlayback = () => {
@@ -2564,7 +2587,7 @@ export function RealtimeStudio() {
     if (!demoMode || !demoPlaying) return;
     const timer = window.setTimeout(() => {
       setDemoStep((step) => {
-        if (step >= DEMO_TURNS.length) {
+        if (step >= demoTotalSteps) {
           setDemoPlaying(false);
           return step;
         }
@@ -2572,7 +2595,7 @@ export function RealtimeStudio() {
       });
     }, demoStep === 0 ? 250 : DEMO_PLAYBACK_INTERVAL_MS);
     return () => window.clearTimeout(timer);
-  }, [demoMode, demoPlaying, demoStep]);
+  }, [demoMode, demoPlaying, demoStep, demoTotalSteps]);
 
   useEffect(() => {
     if (!effectiveError) return;
@@ -4210,7 +4233,10 @@ export function RealtimeStudio() {
     setNotice({ tone: "info", text: message });
   }
 
-  const demoSnapshot = useMemo(() => buildDemoSnapshot(demoStep), [demoStep]);
+  const demoSnapshot = useMemo(
+    () => buildDemoSnapshot(demoStep, demoTurns, demoNodeLabels, demoGroupLabels),
+    [demoGroupLabels, demoNodeLabels, demoStep, demoTurns],
+  );
   const activeSnapshot = demoMode ? demoSnapshot : snapshot?.session_id === currentSessionId ? snapshot : null;
   const rendererState = activeSnapshot?.pipeline?.renderer_state || {};
   const events = useMemo<Array<Record<string, any>>>(() => {
@@ -4233,7 +4259,7 @@ export function RealtimeStudio() {
     () => readIncrementalStageSummaries(currentGraphPayload),
     [currentGraphPayload],
   );
-  const activeIncrementalStageIndex = demoMode && demoStep > 0 ? demoStep : null;
+  const activeIncrementalStageIndex = demoMode && demoStep > 0 ? demoGraphStageForStep(demoStep, demoTotalSteps) : null;
   const mermaidExportRootId = "realtime-mermaid-export";
   const transcriptState = useMemo(() => readTranscriptState(activeSnapshot?.pipeline), [activeSnapshot?.pipeline]);
   const transcriptDownloads = useMemo(() => {
@@ -4266,7 +4292,7 @@ export function RealtimeStudio() {
   );
   const activeTranscriptTurn = transcriptDisplayState.activeTurn;
   const archivedTranscriptTurns = transcriptDisplayState.archivedTurns;
-  const demoHistoryTurns = useMemo(() => buildDemoHistoryTurns(demoStep), [demoStep]);
+  const demoHistoryTurns = useMemo(() => buildDemoHistoryTurns(demoStep, demoTurns), [demoStep, demoTurns]);
   const graphEventEvidenceTurns = useMemo(
     () => buildGraphEventEvidenceTurns(events, timelineNodes),
     [events, timelineNodes],
@@ -4454,8 +4480,13 @@ export function RealtimeStudio() {
   /** @description 主舞台顶栏：CAP/STT/GATE/PLAN/MER/model 步骤徽章（空闲=灰色，失败=红色） */
   const pipelineStages = useMemo(() => {
     if (demoMode) {
-      const demoValue = demoPlaying ? "Playing" : demoStep > 0 ? "Paused" : "Ready";
-      const done = demoStep >= DEMO_TURNS.length;
+      const demoValue = demoPlaying
+        ? tr("realtimeStudio.demo.statusPlaying")
+        : demoStep > 0
+          ? tr("realtimeStudio.demo.statusPaused")
+          : tr("realtimeStudio.demo.statusReady");
+      const waitingValue = tr("realtimeStudio.demo.statusWaiting");
+      const done = demoStep >= demoTotalSteps;
       const activeTone: "idle" | "working" | "success" | "error" = demoPlaying ? "working" : demoStep > 0 ? "success" : "idle";
       return [
         {
@@ -4463,28 +4494,28 @@ export function RealtimeStudio() {
           label: tr("realtimeStudio.text024"),
           value: demoValue,
           tone: activeTone,
-          help: "Scripted transcript playback for conference demos.",
+          help: tr("realtimeStudio.demo.helpCapture"),
         },
         {
           abbr: "STT",
           label: tr("realtimeStudio.text026"),
-          value: demoStep > 0 ? `${demoStep} turns` : "Waiting",
+          value: demoStep > 0 ? tr("realtimeStudio.demo.turnCount", { count: demoStep }) : waitingValue,
           tone: activeTone,
-          help: "The fixed dialogue is injected locally as stable transcript turns.",
+          help: tr("realtimeStudio.demo.helpTranscript"),
         },
         {
           abbr: "GATE",
           label: "Gate",
-          value: demoStep > 0 ? DEMO_TURNS[Math.max(0, demoStep - 1)]?.intent || "delta" : "Waiting",
+          value: demoStep > 0 ? demoTurns[Math.max(0, demoStep - 1)]?.intent || "delta" : waitingValue,
           tone: activeTone,
-          help: "Demo turns carry deterministic intent labels.",
+          help: tr("realtimeStudio.demo.helpGate"),
         },
         {
           abbr: "PLAN",
           label: "Planner",
-          value: demoStep > 0 ? "Delta applied" : "Waiting",
+          value: demoStep > 0 ? tr("realtimeStudio.demo.statusDelta") : waitingValue,
           tone: activeTone,
-          help: "Each step reveals only the new nodes and relations.",
+          help: tr("realtimeStudio.demo.helpPlanner"),
         },
         {
           abbr: "MER",
@@ -4496,9 +4527,9 @@ export function RealtimeStudio() {
         {
           abbr: "MODEL",
           label: tr("realtimeStudio.text033"),
-          value: done ? "Complete" : demoValue,
+          value: done ? tr("realtimeStudio.demo.statusComplete") : demoValue,
           tone: done ? "success" : activeTone,
-          help: "No backend call is required in demo mode.",
+          help: tr("realtimeStudio.demo.helpModel"),
         },
       ];
     }
@@ -4631,6 +4662,8 @@ export function RealtimeStudio() {
     demoMode,
     demoPlaying,
     demoStep,
+    demoTotalSteps,
+    demoTurns,
   ]);
 
   const pipelineAllIdle = useMemo(() => pipelineStages.every((step) => step.tone === "idle"), [pipelineStages]);
@@ -5093,9 +5126,9 @@ export function RealtimeStudio() {
             </div>
           </div>
         </div>
-        <div className="min-h-0 pb-0 grid grid-cols-1 gap-4 xl:flex-1 xl:overflow-hidden xl:grid-cols-[minmax(300px,3fr)_minmax(0,7fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:min-h-0">
+        <div className="grid min-h-0 grid-cols-1 gap-4 pb-0 xl:h-[calc(100vh-8.25rem)] xl:max-h-[calc(100vh-8.25rem)] xl:flex-1 xl:grid-cols-[minmax(300px,3fr)_minmax(0,7fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:overflow-hidden">
         {studioPage === 1 ? (
-          <Card className="soft-enter relative order-1 flex min-h-0 min-w-0 flex-col space-y-3 overflow-hidden text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:order-none">
+          <Card className="soft-enter relative order-1 flex min-h-0 min-w-0 flex-col space-y-3 overflow-hidden text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:h-full xl:max-h-full xl:order-none">
           <div
             className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[3px] bg-gradient-to-r from-[color:var(--accent)]/0 via-[color:var(--accent)]/45 to-[color:var(--accent)]/0"
             aria-hidden
@@ -5937,64 +5970,39 @@ export function RealtimeStudio() {
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <Tabs.Content value="mermaid" className="absolute inset-0 flex min-h-0 flex-col outline-none">
               <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-0 pt-3.5 sm:px-3">
-                {demoMode ? (
-                  <GraphStage
-                    embedded
-                    fixedLightCanvas
-                    title=""
-                    nodes={rendererState.nodes || []}
-                    edges={rendererState.edges || []}
-                    groups={rendererGroups}
-                    incrementalStages={graphIncrementalStages}
-                    activeIncrementalStageIndex={activeIncrementalStageIndex}
-                    annotationsEnabled={annotationsEnabled}
-                    annotationsTool={annotationsTool}
-                    annotationPenWidth={annotationPenWidth}
-                    annotationPenColor={annotationPenColor}
-                    annotationRectColor={annotationRectColor}
-                    annotationRectStrokeWidth={annotationRectStrokeWidth}
-                    annotationTextColor={annotationTextColor}
-                    annotationEraserWidth={annotationEraserWidth}
-                    annotationsDoc={mermaidAnnotationsDoc}
-                    onAnnotationsChange={onMermaidAnnotationsChange}
-                    annotationExportHostId={mermaidExportRootId}
-                    panZoomControlsOffsetTop={12}
-                  />
-                ) : (
-                  <MermaidCard
-                    title=""
-                    embedded
-                    fixedLightCanvas
-                    code={displayedMermaidCode}
-                    rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
-                    repairRawOutputText={
-                      typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
-                    }
-                    provider={mermaidState?.provider || selectedPlannerProfile?.label || null}
-                    model={mermaidState?.model || plannerModel || null}
-                    latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
-                    compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
-                    updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null, language)}
-                    graphPayload={currentGraphPayload}
-                    activeIncrementalStageIndex={activeIncrementalStageIndex}
-                    onNodeRelayout={handleMermaidNodeRelayout}
-                    relayoutBusy={relayoutMutation.isPending}
-                    onEvidenceSelect={setSelectedGraphEvidence}
-                    activeEvidenceTarget={selectedGraphEvidence}
-                    exportRootId={mermaidExportRootId}
-                    annotationsEnabled={annotationsEnabled}
-                    annotationsTool={annotationsTool}
-                    annotationPenWidth={annotationPenWidth}
-                    annotationPenColor={annotationPenColor}
-                    annotationRectColor={annotationRectColor}
-                    annotationRectStrokeWidth={annotationRectStrokeWidth}
-                    annotationTextColor={annotationTextColor}
-                    annotationEraserWidth={annotationEraserWidth}
-                    annotationsDoc={mermaidAnnotationsDoc}
-                    onAnnotationsChange={onMermaidAnnotationsChange}
-                    panZoomControlsOffsetTop={12}
-                  />
-                )}
+                <MermaidCard
+                  title=""
+                  embedded
+                  fixedLightCanvas
+                  code={displayedMermaidCode}
+                  rawOutputText={typeof mermaidState?.raw_output_text === "string" ? mermaidState.raw_output_text : null}
+                  repairRawOutputText={
+                    typeof mermaidState?.repair_raw_output_text === "string" ? mermaidState.repair_raw_output_text : null
+                  }
+                  provider={mermaidState?.provider || selectedPlannerProfile?.label || null}
+                  model={mermaidState?.model || plannerModel || null}
+                  latencyMs={typeof mermaidState?.latency_ms === "number" ? mermaidState.latency_ms : null}
+                  compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
+                  updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null, language)}
+                  graphPayload={currentGraphPayload}
+                  activeIncrementalStageIndex={activeIncrementalStageIndex}
+                  onNodeRelayout={handleMermaidNodeRelayout}
+                  relayoutBusy={relayoutMutation.isPending}
+                  onEvidenceSelect={setSelectedGraphEvidence}
+                  activeEvidenceTarget={selectedGraphEvidence}
+                  exportRootId={mermaidExportRootId}
+                  annotationsEnabled={annotationsEnabled}
+                  annotationsTool={annotationsTool}
+                  annotationPenWidth={annotationPenWidth}
+                  annotationPenColor={annotationPenColor}
+                  annotationRectColor={annotationRectColor}
+                  annotationRectStrokeWidth={annotationRectStrokeWidth}
+                  annotationTextColor={annotationTextColor}
+                  annotationEraserWidth={annotationEraserWidth}
+                  annotationsDoc={mermaidAnnotationsDoc}
+                  onAnnotationsChange={onMermaidAnnotationsChange}
+                  panZoomControlsOffsetTop={12}
+                />
                 <GraphEvidencePanel
                   target={graphEvidenceTarget}
                   tr={tr}
@@ -6015,7 +6023,7 @@ export function RealtimeStudio() {
                   tr={tr}
                   currentDateLocale={currentDateLocale}
                 />
-                <DemoStatusPanel active={demoMode} playing={demoPlaying} currentStep={demoStep} />
+                <DemoStatusPanel active={demoMode} playing={demoPlaying} currentStep={demoStep} turns={demoTurns} tr={tr} />
               </div>
             </Tabs.Content>
 
@@ -6244,7 +6252,7 @@ export function RealtimeStudio() {
                         type="button"
                         className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-theme-default bg-surface-1 text-theme-2 disabled:cursor-not-allowed disabled:opacity-45 hover:bg-surface-muted"
                         onClick={() => stepDemoPlayback(1)}
-                        disabled={demoMode && demoStep >= DEMO_TURNS.length}
+                        disabled={demoMode && demoStep >= demoTotalSteps}
                         aria-label="Demo next"
                         title="Demo next"
                       >
