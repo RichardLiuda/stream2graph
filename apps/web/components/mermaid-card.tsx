@@ -323,9 +323,7 @@ function queryMermaidNodeElements(svg: SVGSVGElement) {
   const selectors = [
     "g.node",
     "g[id^='flowchart-']",
-    "g[class*='node']",
-    "g[class*='default']",
-    "g[class*='flowchart-label']",
+    "g[class~='node']",
   ];
   const seen = new Set<SVGGElement>();
   const elements: SVGGElement[] = [];
@@ -344,6 +342,12 @@ function queryMermaidNodeElements(svg: SVGSVGElement) {
     }
   }
   return elements;
+}
+
+const SELECTABLE_NODE_LABEL_SELECTOR = "[data-s2g-node-label-select='true']";
+
+function isNodeLabelSelectionTarget(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest(SELECTABLE_NODE_LABEL_SELECTOR));
 }
 
 function collectInteractiveEntities(
@@ -1282,8 +1286,11 @@ function MermaidCardBody({
     svgElement.style.userSelect = "none";
     svgElement.style.webkitUserSelect = "none";
     for (const selectable of Array.from(svgElement.querySelectorAll<SVGElement>("text,tspan,foreignObject"))) {
+      selectable.removeAttribute("data-s2g-node-label-select");
+      selectable.removeAttribute("data-panzoom-no-pan");
       selectable.style.userSelect = "none";
       selectable.style.webkitUserSelect = "none";
+      selectable.style.cursor = "";
     }
 
     const collected = collectInteractiveEntities(svgElement, graphPayload);
@@ -1298,6 +1305,13 @@ function MermaidCardBody({
       entity.element.setAttribute("data-panzoom-no-pan", "true");
       entity.element.style.cursor = relayoutBusy ? "wait" : "grab";
       entityByElement.set(entity.element, entity);
+      for (const labelElement of Array.from(entity.element.querySelectorAll<SVGElement>("text,tspan,foreignObject"))) {
+        labelElement.setAttribute("data-s2g-node-label-select", "true");
+        labelElement.setAttribute("data-panzoom-no-pan", "true");
+        labelElement.style.userSelect = "text";
+        labelElement.style.webkitUserSelect = "text";
+        labelElement.style.cursor = "text";
+      }
     }
 
     type DragState = {
@@ -1408,6 +1422,7 @@ function MermaidCardBody({
     const handlePointerDown = (event: PointerEvent) => {
       if (relayoutBusy || (event.pointerType === "mouse" && event.button !== 0)) return;
       const target = event.target as Element | null;
+      if (isNodeLabelSelectionTarget(target)) return;
       const nodeElement =
         draggableNodeElements.find((element) => target === element || (target instanceof Node && element.contains(target))) ||
         null;
@@ -1457,13 +1472,17 @@ function MermaidCardBody({
     const suppressNativeDrag = (event: Event) => {
       event.preventDefault();
     };
+    const suppressNonNodeSelection = (event: Event) => {
+      if (isNodeLabelSelectionTarget(event.target)) return;
+      event.preventDefault();
+    };
 
     host.addEventListener("pointerdown", handlePointerDown);
     host.addEventListener("pointermove", handlePointerMove);
     host.addEventListener("pointerup", handlePointerUp);
     host.addEventListener("pointercancel", handlePointerCancel);
     svgElement.addEventListener("dragstart", suppressNativeDrag);
-    svgElement.addEventListener("selectstart", suppressNativeDrag);
+    svgElement.addEventListener("selectstart", suppressNonNodeSelection);
 
     return () => {
       host.removeEventListener("pointerdown", handlePointerDown);
@@ -1471,7 +1490,7 @@ function MermaidCardBody({
       host.removeEventListener("pointerup", handlePointerUp);
       host.removeEventListener("pointercancel", handlePointerCancel);
       svgElement.removeEventListener("dragstart", suppressNativeDrag);
-      svgElement.removeEventListener("selectstart", suppressNativeDrag);
+      svgElement.removeEventListener("selectstart", suppressNonNodeSelection);
       if (dragState) {
         resetTransform(dragState);
         dragState = null;
@@ -1568,7 +1587,7 @@ function MermaidCardBody({
                   key={zoomRebuildNonce}
                   ref={renderSurfaceRef}
                   data-mermaid-export-root={exportRootId || undefined}
-                  className="relative z-[1] min-h-0 flex-1 select-none [&_*]:select-none [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
+                  className="relative z-[1] min-h-0 flex-1 select-none [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
                   dangerouslySetInnerHTML={{ __html: svg }}
                 />
               ) : null}

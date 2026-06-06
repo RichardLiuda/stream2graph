@@ -253,8 +253,8 @@ const TRANSCRIPT_PRESETS: TranscriptPreset[] = [
   },
 ];
 
-const DEMO_PLAYBACK_INTERVAL_MS = 725;
-const DEMO_PLAYBACK_INITIAL_DELAY_MS = 125;
+const DEMO_PLAYBACK_INTERVAL_MS = 600;
+const DEMO_PLAYBACK_INITIAL_DELAY_MS = 100;
 const DEMO_STAGE_COLORS = ["#0ea5e9", "#22c55e", "#f97316", "#ec4899", "#8b5cf6", "#14b8a6"];
 const DEMO_GROUP_STYLES: Record<string, { fill: string; stroke: string }> = {
   intake: { fill: "#e0f2fe", stroke: "#0ea5e9" },
@@ -2967,6 +2967,7 @@ export function RealtimeStudio() {
     setRollbackPreview(null);
     setAutoFollowLatestTimelineNode(true);
     setDemoPanelVisible(true);
+    setActiveAnnotationPanel(null);
   };
 
   const toggleDemoPlayback = () => {
