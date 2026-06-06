@@ -319,6 +319,33 @@ function resolveFlowchartEntityId(
   return labelToId.get(label) || null;
 }
 
+function queryMermaidNodeElements(svg: SVGSVGElement) {
+  const selectors = [
+    "g.node",
+    "g[id^='flowchart-']",
+    "g[class*='node']",
+    "g[class*='default']",
+    "g[class*='flowchart-label']",
+  ];
+  const seen = new Set<SVGGElement>();
+  const elements: SVGGElement[] = [];
+  for (const selector of selectors) {
+    for (const element of Array.from(svg.querySelectorAll<SVGGElement>(selector))) {
+      if (
+        seen.has(element) ||
+        element.matches("g.cluster") ||
+        element.classList.contains("cluster") ||
+        element.closest("g.edgePath")
+      ) {
+        continue;
+      }
+      seen.add(element);
+      elements.push(element);
+    }
+  }
+  return elements;
+}
+
 function collectInteractiveEntities(
   svg: SVGSVGElement,
   graphPayload: MermaidGraphPayload,
@@ -329,7 +356,7 @@ function collectInteractiveEntities(
   const groupLabelToId = buildLabelToIdMap(graphGroups);
 
   const nodes: MermaidInteractiveEntity[] = [];
-  for (const element of Array.from(svg.querySelectorAll<SVGGElement>("g.node"))) {
+  for (const element of queryMermaidNodeElements(svg)) {
     const label = normalizeLabelText(element.textContent);
     const id = resolveFlowchartEntityId(
       element.getAttribute("id") || "",
@@ -1251,6 +1278,13 @@ function MermaidCardBody({
     if (!host || !svg || !interactiveRelayoutEnabled || !onNodeRelayout) return;
     const svgElement = host.querySelector("svg");
     if (!(svgElement instanceof SVGSVGElement)) return;
+    svgElement.setAttribute("draggable", "false");
+    svgElement.style.userSelect = "none";
+    svgElement.style.webkitUserSelect = "none";
+    for (const selectable of Array.from(svgElement.querySelectorAll<SVGElement>("text,tspan,foreignObject"))) {
+      selectable.style.userSelect = "none";
+      selectable.style.webkitUserSelect = "none";
+    }
 
     const collected = collectInteractiveEntities(svgElement, graphPayload);
     if (!collected.nodes.length) return;
@@ -1258,6 +1292,7 @@ function MermaidCardBody({
     const nodeEntities = collected.nodes.map(({ element, ...entity }) => entity);
     const groupEntities = collected.groups.map(({ element, ...entity }) => entity);
     const entityByElement = new Map<SVGGElement, MermaidInteractiveEntity>();
+    const draggableNodeElements = collected.nodes.map((entity) => entity.element);
 
     for (const entity of collected.nodes) {
       entity.element.setAttribute("data-panzoom-no-pan", "true");
@@ -1373,7 +1408,9 @@ function MermaidCardBody({
     const handlePointerDown = (event: PointerEvent) => {
       if (relayoutBusy || (event.pointerType === "mouse" && event.button !== 0)) return;
       const target = event.target as Element | null;
-      const nodeElement = target?.closest?.("g.node");
+      const nodeElement =
+        draggableNodeElements.find((element) => target === element || (target instanceof Node && element.contains(target))) ||
+        null;
       if (!(nodeElement instanceof SVGGElement)) return;
       const entity = entityByElement.get(nodeElement);
       if (!entity) return;
@@ -1417,17 +1454,24 @@ function MermaidCardBody({
     const handlePointerCancel = (event: PointerEvent) => {
       finishDrag(event.pointerId, false);
     };
+    const suppressNativeDrag = (event: Event) => {
+      event.preventDefault();
+    };
 
     host.addEventListener("pointerdown", handlePointerDown);
     host.addEventListener("pointermove", handlePointerMove);
     host.addEventListener("pointerup", handlePointerUp);
     host.addEventListener("pointercancel", handlePointerCancel);
+    svgElement.addEventListener("dragstart", suppressNativeDrag);
+    svgElement.addEventListener("selectstart", suppressNativeDrag);
 
     return () => {
       host.removeEventListener("pointerdown", handlePointerDown);
       host.removeEventListener("pointermove", handlePointerMove);
       host.removeEventListener("pointerup", handlePointerUp);
       host.removeEventListener("pointercancel", handlePointerCancel);
+      svgElement.removeEventListener("dragstart", suppressNativeDrag);
+      svgElement.removeEventListener("selectstart", suppressNativeDrag);
       if (dragState) {
         resetTransform(dragState);
         dragState = null;
@@ -1524,7 +1568,7 @@ function MermaidCardBody({
                   key={zoomRebuildNonce}
                   ref={renderSurfaceRef}
                   data-mermaid-export-root={exportRootId || undefined}
-                  className="relative z-[1] min-h-0 flex-1 [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
+                  className="relative z-[1] min-h-0 flex-1 select-none [&_*]:select-none [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
                   dangerouslySetInnerHTML={{ __html: svg }}
                 />
               ) : null}

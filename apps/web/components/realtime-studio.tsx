@@ -253,7 +253,8 @@ const TRANSCRIPT_PRESETS: TranscriptPreset[] = [
   },
 ];
 
-const DEMO_PLAYBACK_INTERVAL_MS = 1450;
+const DEMO_PLAYBACK_INTERVAL_MS = 725;
+const DEMO_PLAYBACK_INITIAL_DELAY_MS = 125;
 const DEMO_STAGE_COLORS = ["#0ea5e9", "#22c55e", "#f97316", "#ec4899", "#8b5cf6", "#14b8a6"];
 const DEMO_GROUP_STYLES: Record<string, { fill: string; stroke: string }> = {
   intake: { fill: "#e0f2fe", stroke: "#0ea5e9" },
@@ -3012,7 +3013,7 @@ export function RealtimeStudio() {
         }
         return step + 1;
       });
-    }, demoStep === 0 ? 250 : DEMO_PLAYBACK_INTERVAL_MS);
+    }, demoStep === 0 ? DEMO_PLAYBACK_INITIAL_DELAY_MS : DEMO_PLAYBACK_INTERVAL_MS);
     return () => window.clearTimeout(timer);
   }, [demoMode, demoPlaying, demoStep, demoTotalSteps]);
 
@@ -4692,7 +4693,9 @@ export function RealtimeStudio() {
     () => resolveDemoGraphStageForStep(demoStep, demoTotalSteps, demoScenario),
     [demoScenario, demoStep, demoTotalSteps],
   );
-  const activeIncrementalStageIndex = demoMode && demoStep > 0 ? activeDemoGraphStage.localStage : null;
+  const demoPlaybackComplete = demoMode && demoTotalSteps > 0 && demoStep >= demoTotalSteps && !demoPlaying;
+  const activeIncrementalStageIndex =
+    demoMode && demoStep > 0 && !demoPlaybackComplete ? activeDemoGraphStage.localStage : null;
   const mermaidExportRootId = "realtime-mermaid-export";
   const transcriptState = useMemo(() => readTranscriptState(activeSnapshot?.pipeline), [activeSnapshot?.pipeline]);
   const transcriptDownloads = useMemo(() => {

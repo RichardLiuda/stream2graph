@@ -179,13 +179,14 @@ export function PanZoomCanvas({
   return (
     <div
       ref={containerRef}
-      className={`relative min-h-0 overflow-hidden ${className}`}
+      className={`relative min-h-0 select-none overflow-hidden ${className}`}
       onPointerDown={(event) => {
         if (interactionMode === "annotate") return;
         // 鼠标只允许左键拖拽；触摸/笔则忽略 button
         if (event.pointerType === "mouse" && event.button !== 0) return;
         const target = event.target as HTMLElement | null;
         if (target?.closest?.("[data-panzoom-controls], [data-panzoom-no-pan]")) return;
+        event.preventDefault();
         (event.currentTarget as HTMLDivElement).setPointerCapture(event.pointerId);
         dragRef.current = {
           pointerId: event.pointerId,
@@ -275,4 +276,3 @@ export function PanZoomCanvas({
     </div>
   );
 }
-
