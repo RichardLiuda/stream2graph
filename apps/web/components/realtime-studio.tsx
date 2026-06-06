@@ -2417,6 +2417,7 @@ export function RealtimeStudio() {
   const [demoMode, setDemoMode] = useState(false);
   const [demoPlaying, setDemoPlaying] = useState(false);
   const [demoStep, setDemoStep] = useState(0);
+  const [demoTimelineStep, setDemoTimelineStep] = useState(0);
   const [demoPanelVisible, setDemoPanelVisible] = useState(true);
   const [demoPanelCollapsed, setDemoPanelCollapsed] = useState(false);
   const [replayMode, setReplayMode] = useState(false);
@@ -2713,6 +2714,7 @@ export function RealtimeStudio() {
     setDemoMode(false);
     setDemoPlaying(false);
     setDemoStep(0);
+    setDemoTimelineStep(0);
     setReplayMode(false);
     setReplayPlaying(false);
     setReplayIndex(0);
@@ -2754,8 +2756,8 @@ export function RealtimeStudio() {
   });
   const serverTimelineNodes = timelineQuery.data?.session_id === currentSessionId ? timelineQuery.data.nodes : [];
   const demoTimelineNodes = useMemo(
-    () => buildDemoTimelineNodes(demoStep, demoTurns, demoScenario, demoNodeLabels),
-    [demoNodeLabels, demoScenario, demoStep, demoTurns],
+    () => buildDemoTimelineNodes(demoTimelineStep, demoTurns, demoScenario, demoNodeLabels),
+    [demoNodeLabels, demoScenario, demoTimelineStep, demoTurns],
   );
   const timelineNodes = demoMode ? demoTimelineNodes : serverTimelineNodes;
   const orderedTimelineNodes = useMemo(() => [...timelineNodes].reverse(), [timelineNodes]);
@@ -2968,6 +2970,10 @@ export function RealtimeStudio() {
 
   const toggleDemoPlayback = () => {
     enterDemoMode();
+    if (demoStep >= demoTotalSteps) {
+      setDemoTimelineStep(0);
+      setSelectedTimelineSnapshotId(null);
+    }
     setDemoStep((step) => (step >= demoTotalSteps ? 0 : step));
     setDemoPlaying((playing) => !playing);
   };
@@ -2982,6 +2988,7 @@ export function RealtimeStudio() {
     enterDemoMode();
     setDemoPlaying(false);
     setDemoStep(0);
+    setDemoTimelineStep(0);
     setSelectedTimelineSnapshotId(null);
   };
 
@@ -2989,6 +2996,7 @@ export function RealtimeStudio() {
     setDemoMode(false);
     setDemoPlaying(false);
     setDemoStep(0);
+    setDemoTimelineStep(0);
     setSelectedTimelineSnapshotId(null);
     setSelectedGraphEvidence(null);
     setRollbackPreview(null);
@@ -3010,7 +3018,13 @@ export function RealtimeStudio() {
 
   useEffect(() => {
     setDemoStep((step) => Math.min(step, demoTotalSteps));
+    setDemoTimelineStep((step) => Math.min(step, demoTotalSteps));
   }, [demoTotalSteps]);
+
+  useEffect(() => {
+    if (!demoMode) return;
+    setDemoTimelineStep((step) => Math.max(step, demoStep));
+  }, [demoMode, demoStep]);
 
   useEffect(() => {
     if (!effectiveError) return;
@@ -4863,7 +4877,9 @@ export function RealtimeStudio() {
   }, [archivedTranscriptTurns, currentSessionId]);
 
   function handleMermaidNodeRelayout(payload: MermaidNodeRelayoutPayload) {
-    if (!currentSessionId || relayoutMutation.isPending) return;
+    if (relayoutMutation.isPending) return false;
+    if (demoMode) return true;
+    if (!currentSessionId) return false;
     relayoutMutation.mutate({ sessionId: currentSessionId, payload });
   }
 
@@ -5092,6 +5108,7 @@ export function RealtimeStudio() {
         ? "success"
         : "idle";
   const notesDockActive = annotationsEnabled || activeAnnotationPanel !== null || !activeAnnotationEmpty;
+  const annotationCaptureEnabled = annotationsEnabled && activeAnnotationPanel !== null && activeWorkbenchPanel === "notes";
 
   function toggleWorkbenchPanel(panel: WorkbenchDockPanel) {
     setPinnedWorkbenchPanel((current) => (current === panel ? null : panel));
@@ -5598,6 +5615,7 @@ export function RealtimeStudio() {
                             if (option.source === "demo_mode") {
                               enterDemoMode();
                               setDemoStep(0);
+                              setDemoTimelineStep(0);
                               setDemoPlaying(true);
                               setSelectedTimelineSnapshotId(null);
                             } else {
@@ -5645,6 +5663,7 @@ export function RealtimeStudio() {
                         setDemoScenarioId(scenario.id);
                         enterDemoMode();
                         setDemoStep(0);
+                        setDemoTimelineStep(0);
                         setDemoPlaying(true);
                         setSelectedTimelineSnapshotId(null);
                       }}
@@ -6435,7 +6454,7 @@ export function RealtimeStudio() {
                   onEvidenceSelect={setSelectedGraphEvidence}
                   activeEvidenceTarget={selectedGraphEvidence}
                   exportRootId={mermaidExportRootId}
-                  annotationsEnabled={annotationsEnabled}
+                  annotationsEnabled={annotationCaptureEnabled}
                   annotationsTool={annotationsTool}
                   annotationPenWidth={annotationPenWidth}
                   annotationPenColor={annotationPenColor}
@@ -6492,7 +6511,7 @@ export function RealtimeStudio() {
                   groups={rendererGroups}
                   incrementalStages={graphIncrementalStages}
                   activeIncrementalStageIndex={activeIncrementalStageIndex}
-                  annotationsEnabled={annotationsEnabled}
+                  annotationsEnabled={annotationCaptureEnabled}
                   annotationsTool={annotationsTool}
                   annotationPenWidth={annotationPenWidth}
                   annotationPenColor={annotationPenColor}

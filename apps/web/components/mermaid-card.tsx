@@ -781,7 +781,7 @@ function MermaidCardBody({
   collapsible?: boolean;
   defaultDiagramExpanded?: boolean;
   graphPayload?: MermaidGraphPayload;
-  onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
+  onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => boolean | void) | null;
   relayoutBusy?: boolean;
   activeIncrementalStageIndex?: number | null;
   exportRootId?: string | null;
@@ -1287,7 +1287,7 @@ function MermaidCardBody({
 
     const commitDrag = (state: DragState) => {
       const movedDistance = Math.hypot(state.currentDelta.x, state.currentDelta.y);
-      if (movedDistance < 18) return;
+      if (movedDistance < 18) return false;
 
       const movedNodes = nodeEntities.map((entity) =>
         entity.id === state.entity.id
@@ -1299,7 +1299,7 @@ function MermaidCardBody({
           : entity,
       );
       const movedNode = movedNodes.find((entity) => entity.id === state.entity.id);
-      if (!movedNode) return;
+      if (!movedNode) return false;
 
       const nearestAnchor =
         movedNodes
@@ -1318,7 +1318,7 @@ function MermaidCardBody({
         nearestAnchor ? { x: nearestAnchor.x, y: nearestAnchor.y } : null,
       );
 
-      onNodeRelayout({
+      const result = onNodeRelayout({
         node_id: movedNode.id,
         node_label: movedNode.label,
         from_position: {
@@ -1348,6 +1348,7 @@ function MermaidCardBody({
           targetGroup ? `Dropped inside group "${targetGroup.label}" (${targetGroup.id}).` : "Dropped outside any group.",
         ].join(" "),
       });
+      return result === true;
     };
 
     const finishDrag = (pointerId: number, commit: boolean) => {
@@ -1361,9 +1362,11 @@ function MermaidCardBody({
       } catch {
         // Ignore stale capture cleanup.
       }
-      resetTransform(completedDrag);
-      if (commit) {
-        commitDrag(completedDrag);
+      const keepLocalTransform = commit ? commitDrag(completedDrag) : false;
+      if (keepLocalTransform) {
+        completedDrag.element.style.cursor = relayoutBusy ? "wait" : "grab";
+      } else {
+        resetTransform(completedDrag);
       }
     };
 
@@ -1650,7 +1653,7 @@ export function MermaidCard(props: {
   collapsible?: boolean;
   defaultDiagramExpanded?: boolean;
   graphPayload?: MermaidGraphPayload;
-  onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
+  onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => boolean | void) | null;
   relayoutBusy?: boolean;
   activeIncrementalStageIndex?: number | null;
   exportRootId?: string | null;
