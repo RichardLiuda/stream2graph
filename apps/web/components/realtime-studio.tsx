@@ -5112,7 +5112,8 @@ export function RealtimeStudio() {
         ? "success"
         : "idle";
   const notesDockActive = annotationsEnabled || activeAnnotationPanel !== null || !activeAnnotationEmpty;
-  const annotationCaptureEnabled = annotationsEnabled && activeAnnotationPanel !== null && activeWorkbenchPanel === "notes";
+  const annotationCaptureEnabled =
+    !demoMode && annotationsEnabled && activeAnnotationPanel !== null && activeWorkbenchPanel === "notes";
 
   function toggleWorkbenchPanel(panel: WorkbenchDockPanel) {
     setPinnedWorkbenchPanel((current) => (current === panel ? null : panel));
@@ -6457,6 +6458,7 @@ export function RealtimeStudio() {
                   relayoutBusy={relayoutMutation.isPending}
                   onEvidenceSelect={setSelectedGraphEvidence}
                   activeEvidenceTarget={selectedGraphEvidence}
+                  hoverFocusEnabled={!demoMode}
                   exportRootId={mermaidExportRootId}
                   annotationsEnabled={annotationCaptureEnabled}
                   annotationsTool={annotationsTool}

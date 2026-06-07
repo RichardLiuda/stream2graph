@@ -350,6 +350,20 @@ function isNodeLabelSelectionTarget(target: EventTarget | null) {
   return target instanceof Element && Boolean(target.closest(SELECTABLE_NODE_LABEL_SELECTOR));
 }
 
+function selectNodeLabelText(nodeElement: SVGGElement) {
+  const selection = window.getSelection();
+  if (!selection) return;
+  const labelElement =
+    nodeElement.querySelector<SVGElement>("text") ||
+    nodeElement.querySelector<SVGElement>("foreignObject") ||
+    nodeElement.querySelector<SVGElement>("tspan");
+  if (!labelElement) return;
+  const range = document.createRange();
+  range.selectNodeContents(labelElement);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 function collectInteractiveEntities(
   svg: SVGSVGElement,
   graphPayload: MermaidGraphPayload,
@@ -790,6 +804,7 @@ function MermaidCardBody({
   annotationExportHostId = "s2g-annotation-host-mermaid",
   onEvidenceSelect,
   activeEvidenceTarget = null,
+  hoverFocusEnabled = true,
   /** @description Realtime 嵌入时固定浅色画布 token */
   fixedLightCanvas = false,
   panZoomControlsOffsetTop = 12,
@@ -829,6 +844,7 @@ function MermaidCardBody({
   annotationExportHostId?: string;
   onEvidenceSelect?: ((selection: MermaidEvidenceSelection) => void) | null;
   activeEvidenceTarget?: MermaidEvidenceTarget | null;
+  hoverFocusEnabled?: boolean;
   fixedLightCanvas?: boolean;
   panZoomControlsOffsetTop?: number;
 }) {
@@ -1214,12 +1230,16 @@ function MermaidCardBody({
       if (onEvidenceSelect || interactiveRelayoutEnabled) {
         entity.element.style.cursor = interactiveRelayoutEnabled ? (relayoutBusy ? "wait" : "grab") : "pointer";
       }
-      entity.element.addEventListener("pointerenter", handleEnter);
-      entity.element.addEventListener("pointerleave", handleLeave);
+      if (hoverFocusEnabled) {
+        entity.element.addEventListener("pointerenter", handleEnter);
+        entity.element.addEventListener("pointerleave", handleLeave);
+      }
       entity.element.addEventListener("click", handleClick);
       cleanupFns.push(() => {
-        entity.element.removeEventListener("pointerenter", handleEnter);
-        entity.element.removeEventListener("pointerleave", handleLeave);
+        if (hoverFocusEnabled) {
+          entity.element.removeEventListener("pointerenter", handleEnter);
+          entity.element.removeEventListener("pointerleave", handleLeave);
+        }
         entity.element.removeEventListener("click", handleClick);
       });
     }
@@ -1249,12 +1269,16 @@ function MermaidCardBody({
         renderedEdge.container.style.cursor = "pointer";
         renderedEdge.path.style.pointerEvents = "stroke";
       }
-      renderedEdge.container.addEventListener("pointerenter", handleEnter);
-      renderedEdge.container.addEventListener("pointerleave", handleLeave);
+      if (hoverFocusEnabled) {
+        renderedEdge.container.addEventListener("pointerenter", handleEnter);
+        renderedEdge.container.addEventListener("pointerleave", handleLeave);
+      }
       renderedEdge.container.addEventListener("click", handleClick);
       cleanupFns.push(() => {
-        renderedEdge.container.removeEventListener("pointerenter", handleEnter);
-        renderedEdge.container.removeEventListener("pointerleave", handleLeave);
+        if (hoverFocusEnabled) {
+          renderedEdge.container.removeEventListener("pointerenter", handleEnter);
+          renderedEdge.container.removeEventListener("pointerleave", handleLeave);
+        }
         renderedEdge.container.removeEventListener("click", handleClick);
       });
     }
@@ -1270,6 +1294,7 @@ function MermaidCardBody({
     activeEvidenceTarget,
     activeIncrementalStageIndex,
     graphPayload,
+    hoverFocusEnabled,
     interactiveRelayoutEnabled,
     onEvidenceSelect,
     relayoutBusy,
@@ -1300,6 +1325,7 @@ function MermaidCardBody({
     const groupEntities = collected.groups.map(({ element, ...entity }) => entity);
     const entityByElement = new Map<SVGGElement, MermaidInteractiveEntity>();
     const draggableNodeElements = collected.nodes.map((entity) => entity.element);
+    const labelCleanupFns: Array<() => void> = [];
 
     for (const entity of collected.nodes) {
       entity.element.setAttribute("data-panzoom-no-pan", "true");
@@ -1312,6 +1338,14 @@ function MermaidCardBody({
         labelElement.style.webkitUserSelect = "text";
         labelElement.style.cursor = "text";
       }
+      const handleLabelDoubleClick = (event: Event) => {
+        if (!isNodeLabelSelectionTarget(event.target)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        selectNodeLabelText(entity.element);
+      };
+      entity.element.addEventListener("dblclick", handleLabelDoubleClick);
+      labelCleanupFns.push(() => entity.element.removeEventListener("dblclick", handleLabelDoubleClick));
     }
 
     type DragState = {
@@ -1422,7 +1456,6 @@ function MermaidCardBody({
     const handlePointerDown = (event: PointerEvent) => {
       if (relayoutBusy || (event.pointerType === "mouse" && event.button !== 0)) return;
       const target = event.target as Element | null;
-      if (isNodeLabelSelectionTarget(target)) return;
       const nodeElement =
         draggableNodeElements.find((element) => target === element || (target instanceof Node && element.contains(target))) ||
         null;
@@ -1436,6 +1469,7 @@ function MermaidCardBody({
       event.stopPropagation();
       host.setPointerCapture(event.pointerId);
       nodeElement.style.cursor = "grabbing";
+      window.getSelection()?.removeAllRanges();
       dragState = {
         pointerId: event.pointerId,
         element: nodeElement,
@@ -1473,7 +1507,6 @@ function MermaidCardBody({
       event.preventDefault();
     };
     const suppressNonNodeSelection = (event: Event) => {
-      if (isNodeLabelSelectionTarget(event.target)) return;
       event.preventDefault();
     };
 
@@ -1491,6 +1524,7 @@ function MermaidCardBody({
       host.removeEventListener("pointercancel", handlePointerCancel);
       svgElement.removeEventListener("dragstart", suppressNativeDrag);
       svgElement.removeEventListener("selectstart", suppressNonNodeSelection);
+      labelCleanupFns.forEach((cleanup) => cleanup());
       if (dragState) {
         resetTransform(dragState);
         dragState = null;
@@ -1733,6 +1767,7 @@ export function MermaidCard(props: {
   annotationExportHostId?: string;
   onEvidenceSelect?: ((selection: MermaidEvidenceSelection) => void) | null;
   activeEvidenceTarget?: MermaidEvidenceTarget | null;
+  hoverFocusEnabled?: boolean;
   fixedLightCanvas?: boolean;
   panZoomControlsOffsetTop?: number;
 }) {
