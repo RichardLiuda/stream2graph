@@ -350,6 +350,38 @@ function isNodeLabelSelectionTarget(target: EventTarget | null) {
   return target instanceof Element && Boolean(target.closest(SELECTABLE_NODE_LABEL_SELECTOR));
 }
 
+function queryGroupFrameShapes(element: SVGGElement) {
+  const shapeTags = new Set(["rect", "polygon", "path", "circle", "ellipse"]);
+  return Array.from(element.children).filter(
+    (child): child is SVGElement =>
+      child instanceof SVGElement && shapeTags.has(child.tagName.toLowerCase()),
+  );
+}
+
+type SvgShapeStyleSnapshot = {
+  fill: string;
+  fillOpacity: string;
+  stroke: string;
+  strokeWidth: string;
+};
+
+function captureShapeStyle(shape: SVGElement): SvgShapeStyleSnapshot {
+  const computed = window.getComputedStyle(shape);
+  return {
+    fill: shape.style.fill || shape.getAttribute("fill") || computed.fill || "",
+    fillOpacity: shape.style.fillOpacity || shape.getAttribute("fill-opacity") || computed.fillOpacity || "",
+    stroke: shape.style.stroke || shape.getAttribute("stroke") || computed.stroke || "",
+    strokeWidth: shape.style.strokeWidth || shape.getAttribute("stroke-width") || computed.strokeWidth || "",
+  };
+}
+
+function applyShapeStyle(shape: SVGElement, style: SvgShapeStyleSnapshot) {
+  shape.style.fill = style.fill;
+  shape.style.fillOpacity = style.fillOpacity;
+  shape.style.stroke = style.stroke;
+  shape.style.strokeWidth = style.strokeWidth;
+}
+
 function selectNodeLabelText(nodeElement: SVGGElement) {
   const selection = window.getSelection();
   if (!selection) return;
@@ -943,6 +975,12 @@ function MermaidCardBody({
       const payload = groupPayloadById.get(group.id);
       return metadataString(payload?.metadata, "group_type") === "speaker_lane";
     });
+    const laneGroupIds = new Set(laneGroups.map((group) => group.id));
+    const groupFrameStyleById = new Map<string, SvgShapeStyleSnapshot>();
+    for (const group of collected.groups) {
+      const frameShape = queryGroupFrameShapes(group.element)[0];
+      if (frameShape) groupFrameStyleById.set(group.id, captureShapeStyle(frameShape));
+    }
 
     const svgNs = "http://www.w3.org/2000/svg";
     const overlayRoot = document.createElementNS(svgNs, "g");
@@ -998,7 +1036,7 @@ function MermaidCardBody({
       for (const entity of collected.groups) {
         entity.element.style.opacity = "";
         entity.element.style.filter = "";
-        for (const shape of Array.from(entity.element.querySelectorAll<SVGElement>("rect,polygon,path,circle,ellipse"))) {
+        for (const shape of queryGroupFrameShapes(entity.element)) {
           shape.style.fill = "";
           shape.style.fillOpacity = "";
           shape.style.stroke = "";
@@ -1021,7 +1059,7 @@ function MermaidCardBody({
       laneGroups.forEach((group, index) => {
         const payload = groupPayloadById.get(group.id);
         const laneColor = metadataString(payload?.metadata, "lane_color", fallbackLaneColor(index));
-        for (const shape of Array.from(group.element.querySelectorAll<SVGElement>("rect,polygon,path"))) {
+        for (const shape of queryGroupFrameShapes(group.element)) {
           shape.style.stroke = "#334155";
           shape.style.strokeWidth = "2.2px";
           shape.style.fill = laneColor;
@@ -1031,6 +1069,12 @@ function MermaidCardBody({
           label.style.fontWeight = "700";
           label.style.fill = "#0f172a";
         }
+      });
+      collected.groups.forEach((group) => {
+        if (laneGroupIds.has(group.id)) return;
+        const baseStyle = groupFrameStyleById.get(group.id);
+        if (!baseStyle) return;
+        queryGroupFrameShapes(group.element).forEach((shape) => applyShapeStyle(shape, baseStyle));
       });
       renderedEdges.forEach((renderedEdge) => {
         if (renderedEdge.relationType === "attack") {
@@ -1079,7 +1123,7 @@ function MermaidCardBody({
         entity.element.style.opacity = active ? "1" : "0.18";
         entity.element.style.filter = active ? `drop-shadow(0 0 14px ${stageColor}33)` : "";
         if (!active) continue;
-        for (const shape of Array.from(entity.element.querySelectorAll<SVGElement>("rect,polygon,path"))) {
+        for (const shape of queryGroupFrameShapes(entity.element)) {
           shape.style.fill = stageColor;
           shape.style.fillOpacity = "0.18";
           shape.style.stroke = stageColor;

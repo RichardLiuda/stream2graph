@@ -61,6 +61,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [language] = useLanguagePreference();
   const navItems = [...allNavItems];
   const currentItem = navItems.find((item) => pathname === item.href);
+  const realtimeCompact = pathname === "/app/realtime";
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
@@ -176,7 +177,13 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </Card>
       </aside>
 
-      <div className="soft-enter soft-enter-delay-1 relative z-[1] min-w-0 px-4 py-5 pl-[calc(1rem+2.75rem+1.25rem)] pt-4 md:px-8 md:py-7 md:pl-[calc(1rem+2.75rem+2.25rem)] md:pt-6 lg:px-10 xl:px-12">
+      <div
+        className={
+          realtimeCompact
+            ? "soft-enter soft-enter-delay-1 relative z-[1] min-w-0 px-3 py-2 pl-[calc(0.75rem+2.75rem+1rem)] pt-2 md:px-5 md:py-3 md:pl-[calc(1rem+2.75rem+1.5rem)] md:pt-3 lg:px-7 xl:px-8"
+            : "soft-enter soft-enter-delay-1 relative z-[1] min-w-0 px-4 py-5 pl-[calc(1rem+2.75rem+1.25rem)] pt-4 md:px-8 md:py-7 md:pl-[calc(1rem+2.75rem+2.25rem)] md:pt-6 lg:px-10 xl:px-12"
+        }
+      >
         <div className="workspace-content">{children}</div>
       </div>
     </div>

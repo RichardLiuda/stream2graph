@@ -2174,6 +2174,23 @@ function backendStatusTone(status: "idle" | "working" | "success" | "error") {
   return "success";
 }
 
+function sttRuntimeLabel(
+  backend: RecognitionBackend,
+  sttProfile: { label?: string | null } | null | undefined,
+  sttModel: string | null | undefined,
+  language: LanguagePreference = "zh-CN",
+) {
+  const profileLabel = sttProfile?.label?.trim();
+  const modelLabel = sttModel?.trim();
+  if (backend === "api_stt" && profileLabel) {
+    return modelLabel ? `${profileLabel} · ${modelLabel}` : profileLabel;
+  }
+  if (backend === "api_stt" && modelLabel) {
+    return `${backendLabel(backend, language)} · ${modelLabel}`;
+  }
+  return backendLabel(backend, language);
+}
+
 function toLocalDateTimeLabel(value: string | null, language: LanguagePreference = "zh-CN") {
   if (!value) return t(language, "realtimeStudio.datetime.notGenerated");
   const asNumber = Number(value);
@@ -2743,6 +2760,7 @@ export function RealtimeStudio() {
   const selectedPlannerProfile =
     runtimeOptions.data?.planner_profiles.find((item) => item.id === plannerProfileId) ?? null;
   const selectedSttProfile = runtimeOptions.data?.stt_profiles.find((item) => item.id === sttProfileId) ?? null;
+  const selectedSttRuntimeLabel = sttRuntimeLabel(selectedRecognitionBackend, selectedSttProfile, sttModel, language);
   const effectiveError = error ?? machineError;
   const currentSession = useMemo(
     () => sessions.data?.find((item) => item.session_id === currentSessionId) ?? null,
@@ -5027,7 +5045,7 @@ export function RealtimeStudio() {
         label: tr("realtimeStudio.text026"),
         value: backendStatusLabel(sttStatus, language),
         tone: sttTone,
-        help: `${tr("realtimeStudio.text027")}${backendLabel(selectedRecognitionBackend, language)}`,
+        help: `${tr("realtimeStudio.text027")}${selectedSttRuntimeLabel}`,
       },
       {
         abbr: "GATE",
@@ -5087,6 +5105,7 @@ export function RealtimeStudio() {
     mermaidState?.error_message,
     mermaidState?.compile_ok,
     selectedRecognitionBackend,
+    selectedSttRuntimeLabel,
     selectedGateProfile,
     gateModel,
     selectedPlannerProfile,
@@ -5238,7 +5257,7 @@ export function RealtimeStudio() {
   }
 
   return (
-  <div className="h-[100dvh] overflow-hidden text-theme-2 selection:bg-[rgba(124,111,154,0.22)] selection:text-theme-1">
+  <div className="h-[calc(100dvh-1rem)] overflow-hidden text-theme-2 selection:bg-[rgba(124,111,154,0.22)] selection:text-theme-1">
       {effectiveError ? (
         <div className="soft-enter fixed left-1/2 top-16 z-[19000] w-[min(720px,92vw)] -translate-x-1/2 rounded-[24px] border border-red-200 bg-red-50/95 px-4 py-3 text-sm text-red-700">
           {effectiveError}
@@ -5401,8 +5420,8 @@ export function RealtimeStudio() {
           )
         : null}
 
-      <div className="flex min-h-[calc(100vh-5.5rem)] flex-col space-y-4">
-        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
+      <div className="flex h-full min-h-0 flex-col space-y-2">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2 pl-3 md:gap-3 md:pl-6 lg:pl-8">
             <h1 className="page-title">
               {tr("realtimeStudio.text041")}
@@ -5544,7 +5563,7 @@ export function RealtimeStudio() {
                     {tr("realtimeStudio.text053")}{getSourceBadgeLabel(activeCaptureSource, language)}
                   </Badge>
                   <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                    {tr("realtimeStudio.text054")}{backendLabel(selectedRecognitionBackend, language)}
+                    {tr("realtimeStudio.text054")}{selectedSttRuntimeLabel}
                   </Badge>
                   <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
                     {tr("realtimeStudio.text055")}
@@ -5564,7 +5583,7 @@ export function RealtimeStudio() {
             </div>
           </div>
         </div>
-        <div className="grid min-h-0 grid-cols-1 gap-4 pb-0 xl:h-[calc(100vh-8.25rem)] xl:max-h-[calc(100vh-8.25rem)] xl:flex-1 xl:grid-cols-[minmax(300px,3fr)_minmax(0,7fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:overflow-hidden">
+        <div className="grid min-h-0 grid-cols-1 gap-2 pb-0 xl:h-[calc(100vh-6.25rem)] xl:max-h-[calc(100vh-6.25rem)] xl:flex-1 xl:grid-cols-[minmax(300px,3fr)_minmax(0,7fr)] xl:grid-rows-[auto_1fr] xl:items-stretch xl:overflow-visible">
         {studioPage === 1 ? (
           <Card className="soft-enter relative order-1 flex min-h-0 min-w-0 flex-col space-y-3 overflow-hidden text-[13px] leading-snug xl:col-start-1 xl:row-start-2 xl:h-full xl:max-h-full xl:order-none">
           <div
@@ -5780,7 +5799,9 @@ export function RealtimeStudio() {
                 {currentSessionClosed ? (
                   <Badge className="text-[9px]">{tr("realtimeStudio.text073")}</Badge>
                 ) : null}
-                <Badge className="text-[9px]">{backendLabel(selectedRecognitionBackend, language)}</Badge>
+                <Badge className="max-w-[12rem] truncate text-[9px]" title={selectedSttRuntimeLabel}>
+                  {selectedSttRuntimeLabel}
+                </Badge>
               </div>
             </div>
             <div className="mt-1.5 flex shrink-0 flex-wrap gap-1.5">
@@ -5946,7 +5967,7 @@ export function RealtimeStudio() {
                 ) : null}
 
         <div
-          className={`order-3 flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overscroll-x-contain xl:row-start-2 xl:min-h-0 ${
+          className={`order-3 flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overscroll-x-contain xl:row-start-2 xl:min-h-0 xl:overflow-visible ${
             studioPage === 1 ? "xl:col-start-2" : "xl:col-start-1 xl:col-span-2"
           }`}
         >
@@ -5960,7 +5981,7 @@ export function RealtimeStudio() {
         >
           <div className="soft-enter soft-enter-delay-1 flex min-h-0 min-w-0 flex-1 flex-col">
             <Tabs.Root value={stageTab} onValueChange={setStageTab} className="flex min-h-0 flex-1 flex-col">
-            <Card className="flex min-h-0 min-w-[960px] flex-1 flex-col overflow-hidden rounded-xl border border-theme-default bg-surface-1 p-0 shadow-lg">
+            <Card className="flex min-h-0 min-w-[960px] flex-1 flex-col overflow-visible rounded-xl border border-theme-default bg-surface-1 p-0 shadow-lg">
               <div
                 className="pointer-events-none h-px w-full shrink-0 bg-gradient-to-r from-transparent via-[color:var(--accent)]/30 to-transparent"
                 aria-hidden
