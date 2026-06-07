@@ -15,7 +15,6 @@ import {
   Menu,
   Mic,
   RadioTower,
-  Rows4,
   Settings2,
   Sparkles,
 } from "lucide-react";
@@ -27,8 +26,7 @@ import { ScrollLinkedCardsBlockSection, type ScrollLinkedCardsBlock } from "@/co
 
 const navItems = [
   { href: "/app/realtime", label: "实时工作", icon: RadioTower },
-  { href: "/app/samples", label: "样本对照", icon: Rows4 },
-  { href: "/app/reports", label: "实验报告", icon: BarChart3 },
+  { href: "/app/reports", label: "工作报告", icon: BarChart3 },
   { href: "/app/settings", label: "设置", icon: Settings2 },
   { href: "/", label: "首页", icon: BookOpenText },
 ];
@@ -120,7 +118,7 @@ function ScrollZigzagHint({ className }: { className?: string }) {
 }
 
 function FlowPipelineOrnament() {
-  const labels = ["输入", "结构", "对照"];
+  const labels = ["输入", "结构", "报告"];
   const toneDots = ["bg-[#aeb8c6]", "bg-[#a7b3ad]", "bg-[#c6b8a1]"];
   return (
     <div className="mx-auto w-full max-w-[17rem] shrink-0 md:mx-0" aria-hidden>
@@ -250,7 +248,7 @@ const FLOW_STEPS: Array<{
     n: "01",
     tag: "Step 1",
     title: "准备输入",
-    body: "语音或 Transcript；也可以用固定样本做对照。",
+    body: "语音或 Transcript；也可以用演示脚本做稳定复盘。",
     icon: Mic,
     align: "left",
   },
@@ -304,7 +302,7 @@ const FEATURE_SPOTS: Array<{
     mark: "D",
     kind: "Method",
     title: "复现与归档",
-    body: "固定样本与配置，保存报告，便于追溯与回归。",
+    body: "实时会话、图谱版本与复盘报告，便于追溯与归档。",
     icon: Archive,
   },
 ];
@@ -676,7 +674,7 @@ export function HomePage() {
               </span>
               <div className="relative text-xs font-semibold uppercase tracking-[0.2em] text-theme-4">Tip</div>
               <p className="font-display relative mt-4 pl-6 text-lg font-medium leading-relaxed text-theme-2 md:pl-8 md:text-xl">
-                想严谨对照：用固定样本与配置跑两次，再用评测指标对比差异——偏差会自己说话。
+                想做专业复盘：保留图谱版本、发言证据和行动项，再用报告模板导出给不同角色。
               </p>
             </div>
           </Reveal>

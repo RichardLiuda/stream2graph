@@ -8,7 +8,6 @@ import {
   ChevronLeft,
   Menu,
   RadioTower,
-  Rows4,
   Settings2,
   type LucideIcon,
 } from "lucide-react";
@@ -24,12 +23,6 @@ const allNavItems = [
     label: "adminShell.nav.realtime",
     icon: RadioTower,
     guest: true,
-  },
-  {
-    href: "/app/samples",
-    label: "adminShell.nav.samples",
-    icon: Rows4,
-    guest: false,
   },
   {
     href: "/app/reports",

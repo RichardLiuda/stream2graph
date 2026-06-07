@@ -1,18 +1,20 @@
 "use client";
 
 import * as Tabs from "@radix-ui/react-tabs";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   CheckCircle2,
   Clock3,
   Download,
+  FileDown,
   FileText,
   GitBranch,
+  Layers,
   ListChecks,
   PieChart,
   PlayCircle,
-  Plus,
+  Settings2,
   Users,
 } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
@@ -22,7 +24,7 @@ import { Badge, Button, Card, Input, StatCard, Textarea } from "@stream2graph/ui
 
 import { api, apiUrl } from "@/lib/api";
 
-type DashboardTab = "debrief" | "study" | "exports";
+type DashboardTab = "overview" | "builder" | "exports";
 type ReportDetail = Awaited<ReturnType<typeof api.getReport>>;
 type SpeakerShare = {
   speaker: string;
@@ -34,8 +36,23 @@ type TranscriptTurn = {
   speaker: string;
   text: string;
 };
+type ReportSectionKey = "summary" | "decisions" | "actions" | "graph" | "timeline" | "evidence";
 
 const DEBRIEF_REPORT_TYPES = new Set(["realtime_session", "realtime_graph"]);
+const DASHBOARD_TABS: Array<[DashboardTab, string]> = [
+  ["overview", "复盘中心"],
+  ["builder", "报告自定义"],
+  ["exports", "导出归档"],
+];
+const REPORT_SECTIONS: Array<{ key: ReportSectionKey; label: string; description: string }> = [
+  { key: "summary", label: "工作摘要", description: "会话背景、最终结论和复盘口径。" },
+  { key: "decisions", label: "关键决策", description: "从报告字段和图谱版本中提取决策。" },
+  { key: "actions", label: "行动项", description: "待跟进事项、负责人线索和交付物。" },
+  { key: "graph", label: "图谱指标", description: "节点、关系、分组和结构变化。" },
+  { key: "timeline", label: "版本时间轴", description: "关键快照和可回放证据。" },
+  { key: "evidence", label: "发言证据", description: "参与者占比与代表性发言片段。" },
+];
+const EXPORT_FORMATS = ["json", "csv", "markdown"] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -180,16 +197,17 @@ function reportSessionId(report: ReportDetail | undefined) {
 }
 
 function reportSummaryText(report: ReportDetail | undefined, turns: TranscriptTurn[], versions: number) {
-  if (!report) return "请选择一份实时会话报告，系统会在这里生成会后复盘视图。";
+  if (!report) return "请选择一份实时工作报告，系统会在这里生成会后复盘视图。";
+  const summary = report.summary ?? {};
   const direct =
-    asString(report.summary.meeting_summary) ||
-    asString(report.summary.summary_text) ||
+    asString(summary.meeting_summary) ||
+    asString(summary.summary_text) ||
     asString(report.payload?.summary) ||
     asString(findRecordByKey(report.payload, "coordination_summary")?.summary);
   if (direct) return direct;
   const metrics = graphMetrics(report);
   const speakers = new Set(turns.map((turn) => turn.speaker)).size;
-  return `本次会话沉淀了 ${turns.length} 条可追踪发言、${speakers} 位参与者、${metrics.nodes} 个图谱节点和 ${metrics.edges} 条关系，并保留了 ${versions} 个可回放版本。`;
+  return `本次实时工作沉淀了 ${turns.length} 条可追踪发言、${speakers} 位参与者、${metrics.nodes} 个图谱节点和 ${metrics.edges} 条关系，并保留了 ${versions} 个可回放版本。`;
 }
 
 function deriveDecisionItems(report: ReportDetail | undefined, timelineNodes: RealtimeTimelineNode[]) {
@@ -203,7 +221,7 @@ function deriveDecisionItems(report: ReportDetail | undefined, timelineNodes: Re
   return [
     metrics.nodes || metrics.edges
       ? `形成当前图谱版本：${metrics.nodes} 个节点、${metrics.edges} 条关系、${metrics.groups} 个分组。`
-      : "已将会话内容固化为结构化报告，可继续补充人工结论。",
+      : "已将实时工作内容固化为结构化报告，可继续补充人工结论。",
     timelineNodes.length
       ? `保留 ${timelineNodes.length} 个时间节点，可回看关键版本变化。`
       : "当前报告暂无时间轴快照，可在实时工作台继续生成版本记录。",
@@ -224,48 +242,124 @@ function deriveActionItems(report: ReportDetail | undefined, turns: TranscriptTu
   return inferred.length ? inferred : ["暂无明确行动项，可在复盘后手动补充负责人、截止时间和交付物。"];
 }
 
-export function ReportsDashboard() {
-  const DASHBOARD_TABS: Array<[string, string]> = [
-    ["debrief", "会后复盘"],
-    ["study", "用户研究配置"],
-    ["exports", "导出"],
+function safeFileName(value: string) {
+  return value
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .slice(0, 80) || "stream2graph-report";
+}
+
+function buildMarkdownDraft({
+  title,
+  audience,
+  tone,
+  intro,
+  owner,
+  reviewDate,
+  report,
+  summaryText,
+  sections,
+  decisions,
+  actionItems,
+  metrics,
+  timelineNodes,
+  transcriptTurns,
+}: {
+  title: string;
+  audience: string;
+  tone: string;
+  intro: string;
+  owner: string;
+  reviewDate: string;
+  report: ReportDetail | undefined;
+  summaryText: string;
+  sections: Record<ReportSectionKey, boolean>;
+  decisions: string[];
+  actionItems: string[];
+  metrics: ReturnType<typeof graphMetrics>;
+  timelineNodes: RealtimeTimelineNode[];
+  transcriptTurns: TranscriptTurn[];
+}) {
+  const lines = [
+    `# ${title}`,
+    "",
+    `- 目标读者：${audience}`,
+    `- 语气模板：${tone}`,
+    `- 报告来源：${report?.title || "未选择实时工作报告"}`,
+    `- 负责人：${owner || "待补充"}`,
+    `- 下次复盘：${reviewDate || "待确认"}`,
+    "",
   ];
-  const queryClient = useQueryClient();
-  const [taskTitle, setTaskTitle] = useState("基线比较任务");
-  const [taskDescription, setTaskDescription] = useState("请根据给定对话材料产出或修订 Mermaid 图。");
-  const [taskDataset, setTaskDataset] = useState("");
-  const [taskSplit, setTaskSplit] = useState("test");
-  const [taskSampleId, setTaskSampleId] = useState("");
-  const [taskSystemOutputs, setTaskSystemOutputs] = useState(
-    JSON.stringify(
-      {
-        manual: "",
-        heuristic: "flowchart TD\n  A[Heuristic Draft]\n  B[Please Refine]\n  A --> B",
-        model_system: "flowchart TD\n  Start[Model Draft]\n  Review[Human Review]\n  Start --> Review",
-      },
-      null,
-      2,
-    ),
-  );
-  const [selectedTaskId, setSelectedTaskId] = useState("");
-  const [participantId, setParticipantId] = useState("P-001");
-  const [participantCondition, setParticipantCondition] = useState("manual");
-  const [creationError, setCreationError] = useState<string | null>(null);
-  const [dashboardTab, setDashboardTab] = useState<DashboardTab>("debrief");
+
+  if (intro.trim()) {
+    lines.push("## 编者说明", "", intro.trim(), "");
+  }
+  if (sections.summary) {
+    lines.push("## 工作摘要", "", summaryText, "");
+  }
+  if (sections.decisions) {
+    lines.push("## 关键决策", "", ...decisions.map((item, index) => `${index + 1}. ${item}`), "");
+  }
+  if (sections.actions) {
+    lines.push("## 行动项", "", ...actionItems.map((item, index) => `${index + 1}. ${item}`), "");
+  }
+  if (sections.graph) {
+    lines.push(
+      "## 图谱指标",
+      "",
+      `- 节点：${metrics.nodes}`,
+      `- 关系：${metrics.edges}`,
+      `- 分组：${metrics.groups}`,
+      "",
+    );
+  }
+  if (sections.timeline) {
+    lines.push(
+      "## 版本时间轴",
+      "",
+      ...(timelineNodes.length
+        ? timelineNodes
+            .slice(0, 8)
+            .map((node, index) => `${index + 1}. ${node.label || "自动快照"} · ${formatDateTime(node.created_at)}`)
+        : ["暂无可回放时间轴。"]),
+      "",
+    );
+  }
+  if (sections.evidence) {
+    lines.push(
+      "## 发言证据",
+      "",
+      ...(transcriptTurns.length
+        ? transcriptTurns.slice(0, 8).map((turn) => `- ${turn.speaker}：${turn.text}`)
+        : ["暂无可提取的发言证据。"]),
+      "",
+    );
+  }
+  return lines.join("\n");
+}
+
+export function ReportsDashboard() {
+  const [dashboardTab, setDashboardTab] = useState<DashboardTab>("overview");
   const [selectedReportId, setSelectedReportId] = useState("");
   const [selectedTimelineSnapshotId, setSelectedTimelineSnapshotId] = useState("");
-
-  const datasets = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
-  const samples = useQuery({
-    queryKey: ["report-samples", taskDataset, taskSplit],
-    queryFn: () => api.listSamples(taskDataset, taskSplit, "", 0, 20),
-    enabled: Boolean(taskDataset),
+  const [reportTitle, setReportTitle] = useState("实时工作复盘报告");
+  const [reportAudience, setReportAudience] = useState("业务复盘");
+  const [reportTone, setReportTone] = useState("专业简洁");
+  const [reportOwner, setReportOwner] = useState("");
+  const [reviewDate, setReviewDate] = useState("");
+  const [customIntro, setCustomIntro] = useState("本报告基于实时工作台生成的转写、图谱版本和时间轴快照整理。");
+  const [sections, setSections] = useState<Record<ReportSectionKey, boolean>>({
+    summary: true,
+    decisions: true,
+    actions: true,
+    graph: true,
+    timeline: true,
+    evidence: true,
   });
-  const runs = useQuery({ queryKey: ["runs"], queryFn: api.listRuns });
+
   const realtimeSessions = useQuery({ queryKey: ["realtime-sessions"], queryFn: api.listRealtimeSessions });
   const reports = useQuery({ queryKey: ["reports"], queryFn: api.listReports });
-  const studyTasks = useQuery({ queryKey: ["study-tasks"], queryFn: api.listStudyTasks });
-  const studySessions = useQuery({ queryKey: ["study-sessions"], queryFn: api.listStudySessions });
   const debriefReports = useMemo(
     () => (reports.data || []).filter((item) => DEBRIEF_REPORT_TYPES.has(item.report_type)),
     [reports.data],
@@ -282,25 +376,14 @@ export function ReportsDashboard() {
     enabled: Boolean(selectedSessionId),
     retry: false,
   });
+  const timelineNodes = useMemo(() => timeline.data?.nodes ?? [], [timeline.data?.nodes]);
+  const orderedTimelineNodes = useMemo(() => [...timelineNodes].reverse(), [timelineNodes]);
   const timelinePreview = useQuery({
     queryKey: ["realtime-timeline-preview", selectedSessionId, selectedTimelineSnapshotId],
     queryFn: () => api.previewRealtimeRollback(selectedSessionId, { snapshot_id: selectedTimelineSnapshotId }),
     enabled: Boolean(selectedSessionId && selectedTimelineSnapshotId),
     retry: false,
   });
-
-  useEffect(() => {
-    if (!taskDataset && datasets.data?.length) {
-      const defaultSlug = datasets.data.find((item) => item.is_default)?.slug || datasets.data[0].slug;
-      setTaskDataset(defaultSlug);
-    }
-  }, [datasets.data, taskDataset]);
-
-  useEffect(() => {
-    if (!taskSampleId && samples.data?.length) {
-      setTaskSampleId(samples.data[0].sample_id);
-    }
-  }, [samples.data, taskSampleId]);
 
   useEffect(() => {
     if (!selectedReportId && debriefReports.length) {
@@ -315,19 +398,14 @@ export function ReportsDashboard() {
     }
   }, [selectedTimelineSnapshotId, timeline.data?.nodes]);
 
-  const stats = useMemo(
-    () => [
-      { label: "运行任务", value: runs.data?.length ?? 0 },
-      { label: "实时会话", value: realtimeSessions.data?.length ?? 0 },
-      { label: "研究任务", value: studyTasks.data?.length ?? 0 },
-      { label: "复盘报告", value: debriefReports.length },
-    ],
-    [debriefReports.length, realtimeSessions.data?.length, runs.data?.length, studyTasks.data?.length],
-  );
+  useEffect(() => {
+    if (selectedReport.data?.title) {
+      setReportTitle(`${selectedReport.data.title} · 工作复盘`);
+    }
+  }, [selectedReport.data?.title]);
+
   const transcriptTurns = useMemo(() => collectTranscriptTurns(selectedReport.data?.payload), [selectedReport.data?.payload]);
   const shares = useMemo(() => speakerShares(transcriptTurns), [transcriptTurns]);
-  const timelineNodes = timeline.data?.nodes ?? [];
-  const orderedTimelineNodes = useMemo(() => [...timelineNodes].reverse(), [timelineNodes]);
   const metrics = graphMetrics(selectedReport.data);
   const decisions = useMemo(
     () => deriveDecisionItems(selectedReport.data, timelineNodes),
@@ -339,46 +417,78 @@ export function ReportsDashboard() {
   );
   const summaryText = reportSummaryText(selectedReport.data, transcriptTurns, timelineNodes.length);
   const selectedTimelineNode = timelineNodes.find((node) => node.snapshot_id === selectedTimelineSnapshotId) ?? null;
-
-  const createTask = useMutation({
-    mutationFn: () =>
-      api.createStudyTask({
-        title: taskTitle,
-        description: taskDescription,
-        dataset_version_slug: taskDataset || null,
-        split: taskSplit || null,
-        sample_id: taskSampleId || null,
-        default_condition: "manual",
-        system_outputs: JSON.parse(taskSystemOutputs || "{}"),
+  const enabledSections = REPORT_SECTIONS.filter((section) => sections[section.key]);
+  const markdownDraft = useMemo(
+    () =>
+      buildMarkdownDraft({
+        title: reportTitle,
+        audience: reportAudience,
+        tone: reportTone,
+        intro: customIntro,
+        owner: reportOwner,
+        reviewDate,
+        report: selectedReport.data,
+        summaryText,
+        sections,
+        decisions,
+        actionItems,
+        metrics,
+        timelineNodes: orderedTimelineNodes,
+        transcriptTurns,
       }),
-    onSuccess: (task) => {
-      setSelectedTaskId(task.task_id);
-      setCreationError(null);
-      queryClient.invalidateQueries({ queryKey: ["study-tasks"] });
-    },
-    onError: (error) => setCreationError((error as Error).message),
-  });
+    [
+      actionItems,
+      customIntro,
+      decisions,
+      metrics,
+      orderedTimelineNodes,
+      reportAudience,
+      reportOwner,
+      reportTitle,
+      reportTone,
+      reviewDate,
+      sections,
+      selectedReport.data,
+      summaryText,
+      transcriptTurns,
+    ],
+  );
 
-  const createParticipant = useMutation({
-    mutationFn: () =>
-      api.createStudySession(selectedTaskId, {
-        participant_id: participantId,
-        study_condition: participantCondition,
-      }),
-    onSuccess: () => {
-      setCreationError(null);
-      queryClient.invalidateQueries({ queryKey: ["study-sessions"] });
-    },
-    onError: (error) => setCreationError((error as Error).message),
-  });
+  const stats = [
+    { label: "实时会话", value: realtimeSessions.data?.length ?? 0 },
+    { label: "工作报告", value: debriefReports.length },
+    { label: "图谱版本", value: timelineNodes.length || 0 },
+    { label: "行动项", value: actionItems.length },
+  ];
+
+  function downloadMarkdownDraft() {
+    const blob = new Blob([markdownDraft], { type: "text/markdown;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${safeFileName(reportTitle)}.md`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(url);
+  }
 
   return (
     <div className="space-y-5">
-      <h1 className="page-title page-title--menu-clearance">实验、用户研究与报告</h1>
-
-      {creationError ? (
-        <div className="rounded-lg border border-red-900/50 bg-red-950/40 px-3 py-2.5 text-sm text-red-200">{creationError}</div>
-      ) : null}
+      <div className="page-title--menu-clearance flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="page-title">实时工作报告</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-theme-4">
+            围绕实时工作台生成的会话、图谱、时间轴和行动项做复盘，面向工作交付、评审归档和后续跟进。
+          </p>
+        </div>
+        <a href="/app/realtime">
+          <Button variant="secondary" className="gap-2">
+            <Activity className="h-4 w-4" />
+            返回实时工作
+          </Button>
+        </a>
+      </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {stats.map((item) => (
@@ -411,19 +521,19 @@ export function ReportsDashboard() {
           ))}
         </Tabs.List>
 
-        <Tabs.Content value="debrief">
+        <Tabs.Content value="overview">
           <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
             <Card className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-theme-1">复盘报告</div>
-                  <div className="mt-1 text-xs text-theme-4">选择实时会话报告进入会后复盘视图</div>
+                  <div className="text-sm font-semibold text-theme-1">工作报告</div>
+                  <div className="mt-1 text-xs text-theme-4">选择一份实时会话报告进入复盘视图</div>
                 </div>
                 <Badge>{debriefReports.length}</Badge>
               </div>
               <div className="space-y-2">
                 {debriefReports.length ? (
-                  debriefReports.slice(0, 12).map((item) => {
+                  debriefReports.slice(0, 14).map((item) => {
                     const active = item.report_id === selectedReportId;
                     return (
                       <button
@@ -449,7 +559,7 @@ export function ReportsDashboard() {
                   })
                 ) : (
                   <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-6 text-sm text-theme-4">
-                    暂无实时会话报告。请先在实时工作台生成并保存报告。
+                    暂无实时工作报告。请先在实时工作台生成并保存报告。
                   </div>
                 )}
               </div>
@@ -461,10 +571,10 @@ export function ReportsDashboard() {
                   <div>
                     <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
                       <FileText className="h-5 w-5" />
-                      会后复盘中心
+                      复盘摘要
                     </div>
                     <div className="mt-1 text-sm text-theme-4">
-                      {selectedReport.data?.title || "实时会话报告会在这里转成可复盘的工作面板"}
+                      {selectedReport.data?.title || "实时工作报告会在这里转成可复盘的工作面板"}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -496,7 +606,7 @@ export function ReportsDashboard() {
                 <div className="rounded-xl border border-theme-default bg-surface-muted px-4 py-4">
                   <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-theme-1">
                     <Activity className="h-4 w-4" />
-                    会议摘要
+                    工作摘要
                   </div>
                   <p className="text-sm leading-7 text-theme-3">{summaryText}</p>
                 </div>
@@ -651,7 +761,7 @@ export function ReportsDashboard() {
                   </div>
                   <div className="rounded-xl border border-theme-default bg-surface-muted px-4 py-4">
                     {timelinePreview.isLoading ? (
-                      <div className="text-sm text-theme-4">正在载入该时间点预览…</div>
+                      <div className="text-sm text-theme-4">正在载入该时间点预览...</div>
                     ) : timelinePreview.data ? (
                       <div className="space-y-4">
                         <div>
@@ -682,155 +792,196 @@ export function ReportsDashboard() {
           </div>
         </Tabs.Content>
 
-        <Tabs.Content value="study">
-          <div className="grid gap-6 xl:grid-cols-2">
+        <Tabs.Content value="builder">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
             <Card className="space-y-5">
               <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
-                <Plus className="h-5 w-5" />
-                创建研究任务
+                <Settings2 className="h-5 w-5" />
+                报告模板
               </div>
-              <Input
-                value={taskTitle}
-                onChange={(event: ChangeEvent<HTMLInputElement>) => setTaskTitle(event.target.value)}
-                placeholder="任务标题"
-              />
-              <Textarea
-                value={taskDescription}
-                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setTaskDescription(event.target.value)}
-                rows={4}
-              />
-              <select
-                className="select-control"
-                value={taskDataset}
-                onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskDataset(event.target.value)}
-              >
-                {datasets.data?.map((item) => (
-                  <option key={item.slug} value={item.slug}>
-                    {item.slug}
-                  </option>
-                ))}
-              </select>
               <div className="grid gap-3 md:grid-cols-2">
-                <select
-                  className="select-control"
-                  value={taskSplit}
-                  onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskSplit(event.target.value)}
-                >
-                  {["train", "validation", "test"].map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="select-control"
-                  value={taskSampleId}
-                  onChange={(event: ChangeEvent<HTMLSelectElement>) => setTaskSampleId(event.target.value)}
-                >
-                  {samples.data?.map((item) => (
-                    <option key={item.sample_id} value={item.sample_id}>
-                      {item.sample_id}
-                    </option>
-                  ))}
-                </select>
+                <label className="space-y-2 md:col-span-2">
+                  <span className="text-sm font-medium text-theme-2">报告标题</span>
+                  <Input
+                    value={reportTitle}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setReportTitle(event.target.value)}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-theme-2">目标读者</span>
+                  <select
+                    className="select-control"
+                    value={reportAudience}
+                    onChange={(event: ChangeEvent<HTMLSelectElement>) => setReportAudience(event.target.value)}
+                  >
+                    {["业务复盘", "产品评审", "技术交接", "上线验收", "客户汇报"].map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-theme-2">表达风格</span>
+                  <select
+                    className="select-control"
+                    value={reportTone}
+                    onChange={(event: ChangeEvent<HTMLSelectElement>) => setReportTone(event.target.value)}
+                  >
+                    {["专业简洁", "管理层摘要", "交付验收", "问题复盘", "行动导向"].map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-theme-2">负责人</span>
+                  <Input
+                    value={reportOwner}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setReportOwner(event.target.value)}
+                    placeholder="例如：产品负责人 / 项目经理"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-theme-2">下次复盘时间</span>
+                  <Input
+                    value={reviewDate}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setReviewDate(event.target.value)}
+                    placeholder="例如：2026-06-10 10:00"
+                  />
+                </label>
+                <label className="space-y-2 md:col-span-2">
+                  <span className="text-sm font-medium text-theme-2">编者说明</span>
+                  <Textarea
+                    value={customIntro}
+                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setCustomIntro(event.target.value)}
+                    rows={4}
+                  />
+                </label>
               </div>
-              <Textarea
-                value={taskSystemOutputs}
-                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setTaskSystemOutputs(event.target.value)}
-                rows={10}
-              />
-              <Button className="py-3" onClick={() => createTask.mutate()} disabled={createTask.isPending}>
-                创建任务
-              </Button>
+
+              <div className="space-y-3">
+                <div className="text-sm font-semibold text-theme-1">报告章节</div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {REPORT_SECTIONS.map((section) => (
+                    <label
+                      key={section.key}
+                      className="flex items-start gap-3 rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 shrink-0 accent-[color:var(--accent)]"
+                        checked={sections[section.key]}
+                        onChange={(event) =>
+                          setSections((current) => ({
+                            ...current,
+                            [section.key]: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span>
+                        <span className="block text-sm font-semibold text-theme-2">{section.label}</span>
+                        <span className="mt-1 block text-xs leading-5 text-theme-4">{section.description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </Card>
+
+            <div className="space-y-5">
+              <Card className="space-y-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
+                      <Layers className="h-5 w-5" />
+                      报告预览
+                    </div>
+                    <div className="mt-1 text-sm text-theme-4">根据当前报告和模板配置生成 Markdown 初稿。</div>
+                  </div>
+                  <Button type="button" onClick={downloadMarkdownDraft} disabled={!selectedReport.data}>
+                    <FileDown className="h-4 w-4" />
+                    下载初稿
+                  </Button>
+                </div>
+                <div className="rounded-xl border border-theme-default bg-surface-muted px-4 py-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-theme-4">{reportAudience}</div>
+                  <div className="mt-2 text-xl font-semibold text-theme-1">{reportTitle}</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Badge>{reportTone}</Badge>
+                    <Badge>{reportOwner || "负责人待补充"}</Badge>
+                    <Badge>{reviewDate || "复盘时间待确认"}</Badge>
+                  </div>
+                  <p className="mt-4 text-sm leading-7 text-theme-3">{customIntro}</p>
+                </div>
+                <div className="space-y-3">
+                  {enabledSections.map((section) => (
+                    <div key={section.key} className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
+                      <div className="text-sm font-semibold text-theme-1">{section.label}</div>
+                      <div className="mt-1 text-xs leading-5 text-theme-4">{section.description}</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              <Card className="space-y-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
+                  <FileText className="h-4 w-4" />
+                  Markdown 初稿
+                </div>
+                <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-lg border border-theme-subtle bg-surface-muted px-4 py-3 text-xs leading-6 text-theme-3">
+                  {markdownDraft}
+                </pre>
+              </Card>
+            </div>
+          </div>
+        </Tabs.Content>
+
+        <Tabs.Content value="exports">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <Card className="space-y-5">
+              <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
+                <Download className="h-5 w-5" />
+                实时数据导出
+              </div>
+              <p className="text-sm leading-6 text-theme-3">
+                从云端后端导出实时会话归档数据，可用于审计、归档、复盘整理和二次分析。
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {EXPORT_FORMATS.map((fmt) => (
+                  <a key={fmt} href={apiUrl(`/api/v1/reports/exports/download?target=realtime&fmt=${fmt}`)}>
+                    <Button variant="secondary">
+                      <Download className="h-4 w-4" />
+                      {fmt.toUpperCase()}
+                    </Button>
+                  </a>
+                ))}
+              </div>
             </Card>
 
             <Card className="space-y-5">
               <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
-                <Users className="h-5 w-5" />
-                发放 Participant Code
+                <ListChecks className="h-5 w-5" />
+                交付检查
               </div>
-              <select
-                className="select-control"
-                value={selectedTaskId}
-                onChange={(event: ChangeEvent<HTMLSelectElement>) => setSelectedTaskId(event.target.value)}
-              >
-                <option value="">选择研究任务</option>
-                {studyTasks.data?.map((task) => (
-                  <option key={task.task_id} value={task.task_id}>
-                    {task.title}
-                  </option>
-                ))}
-              </select>
-              <Input
-                value={participantId}
-                onChange={(event: ChangeEvent<HTMLInputElement>) => setParticipantId(event.target.value)}
-                placeholder="participant id"
-              />
-              <select
-                className="select-control"
-                value={participantCondition}
-                onChange={(event: ChangeEvent<HTMLSelectElement>) => setParticipantCondition(event.target.value)}
-              >
-                {["manual", "heuristic", "model_system"].map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-              <Button
-                className="py-3"
-                onClick={() => createParticipant.mutate()}
-                disabled={!selectedTaskId || createParticipant.isPending}
-              >
-                创建 Participant Session
-              </Button>
-              <div className="space-y-4">
-                {studySessions.data?.slice(0, 8).map((item) => (
-                  <div key={item.session_id} className="glass-panel p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold text-theme-1">{item.participant_code}</div>
-                      <a
-                        className="text-sm font-medium text-[var(--accent-strong)]"
-                        href={`/study/${item.participant_code}`}
-                        target="_blank"
-                      >
-                        打开任务页
-                      </a>
-                    </div>
-                    <div className="mt-1 text-xs text-theme-4">
-                      {item.participant_id} · {item.study_condition}
+              <div className="space-y-3">
+                {[
+                  ["已选择报告", Boolean(selectedReport.data), selectedReport.data?.title || "请选择一份实时工作报告"],
+                  ["包含核心章节", enabledSections.length >= 3, `${enabledSections.length} 个章节已启用`],
+                  ["图谱证据", metrics.nodes > 0 || metrics.edges > 0, `${metrics.nodes} 节点 / ${metrics.edges} 关系`],
+                  ["时间轴", timelineNodes.length > 0, `${timelineNodes.length} 个快照`],
+                ].map(([label, ok, detail]) => (
+                  <div key={String(label)} className="flex items-start gap-3 rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
+                    <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${ok ? "text-emerald-500" : "text-theme-5"}`} />
+                    <div>
+                      <div className="text-sm font-semibold text-theme-2">{label}</div>
+                      <div className="mt-1 text-xs text-theme-4">{detail}</div>
                     </div>
                   </div>
                 ))}
               </div>
             </Card>
-          </div>
-        </Tabs.Content>
-
-        <Tabs.Content value="exports">
-          <div className="grid gap-6 xl:grid-cols-3">
-            {[
-              ["runs", "运行记录"],
-              ["studies", "用户研究"],
-              ["realtime", "实时会话"],
-            ].map(([target, label]) => (
-              <Card key={target} className="lift-hover space-y-5">
-                <div className="text-lg font-semibold text-theme-1">{label}</div>
-                <p className="text-sm leading-6 text-theme-3">
-                  导出为 JSON、CSV 或 Markdown，支持实验复现、论文整理和归档审计。
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {["json", "csv", "markdown"].map((fmt) => (
-                    <a key={fmt} href={apiUrl(`/api/v1/reports/exports/download?target=${target}&fmt=${fmt}`)}>
-                      <Button variant="secondary">
-                        <Download className="h-4 w-4" />
-                        {fmt.toUpperCase()}
-                      </Button>
-                    </a>
-                  ))}
-                </div>
-              </Card>
-            ))}
           </div>
         </Tabs.Content>
       </Tabs.Root>
