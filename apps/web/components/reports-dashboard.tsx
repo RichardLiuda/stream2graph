@@ -4,16 +4,20 @@ import * as Tabs from "@radix-ui/react-tabs";
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
+  AlertTriangle,
   CheckCircle2,
   Clock3,
+  Copy,
   Download,
   FileDown,
   FileText,
+  Gauge,
   GitBranch,
   Layers,
   ListChecks,
   PieChart,
   PlayCircle,
+  Search,
   Settings2,
   Users,
 } from "lucide-react";
@@ -36,7 +40,20 @@ type TranscriptTurn = {
   speaker: string;
   text: string;
 };
-type ReportSectionKey = "summary" | "decisions" | "actions" | "graph" | "timeline" | "evidence";
+type ManualActionItem = {
+  text: string;
+  owner: string;
+  due: string;
+};
+type ReportSectionKey = "summary" | "decisions" | "actions" | "risks" | "graph" | "timeline" | "evidence";
+type ReportPreset = {
+  id: string;
+  label: string;
+  audience: string;
+  tone: string;
+  intro: string;
+  sections: Partial<Record<ReportSectionKey, boolean>>;
+};
 
 const DEBRIEF_REPORT_TYPES = new Set(["realtime_session", "realtime_graph"]);
 const DASHBOARD_TABS: Array<[DashboardTab, string]> = [
@@ -48,11 +65,46 @@ const REPORT_SECTIONS: Array<{ key: ReportSectionKey; label: string; description
   { key: "summary", label: "工作摘要", description: "会话背景、最终结论和复盘口径。" },
   { key: "decisions", label: "关键决策", description: "从报告字段和图谱版本中提取决策。" },
   { key: "actions", label: "行动项", description: "待跟进事项、负责人线索和交付物。" },
+  { key: "risks", label: "风险关注", description: "从异常、阻塞和不确定表述中整理风险。" },
   { key: "graph", label: "图谱指标", description: "节点、关系、分组和结构变化。" },
   { key: "timeline", label: "版本时间轴", description: "关键快照和可回放证据。" },
   { key: "evidence", label: "发言证据", description: "参与者占比与代表性发言片段。" },
 ];
 const EXPORT_FORMATS = ["json", "csv", "markdown"] as const;
+const REPORT_PRESETS: ReportPreset[] = [
+  {
+    id: "weekly-sync",
+    label: "周会复盘",
+    audience: "业务复盘",
+    tone: "行动导向",
+    intro: "本报告整理本次实时工作会话中的结论、风险、行动项和图谱证据，用于会后同步和持续跟进。",
+    sections: { summary: true, decisions: true, actions: true, risks: true, graph: true, timeline: true, evidence: true },
+  },
+  {
+    id: "release-review",
+    label: "上线验收",
+    audience: "上线验收",
+    tone: "交付验收",
+    intro: "本报告聚焦上线前后的关键确认项、风险处理、图谱结构变化和可追溯证据，便于验收和归档。",
+    sections: { summary: true, decisions: true, actions: true, risks: true, graph: true, timeline: true, evidence: false },
+  },
+  {
+    id: "customer-brief",
+    label: "客户同步",
+    audience: "客户汇报",
+    tone: "管理层摘要",
+    intro: "本报告面向外部同步，提炼本次会话中已经形成共识的进展、待确认事项和后续计划。",
+    sections: { summary: true, decisions: true, actions: true, risks: true, graph: true, timeline: false, evidence: false },
+  },
+  {
+    id: "incident-review",
+    label: "问题复盘",
+    audience: "技术交接",
+    tone: "问题复盘",
+    intro: "本报告用于复盘问题处理过程，保留关键时间点、风险判断、处置动作和后续预防事项。",
+    sections: { summary: true, decisions: true, actions: true, risks: true, graph: true, timeline: true, evidence: true },
+  },
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -242,6 +294,33 @@ function deriveActionItems(report: ReportDetail | undefined, turns: TranscriptTu
   return inferred.length ? inferred : ["暂无明确行动项，可在复盘后手动补充负责人、截止时间和交付物。"];
 }
 
+function deriveRiskItems(report: ReportDetail | undefined, turns: TranscriptTurn[]) {
+  const collected = collectStringList(
+    report,
+    (key) => /risk|risks|issue|issues|blocker|failure|error|concern|warning|exception/i.test(key),
+    5,
+  );
+  if (collected.length) return collected;
+  const inferred = turns
+    .map((turn) => turn.text)
+    .filter((text) => /风险|问题|异常|失败|错误|阻塞|不确定|延迟|超时|磁盘|回滚|risk|issue|blocker|fail|error/i.test(text))
+    .slice(0, 5);
+  return inferred.length ? inferred : ["暂无明显风险，可在交付前补充外部依赖、上线窗口和回滚条件。"];
+}
+
+function manualActionText(item: ManualActionItem) {
+  const meta = [item.owner ? `负责人：${item.owner}` : "", item.due ? `截止：${item.due}` : ""]
+    .filter(Boolean)
+    .join("；");
+  return meta ? `${item.text}（${meta}）` : item.text;
+}
+
+function scoreLabel(score: number) {
+  if (score >= 85) return "可直接交付";
+  if (score >= 65) return "建议补齐细节";
+  return "需要继续整理";
+}
+
 function safeFileName(value: string) {
   return value
     .trim()
@@ -262,9 +341,11 @@ function buildMarkdownDraft({
   sections,
   decisions,
   actionItems,
+  riskItems,
   metrics,
   timelineNodes,
   transcriptTurns,
+  readinessScore,
 }: {
   title: string;
   audience: string;
@@ -277,9 +358,11 @@ function buildMarkdownDraft({
   sections: Record<ReportSectionKey, boolean>;
   decisions: string[];
   actionItems: string[];
+  riskItems: string[];
   metrics: ReturnType<typeof graphMetrics>;
   timelineNodes: RealtimeTimelineNode[];
   transcriptTurns: TranscriptTurn[];
+  readinessScore: number;
 }) {
   const lines = [
     `# ${title}`,
@@ -289,6 +372,7 @@ function buildMarkdownDraft({
     `- 报告来源：${report?.title || "未选择实时工作报告"}`,
     `- 负责人：${owner || "待补充"}`,
     `- 下次复盘：${reviewDate || "待确认"}`,
+    `- 交付成熟度：${readinessScore}%（${scoreLabel(readinessScore)}）`,
     "",
   ];
 
@@ -303,6 +387,9 @@ function buildMarkdownDraft({
   }
   if (sections.actions) {
     lines.push("## 行动项", "", ...actionItems.map((item, index) => `${index + 1}. ${item}`), "");
+  }
+  if (sections.risks) {
+    lines.push("## 风险关注", "", ...riskItems.map((item, index) => `${index + 1}. ${item}`), "");
   }
   if (sections.graph) {
     lines.push(
@@ -343,16 +430,24 @@ export function ReportsDashboard() {
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>("overview");
   const [selectedReportId, setSelectedReportId] = useState("");
   const [selectedTimelineSnapshotId, setSelectedTimelineSnapshotId] = useState("");
+  const [reportSearch, setReportSearch] = useState("");
+  const [reportStatusFilter, setReportStatusFilter] = useState("all");
   const [reportTitle, setReportTitle] = useState("实时工作复盘报告");
   const [reportAudience, setReportAudience] = useState("业务复盘");
   const [reportTone, setReportTone] = useState("专业简洁");
   const [reportOwner, setReportOwner] = useState("");
   const [reviewDate, setReviewDate] = useState("");
   const [customIntro, setCustomIntro] = useState("本报告基于实时工作台生成的转写、图谱版本和时间轴快照整理。");
+  const [manualActionTextDraft, setManualActionTextDraft] = useState("");
+  const [manualActionOwnerDraft, setManualActionOwnerDraft] = useState("");
+  const [manualActionDueDraft, setManualActionDueDraft] = useState("");
+  const [manualActions, setManualActions] = useState<ManualActionItem[]>([]);
+  const [copyNotice, setCopyNotice] = useState("");
   const [sections, setSections] = useState<Record<ReportSectionKey, boolean>>({
     summary: true,
     decisions: true,
     actions: true,
+    risks: true,
     graph: true,
     timeline: true,
     evidence: true,
@@ -363,6 +458,22 @@ export function ReportsDashboard() {
   const debriefReports = useMemo(
     () => (reports.data || []).filter((item) => DEBRIEF_REPORT_TYPES.has(item.report_type)),
     [reports.data],
+  );
+  const filteredDebriefReports = useMemo(() => {
+    const query = reportSearch.trim().toLowerCase();
+    return debriefReports.filter((item) => {
+      const matchesQuery =
+        !query ||
+        item.title.toLowerCase().includes(query) ||
+        item.report_type.toLowerCase().includes(query) ||
+        item.status.toLowerCase().includes(query);
+      const matchesStatus = reportStatusFilter === "all" || item.status === reportStatusFilter;
+      return matchesQuery && matchesStatus;
+    });
+  }, [debriefReports, reportSearch, reportStatusFilter]);
+  const reportStatuses = useMemo(
+    () => Array.from(new Set(debriefReports.map((item) => item.status).filter(Boolean))).sort(),
+    [debriefReports],
   );
   const selectedReport = useQuery({
     queryKey: ["reports", selectedReportId],
@@ -406,7 +517,7 @@ export function ReportsDashboard() {
 
   const transcriptTurns = useMemo(() => collectTranscriptTurns(selectedReport.data?.payload), [selectedReport.data?.payload]);
   const shares = useMemo(() => speakerShares(transcriptTurns), [transcriptTurns]);
-  const metrics = graphMetrics(selectedReport.data);
+  const metrics = useMemo(() => graphMetrics(selectedReport.data), [selectedReport.data]);
   const decisions = useMemo(
     () => deriveDecisionItems(selectedReport.data, timelineNodes),
     [selectedReport.data, timelineNodes],
@@ -415,9 +526,53 @@ export function ReportsDashboard() {
     () => deriveActionItems(selectedReport.data, transcriptTurns),
     [selectedReport.data, transcriptTurns],
   );
+  const riskItems = useMemo(
+    () => deriveRiskItems(selectedReport.data, transcriptTurns),
+    [selectedReport.data, transcriptTurns],
+  );
+  const combinedActionItems = useMemo(
+    () => [...actionItems, ...manualActions.map((item) => manualActionText(item))],
+    [actionItems, manualActions],
+  );
   const summaryText = reportSummaryText(selectedReport.data, transcriptTurns, timelineNodes.length);
   const selectedTimelineNode = timelineNodes.find((node) => node.snapshot_id === selectedTimelineSnapshotId) ?? null;
   const enabledSections = REPORT_SECTIONS.filter((section) => sections[section.key]);
+  const deliveryChecks = [
+    {
+      label: "已选择报告",
+      ok: Boolean(selectedReport.data),
+      detail: selectedReport.data?.title || "请选择一份实时工作报告",
+    },
+    {
+      label: "包含核心章节",
+      ok: enabledSections.length >= 4,
+      detail: `${enabledSections.length} 个章节已启用`,
+    },
+    {
+      label: "行动项可交付",
+      ok: combinedActionItems.length > 0 && !combinedActionItems[0]?.includes("暂无明确行动项"),
+      detail: `${combinedActionItems.length} 个行动项`,
+    },
+    {
+      label: "风险已识别",
+      ok: riskItems.length > 0 && !riskItems[0]?.includes("暂无明显风险"),
+      detail: `${riskItems.length} 个关注点`,
+    },
+    {
+      label: "图谱证据",
+      ok: metrics.nodes > 0 || metrics.edges > 0,
+      detail: `${metrics.nodes} 节点 / ${metrics.edges} 关系`,
+    },
+    {
+      label: "时间轴",
+      ok: timelineNodes.length > 0,
+      detail: `${timelineNodes.length} 个快照`,
+    },
+  ];
+  const readinessScore = Math.round(
+    (deliveryChecks.filter((item) => item.ok).length / Math.max(1, deliveryChecks.length)) * 100,
+  );
+  const improvementTips = deliveryChecks.filter((item) => !item.ok);
   const markdownDraft = useMemo(
     () =>
       buildMarkdownDraft({
@@ -431,13 +586,15 @@ export function ReportsDashboard() {
         summaryText,
         sections,
         decisions,
-        actionItems,
+        actionItems: combinedActionItems,
+        riskItems,
         metrics,
         timelineNodes: orderedTimelineNodes,
         transcriptTurns,
+        readinessScore,
       }),
     [
-      actionItems,
+      combinedActionItems,
       customIntro,
       decisions,
       metrics,
@@ -451,14 +608,26 @@ export function ReportsDashboard() {
       selectedReport.data,
       summaryText,
       transcriptTurns,
+      riskItems,
+      readinessScore,
     ],
   );
+  const draftStats = useMemo(() => {
+    const lines = markdownDraft.split("\n").filter((line) => line.trim()).length;
+    const chars = markdownDraft.replace(/\s/g, "").length;
+    return {
+      lines,
+      chars,
+      readMinutes: Math.max(1, Math.ceil(chars / 500)),
+      sections: enabledSections.length,
+    };
+  }, [enabledSections.length, markdownDraft]);
 
   const stats = [
     { label: "实时会话", value: realtimeSessions.data?.length ?? 0 },
     { label: "工作报告", value: debriefReports.length },
     { label: "图谱版本", value: timelineNodes.length || 0 },
-    { label: "行动项", value: actionItems.length },
+    { label: "交付成熟度", value: `${readinessScore}%` },
   ];
 
   function downloadMarkdownDraft() {
@@ -471,6 +640,38 @@ export function ReportsDashboard() {
     anchor.click();
     anchor.remove();
     window.URL.revokeObjectURL(url);
+  }
+
+  async function copyMarkdownDraft() {
+    try {
+      await navigator.clipboard.writeText(markdownDraft);
+      setCopyNotice("已复制 Markdown 初稿");
+    } catch {
+      setCopyNotice("复制失败，请直接下载初稿");
+    }
+  }
+
+  function addManualAction() {
+    const text = manualActionTextDraft.trim();
+    if (!text) return;
+    setManualActions((current) => [
+      ...current,
+      {
+        text,
+        owner: manualActionOwnerDraft.trim(),
+        due: manualActionDueDraft.trim(),
+      },
+    ]);
+    setManualActionTextDraft("");
+    setManualActionOwnerDraft("");
+    setManualActionDueDraft("");
+  }
+
+  function applyReportPreset(preset: ReportPreset) {
+    setReportAudience(preset.audience);
+    setReportTone(preset.tone);
+    setCustomIntro(preset.intro);
+    setSections((current) => ({ ...current, ...preset.sections }));
   }
 
   return (
@@ -529,11 +730,34 @@ export function ReportsDashboard() {
                   <div className="text-sm font-semibold text-theme-1">工作报告</div>
                   <div className="mt-1 text-xs text-theme-4">选择一份实时会话报告进入复盘视图</div>
                 </div>
-                <Badge>{debriefReports.length}</Badge>
+                <Badge>{filteredDebriefReports.length} / {debriefReports.length}</Badge>
               </div>
               <div className="space-y-2">
-                {debriefReports.length ? (
-                  debriefReports.slice(0, 14).map((item) => {
+                <label className="relative block">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-theme-5" />
+                  <Input
+                    className="pl-9"
+                    value={reportSearch}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setReportSearch(event.target.value)}
+                    placeholder="搜索标题、类型或状态"
+                  />
+                </label>
+                <select
+                  className="select-control"
+                  value={reportStatusFilter}
+                  onChange={(event: ChangeEvent<HTMLSelectElement>) => setReportStatusFilter(event.target.value)}
+                >
+                  <option value="all">全部状态</option>
+                  {reportStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                {filteredDebriefReports.length ? (
+                  filteredDebriefReports.slice(0, 14).map((item) => {
                     const active = item.report_id === selectedReportId;
                     return (
                       <button
@@ -559,7 +783,7 @@ export function ReportsDashboard() {
                   })
                 ) : (
                   <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-6 text-sm text-theme-4">
-                    暂无实时工作报告。请先在实时工作台生成并保存报告。
+                    没有匹配的实时工作报告。可调整搜索条件，或先在实时工作台生成并保存报告。
                   </div>
                 )}
               </div>
@@ -610,9 +834,23 @@ export function ReportsDashboard() {
                   </div>
                   <p className="text-sm leading-7 text-theme-3">{summaryText}</p>
                 </div>
+
+                <div className="rounded-xl border border-theme-default bg-surface-muted px-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
+                      <Gauge className="h-4 w-4" />
+                      交付成熟度
+                    </div>
+                    <Badge>{scoreLabel(readinessScore)}</Badge>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2">
+                    <div className="h-full rounded-full bg-[color:var(--accent)]" style={{ width: `${readinessScore}%` }} />
+                  </div>
+                  <div className="mt-2 text-xs text-theme-4">{readinessScore}% · 基于报告、行动项、风险、图谱证据和时间轴综合判断。</div>
+                </div>
               </Card>
 
-              <div className="grid gap-5 xl:grid-cols-2">
+              <div className="grid gap-5 xl:grid-cols-3">
                 <Card className="space-y-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
                     <CheckCircle2 className="h-4 w-4" />
@@ -634,12 +872,27 @@ export function ReportsDashboard() {
                     行动项
                   </div>
                   <div className="space-y-3">
-                    {actionItems.map((item, index) => (
+                    {combinedActionItems.map((item, index) => (
                       <div key={`${item}-${index}`} className="flex gap-3 rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
                         <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)]/15 text-xs font-semibold text-[color:var(--accent-strong)]">
                           {index + 1}
                         </span>
                         <div className="text-sm leading-6 text-theme-2">{item}</div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                <Card className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
+                    <AlertTriangle className="h-4 w-4" />
+                    风险关注
+                  </div>
+                  <div className="space-y-3">
+                    {riskItems.map((item, index) => (
+                      <div key={`${item}-${index}`} className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
+                        <div className="text-xs font-semibold text-theme-4">Risk {index + 1}</div>
+                        <div className="mt-1 text-sm leading-6 text-theme-2">{item}</div>
                       </div>
                     ))}
                   </div>
@@ -799,6 +1052,24 @@ export function ReportsDashboard() {
                 <Settings2 className="h-5 w-5" />
                 报告模板
               </div>
+              <div className="space-y-3">
+                <div className="text-sm font-semibold text-theme-1">快捷模板</div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {REPORT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3 text-left transition hover:border-[color:var(--accent)] hover:bg-[color:var(--accent)]/5"
+                      onClick={() => applyReportPreset(preset)}
+                    >
+                      <div className="text-sm font-semibold text-theme-2">{preset.label}</div>
+                      <div className="mt-1 text-xs leading-5 text-theme-4">
+                        {preset.audience} · {preset.tone}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="space-y-2 md:col-span-2">
                   <span className="text-sm font-medium text-theme-2">报告标题</span>
@@ -888,6 +1159,52 @@ export function ReportsDashboard() {
                   ))}
                 </div>
               </div>
+
+              <div className="space-y-3 rounded-xl border border-theme-default bg-surface-muted px-4 py-4">
+                <div className="text-sm font-semibold text-theme-1">补充行动项</div>
+                <div className="grid gap-2 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
+                  <Input
+                    value={manualActionTextDraft}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setManualActionTextDraft(event.target.value)}
+                    placeholder="行动项内容"
+                  />
+                  <Input
+                    value={manualActionOwnerDraft}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setManualActionOwnerDraft(event.target.value)}
+                    placeholder="负责人"
+                  />
+                  <Input
+                    value={manualActionDueDraft}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setManualActionDueDraft(event.target.value)}
+                    placeholder="截止时间"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs text-theme-4">
+                    已补充 {manualActions.length} 条，会合并进入行动项和 Markdown 初稿。
+                  </div>
+                  <Button type="button" variant="secondary" onClick={addManualAction} disabled={!manualActionTextDraft.trim()}>
+                    <ListChecks className="h-4 w-4" />
+                    加入行动项
+                  </Button>
+                </div>
+                {manualActions.length ? (
+                  <div className="space-y-2">
+                    {manualActions.map((item, index) => (
+                      <div key={`${item.text}-${index}`} className="flex items-start justify-between gap-3 rounded-lg border border-theme-subtle bg-surface-1 px-3 py-2">
+                        <div className="text-sm leading-6 text-theme-2">{manualActionText(item)}</div>
+                        <button
+                          type="button"
+                          className="shrink-0 text-xs font-medium text-theme-4 hover:text-theme-2"
+                          onClick={() => setManualActions((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                        >
+                          移除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </Card>
 
             <div className="space-y-5">
@@ -900,20 +1217,72 @@ export function ReportsDashboard() {
                     </div>
                     <div className="mt-1 text-sm text-theme-4">根据当前报告和模板配置生成 Markdown 初稿。</div>
                   </div>
-                  <Button type="button" onClick={downloadMarkdownDraft} disabled={!selectedReport.data}>
-                    <FileDown className="h-4 w-4" />
-                    下载初稿
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="secondary" onClick={copyMarkdownDraft} disabled={!selectedReport.data}>
+                      <Copy className="h-4 w-4" />
+                      复制
+                    </Button>
+                    <Button type="button" onClick={downloadMarkdownDraft} disabled={!selectedReport.data}>
+                      <FileDown className="h-4 w-4" />
+                      下载初稿
+                    </Button>
+                  </div>
                 </div>
+                {copyNotice ? (
+                  <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2 text-xs text-theme-3">
+                    {copyNotice}
+                  </div>
+                ) : null}
                 <div className="rounded-xl border border-theme-default bg-surface-muted px-4 py-4">
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-theme-4">{reportAudience}</div>
                   <div className="mt-2 text-xl font-semibold text-theme-1">{reportTitle}</div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Badge>{reportTone}</Badge>
+                    <Badge>{readinessScore}% · {scoreLabel(readinessScore)}</Badge>
                     <Badge>{reportOwner || "负责人待补充"}</Badge>
                     <Badge>{reviewDate || "复盘时间待确认"}</Badge>
                   </div>
                   <p className="mt-4 text-sm leading-7 text-theme-3">{customIntro}</p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-4">
+                  <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
+                    <div className="text-xs text-theme-4">初稿字数</div>
+                    <div className="mt-1 text-lg font-semibold text-theme-1">{draftStats.chars}</div>
+                  </div>
+                  <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
+                    <div className="text-xs text-theme-4">预计阅读</div>
+                    <div className="mt-1 text-lg font-semibold text-theme-1">{draftStats.readMinutes} 分钟</div>
+                  </div>
+                  <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
+                    <div className="text-xs text-theme-4">启用章节</div>
+                    <div className="mt-1 text-lg font-semibold text-theme-1">{draftStats.sections}</div>
+                  </div>
+                  <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
+                    <div className="text-xs text-theme-4">非空行数</div>
+                    <div className="mt-1 text-lg font-semibold text-theme-1">{draftStats.lines}</div>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-theme-default bg-surface-muted px-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm font-semibold text-theme-1">初稿诊断</div>
+                    <Badge>{improvementTips.length ? "仍需补齐" : "已满足检查"}</Badge>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {improvementTips.length ? (
+                      improvementTips.map((item) => (
+                        <div key={item.label} className="flex items-start gap-2 text-sm leading-6 text-theme-3">
+                          <AlertTriangle className="mt-1 h-4 w-4 shrink-0 text-amber-500" />
+                          <span>
+                            <span className="font-medium text-theme-2">{item.label}</span>：{item.detail}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-sm leading-6 text-theme-3">
+                        当前初稿已经具备可导出的基础结构，可继续根据受众微调语气和章节取舍。
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-3">
                   {enabledSections.map((section) => (
@@ -961,22 +1330,20 @@ export function ReportsDashboard() {
             </Card>
 
             <Card className="space-y-5">
-              <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
-                <ListChecks className="h-5 w-5" />
-                交付检查
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
+                  <ListChecks className="h-5 w-5" />
+                  交付检查
+                </div>
+                <Badge>{readinessScore}% · {scoreLabel(readinessScore)}</Badge>
               </div>
               <div className="space-y-3">
-                {[
-                  ["已选择报告", Boolean(selectedReport.data), selectedReport.data?.title || "请选择一份实时工作报告"],
-                  ["包含核心章节", enabledSections.length >= 3, `${enabledSections.length} 个章节已启用`],
-                  ["图谱证据", metrics.nodes > 0 || metrics.edges > 0, `${metrics.nodes} 节点 / ${metrics.edges} 关系`],
-                  ["时间轴", timelineNodes.length > 0, `${timelineNodes.length} 个快照`],
-                ].map(([label, ok, detail]) => (
-                  <div key={String(label)} className="flex items-start gap-3 rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
-                    <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${ok ? "text-emerald-500" : "text-theme-5"}`} />
+                {deliveryChecks.map((item) => (
+                  <div key={item.label} className="flex items-start gap-3 rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
+                    <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${item.ok ? "text-emerald-500" : "text-theme-5"}`} />
                     <div>
-                      <div className="text-sm font-semibold text-theme-2">{label}</div>
-                      <div className="mt-1 text-xs text-theme-4">{detail}</div>
+                      <div className="text-sm font-semibold text-theme-2">{item.label}</div>
+                      <div className="mt-1 text-xs text-theme-4">{item.detail}</div>
                     </div>
                   </div>
                 ))}
