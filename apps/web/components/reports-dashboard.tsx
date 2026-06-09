@@ -1,7 +1,7 @@
 "use client";
 
 import * as Tabs from "@radix-ui/react-tabs";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   AlertTriangle,
@@ -11,12 +11,12 @@ import {
   Download,
   FileDown,
   FileText,
-  Gauge,
   GitBranch,
   Layers,
   ListChecks,
   PieChart,
   PlayCircle,
+  Save,
   Search,
   Settings2,
   Users,
@@ -62,47 +62,32 @@ const DASHBOARD_TABS: Array<[DashboardTab, string]> = [
   ["exports", "导出归档"],
 ];
 const REPORT_SECTIONS: Array<{ key: ReportSectionKey; label: string; description: string }> = [
-  { key: "summary", label: "工作摘要", description: "会话背景、最终结论和复盘口径。" },
-  { key: "decisions", label: "关键决策", description: "从报告字段和图谱版本中提取决策。" },
-  { key: "actions", label: "行动项", description: "待跟进事项、负责人线索和交付物。" },
-  { key: "risks", label: "风险关注", description: "从异常、阻塞和不确定表述中整理风险。" },
-  { key: "graph", label: "图谱指标", description: "节点、关系、分组和结构变化。" },
-  { key: "timeline", label: "版本时间轴", description: "关键快照和可回放证据。" },
-  { key: "evidence", label: "发言证据", description: "参与者占比与代表性发言片段。" },
+  { key: "summary", label: "工作摘要", description: "会话摘要与背景。" },
+  { key: "decisions", label: "关键决策", description: "从报告字段和图谱版本中提取。" },
+  { key: "actions", label: "行动项", description: "待跟进事项与负责人。" },
+  { key: "risks", label: "风险关注", description: "阻塞和不确定事项。" },
+  { key: "graph", label: "图谱指标", description: "节点、关系、分组数量。" },
+  { key: "timeline", label: "版本时间轴", description: "可回放的图谱快照列表。" },
+  { key: "evidence", label: "发言证据", description: "发言占比与片段。" },
 ];
 const EXPORT_FORMATS = ["json", "csv", "markdown"] as const;
+// 合并为两个实用模板：内部复盘（含全部章节）、对外摘要（隐藏时间轴和发言证据）
 const REPORT_PRESETS: ReportPreset[] = [
   {
-    id: "weekly-sync",
-    label: "周会复盘",
+    id: "internal",
+    label: "内部复盘",
     audience: "业务复盘",
     tone: "行动导向",
-    intro: "本报告整理本次实时工作会话中的结论、风险、行动项和图谱证据，用于会后同步和持续跟进。",
+    intro: "",
     sections: { summary: true, decisions: true, actions: true, risks: true, graph: true, timeline: true, evidence: true },
   },
   {
-    id: "release-review",
-    label: "上线验收",
-    audience: "上线验收",
-    tone: "交付验收",
-    intro: "本报告聚焦上线前后的关键确认项、风险处理、图谱结构变化和可追溯证据，便于验收和归档。",
-    sections: { summary: true, decisions: true, actions: true, risks: true, graph: true, timeline: true, evidence: false },
-  },
-  {
-    id: "customer-brief",
-    label: "客户同步",
+    id: "external",
+    label: "对外摘要",
     audience: "客户汇报",
     tone: "管理层摘要",
-    intro: "本报告面向外部同步，提炼本次会话中已经形成共识的进展、待确认事项和后续计划。",
-    sections: { summary: true, decisions: true, actions: true, risks: true, graph: true, timeline: false, evidence: false },
-  },
-  {
-    id: "incident-review",
-    label: "问题复盘",
-    audience: "技术交接",
-    tone: "问题复盘",
-    intro: "本报告用于复盘问题处理过程，保留关键时间点、风险判断、处置动作和后续预防事项。",
-    sections: { summary: true, decisions: true, actions: true, risks: true, graph: true, timeline: true, evidence: true },
+    intro: "",
+    sections: { summary: true, decisions: true, actions: true, risks: true, graph: false, timeline: false, evidence: false },
   },
 ];
 
@@ -263,49 +248,42 @@ function reportSummaryText(report: ReportDetail | undefined, turns: TranscriptTu
 }
 
 function deriveDecisionItems(report: ReportDetail | undefined, timelineNodes: RealtimeTimelineNode[]) {
+  // 只从报告结构化字段中提取，不用 transcript 文本猜测
   const collected = collectStringList(
-    report,
-    (key) => /decision|decisions|conclusion|selected_option|final_choice|key_result/i.test(key),
+    report?.payload,
+    (key) => /^(decision|decisions|conclusion|selected_option|final_choice|key_result)$/i.test(key),
     5,
   );
   if (collected.length) return collected;
   const metrics = graphMetrics(report);
   return [
     metrics.nodes || metrics.edges
-      ? `形成当前图谱版本：${metrics.nodes} 个节点、${metrics.edges} 条关系、${metrics.groups} 个分组。`
-      : "已将实时工作内容固化为结构化报告，可继续补充人工结论。",
+      ? `当前图谱：${metrics.nodes} 个节点、${metrics.edges} 条关系、${metrics.groups} 个分组。`
+      : "暂无结构化决策字段。",
     timelineNodes.length
-      ? `保留 ${timelineNodes.length} 个时间节点，可回看关键版本变化。`
-      : "当前报告暂无时间轴快照，可在实时工作台继续生成版本记录。",
+      ? `保留 ${timelineNodes.length} 个时间节点。`
+      : "暂无时间轴快照。",
   ];
 }
 
-function deriveActionItems(report: ReportDetail | undefined, turns: TranscriptTurn[]) {
+function deriveActionItems(report: ReportDetail | undefined) {
+  // 只从结构化字段提取，不用 transcript 关键词匹配兜底
   const collected = collectStringList(
-    report,
-    (key) => /action|todo|next_step|follow|owner|deadline/i.test(key),
+    report?.payload,
+    (key) => /^(action|actions|todo|todos|next_step|next_steps|follow_up)$/i.test(key),
     6,
   );
-  if (collected.length) return collected;
-  const inferred = turns
-    .map((turn) => turn.text)
-    .filter((text) => /需要|后续|确认|跟进|检查|记录|发布|导出|review|follow|todo|next/i.test(text))
-    .slice(0, 5);
-  return inferred.length ? inferred : ["暂无明确行动项，可在复盘后手动补充负责人、截止时间和交付物。"];
+  return collected.length ? collected : [];
 }
 
-function deriveRiskItems(report: ReportDetail | undefined, turns: TranscriptTurn[]) {
+function deriveRiskItems(report: ReportDetail | undefined) {
+  // 只从结构化字段提取，不用 transcript 关键词匹配兜底
   const collected = collectStringList(
-    report,
-    (key) => /risk|risks|issue|issues|blocker|failure|error|concern|warning|exception/i.test(key),
+    report?.payload,
+    (key) => /^(risk|risks|issue|issues|blocker|blockers|concern|concerns|warning|warnings)$/i.test(key),
     5,
   );
-  if (collected.length) return collected;
-  const inferred = turns
-    .map((turn) => turn.text)
-    .filter((text) => /风险|问题|异常|失败|错误|阻塞|不确定|延迟|超时|磁盘|回滚|risk|issue|blocker|fail|error/i.test(text))
-    .slice(0, 5);
-  return inferred.length ? inferred : ["暂无明显风险，可在交付前补充外部依赖、上线窗口和回滚条件。"];
+  return collected.length ? collected : [];
 }
 
 function manualActionText(item: ManualActionItem) {
@@ -313,12 +291,6 @@ function manualActionText(item: ManualActionItem) {
     .filter(Boolean)
     .join("；");
   return meta ? `${item.text}（${meta}）` : item.text;
-}
-
-function scoreLabel(score: number) {
-  if (score >= 85) return "可直接交付";
-  if (score >= 65) return "建议补齐细节";
-  return "需要继续整理";
 }
 
 function safeFileName(value: string) {
@@ -345,7 +317,6 @@ function buildMarkdownDraft({
   metrics,
   timelineNodes,
   transcriptTurns,
-  readinessScore,
 }: {
   title: string;
   audience: string;
@@ -362,17 +333,15 @@ function buildMarkdownDraft({
   metrics: ReturnType<typeof graphMetrics>;
   timelineNodes: RealtimeTimelineNode[];
   transcriptTurns: TranscriptTurn[];
-  readinessScore: number;
 }) {
   const lines = [
     `# ${title}`,
     "",
     `- 目标读者：${audience}`,
-    `- 语气模板：${tone}`,
+    `- 表达风格：${tone}`,
     `- 报告来源：${report?.title || "未选择实时工作报告"}`,
     `- 负责人：${owner || "待补充"}`,
     `- 下次复盘：${reviewDate || "待确认"}`,
-    `- 交付成熟度：${readinessScore}%（${scoreLabel(readinessScore)}）`,
     "",
   ];
 
@@ -427,6 +396,7 @@ function buildMarkdownDraft({
 }
 
 export function ReportsDashboard() {
+  const queryClient = useQueryClient();
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>("overview");
   const [selectedReportId, setSelectedReportId] = useState("");
   const [selectedTimelineSnapshotId, setSelectedTimelineSnapshotId] = useState("");
@@ -437,12 +407,15 @@ export function ReportsDashboard() {
   const [reportTone, setReportTone] = useState("专业简洁");
   const [reportOwner, setReportOwner] = useState("");
   const [reviewDate, setReviewDate] = useState("");
-  const [customIntro, setCustomIntro] = useState("本报告基于实时工作台生成的转写、图谱版本和时间轴快照整理。");
+  const [customIntro, setCustomIntro] = useState("");
   const [manualActionTextDraft, setManualActionTextDraft] = useState("");
   const [manualActionOwnerDraft, setManualActionOwnerDraft] = useState("");
   const [manualActionDueDraft, setManualActionDueDraft] = useState("");
   const [manualActions, setManualActions] = useState<ManualActionItem[]>([]);
   const [copyNotice, setCopyNotice] = useState("");
+  // notes 编辑状态
+  const [notesDraft, setNotesDraft] = useState("");
+  const [notesSaved, setNotesSaved] = useState(false);
   const [sections, setSections] = useState<Record<ReportSectionKey, boolean>>({
     summary: true,
     decisions: true,
@@ -515,6 +488,20 @@ export function ReportsDashboard() {
     }
   }, [selectedReport.data?.title]);
 
+  // 报告切换时同步 notes 草稿
+  useEffect(() => {
+    setNotesDraft(selectedReport.data?.notes ?? "");
+    setNotesSaved(false);
+  }, [selectedReport.data?.notes, selectedReport.data?.report_id]);
+
+  const saveNotesMutation = useMutation({
+    mutationFn: (notes: string) => api.updateReport(selectedReportId, { notes }),
+    onSuccess: () => {
+      setNotesSaved(true);
+      queryClient.invalidateQueries({ queryKey: ["reports", selectedReportId] });
+    },
+  });
+
   const transcriptTurns = useMemo(() => collectTranscriptTurns(selectedReport.data?.payload), [selectedReport.data?.payload]);
   const shares = useMemo(() => speakerShares(transcriptTurns), [transcriptTurns]);
   const metrics = useMemo(() => graphMetrics(selectedReport.data), [selectedReport.data]);
@@ -523,12 +510,12 @@ export function ReportsDashboard() {
     [selectedReport.data, timelineNodes],
   );
   const actionItems = useMemo(
-    () => deriveActionItems(selectedReport.data, transcriptTurns),
-    [selectedReport.data, transcriptTurns],
+    () => deriveActionItems(selectedReport.data),
+    [selectedReport.data],
   );
   const riskItems = useMemo(
-    () => deriveRiskItems(selectedReport.data, transcriptTurns),
-    [selectedReport.data, transcriptTurns],
+    () => deriveRiskItems(selectedReport.data),
+    [selectedReport.data],
   );
   const combinedActionItems = useMemo(
     () => [...actionItems, ...manualActions.map((item) => manualActionText(item))],
@@ -537,42 +524,6 @@ export function ReportsDashboard() {
   const summaryText = reportSummaryText(selectedReport.data, transcriptTurns, timelineNodes.length);
   const selectedTimelineNode = timelineNodes.find((node) => node.snapshot_id === selectedTimelineSnapshotId) ?? null;
   const enabledSections = REPORT_SECTIONS.filter((section) => sections[section.key]);
-  const deliveryChecks = [
-    {
-      label: "已选择报告",
-      ok: Boolean(selectedReport.data),
-      detail: selectedReport.data?.title || "请选择一份实时工作报告",
-    },
-    {
-      label: "包含核心章节",
-      ok: enabledSections.length >= 4,
-      detail: `${enabledSections.length} 个章节已启用`,
-    },
-    {
-      label: "行动项可交付",
-      ok: combinedActionItems.length > 0 && !combinedActionItems[0]?.includes("暂无明确行动项"),
-      detail: `${combinedActionItems.length} 个行动项`,
-    },
-    {
-      label: "风险已识别",
-      ok: riskItems.length > 0 && !riskItems[0]?.includes("暂无明显风险"),
-      detail: `${riskItems.length} 个关注点`,
-    },
-    {
-      label: "图谱证据",
-      ok: metrics.nodes > 0 || metrics.edges > 0,
-      detail: `${metrics.nodes} 节点 / ${metrics.edges} 关系`,
-    },
-    {
-      label: "时间轴",
-      ok: timelineNodes.length > 0,
-      detail: `${timelineNodes.length} 个快照`,
-    },
-  ];
-  const readinessScore = Math.round(
-    (deliveryChecks.filter((item) => item.ok).length / Math.max(1, deliveryChecks.length)) * 100,
-  );
-  const improvementTips = deliveryChecks.filter((item) => !item.ok);
   const markdownDraft = useMemo(
     () =>
       buildMarkdownDraft({
@@ -591,7 +542,6 @@ export function ReportsDashboard() {
         metrics,
         timelineNodes: orderedTimelineNodes,
         transcriptTurns,
-        readinessScore,
       }),
     [
       combinedActionItems,
@@ -609,7 +559,6 @@ export function ReportsDashboard() {
       summaryText,
       transcriptTurns,
       riskItems,
-      readinessScore,
     ],
   );
   const draftStats = useMemo(() => {
@@ -627,7 +576,7 @@ export function ReportsDashboard() {
     { label: "实时会话", value: realtimeSessions.data?.length ?? 0 },
     { label: "工作报告", value: debriefReports.length },
     { label: "图谱版本", value: timelineNodes.length || 0 },
-    { label: "交付成熟度", value: `${readinessScore}%` },
+    { label: "行动项", value: combinedActionItems.length },
   ];
 
   function downloadMarkdownDraft() {
@@ -680,7 +629,7 @@ export function ReportsDashboard() {
         <div>
           <h1 className="page-title">实时工作报告</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-theme-4">
-            围绕实时工作台生成的会话、图谱、时间轴和行动项做复盘，面向工作交付、评审归档和后续跟进。
+            查看实时会话报告，记录复盘备注，自定义并导出 Markdown 初稿。
           </p>
         </div>
         <a href="/app/realtime">
@@ -835,18 +784,35 @@ export function ReportsDashboard() {
                   <p className="text-sm leading-7 text-theme-3">{summaryText}</p>
                 </div>
 
-                <div className="rounded-xl border border-theme-default bg-surface-muted px-4 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* 复盘备注：可编辑并保存到后端 */}
+                <div className="rounded-xl border border-theme-default bg-surface-muted px-4 py-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
-                      <Gauge className="h-4 w-4" />
-                      交付成熟度
+                      <FileText className="h-4 w-4" />
+                      复盘备注
                     </div>
-                    <Badge>{scoreLabel(readinessScore)}</Badge>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => saveNotesMutation.mutate(notesDraft)}
+                      disabled={!selectedReportId || saveNotesMutation.isPending}
+                    >
+                      <Save className="h-4 w-4" />
+                      {saveNotesMutation.isPending ? "保存中…" : notesSaved ? "已保存" : "保存"}
+                    </Button>
                   </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2">
-                    <div className="h-full rounded-full bg-[color:var(--accent)]" style={{ width: `${readinessScore}%` }} />
-                  </div>
-                  <div className="mt-2 text-xs text-theme-4">{readinessScore}% · 基于报告、行动项、风险、图谱证据和时间轴综合判断。</div>
+                  <Textarea
+                    value={notesDraft}
+                    onChange={(e: ChangeEvent<HTMLTextAreaElement>) => {
+                      setNotesDraft(e.target.value);
+                      setNotesSaved(false);
+                    }}
+                    rows={4}
+                    placeholder="在这里记录补充结论、复盘要点或待跟进事项，保存后持久化到报告。"
+                  />
+                  {saveNotesMutation.isError ? (
+                    <div className="text-xs text-red-500">保存失败，请重试。</div>
+                  ) : null}
                 </div>
               </Card>
 
@@ -872,14 +838,20 @@ export function ReportsDashboard() {
                     行动项
                   </div>
                   <div className="space-y-3">
-                    {combinedActionItems.map((item, index) => (
-                      <div key={`${item}-${index}`} className="flex gap-3 rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
-                        <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)]/15 text-xs font-semibold text-[color:var(--accent-strong)]">
-                          {index + 1}
-                        </span>
-                        <div className="text-sm leading-6 text-theme-2">{item}</div>
+                    {combinedActionItems.length ? (
+                      combinedActionItems.map((item, index) => (
+                        <div key={`${item}-${index}`} className="flex gap-3 rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
+                          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)]/15 text-xs font-semibold text-[color:var(--accent-strong)]">
+                            {index + 1}
+                          </span>
+                          <div className="text-sm leading-6 text-theme-2">{item}</div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
+                        报告中未找到行动项字段，可在「报告自定义」手动补充。
                       </div>
-                    ))}
+                    )}
                   </div>
                 </Card>
 
@@ -889,12 +861,18 @@ export function ReportsDashboard() {
                     风险关注
                   </div>
                   <div className="space-y-3">
-                    {riskItems.map((item, index) => (
-                      <div key={`${item}-${index}`} className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
-                        <div className="text-xs font-semibold text-theme-4">Risk {index + 1}</div>
-                        <div className="mt-1 text-sm leading-6 text-theme-2">{item}</div>
+                    {riskItems.length ? (
+                      riskItems.map((item, index) => (
+                        <div key={`${item}-${index}`} className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
+                          <div className="text-xs font-semibold text-theme-4">Risk {index + 1}</div>
+                          <div className="mt-1 text-sm leading-6 text-theme-2">{item}</div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
+                        报告中未找到风险字段。
                       </div>
-                    ))}
+                    )}
                   </div>
                 </Card>
               </div>
@@ -1238,11 +1216,12 @@ export function ReportsDashboard() {
                   <div className="mt-2 text-xl font-semibold text-theme-1">{reportTitle}</div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Badge>{reportTone}</Badge>
-                    <Badge>{readinessScore}% · {scoreLabel(readinessScore)}</Badge>
                     <Badge>{reportOwner || "负责人待补充"}</Badge>
                     <Badge>{reviewDate || "复盘时间待确认"}</Badge>
                   </div>
-                  <p className="mt-4 text-sm leading-7 text-theme-3">{customIntro}</p>
+                  {customIntro.trim() ? (
+                    <p className="mt-4 text-sm leading-7 text-theme-3">{customIntro}</p>
+                  ) : null}
                 </div>
                 <div className="grid gap-3 md:grid-cols-4">
                   <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
@@ -1260,28 +1239,6 @@ export function ReportsDashboard() {
                   <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
                     <div className="text-xs text-theme-4">非空行数</div>
                     <div className="mt-1 text-lg font-semibold text-theme-1">{draftStats.lines}</div>
-                  </div>
-                </div>
-                <div className="rounded-xl border border-theme-default bg-surface-muted px-4 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-sm font-semibold text-theme-1">初稿诊断</div>
-                    <Badge>{improvementTips.length ? "仍需补齐" : "已满足检查"}</Badge>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {improvementTips.length ? (
-                      improvementTips.map((item) => (
-                        <div key={item.label} className="flex items-start gap-2 text-sm leading-6 text-theme-3">
-                          <AlertTriangle className="mt-1 h-4 w-4 shrink-0 text-amber-500" />
-                          <span>
-                            <span className="font-medium text-theme-2">{item.label}</span>：{item.detail}
-                          </span>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-sm leading-6 text-theme-3">
-                        当前初稿已经具备可导出的基础结构，可继续根据受众微调语气和章节取舍。
-                      </div>
-                    )}
                   </div>
                 </div>
                 <div className="space-y-3">
@@ -1315,7 +1272,7 @@ export function ReportsDashboard() {
                 实时数据导出
               </div>
               <p className="text-sm leading-6 text-theme-3">
-                从云端后端导出实时会话归档数据，可用于审计、归档、复盘整理和二次分析。
+                导出实时会话归档数据，用于审计、归档和二次分析。
               </p>
               <div className="flex flex-wrap gap-2">
                 {EXPORT_FORMATS.map((fmt) => (
@@ -1329,25 +1286,36 @@ export function ReportsDashboard() {
               </div>
             </Card>
 
-            <Card className="space-y-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
-                  <ListChecks className="h-5 w-5" />
-                  交付检查
-                </div>
-                <Badge>{readinessScore}% · {scoreLabel(readinessScore)}</Badge>
+            <Card className="space-y-4">
+              <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
+                <ListChecks className="h-5 w-5" />
+                当前报告概览
               </div>
-              <div className="space-y-3">
-                {deliveryChecks.map((item) => (
-                  <div key={item.label} className="flex items-start gap-3 rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
-                    <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${item.ok ? "text-emerald-500" : "text-theme-5"}`} />
-                    <div>
-                      <div className="text-sm font-semibold text-theme-2">{item.label}</div>
-                      <div className="mt-1 text-xs text-theme-4">{item.detail}</div>
-                    </div>
+              {selectedReport.data ? (
+                <div className="space-y-3 text-sm text-theme-3">
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {[
+                      ["标题", selectedReport.data.title],
+                      ["类型", selectedReport.data.report_type],
+                      ["状态", selectedReport.data.status],
+                      ["创建时间", formatDateTime(selectedReport.data.created_at)],
+                      ["节点", String(metrics.nodes)],
+                      ["关系", String(metrics.edges)],
+                      ["图谱版本", String(timelineNodes.length)],
+                      ["行动项", String(combinedActionItems.length)],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2">
+                        <div className="text-xs text-theme-4">{label}</div>
+                        <div className="mt-1 font-medium text-theme-2 truncate">{value}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-6 text-sm text-theme-4">
+                  请先在复盘中心选择一份报告。
+                </div>
+              )}
             </Card>
           </div>
         </Tabs.Content>

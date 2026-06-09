@@ -8,8 +8,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas import ReportDetail, ReportSummary
-from app.services.reports import create_report, export_rows_for_target, get_report_or_404, list_reports
+from app.schemas import ReportDetail, ReportSummary, ReportUpdate
+from app.services.reports import create_report, export_rows_for_target, get_report_or_404, list_reports, update_report
 
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -44,6 +44,32 @@ def get_report(report_id: str, db: Session = Depends(get_db)) -> ReportDetail:
         status=item.status,
         summary=item.summary_json,
         payload=item.payload,
+        notes=item.notes,
+        json_path=item.json_path,
+        csv_path=item.csv_path,
+        markdown_path=item.markdown_path,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
+@router.patch("/{report_id}", response_model=ReportDetail)
+def patch_report(report_id: str, body: ReportUpdate, db: Session = Depends(get_db)) -> ReportDetail:
+    try:
+        item = get_report_or_404(db, report_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    item = update_report(db, item, title=body.title, notes=body.notes)
+    db.commit()
+    db.refresh(item)
+    return ReportDetail(
+        report_id=item.id,
+        report_type=item.report_type,
+        title=item.title,
+        status=item.status,
+        summary=item.summary_json,
+        payload=item.payload,
+        notes=item.notes,
         json_path=item.json_path,
         csv_path=item.csv_path,
         markdown_path=item.markdown_path,

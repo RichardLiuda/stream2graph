@@ -267,6 +267,7 @@ class Report(Base):
     related_session_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     title: Mapped[str] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(32), index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     json_path: Mapped[str | None] = mapped_column(Text, nullable=True)

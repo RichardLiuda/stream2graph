@@ -589,6 +589,11 @@ export const api = {
     ),
   listReports: async () => request("/api/v1/reports", z.array(reportSummarySchema)),
   getReport: async (reportId: string) => request(`/api/v1/reports/${reportId}`, reportDetailSchema),
+  updateReport: async (reportId: string, body: { title?: string; notes?: string }) =>
+    request(`/api/v1/reports/${reportId}`, reportDetailSchema, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 };
 
 export function subscribeRun(runId: string, onMessage: (payload: z.infer<typeof runJobSchema>) => void) {

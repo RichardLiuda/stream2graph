@@ -5421,8 +5421,8 @@ export function RealtimeStudio() {
         : null}
 
       <div className="flex h-full min-h-0 flex-col space-y-2">
-        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-2 pl-3 md:gap-3 md:pl-6 lg:pl-8">
+        <div className="flex items-center gap-2 pt-2 md:pt-1">
+          <div className="flex flex-1 min-w-0 flex-wrap items-center gap-2 pl-3 md:gap-3 md:pl-6 lg:pl-8">
             <h1 className="page-title">
               {tr("realtimeStudio.text041")}
             </h1>
@@ -5435,7 +5435,7 @@ export function RealtimeStudio() {
               {tr("realtimeStudio.text043")}
             </p>
           </div>
-          <div className="ml-auto flex min-w-0 items-center justify-end gap-2 pr-12 sm:pr-14">
+          <div className="flex shrink-0 items-center gap-2 pr-14">
             <div
               className="relative"
               onMouseEnter={() => setHoveredWorkbenchPanel("process")}
@@ -6370,7 +6370,7 @@ export function RealtimeStudio() {
                   </Tabs.List>
                 </div>
                 <Tooltip.Provider delayDuration={200}>
-                  <div className="ml-auto flex w-auto shrink-0 flex-nowrap items-start justify-end gap-2 sm:gap-3 xl:-mt-2">
+                  <div className="ml-auto flex w-auto shrink-0 flex-nowrap items-center justify-end gap-2 sm:gap-3">
                     <div className="flex shrink-0 flex-col items-center">
                       <Tooltip.Root>
                         <Tooltip.Trigger asChild>
@@ -6896,17 +6896,17 @@ export function RealtimeStudio() {
                         <div
                           className="pointer-events-none absolute z-[3]"
                           style={{
-                            left: `${timelineScrollableSelectedLeft - timelineScrollLeft + 8}px`,
+                          left: `clamp(3.5rem, ${timelineScrollableSelectedLeft - timelineScrollLeft + 8}px, calc(100% - 3.5rem))`,
                             top: "-0.35rem",
                             transform: "translate(-50%, -100%)",
                           }}
                         >
-                          <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-[color:var(--accent)]/35 bg-surface-1/95 px-2 py-1 shadow-sm backdrop-blur-sm whitespace-nowrap">
+                          <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-[color:var(--accent)]/35 bg-surface-1/95 px-2.5 py-1 shadow-sm backdrop-blur-sm whitespace-nowrap">
                             <div className="flex flex-nowrap items-center gap-1">
                               <Button
                                 type="button"
                                 variant="secondary"
-                                className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                                className="h-6 px-2 text-[10px] leading-none whitespace-nowrap"
                                 onClick={() => setRollbackPreview(null)}
                               >
                                 {tr("realtimeStudio.text129")}
@@ -6914,7 +6914,7 @@ export function RealtimeStudio() {
                               <Button
                                 type="button"
                                 variant="secondary"
-                                className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                                className="h-6 px-2 text-[10px] leading-none whitespace-nowrap"
                                 onClick={() => {
                                   if (!selectedTimelineSnapshotId || rollbackPreview?.snapshot_id !== selectedTimelineSnapshotId) {
                                     setNotice({ tone: "info", text: tr("realtimeStudio.notice.timelinePreviewLoading") });
@@ -6940,7 +6940,7 @@ export function RealtimeStudio() {
                               <Button
                                 type="button"
                                 variant="danger"
-                                className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                                className="h-6 px-2 text-[10px] leading-none whitespace-nowrap"
                                 onClick={() =>
                                   currentSessionId && selectedTimelineSnapshotId
                                     ? rollbackApplyMutation.mutate({
@@ -7030,18 +7030,18 @@ export function RealtimeStudio() {
                         style={{
                           left:
                             orderedTimelineNodes.length > 1
-                              ? `calc(6px + ((100% - 12px) * ${selectedTimelineOrderedIndex}) / ${orderedTimelineNodes.length - 1})`
+                              ? `clamp(3.5rem, calc(6px + ((100% - 12px) * ${selectedTimelineOrderedIndex}) / ${orderedTimelineNodes.length - 1}), calc(100% - 3.5rem))`
                               : "50%",
                           top: "-0.35rem",
                           transform: "translate(-50%, -100%)",
                         }}
                       >
-                        <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-[color:var(--accent)]/35 bg-surface-1/95 px-2 py-1 shadow-sm backdrop-blur-sm whitespace-nowrap">
+                        <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-[color:var(--accent)]/35 bg-surface-1/95 px-2.5 py-1 shadow-sm backdrop-blur-sm whitespace-nowrap">
                           <div className="flex flex-nowrap items-center gap-1">
                             <Button
                               type="button"
                               variant="secondary"
-                              className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                              className="h-6 px-2 text-[10px] leading-none whitespace-nowrap"
                               onClick={() => setRollbackPreview(null)}
                             >
                                 {tr("realtimeStudio.text129")}
@@ -7049,7 +7049,7 @@ export function RealtimeStudio() {
                             <Button
                               type="button"
                               variant="secondary"
-                              className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                              className="h-6 px-2 text-[10px] leading-none whitespace-nowrap"
                               onClick={() => {
                                 if (
                                   !selectedTimelineSnapshotId ||
@@ -7078,7 +7078,7 @@ export function RealtimeStudio() {
                             <Button
                               type="button"
                               variant="danger"
-                              className="h-5 px-1.5 text-[10px] leading-none whitespace-nowrap"
+                              className="h-6 px-2 text-[10px] leading-none whitespace-nowrap"
                               onClick={() =>
                                 currentSessionId && selectedTimelineSnapshotId
                                   ? rollbackApplyMutation.mutate({
@@ -7107,7 +7107,7 @@ export function RealtimeStudio() {
                 )}
               </div>
             </div>
-            <div className="flex shrink-0 translate-y-3.5 flex-wrap items-end justify-between gap-3 px-4 py-2.5">
+            <div className="flex shrink-0 translate-y-3.5 flex-wrap items-center justify-between gap-3 px-4 py-2.5">
               <div className="flex w-full max-w-[min(100%,30rem)] flex-wrap items-center gap-2">
                 <Button
                   type="button"

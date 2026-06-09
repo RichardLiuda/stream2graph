@@ -382,6 +382,7 @@ export const reportSummarySchema = z.object({
 
 export const reportDetailSchema = reportSummarySchema.extend({
   payload: z.record(z.any()),
+  notes: z.string().nullable().optional(),
   json_path: z.string().nullable().optional(),
   csv_path: z.string().nullable().optional(),
   markdown_path: z.string().nullable().optional(),

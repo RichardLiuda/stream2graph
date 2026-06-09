@@ -530,8 +530,14 @@ class ReportDetail(BaseModel):
     status: str
     summary: dict[str, Any]
     payload: dict[str, Any]
+    notes: str | None = None
     json_path: str | None = None
     csv_path: str | None = None
     markdown_path: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class ReportUpdate(BaseModel):
+    title: str | None = None
+    notes: str | None = None
