@@ -4,9 +4,6 @@ import * as Tabs from "@radix-ui/react-tabs";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
-  AlertTriangle,
-  CheckCircle2,
-  Clock3,
   Copy,
   Download,
   FileDown,
@@ -14,17 +11,14 @@ import {
   GitBranch,
   Layers,
   ListChecks,
-  PieChart,
-  PlayCircle,
   Save,
   Search,
   Settings2,
-  Users,
 } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import type { RealtimeTimelineNode } from "@stream2graph/contracts";
 
-import { Badge, Button, Card, Input, StatCard, Textarea } from "@stream2graph/ui";
+import { Badge, Button, Card, Input, Textarea } from "@stream2graph/ui";
 
 import { api, apiUrl } from "@/lib/api";
 
@@ -426,7 +420,6 @@ export function ReportsDashboard() {
     evidence: true,
   });
 
-  const realtimeSessions = useQuery({ queryKey: ["realtime-sessions"], queryFn: api.listRealtimeSessions });
   const reports = useQuery({ queryKey: ["reports"], queryFn: api.listReports });
   const debriefReports = useMemo(
     () => (reports.data || []).filter((item) => DEBRIEF_REPORT_TYPES.has(item.report_type)),
@@ -462,12 +455,6 @@ export function ReportsDashboard() {
   });
   const timelineNodes = useMemo(() => timeline.data?.nodes ?? [], [timeline.data?.nodes]);
   const orderedTimelineNodes = useMemo(() => [...timelineNodes].reverse(), [timelineNodes]);
-  const timelinePreview = useQuery({
-    queryKey: ["realtime-timeline-preview", selectedSessionId, selectedTimelineSnapshotId],
-    queryFn: () => api.previewRealtimeRollback(selectedSessionId, { snapshot_id: selectedTimelineSnapshotId }),
-    enabled: Boolean(selectedSessionId && selectedTimelineSnapshotId),
-    retry: false,
-  });
 
   useEffect(() => {
     if (!selectedReportId && debriefReports.length) {
@@ -503,7 +490,6 @@ export function ReportsDashboard() {
   });
 
   const transcriptTurns = useMemo(() => collectTranscriptTurns(selectedReport.data?.payload), [selectedReport.data?.payload]);
-  const shares = useMemo(() => speakerShares(transcriptTurns), [transcriptTurns]);
   const metrics = useMemo(() => graphMetrics(selectedReport.data), [selectedReport.data]);
   const decisions = useMemo(
     () => deriveDecisionItems(selectedReport.data, timelineNodes),
@@ -517,12 +503,12 @@ export function ReportsDashboard() {
     () => deriveRiskItems(selectedReport.data),
     [selectedReport.data],
   );
+  const summaryText = reportSummaryText(selectedReport.data, transcriptTurns, timelineNodes.length);
+  const selectedTimelineNode = timelineNodes.find((node) => node.snapshot_id === selectedTimelineSnapshotId) ?? null;
   const combinedActionItems = useMemo(
     () => [...actionItems, ...manualActions.map((item) => manualActionText(item))],
     [actionItems, manualActions],
   );
-  const summaryText = reportSummaryText(selectedReport.data, transcriptTurns, timelineNodes.length);
-  const selectedTimelineNode = timelineNodes.find((node) => node.snapshot_id === selectedTimelineSnapshotId) ?? null;
   const enabledSections = REPORT_SECTIONS.filter((section) => sections[section.key]);
   const markdownDraft = useMemo(
     () =>
@@ -572,13 +558,6 @@ export function ReportsDashboard() {
     };
   }, [enabledSections.length, markdownDraft]);
 
-  const stats = [
-    { label: "实时会话", value: realtimeSessions.data?.length ?? 0 },
-    { label: "工作报告", value: debriefReports.length },
-    { label: "图谱版本", value: timelineNodes.length || 0 },
-    { label: "行动项", value: combinedActionItems.length },
-  ];
-
   function downloadMarkdownDraft() {
     const blob = new Blob([markdownDraft], { type: "text/markdown;charset=utf-8" });
     const url = window.URL.createObjectURL(blob);
@@ -625,7 +604,7 @@ export function ReportsDashboard() {
 
   return (
     <div className="space-y-5">
-      <div className="page-title--menu-clearance flex flex-wrap items-end justify-between gap-3">
+      <div className="page-title--menu-clearance flex flex-wrap items-end justify-between gap-3 pr-14">
         <div>
           <h1 className="page-title">实时工作报告</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-theme-4">
@@ -638,12 +617,6 @@ export function ReportsDashboard() {
             返回实时工作
           </Button>
         </a>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {stats.map((item) => (
-          <StatCard key={item.label} label={item.label} value={String(item.value)} />
-        ))}
       </div>
 
       <Tabs.Root
@@ -672,7 +645,7 @@ export function ReportsDashboard() {
         </Tabs.List>
 
         <Tabs.Content value="overview">
-          <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+          <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)] items-start">
             <Card className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -752,28 +725,7 @@ export function ReportsDashboard() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Badge>{selectedReport.data?.status || "waiting"}</Badge>
-                    {selectedSessionId ? <Badge>session: {selectedSessionId.slice(0, 8)}</Badge> : null}
                   </div>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-4">
-                  {[
-                    { label: "参与者", value: shares.length, icon: Users },
-                    { label: "关键决策", value: decisions.length, icon: CheckCircle2 },
-                    { label: "行动项", value: actionItems.length, icon: ListChecks },
-                    { label: "图谱版本", value: timelineNodes.length || 1, icon: GitBranch },
-                  ].map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <div key={item.label} className="rounded-lg border border-theme-default bg-surface-muted px-4 py-3">
-                        <div className="flex items-center justify-between gap-2 text-xs text-theme-4">
-                          <span>{item.label}</span>
-                          <Icon className="h-4 w-4" />
-                        </div>
-                        <div className="mt-2 text-2xl font-semibold text-theme-1">{item.value}</div>
-                      </div>
-                    );
-                  })}
                 </div>
 
                 <div className="rounded-xl border border-theme-default bg-surface-muted px-4 py-4">
@@ -816,207 +768,54 @@ export function ReportsDashboard() {
                 </div>
               </Card>
 
-              <div className="grid gap-5 xl:grid-cols-3">
-                <Card className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
-                    <CheckCircle2 className="h-4 w-4" />
-                    关键决策
-                  </div>
-                  <div className="space-y-3">
-                    {decisions.map((item, index) => (
-                      <div key={`${item}-${index}`} className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
-                        <div className="text-xs font-semibold text-theme-4">Decision {index + 1}</div>
-                        <div className="mt-1 text-sm leading-6 text-theme-2">{item}</div>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-
-                <Card className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
-                    <ListChecks className="h-4 w-4" />
-                    行动项
-                  </div>
-                  <div className="space-y-3">
-                    {combinedActionItems.length ? (
-                      combinedActionItems.map((item, index) => (
-                        <div key={`${item}-${index}`} className="flex gap-3 rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
-                          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)]/15 text-xs font-semibold text-[color:var(--accent-strong)]">
-                            {index + 1}
-                          </span>
-                          <div className="text-sm leading-6 text-theme-2">{item}</div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
-                        报告中未找到行动项字段，可在「报告自定义」手动补充。
-                      </div>
-                    )}
-                  </div>
-                </Card>
-
-                <Card className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
-                    <AlertTriangle className="h-4 w-4" />
-                    风险关注
-                  </div>
-                  <div className="space-y-3">
-                    {riskItems.length ? (
-                      riskItems.map((item, index) => (
-                        <div key={`${item}-${index}`} className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
-                          <div className="text-xs font-semibold text-theme-4">Risk {index + 1}</div>
-                          <div className="mt-1 text-sm leading-6 text-theme-2">{item}</div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
-                        报告中未找到风险字段。
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              </div>
-
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                <Card className="space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
-                      <PieChart className="h-4 w-4" />
-                      参与者发言占比
-                    </div>
-                    <Badge>{transcriptTurns.length} turns</Badge>
-                  </div>
-                  <div className="space-y-3">
-                    {shares.length ? (
-                      shares.map((item) => (
-                        <div key={item.speaker} className="space-y-1.5">
-                          <div className="flex items-center justify-between gap-3 text-sm">
-                            <span className="font-medium text-theme-2">{item.speaker}</span>
-                            <span className="text-xs text-theme-4">
-                              {item.percent}% · {item.turns} 次
-                            </span>
-                          </div>
-                          <div className="h-2 overflow-hidden rounded-full bg-surface-2">
-                            <div className="h-full rounded-full bg-[color:var(--accent)]" style={{ width: `${Math.max(4, item.percent)}%` }} />
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-6 text-sm text-theme-4">
-                        当前报告里还没有可统计的发言文本。
-                      </div>
-                    )}
-                  </div>
-                </Card>
-
-                <Card className="space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
-                      <GitBranch className="h-4 w-4" />
-                      图谱版本变化
-                    </div>
-                    <Badge>
-                      {metrics.nodes} nodes / {metrics.edges} edges
-                    </Badge>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-3">
-                    {[
-                      ["节点", metrics.nodes],
-                      ["关系", metrics.edges],
-                      ["分组", metrics.groups],
-                    ].map(([label, value]) => (
-                      <div key={label} className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
-                        <div className="text-xs text-theme-4">{label}</div>
-                        <div className="mt-1 text-xl font-semibold text-theme-1">{value}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="space-y-2">
-                    {orderedTimelineNodes.slice(-6).map((node, index) => (
-                      <button
-                        key={node.snapshot_id}
-                        type="button"
-                        onClick={() => setSelectedTimelineSnapshotId(node.snapshot_id)}
-                        className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition ${
-                          node.snapshot_id === selectedTimelineSnapshotId
-                            ? "border-[color:var(--accent)] bg-[color:var(--accent)]/[0.08]"
-                            : "border-theme-subtle bg-surface-muted hover:border-theme-default"
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-theme-2">
-                            v{index + 1} · {node.label || "自动快照"}
-                          </div>
-                          <div className="mt-1 text-xs text-theme-4">{formatDateTime(node.created_at)}</div>
-                        </div>
-                        <Badge className="shrink-0">{node.chunk_count} chunks</Badge>
-                      </button>
-                    ))}
-                    {!orderedTimelineNodes.length ? (
-                      <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
-                        暂无可回放时间轴。
-                      </div>
-                    ) : null}
-                  </div>
-                </Card>
-              </div>
-
               <Card className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
-                    <PlayCircle className="h-4 w-4" />
-                    可回放时间轴
+                    <GitBranch className="h-4 w-4" />
+                    图谱版本变化
                   </div>
-                  <Badge>{selectedTimelineNode ? formatDateTime(selectedTimelineNode.created_at) : "未选择"}</Badge>
+                  <Badge>
+                    {metrics.nodes} nodes / {metrics.edges} edges
+                  </Badge>
                 </div>
-                <div className="grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-                  <div className="max-h-[22rem] space-y-2 overflow-auto pr-1">
-                    {orderedTimelineNodes.map((node, index) => (
-                      <button
-                        key={node.snapshot_id}
-                        type="button"
-                        onClick={() => setSelectedTimelineSnapshotId(node.snapshot_id)}
-                        className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition ${
-                          node.snapshot_id === selectedTimelineSnapshotId
-                            ? "border-[color:var(--accent)] bg-[color:var(--accent)]/[0.08] text-theme-1"
-                            : "border-theme-subtle bg-surface-muted text-theme-2 hover:border-theme-default"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="font-medium">Step {index + 1}</span>
-                          <Clock3 className="h-3.5 w-3.5 text-theme-4" />
+                <div className="grid gap-3 md:grid-cols-3">
+                  {[
+                    ["节点", metrics.nodes],
+                    ["关系", metrics.edges],
+                    ["分组", metrics.groups],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
+                      <div className="text-xs text-theme-4">{label}</div>
+                      <div className="mt-1 text-xl font-semibold text-theme-1">{value}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  {orderedTimelineNodes.slice(-6).map((node, index) => (
+                    <button
+                      key={node.snapshot_id}
+                      type="button"
+                      onClick={() => setSelectedTimelineSnapshotId(node.snapshot_id)}
+                      className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition ${
+                        node.snapshot_id === selectedTimelineSnapshotId
+                          ? "border-[color:var(--accent)] bg-[color:var(--accent)]/[0.08]"
+                          : "border-theme-subtle bg-surface-muted hover:border-theme-default"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-theme-2">
+                          v{index + 1} · {node.label || "自动快照"}
                         </div>
-                        <div className="mt-1 text-xs text-theme-4">{node.label || formatDateTime(node.created_at)}</div>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="rounded-xl border border-theme-default bg-surface-muted px-4 py-4">
-                    {timelinePreview.isLoading ? (
-                      <div className="text-sm text-theme-4">正在载入该时间点预览...</div>
-                    ) : timelinePreview.data ? (
-                      <div className="space-y-4">
-                        <div>
-                          <div className="text-xs font-semibold text-theme-4">回放摘要</div>
-                          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-surface-1 px-3 py-2 text-xs leading-5 text-theme-3">
-                            {JSON.stringify(timelinePreview.data.summary || {}, null, 2)}
-                          </pre>
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold text-theme-4">当时发言</div>
-                          <div className="mt-2 space-y-2">
-                            {(timelinePreview.data.turns || []).slice(0, 5).map((turn, index) => (
-                              <div key={`${turn.speaker}-${index}`} className="rounded-lg border border-theme-subtle bg-surface-1 px-3 py-2">
-                                <div className="text-xs font-semibold text-theme-2">{turn.speaker}</div>
-                                <div className="mt-1 text-sm leading-6 text-theme-3">{turn.text}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
+                        <div className="mt-1 text-xs text-theme-4">{formatDateTime(node.created_at)}</div>
                       </div>
-                    ) : (
-                      <div className="text-sm text-theme-4">选择左侧时间点后，可以预览当时的摘要、发言和图谱状态。</div>
-                    )}
-                  </div>
+                      <Badge className="shrink-0">{node.chunk_count} chunks</Badge>
+                    </button>
+                  ))}
+                  {!orderedTimelineNodes.length ? (
+                    <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
+                      暂无可回放时间轴。
+                    </div>
+                  ) : null}
                 </div>
               </Card>
             </div>
@@ -1024,7 +823,7 @@ export function ReportsDashboard() {
         </Tabs.Content>
 
         <Tabs.Content value="builder">
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] items-start">
             <Card className="space-y-5">
               <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
                 <Settings2 className="h-5 w-5" />
@@ -1265,59 +1064,25 @@ export function ReportsDashboard() {
         </Tabs.Content>
 
         <Tabs.Content value="exports">
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <Card className="space-y-5">
-              <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
-                <Download className="h-5 w-5" />
-                实时数据导出
-              </div>
-              <p className="text-sm leading-6 text-theme-3">
-                导出实时会话归档数据，用于审计、归档和二次分析。
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {EXPORT_FORMATS.map((fmt) => (
-                  <a key={fmt} href={apiUrl(`/api/v1/reports/exports/download?target=realtime&fmt=${fmt}`)}>
-                    <Button variant="secondary">
-                      <Download className="h-4 w-4" />
-                      {fmt.toUpperCase()}
-                    </Button>
-                  </a>
-                ))}
-              </div>
-            </Card>
-
-            <Card className="space-y-4">
-              <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
-                <ListChecks className="h-5 w-5" />
-                当前报告概览
-              </div>
-              {selectedReport.data ? (
-                <div className="space-y-3 text-sm text-theme-3">
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {[
-                      ["标题", selectedReport.data.title],
-                      ["类型", selectedReport.data.report_type],
-                      ["状态", selectedReport.data.status],
-                      ["创建时间", formatDateTime(selectedReport.data.created_at)],
-                      ["节点", String(metrics.nodes)],
-                      ["关系", String(metrics.edges)],
-                      ["图谱版本", String(timelineNodes.length)],
-                      ["行动项", String(combinedActionItems.length)],
-                    ].map(([label, value]) => (
-                      <div key={label} className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-2">
-                        <div className="text-xs text-theme-4">{label}</div>
-                        <div className="mt-1 font-medium text-theme-2 truncate">{value}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-6 text-sm text-theme-4">
-                  请先在复盘中心选择一份报告。
-                </div>
-              )}
-            </Card>
-          </div>
+          <Card className="space-y-5">
+            <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
+              <Download className="h-5 w-5" />
+              实时数据导出
+            </div>
+            <p className="text-sm leading-6 text-theme-3">
+              导出实时会话归档数据，用于审计、归档和二次分析。
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {EXPORT_FORMATS.map((fmt) => (
+                <a key={fmt} href={apiUrl(`/api/v1/reports/exports/download?target=realtime&fmt=${fmt}`)}>
+                  <Button variant="secondary">
+                    <Download className="h-4 w-4" />
+                    {fmt.toUpperCase()}
+                  </Button>
+                </a>
+              ))}
+            </div>
+          </Card>
         </Tabs.Content>
       </Tabs.Root>
     </div>

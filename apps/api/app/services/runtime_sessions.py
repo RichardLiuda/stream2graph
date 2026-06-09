@@ -13,7 +13,7 @@ from app.services.realtime_coordination import CoordinationRuntimeSession, norma
 from app.services.realtime_transcript import attach_transcript_state
 
 
-_RUNTIME_LOCK = Lock()
+_RUNTIME_LOCK = threading.Lock()
 _RUNTIMES: dict[str, CoordinationRuntimeSession] = {}
 
 
