@@ -17,6 +17,7 @@ import {
   realtimeSessionCloseSchema,
   realtimeSessionSchema,
   realtimeSnapshotSchema,
+  realtimeTimelineNameResponseSchema,
   realtimeTimelineSchema,
   runtimeOptionsSchema,
   runArtifactSchema,
@@ -486,6 +487,10 @@ export const api = {
     requestRealtime(`/api/v1/realtime/sessions/${sessionId}/flush`, realtimeSnapshotSchema, {
       method: "POST",
     }),
+  switchCanvasRealtime: async (sessionId: string) =>
+    requestRealtime(`/api/v1/realtime/sessions/${sessionId}/canvas/switch`, realtimeSnapshotSchema, {
+      method: "POST",
+    }),
   closeRealtimeAudioStream: async (sessionId: string) =>
     request(
       `/api/v1/realtime/sessions/${sessionId}/audio/transcriptions/stream/close`,
@@ -501,6 +506,11 @@ export const api = {
     }),
   listRealtimeTimeline: async (sessionId: string) =>
     request(`/api/v1/realtime/sessions/${sessionId}/timeline`, realtimeTimelineSchema),
+  nameRealtimeTimeline: async (sessionId: string, snapshotIds: string[]) =>
+    request(`/api/v1/realtime/sessions/${sessionId}/timeline/name`, realtimeTimelineNameResponseSchema, {
+      method: "POST",
+      body: JSON.stringify({ snapshot_ids: snapshotIds }),
+    }),
   previewRealtimeRollback: async (sessionId: string, payload: z.infer<typeof realtimeRollbackRequestSchema>) =>
     requestRealtime(`/api/v1/realtime/sessions/${sessionId}/rollback/preview`, realtimeRollbackPreviewSchema, {
       method: "POST",

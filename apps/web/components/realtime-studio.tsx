@@ -2401,6 +2401,11 @@ export function RealtimeStudio() {
   }, [inputSourceMenuOpen]);
   /** @description 客户端挂载后再 portal，避免 SSR 访问 `document` */
   const [detailDrawerPortalReady, setDetailDrawerPortalReady] = useState(false);
+  /** @description 工作台弹出面板 portal 就绪状态，避免 SSR 访问 document */
+  const [workbenchPortalReady, setWorkbenchPortalReady] = useState(false);
+  /** @description 工作台面板按钮容器 ref，用于计算 portal 弹出位置 */
+  const processButtonRef = useRef<HTMLDivElement | null>(null);
+  const notesButtonRef = useRef<HTMLDivElement | null>(null);
   /** @description 主舞台 Tab，用于顶栏与「主图」徽章联动 */
   const [stageTab, setStageTab] = useState("mermaid");
   const [hoveredWorkbenchPanel, setHoveredWorkbenchPanel] = useState<WorkbenchDockPanel | null>(null);
@@ -2694,6 +2699,7 @@ export function RealtimeStudio() {
 
   useEffect(() => {
     setDetailDrawerPortalReady(true);
+    setWorkbenchPortalReady(true);
   }, []);
 
   useEffect(() => {
@@ -4066,6 +4072,10 @@ export function RealtimeStudio() {
   }, [currentSessionId]);
 
   useEffect(() => {
+    namingRequestedRef.current = new Set();
+  }, [currentSessionId]);
+
+  useEffect(() => {
     if (!currentSessionId) {
       setSnapshot(null);
       return;
@@ -4223,6 +4233,27 @@ export function RealtimeStudio() {
     onError: (err) => setError((err as Error).message),
   });
 
+  /** @description 强制切换到新画布 */
+  const switchCanvasMutation = useMutation({
+    mutationFn: (sessionId: string) => {
+      studioSend({ type: "gate.working" });
+      studioSend({ type: "planner.working" });
+      return api.switchCanvasRealtime(sessionId);
+    },
+    onSuccess: (data) => {
+      setSnapshot(data);
+      syncPipelineStatus(data.pipeline);
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
+      setNotice({ tone: "success", text: tr("realtimeStudio.notice.canvasSwitched") });
+    },
+    onError: (err) => setError((err as Error).message),
+  });
+
+  function handleSwitchToNextCanvas() {
+    if (!currentSessionId || switchCanvasMutation.isPending) return;
+    switchCanvasMutation.mutate(currentSessionId);
+  }
+
   const relayoutMutation = useMutation({
     mutationFn: ({ sessionId, payload }: { sessionId: string; payload: MermaidNodeRelayoutPayload }) => {
       studioSend({ type: "planner.working" });
@@ -4365,6 +4396,16 @@ export function RealtimeStudio() {
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
     },
     onError: (err) => setError((err as Error).message),
+  });
+
+  const nameTimelineMutation = useMutation({
+    mutationFn: ({ sessionId, snapshotIds }: { sessionId: string; snapshotIds: string[] }) =>
+      api.nameRealtimeTimeline(sessionId, snapshotIds),
+    onSuccess: (data) => {
+      if (data.labels && Object.keys(data.labels).length > 0) {
+        queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
+      }
+    },
   });
 
   const deleteSessionMutation = useMutation({
@@ -4692,6 +4733,14 @@ export function RealtimeStudio() {
     return Array.isArray(activeSnapshot?.pipeline?.events) ? activeSnapshot.pipeline.events : [];
   }, [activeSnapshot?.pipeline?.events]);
   const mermaidState = activeSnapshot?.pipeline?.mermaid_state ?? null;
+  /** @description 多画布状态：从 pipeline 中读取画布列表和当前激活画布索引 */
+  const canvasState = activeSnapshot?.pipeline?.canvas_state as {
+    canvases?: Array<{ canvas_id: string; title?: string }>;
+    active_canvas_index?: number;
+  } | null;
+  const canvasList = canvasState?.canvases ?? [];
+  const activeCanvasIndex = typeof canvasState?.active_canvas_index === "number" ? canvasState.active_canvas_index : 0;
+  const hasMultipleCanvases = canvasList.length > 1;
   const isSelectedTimelinePreviewReady = Boolean(
     rollbackPreviewMermaidCode &&
       selectedTimelineSnapshotId &&
@@ -6043,6 +6092,7 @@ export function RealtimeStudio() {
                     ) : null}
                   </div>
                   <div
+                    ref={notesButtonRef}
                     className="relative"
                     onMouseEnter={() => setHoveredWorkbenchPanel("notes")}
                     onMouseLeave={() => setHoveredWorkbenchPanel(null)}
@@ -6470,6 +6520,8 @@ export function RealtimeStudio() {
                   annotationsDoc={mermaidAnnotationsDoc}
                   onAnnotationsChange={onMermaidAnnotationsChange}
                   panZoomControlsOffsetTop={12}
+                  onCanvasNext={handleSwitchToNextCanvas}
+                  hasMultipleCanvases={hasMultipleCanvases}
                 />
                 <GraphEvidencePanel
                   target={graphEvidenceTarget}
@@ -7215,6 +7267,342 @@ export function RealtimeStudio() {
 
         {studioPage === 2 ? null : null}
       </div>
+
+      {/* 工作台弹出面板 portal：渲染到 document.body，避免被 Card overflow-hidden 裁剪 */}
+      {workbenchPortalReady && activeWorkbenchPanel
+        ? createPortal(
+            <>
+              {/* 进程面板弹出内容 */}
+              {activeWorkbenchPanel === "process" && processButtonRef.current ? (() => {
+                const rect = processButtonRef.current.getBoundingClientRect();
+                const left = rect.right + 8;
+                const top = rect.top;
+                return (
+                  <div
+                    className="fixed z-[90] w-[min(520px,calc(100vw-8rem))] rounded-lg border border-theme-default bg-surface-1/95 p-2 shadow-xl backdrop-blur-md"
+                    style={{ left: `${left}px`, top: `${top}px` }}
+                  >
+                    <Tooltip.Provider delayDuration={120}>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {pipelineStages.map((step) => (
+                          <Tooltip.Root key={step.abbr}>
+                            <Tooltip.Trigger asChild>
+                              <button
+                                type="button"
+                                className={`inline-flex h-7 items-center gap-1.5 rounded-md border bg-surface-2 px-2 text-[11px] font-medium text-theme-2 transition-[box-shadow,border-color] ${
+                                  pipelineAllIdle && step.abbr === "CAP"
+                                    ? "border-[color:var(--accent)]/40 ring-1 ring-[color:var(--accent)]/25"
+                                    : "border-theme-default"
+                                }`}
+                                aria-label={`${step.label}：${step.value}`}
+                              >
+                                <span
+                                  className={`h-2 w-2 shrink-0 rounded-full ${
+                                    step.tone === "working"
+                                      ? "bg-[color:var(--accent)]"
+                                      : step.tone === "success"
+                                        ? "bg-emerald-500"
+                                        : step.tone === "error"
+                                          ? "bg-red-500"
+                                          : "bg-surface-3"
+                                  }`}
+                                  aria-hidden
+                                />
+                                {step.label}
+                              </button>
+                            </Tooltip.Trigger>
+                            <Tooltip.Portal>
+                              <Tooltip.Content
+                                side="bottom"
+                                align="center"
+                                sideOffset={8}
+                                collisionPadding={12}
+                                className="z-[24000] w-[220px] rounded-lg border border-theme-default bg-surface-2 px-2.5 py-2 text-left shadow-xl"
+                              >
+                                <div className="text-[10px] font-semibold tracking-wide text-theme-2">{step.label}</div>
+                                <div className="mt-1 text-[11px] font-medium text-theme-1">{step.value}</div>
+                                <div className="mt-1.5 text-[10px] leading-4 text-theme-4">{step.help}</div>
+                              </Tooltip.Content>
+                            </Tooltip.Portal>
+                          </Tooltip.Root>
+                        ))}
+                      </div>
+                    </Tooltip.Provider>
+                  </div>
+                );
+              })() : null}
+
+              {/* 笔记面板弹出内容 */}
+              {activeWorkbenchPanel === "notes" && notesButtonRef.current ? (() => {
+                const rect = notesButtonRef.current.getBoundingClientRect();
+                const left = rect.right + 8;
+                const top = rect.top;
+                return (
+                  <div
+                    className="fixed z-[90] w-[min(760px,calc(100vw-8rem))] rounded-lg border border-[#4f3a86]/90 bg-[#d9d0ef]/95 p-2 shadow-xl backdrop-blur-md"
+                    style={{ left: `${left}px`, top: `${top}px` }}
+                  >
+                    <div className="flex min-w-0 flex-col gap-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={!currentSessionId}
+                          className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#8fa79b] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                            activeAnnotationPanel === "pen"
+                              ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(143,167,155,0.22)]"
+                              : "bg-white text-[#111827] hover:bg-white/95"
+                          }`}
+                          onClick={() => {
+                            if (!currentSessionId) return;
+                            if (activeAnnotationPanel === "pen") {
+                              setActiveAnnotationPanel(null);
+                              return;
+                            }
+                            setAnnotationsEnabled(true);
+                            setAnnotationsTool("pen");
+                            setActiveAnnotationPanel("pen");
+                          }}
+                          title={!currentSessionId ? tr("realtimeStudio.text085") : tr("realtimeStudio.text086")}
+                        >
+                          <Pencil className="h-3.5 w-3.5 shrink-0" />
+                          <span className="leading-none">{tr("realtimeStudio.text086")}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!currentSessionId}
+                          className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#bba98d] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                            activeAnnotationPanel === "rect"
+                              ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(187,169,141,0.22)]"
+                              : "bg-white text-[#111827] hover:bg-white/95"
+                          }`}
+                          onClick={() => {
+                            if (!currentSessionId) return;
+                            if (activeAnnotationPanel === "rect") {
+                              setActiveAnnotationPanel(null);
+                              return;
+                            }
+                            setAnnotationsEnabled(true);
+                            setAnnotationsTool("rect");
+                            setActiveAnnotationPanel("rect");
+                          }}
+                          title={!currentSessionId ? tr("realtimeStudio.text085") : tr("realtimeStudio.text087")}
+                        >
+                          <Square className="h-3.5 w-3.5 shrink-0" />
+                          <span className="leading-none">{tr("realtimeStudio.text088")}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!currentSessionId}
+                          className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#9fb2c4] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                            activeAnnotationPanel === "text"
+                              ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(159,178,196,0.22)]"
+                              : "bg-white text-[#111827] hover:bg-white/95"
+                          }`}
+                          onClick={() => {
+                            if (!currentSessionId) return;
+                            if (activeAnnotationPanel === "text") {
+                              setActiveAnnotationPanel(null);
+                              return;
+                            }
+                            setAnnotationsEnabled(true);
+                            setAnnotationsTool("text");
+                            setActiveAnnotationPanel("text");
+                          }}
+                          title={!currentSessionId ? tr("realtimeStudio.text085") : tr("realtimeStudio.text089")}
+                        >
+                          <Type className="h-3.5 w-3.5 shrink-0" />
+                          <span className="leading-none">{tr("realtimeStudio.text090")}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!currentSessionId}
+                          className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#887bb1] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                            activeAnnotationPanel === "eraser"
+                              ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(136,123,177,0.22)]"
+                              : "bg-white text-[#111827] hover:bg-white/95"
+                          }`}
+                          onClick={() => {
+                            if (!currentSessionId) return;
+                            if (activeAnnotationPanel === "eraser") {
+                              setActiveAnnotationPanel(null);
+                              return;
+                            }
+                            setAnnotationsEnabled(true);
+                            setAnnotationsTool(
+                              annotationsTool === "erase_object" || annotationsTool === "erase_precise"
+                                ? annotationsTool
+                                : "erase_object",
+                            );
+                            setActiveAnnotationPanel("eraser");
+                          }}
+                          title={!currentSessionId ? tr("realtimeStudio.text085") : tr("realtimeStudio.text091")}
+                        >
+                          <Eraser className="h-3.5 w-3.5 shrink-0" />
+                          <span className="leading-none">{tr("realtimeStudio.text091")}</span>
+                        </button>
+
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-7 min-w-[54px] whitespace-nowrap rounded-md border border-[#887bb1] bg-[#d9d2ea] px-2 text-[11px] font-semibold text-[#111827] shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] hover:bg-[#cec6e5]"
+                          onClick={undoAnnotations}
+                          disabled={!currentSessionId || annotationsUndoRef.current.length === 0}
+                        >
+                          {tr("realtimeStudio.text100")}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-7 min-w-[54px] whitespace-nowrap rounded-md border border-[#b0737d] bg-[#e6c8ce] px-2 text-[11px] font-semibold text-[#111827] shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] hover:bg-[#ddb7bf]"
+                          onClick={clearAnnotations}
+                          disabled={!currentSessionId || activeAnnotationEmpty}
+                        >
+                          {tr("realtimeStudio.text101")}
+                        </Button>
+                        {!currentSessionId || saveAnnotationsMutation.isPending ? (
+                          <span className="text-[10px] text-[#6a627b]">
+                            {!currentSessionId ? tr("realtimeStudio.text102") : tr("realtimeStudio.text103")}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {activeAnnotationPanel ? (
+                        <div className="rounded-lg border border-[#887bb1] bg-[#d9d2ea]/95 px-3 py-2 shadow-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                              {activeAnnotationPanel === "pen" ? (
+                                <div className="flex min-w-[220px] flex-1 items-center gap-2">
+                                  <AnnotationWidthSlider
+                                    min={1}
+                                    max={24}
+                                    value={annotationPenWidth}
+                                    onChange={setAnnotationPenWidth}
+                                    thumbMinPx={5}
+                                    thumbMaxPx={15}
+                                    aria-label={tr("realtimeStudio.text092")}
+                                  />
+                                  <AnnotationColorPopover
+                                    swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                                    value={annotationPenColor}
+                                    onChange={setAnnotationPenColor}
+                                  />
+                                </div>
+                              ) : null}
+
+                              {activeAnnotationPanel === "rect" ? (
+                                <div className="flex min-w-[220px] flex-1 items-center gap-2">
+                                  <AnnotationWidthSlider
+                                    min={1}
+                                    max={16}
+                                    value={annotationRectStrokeWidth}
+                                    onChange={setAnnotationRectStrokeWidth}
+                                    thumbMinPx={5}
+                                    thumbMaxPx={14}
+                                    aria-label={tr("realtimeStudio.text093")}
+                                  />
+                                  <AnnotationColorPopover
+                                    swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                                    value={annotationRectColor}
+                                    onChange={setAnnotationRectColor}
+                                  />
+                                </div>
+                              ) : null}
+
+                              {activeAnnotationPanel === "text" ? (
+                                <div className="flex items-center gap-2">
+                                  <AnnotationColorPopover
+                                    swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                                    value={annotationTextColor}
+                                    onChange={setAnnotationTextColor}
+                                  />
+                                  <span className="text-[10px] font-medium text-[#6a627b]">
+                                    {tr("realtimeStudio.text094")}
+                                  </span>
+                                </div>
+                              ) : null}
+
+                              {activeAnnotationPanel === "eraser" ? (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {ERASER_WIDTH_PRESETS.map(({ w, dot }) => {
+                                    const active =
+                                      annotationsTool === "erase_precise" &&
+                                      nearestEraserPresetWidth(annotationEraserWidth) === w;
+                                    return (
+                                      <button
+                                        key={w}
+                                        type="button"
+                                        title={`${tr("realtimeStudio.text095")} ${w}px`}
+                                        aria-label={`${tr("realtimeStudio.text096")} ${w}`}
+                                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                                          active
+                                            ? "border-[#887bb1] bg-[#cec6e5] text-[#2d2545]"
+                                            : "border-[#9a8bc2] bg-[#ebe6f6] text-[#4a3f6b] hover:bg-[#ddd4ef]"
+                                        }`}
+                                        onClick={() => {
+                                          setAnnotationsEnabled(true);
+                                          setAnnotationsTool("erase_precise");
+                                          setAnnotationEraserWidth(w);
+                                        }}
+                                      >
+                                        <span
+                                          className="shrink-0 rounded-full bg-current opacity-90"
+                                          style={{ width: dot, height: dot }}
+                                          aria-hidden
+                                        />
+                                      </button>
+                                    );
+                                  })}
+                                  <button
+                                    type="button"
+                                    title={tr("realtimeStudio.text097")}
+                                    aria-label={tr("realtimeStudio.text098")}
+                                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                                      annotationsTool === "erase_object"
+                                        ? "border-[#887bb1] bg-[#cec6e5] text-[#2d2545]"
+                                        : "border-[#9a8bc2] bg-[#ebe6f6] text-[#4a3f6b] hover:bg-[#ddd4ef]"
+                                    }`}
+                                    onClick={() => {
+                                      setAnnotationsEnabled(true);
+                                      setAnnotationsTool("erase_object");
+                                    }}
+                                  >
+                                    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                                      <path
+                                        d="M3.5 3.5l7 7M10.5 3.5l-7 7"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="1.75"
+                                        strokeLinecap="round"
+                                      />
+                                    </svg>
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button"
+                              className="inline-flex h-7 shrink-0 items-center justify-center rounded-md border border-[#887bb1] bg-[#cec6e5] px-2 text-[11px] font-semibold text-[#2d2545] hover:bg-[#c1b7df]"
+                              onClick={() => {
+                                setAnnotationsEnabled(false);
+                                setActiveAnnotationPanel(null);
+                              }}
+                            >
+                              {tr("realtimeStudio.text099")}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })() : null}
+            </>,
+            document.body,
+          )
+        : null}
 
       {detailDrawerPortalReady
         ? createPortal(

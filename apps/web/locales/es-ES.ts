@@ -431,6 +431,7 @@ export const esES = {
   "realtimeStudio.notice.graphDownloaded": "Descarga del SVG del gráfico iniciada.",
   "realtimeStudio.notice.titleSavedSynced": "Nombre de sesión guardado y sincronizado con el historial.",
   "realtimeStudio.notice.titleSavedLocal": "Nombre de sesión guardado y se usará al crear la sesión.",
+  "realtimeStudio.notice.canvasSwitched": "Se cambió a un nuevo lienzo.",
   "realtimeStudio.common.retry": "Reintentar",
   "realtimeStudio.rollback.editTitle": "Editar entrada histórica del nodo de rollback",
   "realtimeStudio.rollback.editDescription": "Al guardar se sobrescribirá la línea de tiempo posterior y se regenerará desde aquí.",

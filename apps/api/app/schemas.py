@@ -206,6 +206,15 @@ class RealtimeTimelineResponse(BaseModel):
     nodes: list[RealtimeTimelineNode] = Field(default_factory=list)
 
 
+class RealtimeTimelineNameRequest(BaseModel):
+    snapshot_ids: list[str] = Field(min_length=1, max_length=120)
+
+
+class RealtimeTimelineNameResponse(BaseModel):
+    session_id: str
+    labels: dict[str, str] = Field(default_factory=dict)
+
+
 class RealtimeRollbackRequest(BaseModel):
     snapshot_id: str
 

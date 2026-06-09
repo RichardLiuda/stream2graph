@@ -431,6 +431,7 @@ export const deDE = {
   "realtimeStudio.notice.graphDownloaded": "Graph SVG download started.",
   "realtimeStudio.notice.titleSavedSynced": "Session name saved and synced to the history list.",
   "realtimeStudio.notice.titleSavedLocal": "Session name saved and will be used when creating the session.",
+  "realtimeStudio.notice.canvasSwitched": "Zu einer neuen Zeichenfläche gewechselt.",
   "realtimeStudio.common.retry": "Erneut versuchen",
   "realtimeStudio.rollback.editTitle": "Edit History Input for Rollback Node",
   "realtimeStudio.rollback.editDescription": "Saving will overwrite the timeline after this node and regenerate from here.",

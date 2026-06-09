@@ -840,6 +840,9 @@ function MermaidCardBody({
   /** @description Realtime 嵌入时固定浅色画布 token */
   fixedLightCanvas = false,
   panZoomControlsOffsetTop = 12,
+  onCanvasPrev,
+  onCanvasNext,
+  hasMultipleCanvases = false,
 }: {
   title: string;
   code: string;
@@ -879,6 +882,12 @@ function MermaidCardBody({
   hoverFocusEnabled?: boolean;
   fixedLightCanvas?: boolean;
   panZoomControlsOffsetTop?: number;
+  /** @description 切换到前一张画布 */
+  onCanvasPrev?: () => void;
+  /** @description 切换到后一张画布 */
+  onCanvasNext?: () => void;
+  /** @description 是否存在多张画布 */
+  hasMultipleCanvases?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
   const [diagramExpanded, setDiagramExpanded] = useState(defaultDiagramExpanded);
@@ -1623,6 +1632,9 @@ function MermaidCardBody({
               initialScale={1}
               initialOffset={{ x: 0, y: 0 }}
               controlsOffsetTop={panZoomControlsOffsetTop}
+              onCanvasPrev={onCanvasPrev}
+              onCanvasNext={onCanvasNext}
+              hasMultipleCanvases={hasMultipleCanvases}
               overlay={
                 interactiveRelayoutEnabled ? (
                   <div className="rounded-md border border-theme-default bg-surface-muted px-2.5 py-1.5 text-[11px] leading-snug text-theme-3 shadow-lg backdrop-blur-[2px]">
@@ -1814,6 +1826,12 @@ export function MermaidCard(props: {
   hoverFocusEnabled?: boolean;
   fixedLightCanvas?: boolean;
   panZoomControlsOffsetTop?: number;
+  /** @description 切换到前一张画布 */
+  onCanvasPrev?: () => void;
+  /** @description 切换到后一张画布 */
+  onCanvasNext?: () => void;
+  /** @description 是否存在多张画布 */
+  hasMultipleCanvases?: boolean;
 }) {
   return (
     <ErrorBoundary
