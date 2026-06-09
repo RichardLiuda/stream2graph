@@ -253,6 +253,413 @@ const TRANSCRIPT_PRESETS: TranscriptPreset[] = [
   },
 ];
 
+const DEMO_SESSION_ID = "demo-acmmm-scripted-session";
+const DEMO_PLAYBACK_INTERVAL_MS = 1450;
+const DEMO_STAGE_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#c2410c", "#be123c", "#475569"];
+
+type DemoTurn = {
+  speaker: string;
+  text: string;
+  intent: string;
+};
+
+type DemoGraphNode = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  created_frame: number;
+  group: string;
+};
+
+type DemoGraphEdge = {
+  from: string;
+  to: string;
+  label: string;
+  created_frame: number;
+};
+
+const DEMO_TURNS: DemoTurn[] = [
+  {
+    speaker: "PI",
+    intent: "goal",
+    text: "For the demo track, I want the audience to see a long meeting transcript turn into an evolving graph without waiting for live typing.",
+  },
+  {
+    speaker: "Engineer",
+    intent: "streaming_input",
+    text: "The first layer is the streaming transcript. Every finalized turn is appended as evidence and the graph only exposes the stable structure.",
+  },
+  {
+    speaker: "Designer",
+    intent: "speaker_context",
+    text: "We should preserve speaker roles, because the audience needs to know which requirements came from the PI, the engineer, and the evaluator.",
+  },
+  {
+    speaker: "Engineer",
+    intent: "incremental_gate",
+    text: "A lightweight gate decides whether a turn adds a new concept, refines an existing relation, or should simply remain transcript evidence.",
+  },
+  {
+    speaker: "Researcher",
+    intent: "planner_update",
+    text: "Then the planner creates a small delta instead of redrawing the whole diagram, which is the core incremental behavior we want to highlight.",
+  },
+  {
+    speaker: "Engineer",
+    intent: "mental_map",
+    text: "The renderer keeps node positions stable, so the graph grows around existing anchors and the mental map does not jump between updates.",
+  },
+  {
+    speaker: "Evaluator",
+    intent: "metrics",
+    text: "For ACMMM, we should show measurable signals: latency, flicker, intent accuracy, and structure readability in the report panel.",
+  },
+  {
+    speaker: "PI",
+    intent: "dataset",
+    text: "The data story should mention dialogue samples, reference graphs, and replayable sessions, because reviewers will ask how the behavior is evaluated.",
+  },
+  {
+    speaker: "Designer",
+    intent: "evidence",
+    text: "When a viewer clicks a graph node, the demo should reveal the transcript turns that justify it instead of treating the graph as magic.",
+  },
+  {
+    speaker: "Engineer",
+    intent: "export",
+    text: "At the end, we export the final Mermaid graph, annotations, and a session report so the demo has a clean artifact trail.",
+  },
+  {
+    speaker: "Evaluator",
+    intent: "failure_modes",
+    text: "We also need to acknowledge failure modes: ambiguous turns, delayed updates, and rollback when a transcript correction changes the graph.",
+  },
+  {
+    speaker: "PI",
+    intent: "demo_script",
+    text: "The screen recording can now run this fixed script automatically, while I narrate how the graph grows from left to right.",
+  },
+  {
+    speaker: "Researcher",
+    intent: "paper_claim",
+    text: "The final claim is not that the system draws pretty diagrams, but that it maintains a continuously inspectable structure during conversation.",
+  },
+  {
+    speaker: "PI",
+    intent: "wrap_up",
+    text: "Great. Let the demo finish on the complete graph with evidence, metrics, and export controls visible for the reviewers.",
+  },
+];
+
+const DEMO_GRAPH_NODES: DemoGraphNode[] = [
+  { id: "demo_goal", label: "ACMMM Demo Goal", x: 80, y: 130, created_frame: 1, group: "framing" },
+  { id: "stream_transcript", label: "Streaming Transcript", x: 250, y: 90, created_frame: 2, group: "conversation" },
+  { id: "speaker_roles", label: "Speaker Roles", x: 250, y: 190, created_frame: 3, group: "conversation" },
+  { id: "gate", label: "Incremental Gate", x: 430, y: 95, created_frame: 4, group: "pipeline" },
+  { id: "planner_delta", label: "Planner Delta", x: 600, y: 95, created_frame: 5, group: "pipeline" },
+  { id: "stable_layout", label: "Stable Layout", x: 765, y: 95, created_frame: 6, group: "pipeline" },
+  { id: "metrics", label: "Live Metrics", x: 610, y: 230, created_frame: 7, group: "evaluation" },
+  { id: "dataset", label: "Dialogue Dataset", x: 430, y: 300, created_frame: 8, group: "evaluation" },
+  { id: "evidence", label: "Evidence Binding", x: 775, y: 230, created_frame: 9, group: "evaluation" },
+  { id: "exports", label: "Export Artifacts", x: 940, y: 230, created_frame: 10, group: "delivery" },
+  { id: "rollback", label: "Rollback Path", x: 610, y: 370, created_frame: 11, group: "resilience" },
+  { id: "scripted_demo", label: "Scripted Playback", x: 80, y: 300, created_frame: 12, group: "framing" },
+  { id: "paper_claim", label: "Paper Claim", x: 775, y: 370, created_frame: 13, group: "delivery" },
+  { id: "reviewer_view", label: "Reviewer View", x: 940, y: 370, created_frame: 14, group: "delivery" },
+];
+
+const DEMO_GRAPH_EDGES: DemoGraphEdge[] = [
+  { from: "demo_goal", to: "stream_transcript", label: "uses", created_frame: 2 },
+  { from: "stream_transcript", to: "speaker_roles", label: "keeps roles", created_frame: 3 },
+  { from: "stream_transcript", to: "gate", label: "feeds", created_frame: 4 },
+  { from: "gate", to: "planner_delta", label: "emits intent", created_frame: 5 },
+  { from: "planner_delta", to: "stable_layout", label: "updates", created_frame: 6 },
+  { from: "planner_delta", to: "metrics", label: "logs", created_frame: 7 },
+  { from: "dataset", to: "metrics", label: "validates", created_frame: 8 },
+  { from: "stream_transcript", to: "evidence", label: "supports", created_frame: 9 },
+  { from: "evidence", to: "exports", label: "packages", created_frame: 10 },
+  { from: "rollback", to: "planner_delta", label: "recomputes", created_frame: 11 },
+  { from: "scripted_demo", to: "stream_transcript", label: "replays", created_frame: 12 },
+  { from: "stable_layout", to: "paper_claim", label: "supports", created_frame: 13 },
+  { from: "exports", to: "reviewer_view", label: "shows", created_frame: 14 },
+  { from: "paper_claim", to: "reviewer_view", label: "frames", created_frame: 14 },
+];
+
+const DEMO_GRAPH_GROUPS = [
+  { id: "framing", label: "Demo Framing" },
+  { id: "conversation", label: "Conversation Signal" },
+  { id: "pipeline", label: "Incremental Pipeline" },
+  { id: "evaluation", label: "Evidence + Evaluation" },
+  { id: "resilience", label: "Correction Path" },
+  { id: "delivery", label: "Demo Delivery" },
+];
+
+function demoStageColor(stageIndex: number) {
+  return DEMO_STAGE_COLORS[(Math.max(1, stageIndex) - 1) % DEMO_STAGE_COLORS.length] || DEMO_STAGE_COLORS[0];
+}
+
+function demoMetadata(stageIndex: number, extra: Record<string, unknown> = {}) {
+  return {
+    incremental_stage_index: stageIndex,
+    incremental_stage_indices: [stageIndex],
+    incremental_stage_color: demoStageColor(stageIndex),
+    turn_id: stageIndex,
+    turn_ids: [stageIndex],
+    ...extra,
+  };
+}
+
+function mermaidEscape(value: string) {
+  return value.replace(/"/g, '\\"');
+}
+
+function buildDemoTranscriptTurn(turn: DemoTurn, index: number): RealtimeTranscriptTurn {
+  const startMs = index * 1850;
+  return makeTranscriptTurn({
+    speaker: turn.speaker,
+    text: turn.text,
+    start_ms: startMs,
+    end_ms: startMs + 1450,
+    is_final: true,
+    source: "demo_script",
+    capture_mode: "scripted_playback",
+  });
+}
+
+function buildDemoMermaidCode(nodes: DemoGraphNode[], edges: DemoGraphEdge[]) {
+  if (!nodes.length) return "flowchart LR\n  Empty[\"Waiting for demo playback\"]";
+  const nodesByGroup = new Map<string, DemoGraphNode[]>();
+  nodes.forEach((node) => {
+    const bucket = nodesByGroup.get(node.group) || [];
+    bucket.push(node);
+    nodesByGroup.set(node.group, bucket);
+  });
+
+  const lines = ["flowchart LR"];
+  DEMO_GRAPH_GROUPS.forEach((group) => {
+    const members = nodesByGroup.get(group.id);
+    if (!members?.length) return;
+    lines.push(`  subgraph ${group.id}["${mermaidEscape(group.label)}"]`);
+    members.forEach((node) => {
+      lines.push(`    ${node.id}["${mermaidEscape(node.label)}"]`);
+    });
+    lines.push("  end");
+  });
+  edges.forEach((edge) => {
+    lines.push(`  ${edge.from} -->|${mermaidEscape(edge.label)}| ${edge.to}`);
+  });
+  DEMO_STAGE_COLORS.forEach((color, index) => {
+    lines.push(`  classDef demoStage${index + 1} fill:${color}22,stroke:${color},color:#111827,stroke-width:2px`);
+  });
+  nodes.forEach((node) => {
+    lines.push(`  class ${node.id} demoStage${((node.created_frame - 1) % DEMO_STAGE_COLORS.length) + 1}`);
+  });
+  return lines.join("\n");
+}
+
+function buildDemoSnapshot(step: number) {
+  const visibleStep = Math.max(0, Math.min(step, DEMO_TURNS.length));
+  const visibleTurns = DEMO_TURNS.slice(0, visibleStep).map(buildDemoTranscriptTurn);
+  const visibleNodes = DEMO_GRAPH_NODES.filter((node) => node.created_frame <= visibleStep);
+  const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
+  const visibleEdges = DEMO_GRAPH_EDGES.filter(
+    (edge) => edge.created_frame <= visibleStep && visibleNodeIds.has(edge.from) && visibleNodeIds.has(edge.to),
+  );
+  const visibleGroups = DEMO_GRAPH_GROUPS.map((group) => ({
+    ...group,
+    member_ids: visibleNodes.filter((node) => node.group === group.id).map((node) => node.id),
+    metadata: demoMetadata(Math.max(1, visibleNodes.find((node) => node.group === group.id)?.created_frame || 1)),
+  })).filter((group) => group.member_ids.length);
+  const incrementalStages = DEMO_TURNS.slice(0, visibleStep).map((turn, index) => ({
+    stage_index: index + 1,
+    stage_color: demoStageColor(index + 1),
+    concepts: [
+      turn.intent,
+      ...DEMO_GRAPH_NODES.filter((node) => node.created_frame === index + 1).map((node) => node.label),
+    ],
+    delta_ops_count:
+      DEMO_GRAPH_NODES.filter((node) => node.created_frame === index + 1).length +
+      DEMO_GRAPH_EDGES.filter((edge) => edge.created_frame === index + 1).length,
+  }));
+  const graphNodes = visibleNodes.map((node) => ({
+    id: node.id,
+    label: node.label,
+    kind: "concept",
+    metadata: demoMetadata(node.created_frame, { speaker: DEMO_TURNS[node.created_frame - 1]?.speaker || "" }),
+  }));
+  const graphEdges = visibleEdges.map((edge, index) => ({
+    id: `${edge.from}_${edge.to}_${index}`,
+    source: edge.from,
+    target: edge.to,
+    label: edge.label,
+    kind: "relation",
+    source_index: index,
+    metadata: demoMetadata(edge.created_frame),
+  }));
+  const rendererNodes = visibleNodes.map((node) => ({
+    id: node.id,
+    label: node.label,
+    x: node.x,
+    y: node.y,
+    created_frame: node.created_frame,
+    metadata: demoMetadata(node.created_frame),
+  }));
+  const rendererEdges = visibleEdges.map((edge) => ({
+    from: edge.from,
+    to: edge.to,
+    created_frame: edge.created_frame,
+    metadata: demoMetadata(edge.created_frame, { label: edge.label }),
+  }));
+  const now = Date.now();
+  const latestTurn = visibleTurns[visibleTurns.length - 1] ?? null;
+
+  return {
+    session_id: DEMO_SESSION_ID,
+    pipeline: {
+      transcript_state: {
+        latest_final_turn: latestTurn,
+        current_turn: latestTurn,
+        archived_recent_turns: visibleTurns.slice(0, -1).reverse(),
+        recent_turns: visibleTurns.slice().reverse(),
+        turn_count: visibleTurns.length,
+        speaker_count: new Set(visibleTurns.map((turn) => turn.speaker)).size,
+        chunk_count: visibleTurns.length,
+      },
+      events: DEMO_TURNS.slice(0, visibleStep).map((turn, index) => ({
+        update: {
+          update_id: index + 1,
+          intent_type: turn.intent,
+          transcript_text: turn.text,
+          start_ms: index * 1850,
+          end_ms: index * 1850 + 1450,
+        },
+        gate: {
+          action: turn.intent,
+          confidence: 0.91,
+        },
+        pending_turns: [
+          {
+            turn_id: index + 1,
+            speaker: turn.speaker,
+            content: turn.text,
+            timestamp_ms: index * 1850,
+            end_ms: index * 1850 + 1450,
+            capture_mode: "scripted_playback",
+          },
+        ],
+      })),
+      renderer_state: {
+        nodes: rendererNodes,
+        edges: rendererEdges,
+        groups: visibleGroups,
+      },
+      graph_state: {
+        current_graph_ir: {
+          nodes: graphNodes,
+          groups: visibleGroups.map((group) => ({
+            id: group.id,
+            label: group.label,
+            metadata: group.metadata,
+          })),
+          edges: graphEdges,
+          metadata: {
+            incremental_stages: incrementalStages,
+            demo_mode: true,
+          },
+        },
+      },
+      gate_state: {
+        status: visibleStep ? "success" : "idle",
+        action: latestTurn ? DEMO_TURNS[visibleStep - 1]?.intent : "waiting",
+        last_action: latestTurn ? DEMO_TURNS[visibleStep - 1]?.intent : "waiting",
+      },
+      planner_state: {
+        status: visibleStep ? "delta_applied" : "waiting",
+        delta_ops_count:
+          DEMO_GRAPH_NODES.filter((node) => node.created_frame === visibleStep).length +
+          DEMO_GRAPH_EDGES.filter((edge) => edge.created_frame === visibleStep).length,
+      },
+      mermaid_state: {
+        code: buildDemoMermaidCode(visibleNodes, visibleEdges),
+        normalized_code: buildDemoMermaidCode(visibleNodes, visibleEdges),
+        provider: "Scripted demo",
+        model: "ACMMM playback",
+        latency_ms: 180 + visibleStep * 11,
+        compile_ok: true,
+        render_ok: true,
+        updated_at: String(now),
+      },
+      coordination_summary: {
+        mode: "scripted_demo",
+        visible_turns: visibleStep,
+        total_turns: DEMO_TURNS.length,
+      },
+    },
+    evaluation: {
+      metrics: {
+        e2e_latency_p95_ms: visibleStep ? 428 : "-",
+        intent_accuracy: visibleStep >= 4 ? 0.92 : "-",
+        flicker_mean: visibleStep >= 6 ? 0.08 : "-",
+        mental_map_mean: visibleStep >= 6 ? 0.91 : "-",
+      },
+      realtime_eval_pass: visibleStep >= DEMO_TURNS.length,
+    },
+  };
+}
+
+function buildDemoTimelineNodes(step: number): RealtimeTimelineNode[] {
+  const visibleStep = Math.max(0, Math.min(step, DEMO_TURNS.length));
+  const baseTime = Date.parse("2026-06-01T09:00:00.000Z");
+  return DEMO_TURNS.slice(0, visibleStep)
+    .map((turn, index) => ({
+      snapshot_id: `${DEMO_SESSION_ID}-${index + 1}`,
+      created_at: new Date(baseTime + index * 1850).toISOString(),
+      summary: {
+        demo_step: index + 1,
+        speaker: turn.speaker,
+        intent: turn.intent,
+      },
+      event_count: index + 1,
+      chunk_count: index + 1,
+      label: `Demo ${index + 1}`,
+    }))
+    .reverse();
+}
+
+function buildDemoHistoryTurns(step: number): TranscriptHistoryItem[] {
+  return DEMO_TURNS.slice(0, Math.max(0, Math.min(step, DEMO_TURNS.length)))
+    .map((turn, index) =>
+      makeTranscriptHistoryItem(buildDemoTranscriptTurn(turn, index), "local", `demo_${index + 1}`, index * 1850 + 1450),
+    )
+    .reverse();
+}
+
+function readIncrementalStageSummaries(graphPayload: Record<string, any> | null | undefined) {
+  const stages = graphPayload?.metadata?.incremental_stages;
+  if (!Array.isArray(stages)) return [];
+  return stages
+    .map((stage: Record<string, unknown>) => {
+      const stageIndex = Number(stage?.stage_index ?? stage?.stageIndex ?? 0);
+      if (!Number.isFinite(stageIndex) || stageIndex <= 0) return null;
+      const concepts = Array.isArray(stage.concepts)
+        ? stage.concepts.map((item) => String(item)).filter(Boolean)
+        : [];
+      return {
+        stageIndex,
+        color:
+          typeof stage.stage_color === "string" && stage.stage_color.trim()
+            ? stage.stage_color.trim()
+            : demoStageColor(stageIndex),
+        concepts,
+        deltaOpCount: Number(stage.delta_ops_count ?? stage.deltaOpCount ?? 0) || 0,
+      };
+    })
+    .filter((stage): stage is { stageIndex: number; color: string; concepts: string[]; deltaOpCount: number } =>
+      Boolean(stage),
+    );
+}
+
 function parseTranscriptInput(raw: string): TranscriptRow[] {
   return raw
     .split("\n")
@@ -1238,6 +1645,43 @@ function ReplayStatusPanel({
   );
 }
 
+function DemoStatusPanel({
+  active,
+  playing,
+  currentStep,
+}: {
+  active: boolean;
+  playing: boolean;
+  currentStep: number;
+}) {
+  if (!active) return null;
+  const turn = currentStep > 0 ? DEMO_TURNS[currentStep - 1] : null;
+  return (
+    <aside className="pointer-events-auto absolute right-4 top-20 z-[24] w-[min(360px,calc(100%-2rem))] rounded-xl border border-theme-default bg-surface-1/95 px-4 py-3 shadow-xl backdrop-blur-md">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-theme-4">
+          {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+          Demo Mode
+        </div>
+        <Badge>
+          {currentStep}/{DEMO_TURNS.length}
+        </Badge>
+      </div>
+      <div className="mt-3 rounded-lg border border-theme-default bg-surface-2/80 px-3 py-2">
+        <div className="text-[11px] font-semibold text-theme-4">Scripted turn</div>
+        {turn ? (
+          <>
+            <div className="mt-1 text-xs font-semibold text-theme-1">{turn.speaker}</div>
+            <p className="mt-1 line-clamp-3 text-xs leading-5 text-theme-2">{turn.text}</p>
+          </>
+        ) : (
+          <div className="mt-1 text-xs text-theme-3">Ready to play the fixed ACMMM walkthrough.</div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
 function downloadAnnotationsSvg(filename: string, exportHostId: string, missingMessage: string) {
   const host = document.getElementById(exportHostId);
   const svg = host?.querySelector("svg");
@@ -1511,6 +1955,11 @@ export function RealtimeStudio() {
   }, [inputSourceMenuOpen]);
   /** @description 客户端挂载后再 portal，避免 SSR 访问 `document` */
   const [detailDrawerPortalReady, setDetailDrawerPortalReady] = useState(false);
+  /** @description 工作台弹出面板 portal 就绪状态，避免 SSR 访问 document */
+  const [workbenchPortalReady, setWorkbenchPortalReady] = useState(false);
+  /** @description 工作台面板按钮容器 ref，用于计算 portal 弹出位置 */
+  const processButtonRef = useRef<HTMLDivElement | null>(null);
+  const notesButtonRef = useRef<HTMLDivElement | null>(null);
   /** @description 主舞台 Tab，用于顶栏与「主图」徽章联动 */
   const [stageTab, setStageTab] = useState("mermaid");
   const [hoveredWorkbenchPanel, setHoveredWorkbenchPanel] = useState<WorkbenchDockPanel | null>(null);
@@ -1542,6 +1991,9 @@ export function RealtimeStudio() {
   const [rollbackPreview, setRollbackPreview] = useState<RealtimeRollbackPreviewPayload | null>(null);
   const [autoFollowLatestTimelineNode, setAutoFollowLatestTimelineNode] = useState(true);
   const [selectedGraphEvidence, setSelectedGraphEvidence] = useState<MermaidEvidenceSelection | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
+  const [demoPlaying, setDemoPlaying] = useState(false);
+  const [demoStep, setDemoStep] = useState(0);
   const [replayMode, setReplayMode] = useState(false);
   const [replayPlaying, setReplayPlaying] = useState(false);
   const [replayIndex, setReplayIndex] = useState(0);
@@ -1679,6 +2131,7 @@ export function RealtimeStudio() {
   }, [annotationsQuery.data, annotationsQuery.isSuccess, currentSessionId]);
 
   useEffect(() => {
+    if (demoMode) return;
     if (!currentSessionId) return;
     const payloadKey = JSON.stringify(annotationsState.payload || {});
     if (!payloadKey || payloadKey === lastSavedAnnotationsRef.current) return;
@@ -1701,7 +2154,7 @@ export function RealtimeStudio() {
     }, 900);
 
     return () => window.clearTimeout(t);
-  }, [annotationsState, currentSessionId, saveAnnotationsMutation]);
+  }, [annotationsState, currentSessionId, demoMode, saveAnnotationsMutation]);
 
   const onMermaidAnnotationsChange = (next: AnnotationDoc) => {
     setAnnotationsState((prev) => {
@@ -1807,6 +2260,7 @@ export function RealtimeStudio() {
 
   useEffect(() => {
     setDetailDrawerPortalReady(true);
+    setWorkbenchPortalReady(true);
   }, []);
 
   useEffect(() => {
@@ -1842,6 +2296,9 @@ export function RealtimeStudio() {
 
   useEffect(() => {
     setSelectedGraphEvidence(null);
+    setDemoMode(false);
+    setDemoPlaying(false);
+    setDemoStep(0);
     setReplayMode(false);
     setReplayPlaying(false);
     setReplayIndex(0);
@@ -1881,7 +2338,9 @@ export function RealtimeStudio() {
     staleTime: 5_000,
     retry: false,
   });
-  const timelineNodes = timelineQuery.data?.session_id === currentSessionId ? timelineQuery.data.nodes : [];
+  const serverTimelineNodes = timelineQuery.data?.session_id === currentSessionId ? timelineQuery.data.nodes : [];
+  const demoTimelineNodes = useMemo(() => buildDemoTimelineNodes(demoStep), [demoStep]);
+  const timelineNodes = demoMode ? demoTimelineNodes : serverTimelineNodes;
   const orderedTimelineNodes = useMemo(() => [...timelineNodes].reverse(), [timelineNodes]);
   const selectedTimelineNode = useMemo(
     () => timelineNodes.find((node) => node.snapshot_id === selectedTimelineSnapshotId) ?? null,
@@ -1933,7 +2392,7 @@ export function RealtimeStudio() {
     return code.trim();
   }, [rollbackPreview]);
   const currentSessionClosed =
-    currentSession?.status === "closed" || closedSessionMeta?.sessionId === currentSessionId;
+    !demoMode && (currentSession?.status === "closed" || closedSessionMeta?.sessionId === currentSessionId);
 
   useEffect(() => {
     const latestSnapshotId = timelineNodes[0]?.snapshot_id ?? null;
@@ -1956,10 +2415,11 @@ export function RealtimeStudio() {
   }, [autoFollowLatestTimelineNode, selectedTimelineSnapshotId, timelineNodes]);
 
   useEffect(() => {
+    if (demoMode) return;
     if (!currentSessionId || !selectedTimelineSnapshotId) return;
     if (!timelineNodes.some((node) => node.snapshot_id === selectedTimelineSnapshotId)) return;
     rollbackPreviewMutation.mutate({ sessionId: currentSessionId, snapshotId: selectedTimelineSnapshotId });
-  }, [currentSessionId, selectedTimelineSnapshotId, timelineNodes]);
+  }, [currentSessionId, demoMode, selectedTimelineSnapshotId, timelineNodes]);
 
   useEffect(() => {
     if (!replayMode) return;
@@ -2029,6 +2489,16 @@ export function RealtimeStudio() {
   }, [isTimelineScrollable]);
 
   const handleTimelineNodeSelect = (node: RealtimeTimelineNode) => {
+    if (demoMode) {
+      const nextStep = Number(node.summary?.demo_step ?? 0);
+      if (Number.isFinite(nextStep) && nextStep > 0) {
+        setDemoStep(Math.min(nextStep, DEMO_TURNS.length));
+      }
+      setDemoPlaying(false);
+      setSelectedTimelineSnapshotId(node.snapshot_id);
+      setAutoFollowLatestTimelineNode(node.snapshot_id === timelineNodes[0]?.snapshot_id);
+      return;
+    }
     setSelectedTimelineSnapshotId(node.snapshot_id);
     setAutoFollowLatestTimelineNode(!replayMode && node.snapshot_id === timelineNodes[0]?.snapshot_id);
     if (replayMode) {
@@ -2065,6 +2535,60 @@ export function RealtimeStudio() {
     setReplayPlaying(false);
     setReplayIndex((index) => Math.min(Math.max(index + direction, 0), replayNodes.length - 1));
   };
+
+  const enterDemoMode = () => {
+    clearFeedback();
+    setDemoMode(true);
+    setReplayMode(false);
+    setReplayPlaying(false);
+    setTranscriptPanelTab("history");
+    setStageTab("mermaid");
+    setSelectedGraphEvidence(null);
+    setRollbackPreview(null);
+    setAutoFollowLatestTimelineNode(true);
+  };
+
+  const toggleDemoPlayback = () => {
+    enterDemoMode();
+    setDemoStep((step) => (step >= DEMO_TURNS.length ? 0 : step));
+    setDemoPlaying((playing) => !playing);
+  };
+
+  const stepDemoPlayback = (direction: -1 | 1) => {
+    enterDemoMode();
+    setDemoPlaying(false);
+    setDemoStep((step) => Math.min(Math.max(step + direction, 0), DEMO_TURNS.length));
+  };
+
+  const resetDemoPlayback = () => {
+    enterDemoMode();
+    setDemoPlaying(false);
+    setDemoStep(0);
+    setSelectedTimelineSnapshotId(null);
+  };
+
+  const exitDemoMode = () => {
+    setDemoMode(false);
+    setDemoPlaying(false);
+    setDemoStep(0);
+    setSelectedTimelineSnapshotId(null);
+    setSelectedGraphEvidence(null);
+    setRollbackPreview(null);
+  };
+
+  useEffect(() => {
+    if (!demoMode || !demoPlaying) return;
+    const timer = window.setTimeout(() => {
+      setDemoStep((step) => {
+        if (step >= DEMO_TURNS.length) {
+          setDemoPlaying(false);
+          return step;
+        }
+        return step + 1;
+      });
+    }, demoStep === 0 ? 250 : DEMO_PLAYBACK_INTERVAL_MS);
+    return () => window.clearTimeout(timer);
+  }, [demoMode, demoPlaying, demoStep]);
 
   useEffect(() => {
     if (!effectiveError) return;
@@ -3059,6 +3583,7 @@ export function RealtimeStudio() {
   }
 
   useEffect(() => {
+    if (demoMode) return;
     if (!currentSessionId) return;
     // Avoid creating a new timeline node on every page refresh.
     // Only bootstrap a snapshot when timeline data has loaded and is truly empty.
@@ -3067,7 +3592,23 @@ export function RealtimeStudio() {
       snapshotMutation.mutate(currentSessionId);
     // `useMutation()` returns a new object identity per render; this effect is driven by timeline state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSessionId, timelineNodes.length, timelineQuery.isSuccess]);
+  }, [currentSessionId, demoMode, timelineNodes.length, timelineQuery.isSuccess]);
+
+  // Auto-name unlabeled timeline nodes using AI
+  const namingRequestedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (demoMode) return;
+    if (!currentSessionId) return;
+    if (!timelineQuery.isSuccess) return;
+    if (nameTimelineMutation.isPending) return;
+    const unlabeledIds = timelineNodes
+      .filter((node) => !node.label && !namingRequestedRef.current.has(node.snapshot_id))
+      .map((node) => node.snapshot_id);
+    if (unlabeledIds.length === 0) return;
+    unlabeledIds.forEach((id) => namingRequestedRef.current.add(id));
+    nameTimelineMutation.mutate({ sessionId: currentSessionId, snapshotIds: unlabeledIds });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId, demoMode, timelineNodes, timelineQuery.isSuccess]);
 
   useEffect(() => {
     setLocalCommittedTranscriptTurns([]);
@@ -3075,6 +3616,10 @@ export function RealtimeStudio() {
 
   useEffect(() => {
     historyFeedKeysRef.current = [];
+  }, [currentSessionId]);
+
+  useEffect(() => {
+    namingRequestedRef.current = new Set();
   }, [currentSessionId]);
 
   useEffect(() => {
@@ -3235,6 +3780,27 @@ export function RealtimeStudio() {
     onError: (err) => setError((err as Error).message),
   });
 
+  /** @description 强制切换到新画布 */
+  const switchCanvasMutation = useMutation({
+    mutationFn: (sessionId: string) => {
+      studioSend({ type: "gate.working" });
+      studioSend({ type: "planner.working" });
+      return api.switchCanvasRealtime(sessionId);
+    },
+    onSuccess: (data) => {
+      setSnapshot(data);
+      syncPipelineStatus(data.pipeline);
+      queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
+      setNotice({ tone: "success", text: tr("realtimeStudio.notice.canvasSwitched") });
+    },
+    onError: (err) => setError((err as Error).message),
+  });
+
+  function handleSwitchToNextCanvas() {
+    if (!currentSessionId || switchCanvasMutation.isPending) return;
+    switchCanvasMutation.mutate(currentSessionId);
+  }
+
   const relayoutMutation = useMutation({
     mutationFn: ({ sessionId, payload }: { sessionId: string; payload: MermaidNodeRelayoutPayload }) => {
       studioSend({ type: "planner.working" });
@@ -3377,6 +3943,16 @@ export function RealtimeStudio() {
       queryClient.invalidateQueries({ queryKey: ["realtime-sessions"] });
     },
     onError: (err) => setError((err as Error).message),
+  });
+
+  const nameTimelineMutation = useMutation({
+    mutationFn: ({ sessionId, snapshotIds }: { sessionId: string; snapshotIds: string[] }) =>
+      api.nameRealtimeTimeline(sessionId, snapshotIds),
+    onSuccess: (data) => {
+      if (data.labels && Object.keys(data.labels).length > 0) {
+        queryClient.invalidateQueries({ queryKey: ["realtime-timeline", data.session_id] });
+      }
+    },
   });
 
   const deleteSessionMutation = useMutation({
@@ -3694,24 +4270,38 @@ export function RealtimeStudio() {
     setNotice({ tone: "info", text: message });
   }
 
-  const activeSnapshot = snapshot?.session_id === currentSessionId ? snapshot : null;
+  const demoSnapshot = useMemo(() => buildDemoSnapshot(demoStep), [demoStep]);
+  const activeSnapshot = demoMode ? demoSnapshot : snapshot?.session_id === currentSessionId ? snapshot : null;
   const rendererState = activeSnapshot?.pipeline?.renderer_state || {};
   const events = useMemo<Array<Record<string, any>>>(() => {
     return Array.isArray(activeSnapshot?.pipeline?.events) ? activeSnapshot.pipeline.events : [];
   }, [activeSnapshot?.pipeline?.events]);
   const mermaidState = activeSnapshot?.pipeline?.mermaid_state ?? null;
+  /** @description 多画布状态：从 pipeline 中读取画布列表和当前激活画布索引 */
+  const canvasState = activeSnapshot?.pipeline?.canvas_state as {
+    canvases?: Array<{ canvas_id: string; title?: string }>;
+    active_canvas_index?: number;
+  } | null;
+  const canvasList = canvasState?.canvases ?? [];
+  const activeCanvasIndex = typeof canvasState?.active_canvas_index === "number" ? canvasState.active_canvas_index : 0;
+  const hasMultipleCanvases = canvasList.length > 1;
   const isSelectedTimelinePreviewReady = Boolean(
     rollbackPreviewMermaidCode &&
       selectedTimelineSnapshotId &&
       rollbackPreview?.snapshot_id === selectedTimelineSnapshotId,
   );
-  const isTimelinePreviewActive = isSelectedTimelinePreviewReady;
+  const isTimelinePreviewActive = !demoMode && isSelectedTimelinePreviewReady;
   const displayedMermaidCode = isTimelinePreviewActive
     ? rollbackPreviewMermaidCode
     : mermaidState?.code || mermaidState?.normalized_code || "";
   const rendererGroups =
     rendererState.groups || activeSnapshot?.pipeline?.graph_state?.current_graph_ir?.groups || [];
   const currentGraphPayload = activeSnapshot?.pipeline?.graph_state?.current_graph_ir ?? null;
+  const graphIncrementalStages = useMemo(
+    () => readIncrementalStageSummaries(currentGraphPayload),
+    [currentGraphPayload],
+  );
+  const activeIncrementalStageIndex = demoMode && demoStep > 0 ? demoStep : null;
   const mermaidExportRootId = "realtime-mermaid-export";
   const transcriptState = useMemo(() => readTranscriptState(activeSnapshot?.pipeline), [activeSnapshot?.pipeline]);
   const transcriptDownloads = useMemo(() => {
@@ -3744,6 +4334,7 @@ export function RealtimeStudio() {
   );
   const activeTranscriptTurn = transcriptDisplayState.activeTurn;
   const archivedTranscriptTurns = transcriptDisplayState.archivedTurns;
+  const demoHistoryTurns = useMemo(() => buildDemoHistoryTurns(demoStep), [demoStep]);
   const graphEventEvidenceTurns = useMemo(
     () => buildGraphEventEvidenceTurns(events, timelineNodes),
     [events, timelineNodes],
@@ -3780,6 +4371,7 @@ export function RealtimeStudio() {
     });
   };
   const previewArchivedTranscriptTurns = useMemo(() => {
+    if (demoMode) return demoHistoryTurns;
     if (selectedInputSource !== "transcript") return archivedTranscriptTurns;
     const rows = parseTranscriptInput(transcriptText).filter((row) => row.text.trim());
     const uniqueSpeakers = new Set(rows.map((row) => (row.speaker || "speaker").trim().toLowerCase()));
@@ -3802,7 +4394,7 @@ export function RealtimeStudio() {
       .reverse();
     if (shouldForceDraftPreview) return draftTurns;
     return archivedTranscriptTurns.length ? archivedTranscriptTurns : draftTurns;
-  }, [archivedTranscriptTurns, selectedInputSource, transcriptText]);
+  }, [archivedTranscriptTurns, demoHistoryTurns, demoMode, selectedInputSource, transcriptText]);
   const currentSubtitleText = useMemo(() => {
     const live = liveTranscript.trim();
     if (live) return live;
@@ -3810,12 +4402,12 @@ export function RealtimeStudio() {
   }, [activeTranscriptTurn, language, liveTranscript, transcriptState.latestFinalTurn]);
 
   function downloadCurrentGraph() {
-    if (!currentSessionId) {
+    if (!currentSessionId && !demoMode) {
       setError(tr("realtimeStudio.error.noDownloadableGraph"));
       return;
     }
     try {
-      const base = sanitizeDownloadFileName(titleDisplay || currentSessionId);
+      const base = sanitizeDownloadFileName(titleDisplay || currentSessionId || DEMO_SESSION_ID);
       const fileName = `${base}_graph.svg`;
       downloadCurrentMermaidSvg(mermaidExportRootId, fileName, tr("realtimeStudio.error.noDownloadableGraph"));
       const p = annotationsState.payload;
@@ -3925,6 +4517,55 @@ export function RealtimeStudio() {
 
   /** @description 主舞台顶栏：CAP/STT/GATE/PLAN/MER/model 步骤徽章（空闲=灰色，失败=红色） */
   const pipelineStages = useMemo(() => {
+    if (demoMode) {
+      const demoValue = demoPlaying ? "Playing" : demoStep > 0 ? "Paused" : "Ready";
+      const done = demoStep >= DEMO_TURNS.length;
+      const activeTone: "idle" | "working" | "success" | "error" = demoPlaying ? "working" : demoStep > 0 ? "success" : "idle";
+      return [
+        {
+          abbr: "CAP",
+          label: tr("realtimeStudio.text024"),
+          value: demoValue,
+          tone: activeTone,
+          help: "Scripted transcript playback for conference demos.",
+        },
+        {
+          abbr: "STT",
+          label: tr("realtimeStudio.text026"),
+          value: demoStep > 0 ? `${demoStep} turns` : "Waiting",
+          tone: activeTone,
+          help: "The fixed dialogue is injected locally as stable transcript turns.",
+        },
+        {
+          abbr: "GATE",
+          label: "Gate",
+          value: demoStep > 0 ? DEMO_TURNS[Math.max(0, demoStep - 1)]?.intent || "delta" : "Waiting",
+          tone: activeTone,
+          help: "Demo turns carry deterministic intent labels.",
+        },
+        {
+          abbr: "PLAN",
+          label: "Planner",
+          value: demoStep > 0 ? "Delta applied" : "Waiting",
+          tone: activeTone,
+          help: "Each step reveals only the new nodes and relations.",
+        },
+        {
+          abbr: "MER",
+          label: tr("realtimeStudio.text030"),
+          value: demoStep > 0 ? tr("realtimeStudio.text031") : tr("realtimeStudio.text023"),
+          tone: activeTone,
+          help: "The Mermaid graph is generated from the local demo snapshot.",
+        },
+        {
+          abbr: "MODEL",
+          label: tr("realtimeStudio.text033"),
+          value: done ? "Complete" : demoValue,
+          tone: done ? "success" : activeTone,
+          help: "No backend call is required in demo mode.",
+        },
+      ];
+    }
     // CAP 本身没有 success/error，由后续转写状态推断结果；capturing/uploading 期间视为进行中。
     const capTone: "idle" | "working" | "success" | "error" =
       captureStatus === "idle"
@@ -4051,6 +4692,9 @@ export function RealtimeStudio() {
     snapshotMutation.isPending,
     flushMutation.isPending,
     relayoutMutation.isPending,
+    demoMode,
+    demoPlaying,
+    demoStep,
   ]);
 
   const pipelineAllIdle = useMemo(() => pipelineStages.every((step) => step.tone === "idle"), [pipelineStages]);
@@ -4146,8 +4790,9 @@ export function RealtimeStudio() {
     }
   }
 
-  const canStartStageCapture = selectedInputSource !== "transcript" && canStartCapture;
-  const canStopStageCapture = selectedInputSource !== "transcript" && canStopCapture;
+  const canStartStageCapture = !demoMode && selectedInputSource !== "transcript" && canStartCapture;
+  const canStopStageCapture = !demoMode && selectedInputSource !== "transcript" && canStopCapture;
+  const effectiveInputLevel = demoMode ? (demoPlaying ? 0.74 : demoStep > 0 ? 0.18 : 0) : inputLevel;
   const titleDisplay =
     title.trim() ||
     tr("realtimeStudio.text039");
@@ -4680,7 +5325,7 @@ export function RealtimeStudio() {
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
                   {transcriptPanelTab === "live" ? (
-                    selectedInputSource === "transcript" ? (
+                    selectedInputSource === "transcript" && !demoMode ? (
                       <div className="flex h-full min-h-[10rem] flex-col gap-2">
                         <Textarea
                           className="min-h-[8rem] flex-1 resize-y text-[12px] leading-relaxed"
@@ -4784,11 +5429,11 @@ export function RealtimeStudio() {
                 <div className="text-sm font-semibold text-theme-1">
                   {tr("realtimeStudio.text084")}
                 </div>
-                <Badge className="text-[10px]">{Math.round(inputLevel * 100)}%</Badge>
+                <Badge className="text-[10px]">{Math.round(effectiveInputLevel * 100)}%</Badge>
               </div>
               <div className="mt-2 flex h-5 items-center gap-1.5">
                 {Array.from({ length: 16 }).map((_, index) => {
-                  const level = Math.max(0, Math.min(1, inputLevel));
+                  const level = Math.max(0, Math.min(1, effectiveInputLevel));
                   const threshold = (index + 1) / 16;
                   const isActive = level >= threshold;
                   const showActive = Boolean(activeCaptureSource) && isActive;
@@ -4832,6 +5477,7 @@ export function RealtimeStudio() {
               <div className="relative flex shrink-0 flex-wrap items-start justify-between gap-3 px-4 pb-0 pt-0.5">
                 <div className="absolute left-3 top-2 z-[80] flex flex-col gap-2">
                   <div
+                    ref={processButtonRef}
                     className="relative"
                     onMouseEnter={() => setHoveredWorkbenchPanel("process")}
                     onMouseLeave={() => setHoveredWorkbenchPanel(null)}
@@ -4854,60 +5500,10 @@ export function RealtimeStudio() {
                       <AudioLines className="h-3.5 w-3.5 shrink-0" />
                       <span>{tr("realtimeStudio.dock.process")}</span>
                     </button>
-                    {activeWorkbenchPanel === "process" ? (
-                      <div className="absolute left-full top-0 z-[90] pl-2">
-                        <div className="w-[min(520px,calc(100vw-8rem))] rounded-lg border border-theme-default bg-surface-1/95 p-2 shadow-xl backdrop-blur-md">
-                          <Tooltip.Provider delayDuration={120}>
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {pipelineStages.map((step) => (
-                                <Tooltip.Root key={step.abbr}>
-                                  <Tooltip.Trigger asChild>
-                                    <button
-                                      type="button"
-                                      className={`inline-flex h-7 items-center gap-1.5 rounded-md border bg-surface-2 px-2 text-[11px] font-medium text-theme-2 transition-[box-shadow,border-color] ${
-                                        pipelineAllIdle && step.abbr === "CAP"
-                                          ? "border-[color:var(--accent)]/40 ring-1 ring-[color:var(--accent)]/25"
-                                          : "border-theme-default"
-                                      }`}
-                                      aria-label={`${step.label}：${step.value}`}
-                                    >
-                                      <span
-                                        className={`h-2 w-2 shrink-0 rounded-full ${
-                                          step.tone === "working"
-                                            ? "bg-[color:var(--accent)]"
-                                            : step.tone === "success"
-                                              ? "bg-emerald-500"
-                                              : step.tone === "error"
-                                                ? "bg-red-500"
-                                                : "bg-surface-3"
-                                        }`}
-                                        aria-hidden
-                                      />
-                                      {step.label}
-                                    </button>
-                                  </Tooltip.Trigger>
-                                  <Tooltip.Portal>
-                                    <Tooltip.Content
-                                      side="bottom"
-                                      align="center"
-                                      sideOffset={8}
-                                      collisionPadding={12}
-                                      className="z-[24000] w-[220px] rounded-lg border border-theme-default bg-surface-2 px-2.5 py-2 text-left shadow-xl"
-                                    >
-                                      <div className="text-[10px] font-semibold tracking-wide text-theme-2">{step.label}</div>
-                                      <div className="mt-1 text-[11px] font-medium text-theme-1">{step.value}</div>
-                                      <div className="mt-1.5 text-[10px] leading-4 text-theme-4">{step.help}</div>
-                                    </Tooltip.Content>
-                                  </Tooltip.Portal>
-                                </Tooltip.Root>
-                              ))}
-                            </div>
-                          </Tooltip.Provider>
-                        </div>
-                      </div>
-                    ) : null}
+                    {/* 进程面板弹出内容已通过 createPortal 渲染到 document.body，避免被父容器 overflow-hidden 裁剪 */}
                   </div>
                   <div
+                    ref={notesButtonRef}
                     className="relative"
                     onMouseEnter={() => setHoveredWorkbenchPanel("notes")}
                     onMouseLeave={() => setHoveredWorkbenchPanel(null)}
@@ -4928,266 +5524,7 @@ export function RealtimeStudio() {
                       <Pencil className="h-3.5 w-3.5 shrink-0" />
                       <span>{tr("realtimeStudio.dock.notes")}</span>
                     </button>
-                    {activeWorkbenchPanel === "notes" ? (
-                      <div className="absolute left-full top-0 z-[90] pl-2">
-                        <div className="w-[min(760px,calc(100vw-8rem))] rounded-lg border border-[#4f3a86]/90 bg-[#d9d0ef]/95 p-2 shadow-xl backdrop-blur-md">
-                          <div className="flex min-w-0 flex-col gap-2">
-                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                              <button
-                                type="button"
-                                disabled={!currentSessionId}
-                                className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#8fa79b] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
-                                  activeAnnotationPanel === "pen"
-                                    ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(143,167,155,0.22)]"
-                                    : "bg-white text-[#111827] hover:bg-white/95"
-                                }`}
-                                onClick={() => {
-                                  if (!currentSessionId) return;
-                                  if (activeAnnotationPanel === "pen") {
-                                    setActiveAnnotationPanel(null);
-                                    return;
-                                  }
-                                  setAnnotationsEnabled(true);
-                                  setAnnotationsTool("pen");
-                                  setActiveAnnotationPanel("pen");
-                                }}
-                                title={!currentSessionId ? tr("realtimeStudio.text085") : tr("realtimeStudio.text086")}
-                              >
-                                <Pencil className="h-3.5 w-3.5 shrink-0" />
-                                <span className="leading-none">{tr("realtimeStudio.text086")}</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={!currentSessionId}
-                                className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#bba98d] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
-                                  activeAnnotationPanel === "rect"
-                                    ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(187,169,141,0.22)]"
-                                    : "bg-white text-[#111827] hover:bg-white/95"
-                                }`}
-                                onClick={() => {
-                                  if (!currentSessionId) return;
-                                  if (activeAnnotationPanel === "rect") {
-                                    setActiveAnnotationPanel(null);
-                                    return;
-                                  }
-                                  setAnnotationsEnabled(true);
-                                  setAnnotationsTool("rect");
-                                  setActiveAnnotationPanel("rect");
-                                }}
-                                title={!currentSessionId ? tr("realtimeStudio.text085") : tr("realtimeStudio.text087")}
-                              >
-                                <Square className="h-3.5 w-3.5 shrink-0" />
-                                <span className="leading-none">{tr("realtimeStudio.text088")}</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={!currentSessionId}
-                                className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#9fb2c4] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
-                                  activeAnnotationPanel === "text"
-                                    ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(159,178,196,0.22)]"
-                                    : "bg-white text-[#111827] hover:bg-white/95"
-                                }`}
-                                onClick={() => {
-                                  if (!currentSessionId) return;
-                                  if (activeAnnotationPanel === "text") {
-                                    setActiveAnnotationPanel(null);
-                                    return;
-                                  }
-                                  setAnnotationsEnabled(true);
-                                  setAnnotationsTool("text");
-                                  setActiveAnnotationPanel("text");
-                                }}
-                                title={!currentSessionId ? tr("realtimeStudio.text085") : tr("realtimeStudio.text089")}
-                              >
-                                <Type className="h-3.5 w-3.5 shrink-0" />
-                                <span className="leading-none">{tr("realtimeStudio.text090")}</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={!currentSessionId}
-                                className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#887bb1] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
-                                  activeAnnotationPanel === "eraser"
-                                    ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(136,123,177,0.22)]"
-                                    : "bg-white text-[#111827] hover:bg-white/95"
-                                }`}
-                                onClick={() => {
-                                  if (!currentSessionId) return;
-                                  if (activeAnnotationPanel === "eraser") {
-                                    setActiveAnnotationPanel(null);
-                                    return;
-                                  }
-                                  setAnnotationsEnabled(true);
-                                  setAnnotationsTool(
-                                    annotationsTool === "erase_object" || annotationsTool === "erase_precise"
-                                      ? annotationsTool
-                                      : "erase_object",
-                                  );
-                                  setActiveAnnotationPanel("eraser");
-                                }}
-                                title={!currentSessionId ? tr("realtimeStudio.text085") : tr("realtimeStudio.text091")}
-                              >
-                                <Eraser className="h-3.5 w-3.5 shrink-0" />
-                                <span className="leading-none">{tr("realtimeStudio.text091")}</span>
-                              </button>
-
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                className="h-7 min-w-[54px] whitespace-nowrap rounded-md border border-[#887bb1] bg-[#d9d2ea] px-2 text-[11px] font-semibold text-[#111827] shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] hover:bg-[#cec6e5]"
-                                onClick={undoAnnotations}
-                                disabled={!currentSessionId || annotationsUndoRef.current.length === 0}
-                              >
-                                {tr("realtimeStudio.text100")}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                className="h-7 min-w-[54px] whitespace-nowrap rounded-md border border-[#b0737d] bg-[#e6c8ce] px-2 text-[11px] font-semibold text-[#111827] shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] hover:bg-[#ddb7bf]"
-                                onClick={clearAnnotations}
-                                disabled={!currentSessionId || activeAnnotationEmpty}
-                              >
-                                {tr("realtimeStudio.text101")}
-                              </Button>
-                              {!currentSessionId || saveAnnotationsMutation.isPending ? (
-                                <span className="text-[10px] text-[#6a627b]">
-                                  {!currentSessionId ? tr("realtimeStudio.text102") : tr("realtimeStudio.text103")}
-                                </span>
-                              ) : null}
-                            </div>
-
-                            {activeAnnotationPanel ? (
-                              <div className="rounded-lg border border-[#887bb1] bg-[#d9d2ea]/95 px-3 py-2 shadow-sm">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                                    {activeAnnotationPanel === "pen" ? (
-                                      <div className="flex min-w-[220px] flex-1 items-center gap-2">
-                                        <AnnotationWidthSlider
-                                          min={1}
-                                          max={24}
-                                          value={annotationPenWidth}
-                                          onChange={setAnnotationPenWidth}
-                                          thumbMinPx={5}
-                                          thumbMaxPx={15}
-                                          aria-label={tr("realtimeStudio.text092")}
-                                        />
-                                        <AnnotationColorPopover
-                                          swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
-                                          value={annotationPenColor}
-                                          onChange={setAnnotationPenColor}
-                                        />
-                                      </div>
-                                    ) : null}
-
-                                    {activeAnnotationPanel === "rect" ? (
-                                      <div className="flex min-w-[220px] flex-1 items-center gap-2">
-                                        <AnnotationWidthSlider
-                                          min={1}
-                                          max={16}
-                                          value={annotationRectStrokeWidth}
-                                          onChange={setAnnotationRectStrokeWidth}
-                                          thumbMinPx={5}
-                                          thumbMaxPx={14}
-                                          aria-label={tr("realtimeStudio.text093")}
-                                        />
-                                        <AnnotationColorPopover
-                                          swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
-                                          value={annotationRectColor}
-                                          onChange={setAnnotationRectColor}
-                                        />
-                                      </div>
-                                    ) : null}
-
-                                    {activeAnnotationPanel === "text" ? (
-                                      <div className="flex items-center gap-2">
-                                        <AnnotationColorPopover
-                                          swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
-                                          value={annotationTextColor}
-                                          onChange={setAnnotationTextColor}
-                                        />
-                                        <span className="text-[10px] font-medium text-[#6a627b]">
-                                          {tr("realtimeStudio.text094")}
-                                        </span>
-                                      </div>
-                                    ) : null}
-
-                                    {activeAnnotationPanel === "eraser" ? (
-                                      <div className="flex flex-wrap items-center gap-1.5">
-                                        {ERASER_WIDTH_PRESETS.map(({ w, dot }) => {
-                                          const active =
-                                            annotationsTool === "erase_precise" &&
-                                            nearestEraserPresetWidth(annotationEraserWidth) === w;
-                                          return (
-                                            <button
-                                              key={w}
-                                              type="button"
-                                              title={`${tr("realtimeStudio.text095")} ${w}px`}
-                                              aria-label={`${tr("realtimeStudio.text096")} ${w}`}
-                                              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
-                                                active
-                                                  ? "border-[#887bb1] bg-[#cec6e5] text-[#2d2545]"
-                                                  : "border-[#9a8bc2] bg-[#ebe6f6] text-[#4a3f6b] hover:bg-[#ddd4ef]"
-                                              }`}
-                                              onClick={() => {
-                                                setAnnotationsEnabled(true);
-                                                setAnnotationsTool("erase_precise");
-                                                setAnnotationEraserWidth(w);
-                                              }}
-                                            >
-                                              <span
-                                                className="shrink-0 rounded-full bg-current opacity-90"
-                                                style={{ width: dot, height: dot }}
-                                                aria-hidden
-                                              />
-                                            </button>
-                                          );
-                                        })}
-                                        <button
-                                          type="button"
-                                          title={tr("realtimeStudio.text097")}
-                                          aria-label={tr("realtimeStudio.text098")}
-                                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
-                                            annotationsTool === "erase_object"
-                                              ? "border-[#887bb1] bg-[#cec6e5] text-[#2d2545]"
-                                              : "border-[#9a8bc2] bg-[#ebe6f6] text-[#4a3f6b] hover:bg-[#ddd4ef]"
-                                          }`}
-                                          onClick={() => {
-                                            setAnnotationsEnabled(true);
-                                            setAnnotationsTool("erase_object");
-                                          }}
-                                        >
-                                          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
-                                            <path
-                                              d="M3.5 3.5l7 7M10.5 3.5l-7 7"
-                                              fill="none"
-                                              stroke="currentColor"
-                                              strokeWidth="1.75"
-                                              strokeLinecap="round"
-                                            />
-                                          </svg>
-                                        </button>
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className="inline-flex h-7 shrink-0 items-center justify-center rounded-md border border-[#887bb1] bg-[#cec6e5] px-2 text-[11px] font-semibold text-[#2d2545] hover:bg-[#c1b7df]"
-                                    onClick={() => {
-                                      setAnnotationsEnabled(false);
-                                      setActiveAnnotationPanel(null);
-                                    }}
-                                  >
-                                    {tr("realtimeStudio.text099")}
-                                  </button>
-                                </div>
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
+                    {/* 笔记面板弹出内容已通过 createPortal 渲染到 document.body，避免被父容器 overflow-hidden 裁剪 */}
                   </div>
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col gap-1 pl-[6.25rem] pr-2">
@@ -5317,6 +5654,7 @@ export function RealtimeStudio() {
                   compileOk={typeof mermaidState?.compile_ok === "boolean" ? mermaidState.compile_ok : null}
                   updatedAt={lastMermaidUpdatedAt || toLocalDateTimeLabel(mermaidState?.updated_at ? String(mermaidState.updated_at) : null, language)}
                   graphPayload={currentGraphPayload}
+                  activeIncrementalStageIndex={activeIncrementalStageIndex}
                   onNodeRelayout={handleMermaidNodeRelayout}
                   relayoutBusy={relayoutMutation.isPending}
                   onEvidenceSelect={setSelectedGraphEvidence}
@@ -5333,6 +5671,8 @@ export function RealtimeStudio() {
                   annotationsDoc={mermaidAnnotationsDoc}
                   onAnnotationsChange={onMermaidAnnotationsChange}
                   panZoomControlsOffsetTop={12}
+                  onCanvasNext={handleSwitchToNextCanvas}
+                  hasMultipleCanvases={hasMultipleCanvases}
                 />
                 <GraphEvidencePanel
                   target={graphEvidenceTarget}
@@ -5354,6 +5694,7 @@ export function RealtimeStudio() {
                   tr={tr}
                   currentDateLocale={currentDateLocale}
                 />
+                <DemoStatusPanel active={demoMode} playing={demoPlaying} currentStep={demoStep} />
               </div>
             </Tabs.Content>
 
@@ -5366,6 +5707,8 @@ export function RealtimeStudio() {
                   nodes={rendererState.nodes || []}
                   edges={rendererState.edges || []}
                   groups={rendererGroups}
+                  incrementalStages={graphIncrementalStages}
+                  activeIncrementalStageIndex={activeIncrementalStageIndex}
                   annotationsEnabled={annotationsEnabled}
                   annotationsTool={annotationsTool}
                   annotationPenWidth={annotationPenWidth}
@@ -5551,12 +5894,69 @@ export function RealtimeStudio() {
                     <div className="text-[11px] font-semibold text-theme-1">
                       {tr("realtimeStudio.text126")}
                     </div>
+                    <div className="flex items-center gap-1 border-r border-theme-subtle pr-2">
+                      <button
+                        type="button"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-theme-default bg-surface-1 text-theme-2 disabled:cursor-not-allowed disabled:opacity-45 hover:bg-surface-muted"
+                        onClick={() => stepDemoPlayback(-1)}
+                        disabled={!demoMode || demoStep <= 0}
+                        aria-label="Demo previous"
+                        title="Demo previous"
+                      >
+                        <SkipBack className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        className={`inline-flex h-6 items-center justify-center gap-1.5 rounded-md border px-2 text-[10px] font-semibold transition ${
+                          demoMode
+                            ? "border-emerald-600/45 bg-emerald-500/15 text-theme-1"
+                            : "border-theme-default bg-surface-1 text-theme-2 hover:bg-surface-muted"
+                        }`}
+                        onClick={toggleDemoPlayback}
+                        aria-label={demoPlaying ? "Pause demo" : "Play demo"}
+                        title={demoPlaying ? "Pause demo" : "Play demo"}
+                      >
+                        {demoPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                        <span>{demoPlaying ? "Pause Demo" : "Demo"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-theme-default bg-surface-1 text-theme-2 disabled:cursor-not-allowed disabled:opacity-45 hover:bg-surface-muted"
+                        onClick={() => stepDemoPlayback(1)}
+                        disabled={demoMode && demoStep >= DEMO_TURNS.length}
+                        aria-label="Demo next"
+                        title="Demo next"
+                      >
+                        <SkipForward className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-theme-default bg-surface-1 text-theme-2 disabled:cursor-not-allowed disabled:opacity-45 hover:bg-surface-muted"
+                        onClick={resetDemoPlayback}
+                        disabled={!demoMode && demoStep === 0}
+                        aria-label="Reset demo"
+                        title="Reset demo"
+                      >
+                        <Square className="h-3 w-3" />
+                      </button>
+                      {demoMode ? (
+                        <button
+                          type="button"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-theme-default bg-surface-1 text-theme-2 hover:bg-surface-muted"
+                          onClick={exitDemoMode}
+                          aria-label="Exit demo"
+                          title="Exit demo"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
+                    </div>
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
                         className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-theme-default bg-surface-1 text-theme-2 disabled:cursor-not-allowed disabled:opacity-45 hover:bg-surface-muted"
                         onClick={() => stepReplay(-1)}
-                        disabled={!replayNodes.length || (replayMode && replayIndex <= 0)}
+                        disabled={demoMode || !replayNodes.length || (replayMode && replayIndex <= 0)}
                         aria-label={tr("realtimeStudio.replay.previous")}
                         title={tr("realtimeStudio.replay.previous")}
                       >
@@ -5570,7 +5970,7 @@ export function RealtimeStudio() {
                             : "border-theme-default bg-surface-1 text-theme-2 hover:bg-surface-muted"
                         }`}
                         onClick={toggleReplayPlayback}
-                        disabled={!replayNodes.length}
+                        disabled={demoMode || !replayNodes.length}
                         aria-label={
                           replayPlaying ? tr("realtimeStudio.replay.pause") : tr("realtimeStudio.replay.play")
                         }
@@ -5583,7 +5983,7 @@ export function RealtimeStudio() {
                         type="button"
                         className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-theme-default bg-surface-1 text-theme-2 disabled:cursor-not-allowed disabled:opacity-45 hover:bg-surface-muted"
                         onClick={() => stepReplay(1)}
-                        disabled={!replayNodes.length || (replayMode && replayIndex >= replayNodes.length - 1)}
+                        disabled={demoMode || !replayNodes.length || (replayMode && replayIndex >= replayNodes.length - 1)}
                         aria-label={tr("realtimeStudio.replay.next")}
                         title={tr("realtimeStudio.replay.next")}
                       >
@@ -5976,7 +6376,7 @@ export function RealtimeStudio() {
                   title={tr("realtimeStudio.text144")}
                   className="h-8 min-w-0 gap-1 px-2 text-xs font-semibold"
                   onClick={downloadCurrentGraph}
-                  disabled={!currentSessionId || !currentGraphPayload}
+                  disabled={(!currentSessionId && !demoMode) || !currentGraphPayload}
                 >
                   <Download className="h-3 w-3 shrink-0" />
                   <span className="truncate">{tr("realtimeStudio.text145")}</span>
@@ -6008,6 +6408,342 @@ export function RealtimeStudio() {
 
         {studioPage === 2 ? null : null}
       </div>
+
+      {/* 工作台弹出面板 portal：渲染到 document.body，避免被 Card overflow-hidden 裁剪 */}
+      {workbenchPortalReady && activeWorkbenchPanel
+        ? createPortal(
+            <>
+              {/* 进程面板弹出内容 */}
+              {activeWorkbenchPanel === "process" && processButtonRef.current ? (() => {
+                const rect = processButtonRef.current.getBoundingClientRect();
+                const left = rect.right + 8;
+                const top = rect.top;
+                return (
+                  <div
+                    className="fixed z-[90] w-[min(520px,calc(100vw-8rem))] rounded-lg border border-theme-default bg-surface-1/95 p-2 shadow-xl backdrop-blur-md"
+                    style={{ left: `${left}px`, top: `${top}px` }}
+                  >
+                    <Tooltip.Provider delayDuration={120}>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {pipelineStages.map((step) => (
+                          <Tooltip.Root key={step.abbr}>
+                            <Tooltip.Trigger asChild>
+                              <button
+                                type="button"
+                                className={`inline-flex h-7 items-center gap-1.5 rounded-md border bg-surface-2 px-2 text-[11px] font-medium text-theme-2 transition-[box-shadow,border-color] ${
+                                  pipelineAllIdle && step.abbr === "CAP"
+                                    ? "border-[color:var(--accent)]/40 ring-1 ring-[color:var(--accent)]/25"
+                                    : "border-theme-default"
+                                }`}
+                                aria-label={`${step.label}：${step.value}`}
+                              >
+                                <span
+                                  className={`h-2 w-2 shrink-0 rounded-full ${
+                                    step.tone === "working"
+                                      ? "bg-[color:var(--accent)]"
+                                      : step.tone === "success"
+                                        ? "bg-emerald-500"
+                                        : step.tone === "error"
+                                          ? "bg-red-500"
+                                          : "bg-surface-3"
+                                  }`}
+                                  aria-hidden
+                                />
+                                {step.label}
+                              </button>
+                            </Tooltip.Trigger>
+                            <Tooltip.Portal>
+                              <Tooltip.Content
+                                side="bottom"
+                                align="center"
+                                sideOffset={8}
+                                collisionPadding={12}
+                                className="z-[24000] w-[220px] rounded-lg border border-theme-default bg-surface-2 px-2.5 py-2 text-left shadow-xl"
+                              >
+                                <div className="text-[10px] font-semibold tracking-wide text-theme-2">{step.label}</div>
+                                <div className="mt-1 text-[11px] font-medium text-theme-1">{step.value}</div>
+                                <div className="mt-1.5 text-[10px] leading-4 text-theme-4">{step.help}</div>
+                              </Tooltip.Content>
+                            </Tooltip.Portal>
+                          </Tooltip.Root>
+                        ))}
+                      </div>
+                    </Tooltip.Provider>
+                  </div>
+                );
+              })() : null}
+
+              {/* 笔记面板弹出内容 */}
+              {activeWorkbenchPanel === "notes" && notesButtonRef.current ? (() => {
+                const rect = notesButtonRef.current.getBoundingClientRect();
+                const left = rect.right + 8;
+                const top = rect.top;
+                return (
+                  <div
+                    className="fixed z-[90] w-[min(760px,calc(100vw-8rem))] rounded-lg border border-[#4f3a86]/90 bg-[#d9d0ef]/95 p-2 shadow-xl backdrop-blur-md"
+                    style={{ left: `${left}px`, top: `${top}px` }}
+                  >
+                    <div className="flex min-w-0 flex-col gap-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={!currentSessionId}
+                          className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#8fa79b] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                            activeAnnotationPanel === "pen"
+                              ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(143,167,155,0.22)]"
+                              : "bg-white text-[#111827] hover:bg-white/95"
+                          }`}
+                          onClick={() => {
+                            if (!currentSessionId) return;
+                            if (activeAnnotationPanel === "pen") {
+                              setActiveAnnotationPanel(null);
+                              return;
+                            }
+                            setAnnotationsEnabled(true);
+                            setAnnotationsTool("pen");
+                            setActiveAnnotationPanel("pen");
+                          }}
+                          title={!currentSessionId ? tr("realtimeStudio.text085") : tr("realtimeStudio.text086")}
+                        >
+                          <Pencil className="h-3.5 w-3.5 shrink-0" />
+                          <span className="leading-none">{tr("realtimeStudio.text086")}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!currentSessionId}
+                          className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#bba98d] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                            activeAnnotationPanel === "rect"
+                              ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(187,169,141,0.22)]"
+                              : "bg-white text-[#111827] hover:bg-white/95"
+                          }`}
+                          onClick={() => {
+                            if (!currentSessionId) return;
+                            if (activeAnnotationPanel === "rect") {
+                              setActiveAnnotationPanel(null);
+                              return;
+                            }
+                            setAnnotationsEnabled(true);
+                            setAnnotationsTool("rect");
+                            setActiveAnnotationPanel("rect");
+                          }}
+                          title={!currentSessionId ? tr("realtimeStudio.text085") : tr("realtimeStudio.text087")}
+                        >
+                          <Square className="h-3.5 w-3.5 shrink-0" />
+                          <span className="leading-none">{tr("realtimeStudio.text088")}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!currentSessionId}
+                          className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#9fb2c4] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                            activeAnnotationPanel === "text"
+                              ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(159,178,196,0.22)]"
+                              : "bg-white text-[#111827] hover:bg-white/95"
+                          }`}
+                          onClick={() => {
+                            if (!currentSessionId) return;
+                            if (activeAnnotationPanel === "text") {
+                              setActiveAnnotationPanel(null);
+                              return;
+                            }
+                            setAnnotationsEnabled(true);
+                            setAnnotationsTool("text");
+                            setActiveAnnotationPanel("text");
+                          }}
+                          title={!currentSessionId ? tr("realtimeStudio.text085") : tr("realtimeStudio.text089")}
+                        >
+                          <Type className="h-3.5 w-3.5 shrink-0" />
+                          <span className="leading-none">{tr("realtimeStudio.text090")}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!currentSessionId}
+                          className={`inline-flex h-7 w-[64px] shrink-0 items-center justify-center gap-1 rounded-md border border-[#887bb1] px-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                            activeAnnotationPanel === "eraser"
+                              ? "bg-white text-[#111827] shadow-[0_0_0_2px_rgba(136,123,177,0.22)]"
+                              : "bg-white text-[#111827] hover:bg-white/95"
+                          }`}
+                          onClick={() => {
+                            if (!currentSessionId) return;
+                            if (activeAnnotationPanel === "eraser") {
+                              setActiveAnnotationPanel(null);
+                              return;
+                            }
+                            setAnnotationsEnabled(true);
+                            setAnnotationsTool(
+                              annotationsTool === "erase_object" || annotationsTool === "erase_precise"
+                                ? annotationsTool
+                                : "erase_object",
+                            );
+                            setActiveAnnotationPanel("eraser");
+                          }}
+                          title={!currentSessionId ? tr("realtimeStudio.text085") : tr("realtimeStudio.text091")}
+                        >
+                          <Eraser className="h-3.5 w-3.5 shrink-0" />
+                          <span className="leading-none">{tr("realtimeStudio.text091")}</span>
+                        </button>
+
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-7 min-w-[54px] whitespace-nowrap rounded-md border border-[#887bb1] bg-[#d9d2ea] px-2 text-[11px] font-semibold text-[#111827] shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] hover:bg-[#cec6e5]"
+                          onClick={undoAnnotations}
+                          disabled={!currentSessionId || annotationsUndoRef.current.length === 0}
+                        >
+                          {tr("realtimeStudio.text100")}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-7 min-w-[54px] whitespace-nowrap rounded-md border border-[#b0737d] bg-[#e6c8ce] px-2 text-[11px] font-semibold text-[#111827] shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] hover:bg-[#ddb7bf]"
+                          onClick={clearAnnotations}
+                          disabled={!currentSessionId || activeAnnotationEmpty}
+                        >
+                          {tr("realtimeStudio.text101")}
+                        </Button>
+                        {!currentSessionId || saveAnnotationsMutation.isPending ? (
+                          <span className="text-[10px] text-[#6a627b]">
+                            {!currentSessionId ? tr("realtimeStudio.text102") : tr("realtimeStudio.text103")}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {activeAnnotationPanel ? (
+                        <div className="rounded-lg border border-[#887bb1] bg-[#d9d2ea]/95 px-3 py-2 shadow-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                              {activeAnnotationPanel === "pen" ? (
+                                <div className="flex min-w-[220px] flex-1 items-center gap-2">
+                                  <AnnotationWidthSlider
+                                    min={1}
+                                    max={24}
+                                    value={annotationPenWidth}
+                                    onChange={setAnnotationPenWidth}
+                                    thumbMinPx={5}
+                                    thumbMaxPx={15}
+                                    aria-label={tr("realtimeStudio.text092")}
+                                  />
+                                  <AnnotationColorPopover
+                                    swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                                    value={annotationPenColor}
+                                    onChange={setAnnotationPenColor}
+                                  />
+                                </div>
+                              ) : null}
+
+                              {activeAnnotationPanel === "rect" ? (
+                                <div className="flex min-w-[220px] flex-1 items-center gap-2">
+                                  <AnnotationWidthSlider
+                                    min={1}
+                                    max={16}
+                                    value={annotationRectStrokeWidth}
+                                    onChange={setAnnotationRectStrokeWidth}
+                                    thumbMinPx={5}
+                                    thumbMaxPx={14}
+                                    aria-label={tr("realtimeStudio.text093")}
+                                  />
+                                  <AnnotationColorPopover
+                                    swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                                    value={annotationRectColor}
+                                    onChange={setAnnotationRectColor}
+                                  />
+                                </div>
+                              ) : null}
+
+                              {activeAnnotationPanel === "text" ? (
+                                <div className="flex items-center gap-2">
+                                  <AnnotationColorPopover
+                                    swatches={ANNOTATION_SWATCHES_LIGHT_CANVAS}
+                                    value={annotationTextColor}
+                                    onChange={setAnnotationTextColor}
+                                  />
+                                  <span className="text-[10px] font-medium text-[#6a627b]">
+                                    {tr("realtimeStudio.text094")}
+                                  </span>
+                                </div>
+                              ) : null}
+
+                              {activeAnnotationPanel === "eraser" ? (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {ERASER_WIDTH_PRESETS.map(({ w, dot }) => {
+                                    const active =
+                                      annotationsTool === "erase_precise" &&
+                                      nearestEraserPresetWidth(annotationEraserWidth) === w;
+                                    return (
+                                      <button
+                                        key={w}
+                                        type="button"
+                                        title={`${tr("realtimeStudio.text095")} ${w}px`}
+                                        aria-label={`${tr("realtimeStudio.text096")} ${w}`}
+                                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                                          active
+                                            ? "border-[#887bb1] bg-[#cec6e5] text-[#2d2545]"
+                                            : "border-[#9a8bc2] bg-[#ebe6f6] text-[#4a3f6b] hover:bg-[#ddd4ef]"
+                                        }`}
+                                        onClick={() => {
+                                          setAnnotationsEnabled(true);
+                                          setAnnotationsTool("erase_precise");
+                                          setAnnotationEraserWidth(w);
+                                        }}
+                                      >
+                                        <span
+                                          className="shrink-0 rounded-full bg-current opacity-90"
+                                          style={{ width: dot, height: dot }}
+                                          aria-hidden
+                                        />
+                                      </button>
+                                    );
+                                  })}
+                                  <button
+                                    type="button"
+                                    title={tr("realtimeStudio.text097")}
+                                    aria-label={tr("realtimeStudio.text098")}
+                                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                                      annotationsTool === "erase_object"
+                                        ? "border-[#887bb1] bg-[#cec6e5] text-[#2d2545]"
+                                        : "border-[#9a8bc2] bg-[#ebe6f6] text-[#4a3f6b] hover:bg-[#ddd4ef]"
+                                    }`}
+                                    onClick={() => {
+                                      setAnnotationsEnabled(true);
+                                      setAnnotationsTool("erase_object");
+                                    }}
+                                  >
+                                    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+                                      <path
+                                        d="M3.5 3.5l7 7M10.5 3.5l-7 7"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="1.75"
+                                        strokeLinecap="round"
+                                      />
+                                    </svg>
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button"
+                              className="inline-flex h-7 shrink-0 items-center justify-center rounded-md border border-[#887bb1] bg-[#cec6e5] px-2 text-[11px] font-semibold text-[#2d2545] hover:bg-[#c1b7df]"
+                              onClick={() => {
+                                setAnnotationsEnabled(false);
+                                setActiveAnnotationPanel(null);
+                              }}
+                            >
+                              {tr("realtimeStudio.text099")}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })() : null}
+            </>,
+            document.body,
+          )
+        : null}
 
       {detailDrawerPortalReady
         ? createPortal(
