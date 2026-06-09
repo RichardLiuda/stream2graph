@@ -5421,9 +5421,9 @@ export function RealtimeStudio() {
         : null}
 
       <div className="flex h-full min-h-0 flex-col space-y-2">
-        <div className="flex items-center gap-2 pt-2 md:pt-1">
+        <div className="flex items-center gap-2 pt-2.5 md:pt-1.5">
           <div className="flex flex-1 min-w-0 flex-wrap items-center gap-2 pl-3 md:gap-3 md:pl-6 lg:pl-8">
-            <h1 className="page-title">
+            <h1 className="page-title text-2xl">
               {tr("realtimeStudio.text041")}
             </h1>
             {isUnauthorizedGuest ? (
@@ -5431,9 +5431,6 @@ export function RealtimeStudio() {
                 {tr("realtimeStudio.text042")}
               </Badge>
             ) : null}
-            <p className="hidden max-w-md text-[11px] leading-snug text-theme-4 md:block">
-              {tr("realtimeStudio.text043")}
-            </p>
           </div>
           <div className="flex shrink-0 items-center gap-2 pr-14">
             <div
@@ -5610,7 +5607,7 @@ export function RealtimeStudio() {
                 onClick={() => setInputSourceMenuOpen((open) => !open)}
               >
                 <span className="truncate">
-                  {selectedOption.label} · {selectedOption.capability_status}
+                  {selectedOption.label}
                 </span>
                 <ChevronDown
                   className={`h-4 w-4 shrink-0 text-theme-4 transition-transform duration-200 ${inputSourceMenuOpen ? "rotate-180" : ""}`}
@@ -5659,7 +5656,6 @@ export function RealtimeStudio() {
                             </span>
                             <span className="truncate">{option.label}</span>
                           </div>
-                          <span className="ml-2 shrink-0 text-xs text-theme-4">{option.capability_status}</span>
                         </button>
                       );
                     })}
@@ -5699,7 +5695,7 @@ export function RealtimeStudio() {
               </div>
             ) : null}
             {/* 声纹盲认仅与语音/STT 相关；纯文本 Transcript 输入时不展示 */}
-            {selectedInputSource !== "transcript" ? (
+            {selectedInputSource !== "transcript" && selectedInputSource !== "microphone_browser" ? (
               <div className="flex min-h-[2rem] items-center justify-between gap-2 rounded-lg border border-theme-subtle bg-surface-muted px-2 py-1">
                 {!hasSttProfiles ? (
                   <p className="min-w-0 flex-1 truncate text-[11px] leading-tight text-theme-3">
@@ -5804,24 +5800,6 @@ export function RealtimeStudio() {
                 </Badge>
               </div>
             </div>
-            <div className="mt-1.5 flex shrink-0 flex-wrap gap-1.5">
-              <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                {tr("realtimeStudio.text074")}{transcriptState.turnCount}
-              </Badge>
-              <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                {tr("realtimeStudio.text075")}{transcriptState.speakerCount}
-              </Badge>
-              <Badge className="text-[10px] font-normal normal-case tracking-normal text-theme-3">
-                Chunk: {transcriptState.chunkCount}
-              </Badge>
-            </div>
-            <p className="mt-1.5 shrink-0 text-[9px] leading-snug text-theme-4">
-              {currentSessionClosed
-                ? tr("realtimeStudio.text076")
-                : selectedInputSource === "transcript"
-                  ? tr("realtimeStudio.text077")
-                  : tr("realtimeStudio.text078")}
-            </p>
             <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-theme-subtle bg-surface-muted/88">
                 <div className="flex shrink-0 items-center justify-end gap-2 border-b border-theme-subtle px-3 py-2">
@@ -5832,7 +5810,7 @@ export function RealtimeStudio() {
                         : tr("realtimeStudio.text079")
                       : activeTranscriptTurn?.speaker
                         ? tr("realtimeStudio.transcript.currentSpeaker", { speaker: activeTranscriptTurn.speaker })
-                        : tr("realtimeStudio.transcript.livePreview")}
+                        : null}
                 </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
@@ -5874,7 +5852,7 @@ export function RealtimeStudio() {
                       ? tr("realtimeStudio.transcript.localPreviewPriority")
                       : currentSessionClosed
                         ? tr("realtimeStudio.transcript.closedHelp")
-                        : tr("realtimeStudio.transcript.stableHelp")}
+                        : null}
                   </span>
                 </div>
               </div>
