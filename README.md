@@ -1,275 +1,252 @@
-# Stream2Graph Versioned Archive
+# Stream2Graph
 
-## 正式平台入口
+Stream2Graph 是一个把语音、转写文本和会议内容实时整理成结构图的工程仓库。当前主线是正式平台，包含 Next.js 前端、FastAPI 后端、共享类型契约和 UI 组件库；旧版数据集、脚本和实验报告仍保留在 `versions/`、`tools/`、`reports/` 等目录中，方便复现实验和追踪演进。
 
-2026-03 起，仓库中已经新增一套绿色重写的正式平台：
+## 当前平台
 
-- 前端：`apps/web`
-- 后端：`apps/api`
-- 共享类型：`packages/contracts`
-- UI 组件：`packages/ui`
+正式平台入口：
 
-建议优先阅读下面两份文档：
+- 前端应用：[apps/web](./apps/web/README.md)
+- 后端 API：[apps/api](./apps/api/README.md)
+- 系统音频辅助服务：`apps/audio-helper`
+- 前后端共享契约：`packages/contracts`
+- 共享 UI 组件：`packages/ui`
 
-- [正式平台运行手册](./docs/project/FORMAL_PLATFORM_RUNBOOK_ZH.md)
-- [正式平台使用指南](./docs/project/FORMAL_PLATFORM_USER_GUIDE_ZH.md)
+常用页面：
 
-常用命令：
+- 首页：`http://127.0.0.1:3000`
+- 实时工作台：`http://127.0.0.1:3000/app/realtime`
+- 样本对照：`http://127.0.0.1:3000/app/samples`
+- 报告中心：`http://127.0.0.1:3000/app/reports`
+- 设置页：`http://127.0.0.1:3000/app/settings`
+- API 健康检查：`http://127.0.0.1:8000/api/health`
+
+## 目录结构
+
+```text
+apps/
+  web/             Next.js 前端应用
+  api/             FastAPI 后端服务
+  audio-helper/    本地系统音频和转写辅助服务
+packages/
+  contracts/       Zod schema 与 TypeScript 类型
+  ui/              React UI 基础组件
+docs/              项目说明、运行手册、研究和方案文档
+versions/          历史数据集与算法版本归档
+tools/             数据处理、评测、渲染和实验工具
+reports/           实验报告、评测报告、变更报告
+configs/           评测和运行配置
+scripts/           开发环境启动、停止、状态检查脚本
+var/               本地运行日志、PID、产物缓存
+```
+
+## 环境要求
+
+- Node.js 与 pnpm，仓库声明的包管理器为 `pnpm@10.30.3`
+- Python 3.11+
+- PostgreSQL，本地默认端口 `5432`
+- Windows 用户建议使用 PowerShell 运行 `*:win` 脚本
+
+首次准备：
+
+```bash
+pnpm install
+cp .env.example .env
+```
+
+Windows PowerShell 可用：
+
+```powershell
+Copy-Item .env.example .env
+py -3.11 -m venv .venv-platform
+.\.venv-platform\Scripts\python.exe -m pip install -U pip
+.\.venv-platform\Scripts\python.exe -m pip install -e "apps/api[test]"
+.\.venv-platform\Scripts\python.exe -m pip install -e "apps/audio-helper"
+```
+
+macOS / Linux 可用：
+
+```bash
+python3.11 -m venv .venv-platform
+./.venv-platform/bin/python -m pip install -U pip
+./.venv-platform/bin/python -m pip install -e "apps/api[test]"
+./.venv-platform/bin/python -m pip install -e "apps/audio-helper"
+```
+
+## 快速启动
+
+Windows 一键启动：
+
+```powershell
+pnpm dev:up:win
+pnpm dev:status:win
+pnpm dev:down:win
+```
+
+macOS / Linux 一键启动：
 
 ```bash
 pnpm dev:up
 pnpm dev:status
 pnpm dev:down
-pnpm dev:up:win
-pnpm dev:status:win
-pnpm dev:down:win
+```
+
+默认会管理：
+
+- API：`0.0.0.0:8000`
+- Web：`0.0.0.0:3000`
+- worker：后台任务处理
+- audio-helper：`0.0.0.0:8765`
+- PostgreSQL：如果配置允许，启动脚本会尝试检查或拉起数据库
+
+日志和 PID 默认写入：
+
+- `var/log/api.log`
+- `var/log/web.log`
+- `var/log/worker.log`
+- `var/log/audio-helper.log`
+- `var/run/*.pid`
+
+## 分服务启动
+
+只启动前端：
+
+```bash
 pnpm dev:web
-pnpm dev:web:lan
-pnpm audio-helper:dev
-pnpm audio-helper:dev:lan
+```
+
+只启动 API：
+
+```bash
 pnpm api:dev
-pnpm api:dev:lan
+```
+
+只启动 worker：
+
+```bash
 pnpm api:worker
+```
+
+只启动音频辅助服务：
+
+```bash
+pnpm audio-helper:dev
+```
+
+数据库迁移：
+
+```bash
+pnpm api:migrate
+```
+
+检查：
+
+```bash
 pnpm typecheck:web
 pnpm lint:web
 pnpm api:test
 ```
 
-说明：
+## 配置说明
 
-- `pnpm dev:up` 会自动补 `.env`、尝试拉起 PostgreSQL、执行迁移，并后台启动 API / Web / worker
-- `pnpm dev:up:win` / `dev:status:win` / `dev:down:win` / `dev:restart:win` 为 Windows PowerShell 对应脚本，默认也会管理 API / Web / worker / audio-helper
-- `pnpm audio-helper:dev` 会启动本地系统声音辅助层，默认监听 `127.0.0.1:8765`
-- `pnpm dev:web` / `pnpm api:dev` / `pnpm audio-helper:dev` 默认监听 **`0.0.0.0`**（内网可访问）；`:lan` 后缀脚本与上述相同，仅为别名
-- 启动 helper 前，先在虚拟环境里安装：`./.venv-platform/bin/pip install -e "apps/audio-helper"`
-- 进程日志默认写到 `var/log/`，PID 写到 `var/run/`
-- `pnpm api:*` 系列命令默认在已经激活 `.venv-platform` 的 shell 中执行
+主要配置来自根目录 `.env`，可从 `.env.example` 复制。
 
-局域网访问（同一 Wi-Fi / 交换机）快速步骤：
+常见变量：
 
-1. 机器 A（部署机）：Web 默认通过 **Next 同源转发**（`apps/web/next.config.ts` 将 `/api/*` 转到本机 API），手机浏览器只访问 `:3000` 即可，**不依赖**浏览器直连 `:8000`，也避免跨域与 Cookie 问题。API 仍须监听 `0.0.0.0:8000`（`pnpm api:dev` 已默认）。Audio helper 仍直连 `:8765`，局域网需单独放行。若需恢复浏览器直连 API，可设 `NEXT_PUBLIC_API_BROWSER_PROXY=0`。
-2. 启动：
-   - `pnpm api:dev:lan`
-   - `pnpm dev:web:lan`
-   - （可选）`pnpm audio-helper:dev:lan`
-3. 机器 B（同内网）访问：
-   - `http://<机器A内网IP>:3000`
+- `DATABASE_URL`：PostgreSQL 连接串
+- `S2G_SESSION_SECRET`：登录会话密钥
+- `S2G_ADMIN_USERNAME` / `S2G_ADMIN_PASSWORD`：默认管理员账号
+- `S2G_CORS_ORIGINS` / `S2G_CORS_ORIGIN_REGEX`：API CORS 白名单
+- `NEXT_PUBLIC_API_BASE_URL`：前端直接访问 API 时的默认地址
+- `API_PROXY_TARGET`：Next.js 服务端 rewrite 的 API 目标
+- `NEXT_PUBLIC_API_BROWSER_PROXY`：默认走同源 `/api/*` 转发，设为 `0` 时关闭
+- `NEXT_PUBLIC_AUDIO_HELPER_BASE_URL`：音频辅助服务地址
+- `S2G_LLM_PROFILES_JSON`：Gate / Planner / 模型配置
+- `S2G_STT_PROFILES_JSON`：语音识别配置
 
-注意：需放行端口 `3000/8000/8765`（系统防火墙或云安全组）。
+默认情况下，浏览器访问前端的 `/api/*` 会由 Next.js 转发到 FastAPI，局域网访问时手机或平板只需要打开前端地址，通常不需要浏览器直接访问 `:8000`。
 
-Windows 额外说明：
+## 局域网访问
 
-- PowerShell 脚本使用 `.venv-platform\Scripts\python.exe`、`.venv-platform\Scripts\uvicorn.exe`、`.venv-platform\Scripts\alembic.exe`
-- 如果本机 PostgreSQL 已经在运行，可以先设置 `$env:S2G_START_DB='0'` 再执行 `pnpm dev:up:win`
-- 如果暂时不需要 worker 或 audio helper，可以分别设置 `$env:S2G_START_WORKER='0'`、`$env:S2G_START_AUDIO_HELPER='0'`
+在同一 Wi-Fi 或交换机下：
 
-这个仓库是对 `/home/lin-server/pictures` 的版本化整理结果，目的是把不同阶段的数据集与脚本分开保存，便于追溯与复现实验。
-
-## 版本目录
-
-- `versions/v1_2026-02-05_legacy_8k_pipeline`
-  - 8k 五阶段流水线时代产物（含 `01~05` 目录与早期脚本）
-- `versions/v2_2026-02-08_real_100percent_license_fix`
-  - 许可证修复与 high-quality 子集阶段
-- `versions/v3_2026-02-27_latest_9k_cscw`
-  - 最新版本（9k 数据 + CSCW 对话逆向工程）
-
-详细说明见 [VERSION_INDEX.md](./VERSION_INDEX.md)。
-
-## 最新可用发布集
-
-- 发布路径: `versions/v3_2026-02-27_latest_9k_cscw/dataset/stream2graph_dataset/release_v3_20260228`
-- 筛选规则:
-  - `compilation_status == success`
-  - 许可证有效（排除 `none/error/unknown/rate_limited`）
-  - 存在 `cscw_dialogue` 且轮次在 `4~120`
-- 当前规模: 4709 条
-- 生成报告:
-  - `reports/release_reports/release_v3_latest.md`
-  - `reports/release_reports/release_v3_latest.json`
-
-## 核心算法升级（2026-02-28）
-
-最新算法脚本位于：
-
-- `versions/v3_2026-02-27_latest_9k_cscw/scripts/cscw_dialogue_engine.py`
-- `versions/v3_2026-02-27_latest_9k_cscw/scripts/run_reverse_engineering_v2.py`
-- `versions/v3_2026-02-27_latest_9k_cscw/scripts/streaming_intent_engine.py`
-- `versions/v3_2026-02-27_latest_9k_cscw/scripts/benchmark_streaming_intent.py`
-- `versions/v3_2026-02-27_latest_9k_cscw/scripts/asr_stream_adapter.py`
-- `versions/v3_2026-02-27_latest_9k_cscw/scripts/incremental_renderer.py`
-- `versions/v3_2026-02-27_latest_9k_cscw/scripts/run_realtime_pipeline.py`
-- `versions/v3_2026-02-27_latest_9k_cscw/scripts/evaluate_realtime_pipeline.py`
-
-升级报告：
-
-- `versions/v3_2026-02-27_latest_9k_cscw/docs/CORE_ALGO_UPGRADE_REPORT_20260228_STEP1.md`
-- `versions/v3_2026-02-27_latest_9k_cscw/docs/CORE_ALGO_UPGRADE_REPORT_20260228_STEP2.md`
-
-## 端到端闭环（ASR -> 意图 -> 增量渲染）
-
-### 1) 运行实时流水线
+1. 部署机器启动服务：
 
 ```bash
-python3 versions/v3_2026-02-27_latest_9k_cscw/scripts/run_realtime_pipeline.py \
-  --input /path/to/transcript.jsonl \
-  --realtime \
-  --time-scale 1.0 \
-  --output /tmp/realtime_pipeline_output.json
+pnpm api:dev:lan
+pnpm dev:web:lan
+pnpm audio-helper:dev:lan
 ```
 
-输入 transcript 支持字段：
-
-- `timestamp_ms` (int, 可选)
-- `text` (str, 必填)
-- `speaker` (str, 可选)
-- `is_final` (bool, 可选)
-- `expected_intent` (str, 可选，用于评测)
-
-### 2) 运行真实实时评测
-
-```bash
-python3 versions/v3_2026-02-27_latest_9k_cscw/scripts/evaluate_realtime_pipeline.py \
-  --input /path/to/transcript.jsonl \
-  --realtime \
-  --pipeline-output /tmp/realtime_pipeline_full.json \
-  --report-output /tmp/realtime_eval_report.json
-```
-
-评测输出包含：
-
-- 端到端延迟（P50/P95）
-- 意图识别准确率与 Macro-F1（当存在 `expected_intent` 标签）
-- 前端稳定性指标（`flicker_index`、`mental_map_score`）
-- 门槛检查结果（pass/fail）
-
-## 训练前统一评测体系
-
-在开始微调前，先统一评估数据与实时能力：
-
-```bash
-python3 tools/unified_pretrain_eval.py \
-  --dataset-dir versions/v3_2026-02-27_latest_9k_cscw/dataset/stream2graph_dataset/compliant_v3_repaired_20260228 \
-  --realtime-report /tmp/realtime_eval_report.json \
-  --output /tmp/unified_pretrain_eval.json
-```
-
-该报告会给出：
-
-- 数据就绪度（schema/编译/许可证/对话轮次/类型覆盖）
-- 实时评测融合结果（若提供 realtime report）
-- 综合 `overall_pretrain_readiness_score`
-- 是否建议进入微调阶段
-
-## 现代前端工作台（Microsoft White 主题）
-
-已新增一个可直接对接当前后端算法的现代前端：
-
-- 前端目录: `frontend/realtime_ui/`
-- 启动服务: `tools/realtime_frontend_server.py`
-
-### 快速启动
-
-```bash
-python3 tools/realtime_frontend_server.py --host 127.0.0.1 --port 8088
-```
-
-打开：
-
-- `http://127.0.0.1:8088`
-
-### 已对接能力
-
-1. 端到端闭环：
-- `ASR transcript -> intent engine -> incremental renderer`
-  - 新增会话流式模式：浏览器麦克风转写可逐条推送到后端
-
-2. 实时评测：
-- 在前端直接触发 `/api/pipeline/evaluate`
-- 返回延迟、意图准确率、稳定性指标
-  - 支持活跃会话快照评测（不中断会话）
-
-3. 防闪烁指标可视化：
-- `flicker_index`
-- `mental_map_score`
-- displacement / drift 指标
-
-4. 训练前统一评测：
-- 前端可直接调用 `/api/pretrain/unified`
-- 输出 `overall_pretrain_readiness_score`
-
-5. 实验报告落盘：
-- 前端支持一键保存当前实验状态到仓库：
-  - `reports/experiment_reports/EXPERIMENT_REPORT_*.json`
-  - `reports/experiment_reports/EXPERIMENT_REPORT_*.md`
-- 同时维护：
-  - `reports/experiment_reports/EXPERIMENT_REPORT_LATEST.json`
-  - `reports/experiment_reports/EXPERIMENT_REPORT_LATEST.md`
-
-### API 端点
-
-- `GET /api/health`
-- `GET /api/config`
-- `GET /api/session/list`
-- `POST /api/session/create`
-- `POST /api/session/chunk`
-- `POST /api/session/flush`
-- `POST /api/session/snapshot`
-- `POST /api/session/close`
-- `GET /api/report/list`
-- `POST /api/report/save`
-- `POST /api/pipeline/run`
-- `POST /api/pipeline/evaluate`
-- `POST /api/pretrain/unified`
-
-### 实时语音模式（前端）
-
-前端支持浏览器 Web Speech API（Chrome/Edge）：
-
-1. 点击 `麦克风开始`
-2. 语音将被实时转写并按会话流式推送到后端
-3. 舞台区实时增量成图
-4. 点击 `结束并评测` 生成会话级评测结果
-
-说明：
-
-- 该模式依赖浏览器语音识别能力，不依赖额外 Python ASR 包。
-- 若浏览器不支持 Web Speech API，仍可使用 transcript 文本模式。
-- 可在会话过程中点击 `会话快照` 获取当前评测结果；完成后点击 `保存实验报告` 固化本次实验。
-
-### Transcript 输入格式（前端文本框）
-
-每行支持：
-
-- `text`
-- `speaker|text`
-- `speaker|text|expected_intent`
-
-示例：
+2. 其他设备访问：
 
 ```text
-expert|First define ingestion flow and source node.|sequential
-expert|Then route events to parser and validation service.|sequential
-expert|Gateway module connects auth service and data service.|structural
+http://<部署机器内网 IP>:3000
 ```
 
-## 数据说明
+3. 确认系统防火墙放行：
 
-- 本仓库是“按阶段归档”的工程仓库，不保证不同版本之间 schema 一致。
-- 旧版本中的一些目录（例如 `v1` 的 `05_final`）主要是结构与索引保留，实际内容并不完整。
-- 最新可用主线以 `v3_2026-02-27_latest_9k_cscw` 为准。
+- `3000`：前端
+- `8000`：API
+- `8765`：音频辅助服务
+- `5432`：PostgreSQL，仅在确有需要时开放
 
-## 安全说明
+## 主要能力
 
-- 原工程中的硬编码 GitHub Token 已全部替换为 `YOUR_GITHUB_TOKEN`。
-- 若需运行采集脚本，请自行配置环境变量 `GITHUB_TOKEN`。
+- 实时工作台：输入文本、浏览器语音、系统音频转写、实时成图、时间线回退、批注、导出报告
+- 运行时配置：在设置页管理 LLM、STT、声纹等配置
+- 样本对照：浏览数据集版本、样本和实验对照
+- 报告中心：查看与下载实验报告
+- 研究任务：`/study/[participantCode]` 支持用户研究流程
+- 评测与数据处理：`tools/`、`configs/evaluation/`、`reports/evaluation/` 保留离线实验工具链
 
-## 变更报告机制
+## 共享包
 
-- 已提供自动化脚本: `tools/generate_change_report.py`
-- 已配置 Git hook: `.githooks/pre-commit`
-- 本地已启用 `core.hooksPath=.githooks`，每次提交前会自动新增一份报告到:
-  - `reports/change_reports/CHANGE_REPORT_*.md`
-  - `reports/change_reports/CHANGE_REPORT_*.json`
-- 新环境首次克隆后请执行:
-  - `git config core.hooksPath .githooks`
+`packages/contracts` 提供前后端共享的 Zod schema 与 TypeScript 类型。前端 API 客户端会用这些 schema 校验后端响应，减少接口漂移。
+
+`packages/ui` 提供 Card、Button、Badge 等基础组件，用于统一正式平台视觉风格。
+
+## 历史版本与数据集
+
+历史实验主线保存在 `versions/`：
+
+- `versions/v1_2026-02-05_legacy_8k_pipeline`
+- `versions/v2_2026-02-08_real_100percent_license_fix`
+- `versions/v3_2026-02-27_latest_9k_cscw`
+
+版本索引见：[VERSION_INDEX.md](./VERSION_INDEX.md)
+
+当前 API 默认数据集版本由 `S2G_DEFAULT_DATASET_VERSION` 控制，默认值在 `apps/api/app/config.py` 中定义。
+
+## 推荐文档
+
+- [正式平台运行手册](./docs/project/FORMAL_PLATFORM_RUNBOOK_ZH.md)
+- [正式平台使用指南](./docs/project/FORMAL_PLATFORM_USER_GUIDE_ZH.md)
+- [项目总览](./docs/project/PROJECT_OVERVIEW_ZH.md)
+- [开发工具说明](./docs/project/STREAM2GRAPH_DEVELOPMENT_TOOLS_ZH.md)
+- [工作区布局](./docs/workspace/WORKSPACE_LAYOUT.md)
+
+## 常见问题
+
+前端打开后 API 报错：
+
+- 确认 `http://127.0.0.1:8000/api/health` 返回正常
+- 确认 `.env` 中 `API_PROXY_TARGET` 或 `NEXT_PUBLIC_API_BASE_URL` 指向正确 API
+- 如果前端端口不是 `3000`，检查 API 的 CORS 配置
+
+语音或系统音频不可用：
+
+- 浏览器语音依赖浏览器能力和权限
+- 系统音频依赖 `apps/audio-helper` 服务
+- 检查 `http://127.0.0.1:8765/health`
+
+Windows 启动脚本找不到 Python：
+
+- 确认 `.venv-platform\Scripts\python.exe` 存在
+- 重新创建虚拟环境并安装 `apps/api`、`apps/audio-helper`
+
+## 安全提醒
+
+- 不要提交真实 API Key、数据库密码或第三方服务密钥
+- `.env` 应保留在本地，提交前检查 `git status`
+- 对外部署时请替换默认管理员密码和 `S2G_SESSION_SECRET`
