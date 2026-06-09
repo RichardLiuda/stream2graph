@@ -2456,6 +2456,7 @@ export function RealtimeStudio() {
     y: number;
   } | null>(null);
   const timelinePreviewRequestRef = useRef<string | null>(null);
+  const namingRequestedRef = useRef<Set<string>>(new Set());
   const [listening, setListening] = useState(false);
   const [audioContext, setAudioContext] = useState<ClientAudioContext | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -4062,6 +4063,21 @@ export function RealtimeStudio() {
     // `useMutation()` returns a new object identity per render; this effect is driven by timeline state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSessionId, demoMode, timelineNodes.length, timelineQuery.isSuccess]);
+
+  // Auto-name unlabeled timeline nodes using AI
+  useEffect(() => {
+    if (demoMode) return;
+    if (!currentSessionId) return;
+    if (!timelineQuery.isSuccess) return;
+    if (nameTimelineMutation.isPending) return;
+    const unlabeledIds = timelineNodes
+      .filter((node) => !node.label && !namingRequestedRef.current.has(node.snapshot_id))
+      .map((node) => node.snapshot_id);
+    if (unlabeledIds.length === 0) return;
+    unlabeledIds.forEach((id) => namingRequestedRef.current.add(id));
+    nameTimelineMutation.mutate({ sessionId: currentSessionId, snapshotIds: unlabeledIds });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId, demoMode, timelineNodes, timelineQuery.isSuccess]);
 
   useEffect(() => {
     setLocalCommittedTranscriptTurns([]);
