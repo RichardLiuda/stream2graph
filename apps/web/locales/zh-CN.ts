@@ -405,6 +405,7 @@ export const zhCN = {
   "realtimeStudio.notice.graphDownloaded": "图表 SVG 已开始下载。",
   "realtimeStudio.notice.titleSavedSynced": "会话名称已保存，历史列表将同步更新。",
   "realtimeStudio.notice.titleSavedLocal": "会话名称已保存，创建会话时会使用该名称。",
+  "realtimeStudio.notice.canvasSwitched": "已切换到新画布。",
   "realtimeStudio.common.retry": "重试",
   "realtimeStudio.rollback.editTitle": "编辑回溯节点的历史输入",
   "realtimeStudio.rollback.editDescription": "保存后会覆盖该节点之后的时间轴，并从这里重新生成。",
