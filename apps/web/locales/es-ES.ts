@@ -300,6 +300,7 @@ export const esES = {
   "realtimeStudio.text158": "Eliminar sesión",
   "realtimeStudio.text159": "¿Eliminar esta sesión? Esta acción no se puede deshacer.",
   "realtimeStudio.text160": "Eliminando...",
+  "realtimeStudio.text161": "Exportar informe de demo",
   "platformSettings.modelProvider.openaiCompatible": "API compatible (pasarela/proveedor nacional)",
   "platformSettings.modelProvider.xfyunRtasrLlm": "XFYUN RTASR LLM",
   "platformSettings.endpointRoute.customPath": "Ruta personalizada",

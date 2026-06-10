@@ -166,8 +166,8 @@ type MermaidInteractiveEntity = MermaidDiagramEntityPosition & {
 
 type MermaidRenderedEdge = {
   edge: MermaidGraphEdge;
-  path: SVGPathElement;
-  container: SVGGElement | SVGPathElement;
+  path: SVGElement;
+  container: SVGGElement | SVGElement;
   relationType: string;
   crossLane: boolean;
 };
@@ -324,6 +324,9 @@ function queryMermaidNodeElements(svg: SVGSVGElement) {
     "g.node",
     "g[id^='flowchart-']",
     "g[class~='node']",
+    "g.actor",
+    "g[class~='actor']",
+    "[id^='actor']",
   ];
   const seen = new Set<SVGGElement>();
   const elements: SVGGElement[] = [];
@@ -459,6 +462,7 @@ function collectRenderedEdges(svg: SVGSVGElement, graphPayload: MermaidGraphPayl
     (left, right) => (left.source_index || 0) - (right.source_index || 0) || left.id.localeCompare(right.id),
   );
   const fallbackPaths = Array.from(svg.querySelectorAll<SVGPathElement>("path.flowchart-link"));
+  const sequenceLines = Array.from(svg.querySelectorAll<SVGLineElement>("line.messageLine0, line.messageLine1, .messageLine0, .messageLine1"));
 
   return graphEdges
     .map((edge, index) => {
@@ -468,20 +472,34 @@ function collectRenderedEdges(svg: SVGSVGElement, graphPayload: MermaidGraphPayl
       const selector =
         mermaidSourceId && mermaidTargetId ? `[id^="L_${mermaidSourceId}_${mermaidTargetId}_"]` : "";
       const matchedElement = selector ? svg.querySelector<SVGElement>(selector) : null;
-      const candidatePath =
+      const candidatePath: SVGElement | null =
         (matchedElement?.closest?.("g.edgePath")?.querySelector("path.path, path.flowchart-link") as SVGPathElement | null) ||
         (matchedElement instanceof SVGPathElement ? matchedElement : null) ||
         fallbackPaths[index] ||
         null;
-      if (!(candidatePath instanceof SVGPathElement)) return null;
-      const container = candidatePath.closest("g.edgePath");
-      return {
-        edge,
-        path: candidatePath,
-        container: container instanceof SVGGElement ? container : candidatePath,
-        relationType: metadataString(metadata, "relation_type", edge.kind || "reply"),
-        crossLane: metadataBoolean(metadata, "cross_lane"),
-      };
+      if (candidatePath instanceof SVGPathElement) {
+        const container = candidatePath.closest("g.edgePath");
+        return {
+          edge,
+          path: candidatePath,
+          container: container instanceof SVGGElement ? container : candidatePath,
+          relationType: metadataString(metadata, "relation_type", edge.kind || "reply"),
+          crossLane: metadataBoolean(metadata, "cross_lane"),
+        };
+      }
+      // Sequence diagram arrows are rendered as <line> elements
+      const seqLine = sequenceLines[index] ?? null;
+      if (seqLine instanceof SVGLineElement) {
+        const container = seqLine.closest("g") ?? seqLine;
+        return {
+          edge,
+          path: seqLine as unknown as SVGElement,
+          container: container instanceof SVGGElement ? container : seqLine as unknown as SVGElement,
+          relationType: metadataString(metadata, "relation_type", edge.kind || "reply"),
+          crossLane: metadataBoolean(metadata, "cross_lane"),
+        };
+      }
+      return null;
     })
     .filter((item): item is MermaidRenderedEdge => Boolean(item));
 }

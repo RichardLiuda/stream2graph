@@ -935,6 +935,15 @@ function buildDemoSnapshot(
         active_graph_kind: graph.kind,
         demo_scenario_id: scenario.id,
       },
+      ...(scenario.graphs.length > 1 ? {
+        canvas_state: {
+          canvases: scenario.graphs.map((g) => ({
+            canvas_id: g.id,
+            title: nodeLabels[g.id] || g.fallbackLabel,
+          })),
+          active_canvas_index: stageState.graphIndex,
+        },
+      } : {}),
     },
     evaluation: {
       metrics: {
@@ -3076,9 +3085,10 @@ export function RealtimeStudio() {
   }, [helperCapabilities, inputOptions, language, selectedInputSource, studioSend]);
 
   useEffect(() => {
+    if (!backendOptions.length) return;
     if (!backendOptions.some((item) => item.value === selectedRecognitionBackend && !item.disabled)) {
       const fallback = backendOptions.find((item) => !item.disabled) || backendOptions[0];
-      studioSend({ type: "backend.select", backend: fallback.value });
+      if (fallback) studioSend({ type: "backend.select", backend: fallback.value });
     }
   }, [backendOptions, selectedRecognitionBackend, studioSend]);
 
@@ -4265,9 +4275,38 @@ export function RealtimeStudio() {
     onError: (err) => setError((err as Error).message),
   });
 
+  const activeDemoGraphStage = useMemo(
+    () => resolveDemoGraphStageForStep(demoStep, demoTotalSteps, demoScenario),
+    [demoScenario, demoStep, demoTotalSteps],
+  );
+  const demoPlaybackComplete = demoMode && demoTotalSteps > 0 && demoStep >= demoTotalSteps && !demoPlaying;
+
   function handleSwitchToNextCanvas() {
+    if (demoMode) {
+      const nextGraphIndex = activeDemoGraphStage.graphIndex + 1;
+      if (nextGraphIndex >= demoScenario.graphs.length) return;
+      let stageOffset = 0;
+      for (let i = 0; i < nextGraphIndex; i++) stageOffset += demoScenario.graphs[i].stageCount;
+      const targetGlobalStage = stageOffset + 1;
+      const targetStep = demoStepForGraphStage(targetGlobalStage, demoTotalSteps, getDemoTotalGraphStages(demoScenario));
+      setDemoStep(targetStep);
+      setDemoTimelineStep((prev) => Math.max(prev, targetStep));
+      return;
+    }
     if (!currentSessionId || switchCanvasMutation.isPending) return;
     switchCanvasMutation.mutate(currentSessionId);
+  }
+
+  function handleSwitchToPrevCanvas() {
+    if (!demoMode) return;
+    const prevGraphIndex = activeDemoGraphStage.graphIndex - 1;
+    if (prevGraphIndex < 0) return;
+    let stageOffset = 0;
+    for (let i = 0; i < prevGraphIndex; i++) stageOffset += demoScenario.graphs[i].stageCount;
+    const targetGlobalStage = stageOffset + 1;
+    const targetStep = demoStepForGraphStage(targetGlobalStage, demoTotalSteps, getDemoTotalGraphStages(demoScenario));
+    setDemoStep(targetStep);
+    setDemoTimelineStep((prev) => Math.max(prev, targetStep));
   }
 
   const relayoutMutation = useMutation({
@@ -4773,11 +4812,6 @@ export function RealtimeStudio() {
     () => readIncrementalStageSummaries(currentGraphPayload),
     [currentGraphPayload],
   );
-  const activeDemoGraphStage = useMemo(
-    () => resolveDemoGraphStageForStep(demoStep, demoTotalSteps, demoScenario),
-    [demoScenario, demoStep, demoTotalSteps],
-  );
-  const demoPlaybackComplete = demoMode && demoTotalSteps > 0 && demoStep >= demoTotalSteps && !demoPlaying;
   const activeIncrementalStageIndex =
     demoMode && demoStep > 0 && !demoPlaybackComplete ? activeDemoGraphStage.localStage : null;
   const mermaidExportRootId = "realtime-mermaid-export";
@@ -4879,6 +4913,60 @@ export function RealtimeStudio() {
     if (live) return live;
     return activeTranscriptTurn?.text?.trim() || transcriptState.latestFinalTurn?.text?.trim() || formatLiveTranscript("", language);
   }, [activeTranscriptTurn, language, liveTranscript, transcriptState.latestFinalTurn]);
+
+  function exportDemoReport() {
+    if (!demoMode || !demoSnapshot) return;
+    const scenario = demoScenario;
+    const turns = demoTurns;
+    const timeline = buildDemoTimelineNodes(demoStep, turns, scenario, demoNodeLabels);
+    const report = {
+      type: "stream2graph_demo_report",
+      exported_at: new Date().toISOString(),
+      scenario: {
+        id: scenario.id,
+        session_id: scenario.sessionId,
+        label: demoNodeLabels[scenario.id] || scenario.id,
+      },
+      playback: {
+        current_step: demoStep,
+        total_steps: turns.length,
+        completed: demoStep >= turns.length,
+      },
+      transcript: turns.slice(0, demoStep).map((turn, index) => ({
+        index: index + 1,
+        speaker: turn.speaker,
+        text: turn.text,
+        intent: turn.intent,
+      })),
+      graphs: scenario.graphs.map((graph) => ({
+        id: graph.id,
+        kind: graph.kind,
+        label: demoNodeLabels[graph.id] || graph.fallbackLabel,
+        stage_count: graph.stageCount,
+        node_count: graph.nodes.length,
+        edge_count: graph.kind === "sequence" ? (graph.messages?.length ?? 0) : graph.edges.length,
+        group_count: graph.groups.length,
+      })),
+      timeline: timeline.map((node) => ({
+        snapshot_id: node.snapshot_id,
+        created_at: node.created_at,
+        label: node.label,
+        summary: node.summary,
+      })),
+      evaluation: demoSnapshot.evaluation,
+    };
+    const json = JSON.stringify(report, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${sanitizeDownloadFileName(demoNodeLabels[scenario.id] || scenario.id)}_demo_report.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setNotice({ tone: "success", text: tr("realtimeStudio.notice.graphDownloaded") });
+  }
 
   function downloadCurrentGraph() {
     if (!currentSessionId && !demoMode) {
@@ -6537,6 +6625,7 @@ export function RealtimeStudio() {
                   onAnnotationsChange={onMermaidAnnotationsChange}
                   panZoomControlsOffsetTop={12}
                   onCanvasNext={handleSwitchToNextCanvas}
+                  onCanvasPrev={handleSwitchToPrevCanvas}
                   hasMultipleCanvases={hasMultipleCanvases}
                 />
                 <GraphEvidencePanel
@@ -7233,16 +7322,18 @@ export function RealtimeStudio() {
                 <Button
                   type="button"
                   variant="secondary"
-                  title={tr("realtimeStudio.text141")}
+                  title={demoMode ? tr("realtimeStudio.text161") : tr("realtimeStudio.text141")}
                   className="h-8 min-w-0 gap-1 px-2 text-xs font-semibold"
-                  onClick={() => (currentSessionId ? saveReportMutation.mutate(currentSessionId) : null)}
-                  disabled={!currentSessionId || saveReportMutation.isPending}
+                  onClick={() => (demoMode ? exportDemoReport() : currentSessionId ? saveReportMutation.mutate(currentSessionId) : null)}
+                  disabled={demoMode ? demoStep <= 0 : !currentSessionId || saveReportMutation.isPending}
                 >
                   <Save className="h-3 w-3 shrink-0" />
                   <span className="truncate">
                     {saveReportMutation.isPending
                       ? tr("realtimeStudio.text142")
-                      : tr("realtimeStudio.text143")}
+                      : demoMode
+                        ? tr("realtimeStudio.text161")
+                        : tr("realtimeStudio.text143")}
                   </span>
                 </Button>
                 <Button

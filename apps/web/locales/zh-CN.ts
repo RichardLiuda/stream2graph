@@ -300,6 +300,7 @@ export const zhCN = {
   "realtimeStudio.text158": "删除会话",
   "realtimeStudio.text159": "确定删除该会话？此操作不可恢复。",
   "realtimeStudio.text160": "删除中…",
+  "realtimeStudio.text161": "导出演示报告",
   "platformSettings.modelProvider.openaiCompatible": "兼容接口（国内网关/厂商）",
   "platformSettings.modelProvider.xfyunRtasrLlm": "讯飞 RTASR LLM",
   "platformSettings.endpointRoute.customPath": "自定义路径",

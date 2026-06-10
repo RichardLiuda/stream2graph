@@ -678,7 +678,15 @@ export function ReportsDashboard() {
                 </select>
               </div>
               <div className="space-y-2">
-                {filteredDebriefReports.length ? (
+                {reports.isLoading ? (
+                  <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-6 text-sm text-theme-4">
+                    加载中…
+                  </div>
+                ) : reports.isError ? (
+                  <div className="rounded-lg border border-red-300/40 bg-red-500/5 px-4 py-6 text-sm text-red-400">
+                    加载报告失败：{reports.error instanceof Error ? reports.error.message : "未知错误"}
+                  </div>
+                ) : filteredDebriefReports.length ? (
                   filteredDebriefReports.slice(0, 14).map((item) => {
                     const active = item.report_id === selectedReportId;
                     return (
@@ -712,6 +720,11 @@ export function ReportsDashboard() {
             </Card>
 
             <div className="space-y-5">
+              {selectedReport.isError ? (
+                <Card className="px-4 py-6 text-sm text-red-400">
+                  加载报告详情失败：{selectedReport.error instanceof Error ? selectedReport.error.message : "未知错误"}
+                </Card>
+              ) : null}
               <Card className="space-y-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>

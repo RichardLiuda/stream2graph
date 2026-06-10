@@ -300,6 +300,7 @@ export const enUS = {
   "realtimeStudio.text158": "Delete Session",
   "realtimeStudio.text159": "Delete this session? This action cannot be undone.",
   "realtimeStudio.text160": "Deleting...",
+  "realtimeStudio.text161": "Export Demo Report",
   "platformSettings.modelProvider.openaiCompatible": "Compatible API (domestic gateway/vendor)",
   "platformSettings.modelProvider.xfyunRtasrLlm": "XFYUN RTASR LLM",
   "platformSettings.endpointRoute.customPath": "Custom path",
