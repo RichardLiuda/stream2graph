@@ -23,12 +23,13 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button, Card } from "@stream2graph/ui";
 import { BackgroundPathLayer } from "@/components/ui/background-paths";
 import { ScrollLinkedCardsBlockSection, type ScrollLinkedCardsBlock } from "@/components/scroll-linked-cards";
+import { translate, useLanguagePreference, type I18nKey } from "@/lib/language";
 
-const navItems = [
-  { href: "/app/realtime", label: "实时工作", icon: RadioTower },
-  { href: "/app/reports", label: "工作报告", icon: BarChart3 },
-  { href: "/app/settings", label: "设置", icon: Settings2 },
-  { href: "/", label: "首页", icon: BookOpenText },
+const NAV_ITEMS_META = [
+  { href: "/app/realtime", key: "homePage.nav.realtime" as I18nKey, icon: RadioTower },
+  { href: "/app/reports", key: "homePage.nav.reports" as I18nKey, icon: BarChart3 },
+  { href: "/app/settings", key: "homePage.nav.settings" as I18nKey, icon: Settings2 },
+  { href: "/", key: "homePage.nav.home" as I18nKey, icon: BookOpenText },
 ];
 
 function Reveal({
@@ -117,8 +118,8 @@ function ScrollZigzagHint({ className }: { className?: string }) {
   );
 }
 
-function FlowPipelineOrnament() {
-  const labels = ["输入", "结构", "报告"];
+function FlowPipelineOrnament({ tr }: { tr: (key: I18nKey) => string }) {
+  const labels = [tr("homePage.flowInput"), tr("homePage.flowStructure"), tr("homePage.flowReport")];
   const toneDots = ["bg-[#aeb8c6]", "bg-[#a7b3ad]", "bg-[#c6b8a1]"];
   return (
     <div className="mx-auto w-full max-w-[17rem] shrink-0 md:mx-0" aria-hidden>
@@ -144,7 +145,7 @@ function FlowPipelineOrnament() {
         </div>
         <div className="mt-4 flex items-center justify-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-theme-4">
           <span className="h-1 w-1 shrink-0 rounded-full bg-[#aeb8c6]" />
-          语流 → 图
+          {tr("homePage.flowArrow")}
           <span className="h-1 w-1 shrink-0 rounded-full bg-[#c6b8a1]" />
         </div>
         <div className="mt-3 flex items-center justify-center gap-1.5">
@@ -236,125 +237,117 @@ function FeatureSpotlightCard({
   );
 }
 
-const FLOW_STEPS: Array<{
-  n: string;
-  tag: string;
-  title: string;
-  body: string;
-  icon: LucideIcon;
-  align: "left" | "right";
-}> = [
-  {
-    n: "01",
-    tag: "Step 1",
-    title: "准备输入",
-    body: "语音或 Transcript；也可以用演示脚本做稳定复盘。",
-    icon: Mic,
-    align: "left",
-  },
-  {
-    n: "02",
-    tag: "Step 2",
-    title: "生成结构",
-    body: "Gate 过滤 → Planner 增量改图 → Mermaid 渲染。",
-    icon: Cpu,
-    align: "right",
-  },
-  {
-    n: "03",
-    tag: "Step 3",
-    title: "追踪与对照",
-    body: "看结构视图、更新记录、运行摘要和评测指标。",
-    icon: Activity,
-    align: "left",
-  },
-];
+function getFlowSteps(tr: (key: I18nKey) => string) {
+  return [
+    {
+      n: "01",
+      tag: tr("homePage.step01Tag"),
+      title: tr("homePage.step01Title"),
+      body: tr("homePage.step01Body"),
+      icon: Mic,
+      align: "left" as const,
+    },
+    {
+      n: "02",
+      tag: tr("homePage.step02Tag"),
+      title: tr("homePage.step02Title"),
+      body: tr("homePage.step02Body"),
+      icon: Cpu,
+      align: "right" as const,
+    },
+    {
+      n: "03",
+      tag: tr("homePage.step03Tag"),
+      title: tr("homePage.step03Title"),
+      body: tr("homePage.step03Body"),
+      icon: Activity,
+      align: "left" as const,
+    },
+  ];
+}
 
-const FEATURE_SPOTS: Array<{
-  mark: string;
-  kind: string;
-  title: string;
-  body: string;
-  icon: LucideIcon;
-}> = [
-  {
-    mark: "A",
-    kind: "Feature",
-    title: "主图 + 结构视图",
-    body: "同一份输入，同时得到可读流程图与节点结构。",
-    icon: LayoutGrid,
-  },
-  {
-    mark: "B",
-    kind: "Feature",
-    title: "增量可追踪",
-    body: "更新记录 + 运行摘要，解释每次图结构变化。",
-    icon: GitBranch,
-  },
-  {
-    mark: "C",
-    kind: "Method",
-    title: "对照评测",
-    body: "延迟、准确率、抖动、好懂度，用数据对比配置。",
-    icon: Gauge,
-  },
-  {
-    mark: "D",
-    kind: "Method",
-    title: "复现与归档",
-    body: "实时会话、图谱版本与复盘报告，便于追溯与归档。",
-    icon: Archive,
-  },
-];
+function getFeatureSpots(tr: (key: I18nKey) => string) {
+  return [
+    {
+      mark: "A",
+      kind: tr("homePage.featureAKind"),
+      title: tr("homePage.featureATitle"),
+      body: tr("homePage.featureABody"),
+      icon: LayoutGrid,
+    },
+    {
+      mark: "B",
+      kind: tr("homePage.featureBKind"),
+      title: tr("homePage.featureBTitle"),
+      body: tr("homePage.featureBBody"),
+      icon: GitBranch,
+    },
+    {
+      mark: "C",
+      kind: tr("homePage.featureCKind"),
+      title: tr("homePage.featureCTitle"),
+      body: tr("homePage.featureCBody"),
+      icon: Gauge,
+    },
+    {
+      mark: "D",
+      kind: tr("homePage.featureDKind"),
+      title: tr("homePage.featureDTitle"),
+      body: tr("homePage.featureDBody"),
+      icon: Archive,
+    },
+  ];
+}
 
-const LINKED_BLOCKS: ScrollLinkedCardsBlock[] = [
-  {
-    id: "block-core-flow",
-    kicker: "Block · 快速流程",
-    title: "把想法快速整理成清晰卡片图",
-    description:
-      "保留最核心四步：输入内容、整理重点、生成卡片图、保存分享。流程更短，上手更轻松。",
-    direction: "right",
-    cards: [
-      {
-        id: "core-input",
-        eyebrow: "Step 1",
-        title: "输入内容",
-        description: "可以直接说，也可以粘贴文本，先把内容放进来。",
-        tone: "chip",
-        meta: "先输入，后处理",
-        branches: [
-          { id: "core-input-br1", label: "语音", hint: "边说边记" },
-          { id: "core-input-br2", label: "文本", hint: "粘贴即用" },
-        ],
-      },
-      {
-        id: "core-clean",
-        eyebrow: "Step 2",
-        title: "整理重点",
-        description: "自动去重、分段，把长文本整理成更清楚的结构。",
-        tone: "paper",
-        meta: "重点一眼可见",
-      },
-      {
-        id: "core-graph",
-        eyebrow: "Step 3",
-        title: "生成并微调",
-        description: "先出第一版卡片图，再拖拽调整到你满意为止。",
-        tone: "code",
-        meta: "边看边改",
-      },
-      {
-        id: "core-share",
-        eyebrow: "Step 4",
-        title: "保存与分享",
-        description: "一键保存当前版本，也可以直接发给团队一起看。",
-        tone: "note",
-        meta: "结果马上可用",
-      },
-    ],
-  },
-];
+function getLinkedBlocks(tr: (key: I18nKey) => string): ScrollLinkedCardsBlock[] {
+  return [
+    {
+      id: "block-core-flow",
+      kicker: tr("homePage.linkedBlocksKicker"),
+      title: tr("homePage.linkedBlocksTitle"),
+      description: tr("homePage.linkedBlocksDescription"),
+      direction: "right",
+      cards: [
+        {
+          id: "core-input",
+          eyebrow: tr("homePage.coreInputEyebrow"),
+          title: tr("homePage.coreInputTitle"),
+          description: tr("homePage.coreInputDescription"),
+          tone: "chip",
+          meta: tr("homePage.coreInputMeta"),
+          branches: [
+            { id: "core-input-br1", label: tr("homePage.coreInputBr1"), hint: tr("homePage.coreInputBr1Hint") },
+            { id: "core-input-br2", label: tr("homePage.coreInputBr2"), hint: tr("homePage.coreInputBr2Hint") },
+          ],
+        },
+        {
+          id: "core-clean",
+          eyebrow: tr("homePage.coreCleanEyebrow"),
+          title: tr("homePage.coreCleanTitle"),
+          description: tr("homePage.coreCleanDescription"),
+          tone: "paper",
+          meta: tr("homePage.coreCleanMeta"),
+        },
+        {
+          id: "core-graph",
+          eyebrow: tr("homePage.coreGraphEyebrow"),
+          title: tr("homePage.coreGraphTitle"),
+          description: tr("homePage.coreGraphDescription"),
+          tone: "code",
+          meta: tr("homePage.coreGraphMeta"),
+        },
+        {
+          id: "core-share",
+          eyebrow: tr("homePage.coreShareEyebrow"),
+          title: tr("homePage.coreShareTitle"),
+          description: tr("homePage.coreShareDescription"),
+          tone: "note",
+          meta: tr("homePage.coreShareMeta"),
+        },
+      ],
+    },
+  ];
+}
 
 /** @description 首页：深底 + 侧滑导航，与 /app 壳层视觉一致 */
 export function HomePage() {
@@ -362,8 +355,14 @@ export function HomePage() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const nextSectionRef = useRef<HTMLElement | null>(null);
   const [scrollHintVisible, setScrollHintVisible] = useState(true);
+  const [language] = useLanguagePreference();
+  const tr = (key: I18nKey) => translate(language, key);
 
   const startHref = "/app/realtime";
+  const navItems = NAV_ITEMS_META.map((item) => ({ ...item, label: tr(item.key) }));
+  const flowSteps = getFlowSteps(tr);
+  const featureSpots = getFeatureSpots(tr);
+  const linkedBlocks = getLinkedBlocks(tr);
 
   useEffect(() => {
     const root = scrollRef.current;
@@ -383,7 +382,7 @@ export function HomePage() {
         type="button"
         aria-expanded={drawerOpen}
         aria-controls="home-nav-drawer"
-        aria-label="打开导航"
+        aria-label={tr("homePage.openNav")}
         className={`fixed left-4 top-4 z-[105] flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-[color:var(--shell-control-border)] bg-[var(--shell-control-bg)] text-[color:var(--shell-control-fg)] shadow-md transition hover:border-[color:var(--shell-control-border-hover)] hover:bg-[var(--shell-control-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--shell-focus-ring)] ${
           drawerOpen ? "opacity-80" : ""
         }`}
@@ -395,7 +394,7 @@ export function HomePage() {
       {drawerOpen ? (
         <button
           type="button"
-          aria-label="关闭导航"
+          aria-label={tr("homePage.closeNav")}
           className="fixed inset-0 z-[100] bg-[var(--shell-backdrop)] backdrop-blur-[2px] transition-opacity"
           onClick={() => setDrawerOpen(false)}
         />
@@ -413,14 +412,14 @@ export function HomePage() {
         <Card className="m-0 flex h-full w-full flex-col overflow-hidden rounded-none border-0 bg-surface-1 p-3 shadow-none sm:my-4 sm:ml-4 sm:h-[calc(100vh-2rem)] sm:rounded-2xl sm:border sm:border-theme-default sm:shadow-xl">
           <div className="flex shrink-0 items-center gap-2 pb-3">
             <Button type="button" variant="ghost" className="flex-1 justify-start gap-2 rounded-lg px-3 py-2 text-sm" onClick={() => setDrawerOpen(false)}>
-              返回首页
+              {tr("homePage.backHome")}
             </Button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="rounded-xl border border-theme-default bg-surface-2 px-4 py-4">
               <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-theme-4">Stream2Graph</div>
-              <div className="font-display mt-1 text-lg font-semibold tracking-tight text-theme-1">正式平台</div>
-              <div className="mt-3 rounded-lg border border-theme-subtle bg-surface-1 px-3 py-2 text-xs text-theme-3">当前：首页</div>
+              <div className="font-display mt-1 text-lg font-semibold tracking-tight text-theme-1">{tr("homePage.platform")}</div>
+              <div className="mt-3 rounded-lg border border-theme-subtle bg-surface-1 px-3 py-2 text-xs text-theme-3">{tr("homePage.currentHome")}</div>
             </div>
             <nav className="mt-3 rounded-xl border border-theme-default bg-surface-muted p-1.5" aria-label="导航">
               <div className="drawer-nav-animate flex flex-col gap-0.5">
@@ -466,25 +465,25 @@ export function HomePage() {
         <section className="soft-enter relative flex min-h-[100dvh] items-center justify-center">
           <div className="relative px-6 py-10 text-center text-theme-1 md:px-10 md:py-12">
             <Badge className="border-theme-default bg-surface-2 text-theme-2 normal-case tracking-normal">
-              Stream2Graph 正式平台
+              {tr("homePage.badge")}
             </Badge>
             <h1 className="mt-8">
-              <div className="text-center text-6xl font-semibold tracking-tight sm:text-7xl md:text-8xl lg:text-9xl">语流生图</div>
+              <div className="text-center text-6xl font-semibold tracking-tight sm:text-7xl md:text-8xl lg:text-9xl">{tr("homePage.title")}</div>
               <div className="mt-4 text-center text-xl font-semibold tracking-[0.12em] text-theme-4 sm:text-2xl md:text-3xl lg:text-4xl">
-                STREAM2GRAPH
+                {tr("homePage.subtitle")}
               </div>
             </h1>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Link href={startHref}>
                 <Button variant="primary" className="h-10 rounded-lg px-6 text-sm font-semibold">
-                  开始使用
+                  {tr("homePage.startButton")}
                   <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden />
                 </Button>
               </Link>
               <div className="inline-flex items-center gap-1.5 rounded-md border border-[#a7b3ad]/75 bg-surface-muted px-2.5 py-1 text-[11px] text-theme-4">
                 <span className="inline-block h-1.5 w-1.5 rounded-sm bg-[#a7b3ad]" aria-hidden />
-                实时管线就绪
+                {tr("homePage.readyBadge")}
               </div>
             </div>
           </div>
@@ -495,7 +494,7 @@ export function HomePage() {
             className={`absolute bottom-8 left-1/2 z-[2] -translate-x-1/2 text-theme-3 transition hover:text-theme-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--shell-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--page-bg)] ${
               scrollHintVisible ? "opacity-90" : "pointer-events-none opacity-0"
             }`}
-            aria-label="向下滚动查看更多"
+            aria-label={tr("homePage.scrollToMore")}
           >
             <ScrollZigzagHint className="home-scroll-hint-motion h-9 w-[5.125rem] text-theme-3 sm:h-10 sm:w-[6.625rem]" />
           </button>
@@ -514,13 +513,13 @@ export function HomePage() {
                 />
                 <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[color:var(--accent-strong)]">Pipeline</p>
                 <h2 className="font-display mt-3 text-4xl font-semibold tracking-tight text-theme-1 sm:text-5xl md:text-6xl">
-                  从语流到结构图
+                  {tr("homePage.pipelineTitle")}
                 </h2>
                 <p className="mt-5 max-w-2xl text-lg leading-relaxed text-theme-3 md:text-xl md:leading-relaxed">
-                  选择输入 → 生成与调整 → 对照与追踪。三步跑通实时管线，把口述内容落成可读的图与可追踪的变更。
+                  {tr("homePage.pipelineBody")}
                 </p>
                 <div className="mt-7 flex flex-wrap gap-2">
-                  {["实时语流", "增量 Planner", "报告归档"].map((t, i) => (
+                  {[tr("homePage.pipelineTag0"), tr("homePage.pipelineTag1"), tr("homePage.pipelineTag2")].map((t, i) => (
                     <span
                       key={t}
                       className={`rounded-full border bg-surface-2/78 px-3.5 py-1.5 text-xs font-medium text-theme-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] ${
@@ -532,12 +531,12 @@ export function HomePage() {
                   ))}
                 </div>
               </div>
-              <FlowPipelineOrnament />
+              <FlowPipelineOrnament tr={tr} />
             </div>
           </Reveal>
         </section>
 
-        {LINKED_BLOCKS.map((block) => (
+        {linkedBlocks.map((block) => (
           <ScrollLinkedCardsBlockSection key={block.id} rootRef={scrollRef} block={block} />
         ))}
 
@@ -551,20 +550,20 @@ export function HomePage() {
                 <div className="min-w-0 max-w-2xl lg:max-w-none lg:flex-1 lg:pr-8">
                   <div className="inline-flex items-center gap-2 rounded-full border border-theme-subtle bg-surface-muted/60 px-3 py-1 text-xs font-medium text-theme-3">
                     <Sparkles className="h-3.5 w-3.5 text-[color:var(--accent-strong)]" aria-hidden />
-                    能力与原理
+                    {tr("homePage.whyKicker")}
                   </div>
                   <h2 className="font-display mt-4 text-balance break-keep text-4xl font-semibold tracking-tight text-theme-1 sm:text-5xl md:text-6xl">
-                    语流成图，为什么从这里开始
+                    {tr("homePage.whyTitle")}
                   </h2>
                   <p className="mt-4 max-w-2xl text-lg leading-relaxed text-theme-3 md:text-xl">
-                    把复杂管线拆成你能点得到、看得懂的模块：视图、追踪、评测、归档，一整条链路都在工作台里。
+                    {tr("homePage.whyBody")}
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
                   {[
-                    { t: "双视图", d: "主图 & 结构" },
-                    { t: "可观测", d: "摘要与记录" },
-                    { t: "可量化", d: "指标对照" },
+                    { t: tr("homePage.whyChip1"), d: tr("homePage.whyChip1Desc") },
+                    { t: tr("homePage.whyChip2"), d: tr("homePage.whyChip2Desc") },
+                    { t: tr("homePage.whyChip3"), d: tr("homePage.whyChip3Desc") },
                   ].map((x, i) => (
                     <div
                       key={x.t}
@@ -604,12 +603,12 @@ export function HomePage() {
           <Reveal rootRef={scrollRef} delayMs={0}>
             <div className="relative overflow-hidden rounded-3xl border border-theme-default bg-surface-1/75 p-7 shadow-lg backdrop-blur-md md:p-9">
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-theme-4">How to</div>
-              <h3 className="font-display mt-2 text-2xl font-semibold tracking-tight text-theme-1 md:text-3xl">三分钟上手路径</h3>
+              <h3 className="font-display mt-2 text-2xl font-semibold tracking-tight text-theme-1 md:text-3xl">{tr("homePage.howtoTitle")}</h3>
               <ol className="mt-6 space-y-5">
                 {[
-                  "在实时工作台开麦或粘贴 Transcript",
-                  "对照主图 / 结构视图，确认节点关系",
-                  "用更新记录与运行摘要锁定每一次改动",
+                  tr("homePage.howtoStep1"),
+                  tr("homePage.howtoStep2"),
+                  tr("homePage.howtoStep3"),
                 ].map((text, i) => (
                   <li key={text} className="flex gap-4">
                     <span
@@ -635,12 +634,12 @@ export function HomePage() {
           <Reveal rootRef={scrollRef} delayMs={0}>
             <div className="rounded-3xl border border-theme-default bg-surface-1/70 p-7 shadow-lg backdrop-blur-md md:p-9">
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-theme-4">Principle</div>
-              <h3 className="font-display mt-2 text-2xl font-semibold tracking-tight text-theme-1 md:text-3xl">三条骨架</h3>
+              <h3 className="font-display mt-2 text-2xl font-semibold tracking-tight text-theme-1 md:text-3xl">{tr("homePage.principleTitle")}</h3>
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 {[
-                  { k: "Gate", v: "过滤与归类输入片段" },
-                  { k: "Planner", v: "增量修改图结构" },
-                  { k: "Renderer", v: "Mermaid + 结构节点" },
+                  { k: "Gate", v: tr("homePage.principleGate") },
+                  { k: "Planner", v: tr("homePage.principlePlanner") },
+                  { k: "Renderer", v: tr("homePage.principleRenderer") },
                 ].map((row, i) => (
                   <div
                     key={row.k}
@@ -674,7 +673,7 @@ export function HomePage() {
               </span>
               <div className="relative text-xs font-semibold uppercase tracking-[0.2em] text-theme-4">Tip</div>
               <p className="font-display relative mt-4 pl-6 text-lg font-medium leading-relaxed text-theme-2 md:pl-8 md:text-xl">
-                想做专业复盘：保留图谱版本、发言证据和行动项，再用报告模板导出给不同角色。
+                {tr("homePage.tip")}
               </p>
             </div>
           </Reveal>

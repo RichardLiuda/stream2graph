@@ -8,6 +8,7 @@ import { Badge, Card } from "@stream2graph/ui";
 import { PanZoomCanvas } from "@/components/pan-zoom-canvas";
 import { AnnotationLayer, type AnnotationDoc, type AnnotationTool } from "@/components/annotation-layer";
 import { cn } from "@/lib/utils";
+import { translate, useLanguagePreference, type I18nKey } from "@/lib/language";
 
 let mermaidReady: Promise<typeof import("mermaid")> | null = null;
 let mermaidInitialized = false;
@@ -908,6 +909,8 @@ function MermaidCardBody({
   hasMultipleCanvases?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
+  const [language] = useLanguagePreference();
+  const tr = (key: I18nKey) => translate(language, key);
   const [diagramExpanded, setDiagramExpanded] = useState(defaultDiagramExpanded);
   const [svg, setSvg] = useState("");
   const [lastSuccessfulSvg, setLastSuccessfulSvg] = useState("");
@@ -976,7 +979,7 @@ function MermaidCardBody({
       } catch (err) {
         if (!active) return;
         setSvg(lastSuccessfulSvgRef.current);
-        setError(err instanceof Error ? err.message : "渲染失败");
+        setError(err instanceof Error ? err.message : tr("mermaidCard.renderError"));
         setCanvasEmpty(false);
         console.warn("[MermaidCard] render failed", err);
         console.groupEnd();
@@ -1656,7 +1659,7 @@ function MermaidCardBody({
               overlay={
                 interactiveRelayoutEnabled ? (
                   <div className="rounded-md border border-theme-default bg-surface-muted px-2.5 py-1.5 text-[11px] leading-snug text-theme-3 shadow-lg backdrop-blur-[2px]">
-                    {relayoutBusy ? "Planner 正在重新排布图…" : "拖拽节点即可让当前 Planner 重新组织图结构。"}
+                    {relayoutBusy ? tr("mermaidCard.relayoutBusy") : tr("mermaidCard.relayoutHint")}
                   </div>
                 ) : null
               }
@@ -1686,8 +1689,8 @@ function MermaidCardBody({
                     embedded ? "left-2 right-2 top-12" : "left-3 right-3 top-3"
                   }`}
                 >
-                  渲染错误：{error || "渲染失败"}
-                  {lastSuccessfulSvg ? " 已保留最近一次可用图。" : ""}
+                  {tr("mermaidCard.renderErrorPrefix")}{error || tr("mermaidCard.renderError")}
+                  {lastSuccessfulSvg ? tr("mermaidCard.renderErrorRetained") : ""}
                 </div>
               ) : null}
               {svg ? (
@@ -1855,7 +1858,7 @@ export function MermaidCard(props: {
     <ErrorBoundary
       fallbackRender={({ error }: FallbackProps) => (
         <Card className="rounded-[26px] border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-          Mermaid 面板异常：{error.message}
+          {error.message}
         </Card>
       )}
     >

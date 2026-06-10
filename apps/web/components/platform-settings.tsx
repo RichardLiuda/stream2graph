@@ -4,7 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowRight, Globe2, Plus, RefreshCcw, Save, Settings2, Trash2 } from "lucide-react";
+import { ArrowRight, Globe2, Plus, RefreshCcw, Save, Settings2, Sparkles, Trash2 } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge, Button, Card, Input, Textarea } from "@stream2graph/ui";
@@ -317,6 +317,7 @@ export function PlatformSettings() {
   const [sttProfileId, setSttProfileId] = useState("");
   const [sttModel, setSttModel] = useState("");
   const [diagramMode, setDiagramMode] = useState<"mermaid_primary" | "dual_view">("mermaid_primary");
+  const [enableReportAiSummary, setEnableReportAiSummary] = useState(false);
   const [gateDrafts, setGateDrafts] = useState<ProfileDraft[]>([]);
   const [plannerDrafts, setPlannerDrafts] = useState<ProfileDraft[]>([]);
   const [sttDrafts, setSttDrafts] = useState<ProfileDraft[]>([]);
@@ -338,6 +339,7 @@ export function PlatformSettings() {
     setSttProfileId(resolved.sttProfileId);
     setSttModel(resolved.sttModel);
     setDiagramMode(resolved.diagramMode);
+    setEnableReportAiSummary(resolved.enableReportAiSummary);
     preferenceInitRef.current = true;
   }, [runtimeOptions.data]);
 
@@ -444,8 +446,9 @@ export function PlatformSettings() {
       sttProfileId,
       sttModel,
       diagramMode,
+      enableReportAiSummary,
     });
-  }, [diagramMode, gateModel, gateProfileId, plannerModel, plannerProfileId, sttModel, sttProfileId]);
+  }, [diagramMode, enableReportAiSummary, gateModel, gateProfileId, plannerModel, plannerProfileId, sttModel, sttProfileId]);
 
   const saveProfilesMutation = useMutation({
     mutationFn: () =>
@@ -1344,6 +1347,35 @@ export function PlatformSettings() {
             </div>
           ))}
         </div>
+      </Card>
+
+      <Card className="soft-enter soft-enter-delay-2 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-theme-subtle bg-surface-muted text-theme-2">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="text-base font-semibold text-theme-1">
+              {tr("platformSettings.text074")}
+            </div>
+            <div className="mt-1 text-sm text-theme-4">
+              {tr("platformSettings.text075")}
+            </div>
+          </div>
+        </div>
+        <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-theme-subtle bg-surface-muted px-4 py-3 transition hover:border-theme-default">
+          <input
+            type="checkbox"
+            className="h-4 w-4 shrink-0 accent-[color:var(--accent)]"
+            checked={enableReportAiSummary}
+            onChange={(e) => {
+              setEnableReportAiSummary(e.target.checked);
+              const current = resolveRuntimePreferences(runtimeOptions.data!, loadRuntimePreferences());
+              saveRuntimePreferences({ ...current, enableReportAiSummary: e.target.checked });
+            }}
+          />
+          <span className="text-sm font-medium text-theme-2">{tr("platformSettings.text076")}</span>
+        </label>
       </Card>
 
       <Card className="soft-enter soft-enter-delay-2 space-y-5">

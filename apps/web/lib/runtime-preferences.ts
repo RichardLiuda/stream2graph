@@ -20,6 +20,7 @@ export type RuntimePreferences = {
   sttProfileId: string;
   sttModel: string;
   diagramMode: "mermaid_primary" | "dual_view";
+  enableReportAiSummary: boolean;
 };
 
 const STORAGE_KEY = "s2g:runtime-preferences";
@@ -78,5 +79,6 @@ export function resolveRuntimePreferences(
     sttProfileId: sttProfile?.id || "",
     sttModel: pickModel(sttProfile, safeSeed.sttModel),
     diagramMode: safeSeed.diagramMode === "dual_view" ? "dual_view" : "mermaid_primary",
+    enableReportAiSummary: safeSeed.enableReportAiSummary ?? false,
   };
 }
