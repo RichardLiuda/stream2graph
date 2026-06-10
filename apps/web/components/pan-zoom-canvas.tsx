@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import { Button } from "@stream2graph/ui";
+import { translate, useLanguagePreference, type I18nKey } from "@/lib/language";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -62,6 +63,8 @@ export function PanZoomCanvas({
   /** @description 是否存在多张画布，用于控制左右切换按钮的显示和禁用状态 */
   hasMultipleCanvases?: boolean;
 }>) {
+  const [language] = useLanguagePreference();
+  const tr = (key: I18nKey) => translate(language, key);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(() => clamp(initialScale, minScale, maxScale));
   const [offset, setOffset] = useState<Point>(initialOffset);
@@ -234,7 +237,7 @@ export function PanZoomCanvas({
               type="button"
               variant="ghost"
               className="h-8 w-8 rounded-md px-0 py-0"
-              aria-label="前一张画布"
+              aria-label={tr("panZoom.prevCanvas")}
               onClick={onCanvasPrev}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -243,7 +246,7 @@ export function PanZoomCanvas({
               type="button"
               variant="ghost"
               className="h-8 w-8 rounded-md px-0 py-0"
-              aria-label="后一张画布"
+              aria-label={tr("panZoom.nextCanvas")}
               onClick={onCanvasNext}
             >
               <ChevronRight className="h-4 w-4" />
@@ -255,7 +258,7 @@ export function PanZoomCanvas({
           type="button"
           variant="ghost"
           className="h-8 w-8 rounded-md px-0 py-0"
-          aria-label="缩小"
+          aria-label={tr("panZoom.zoomOut")}
           onClick={() => zoomTo(scale / 1.18)}
         >
           <Minus className="h-4 w-4" />
@@ -267,7 +270,7 @@ export function PanZoomCanvas({
           type="button"
           variant="ghost"
           className="h-8 w-8 rounded-md px-0 py-0"
-          aria-label="放大"
+          aria-label={tr("panZoom.zoomIn")}
           onClick={() => zoomTo(scale * 1.18)}
         >
           <Plus className="h-4 w-4" />
@@ -277,7 +280,7 @@ export function PanZoomCanvas({
           type="button"
           variant="ghost"
           className="h-8 w-8 rounded-md px-0 py-0"
-          aria-label="重置视图"
+          aria-label={tr("panZoom.resetView")}
           onClick={() => {
             setScale(clamp(initialScale, minScale, maxScale));
             setOffset(initialOffset);

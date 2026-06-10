@@ -8,6 +8,7 @@ import { Badge, Card } from "@stream2graph/ui";
 import { PanZoomCanvas } from "@/components/pan-zoom-canvas";
 import { AnnotationLayer, type AnnotationDoc, type AnnotationTool } from "@/components/annotation-layer";
 import { cn } from "@/lib/utils";
+import { translate, useLanguagePreference, type I18nKey } from "@/lib/language";
 
 let mermaidReady: Promise<typeof import("mermaid")> | null = null;
 let mermaidInitialized = false;
@@ -810,11 +811,13 @@ export function MermaidCompileStatusBadge({
   compileOk?: boolean | null;
   updatedAt?: string | null;
 }) {
+  const [language] = useLanguagePreference();
+  const tr = (key: I18nKey) => translate(language, key);
   if (compileOk === false) {
     return (
       <Badge className="border-amber-900/60 bg-amber-950/45 text-amber-200/95 normal-case tracking-normal">
         <AlertTriangle className="mr-1 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-        编译失败
+        {tr("mermaidCard.compileFailed")}
       </Badge>
     );
   }
@@ -908,6 +911,8 @@ function MermaidCardBody({
   hasMultipleCanvases?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
+  const [language] = useLanguagePreference();
+  const tr = (key: I18nKey) => translate(language, key);
   const [diagramExpanded, setDiagramExpanded] = useState(defaultDiagramExpanded);
   const [svg, setSvg] = useState("");
   const [lastSuccessfulSvg, setLastSuccessfulSvg] = useState("");
@@ -976,7 +981,7 @@ function MermaidCardBody({
       } catch (err) {
         if (!active) return;
         setSvg(lastSuccessfulSvgRef.current);
-        setError(err instanceof Error ? err.message : "渲染失败");
+        setError(err instanceof Error ? err.message : tr("mermaidCard.renderError"));
         setCanvasEmpty(false);
         console.warn("[MermaidCard] render failed", err);
         console.groupEnd();
@@ -1626,8 +1631,8 @@ function MermaidCardBody({
               embedded ? "mx-1 mb-2 shrink-0 sm:mx-2" : "mb-3"
             }`}
           >
-            渲染错误：{error}
-            {lastSuccessfulSvg ? " 已保留最近一次可用图。" : ""}
+            {tr("mermaidCard.renderErrorPrefix")}{error}
+            {lastSuccessfulSvg ? tr("mermaidCard.renderErrorRetained") : ""}
           </div>
         ) : null}
         <div
@@ -1656,7 +1661,7 @@ function MermaidCardBody({
               overlay={
                 interactiveRelayoutEnabled ? (
                   <div className="rounded-md border border-theme-default bg-surface-muted px-2.5 py-1.5 text-[11px] leading-snug text-theme-3 shadow-lg backdrop-blur-[2px]">
-                    {relayoutBusy ? "Planner 正在重新排布图…" : "拖拽节点即可让当前 Planner 重新组织图结构。"}
+                    {relayoutBusy ? tr("mermaidCard.relayoutBusy") : tr("mermaidCard.relayoutHint")}
                   </div>
                 ) : null
               }
@@ -1676,8 +1681,8 @@ function MermaidCardBody({
               />
               {embedded && error ? (
                 <div className="absolute left-2 right-2 top-2 z-[3] rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
-                  渲染错误：{error}
-                  {lastSuccessfulSvg ? " 已保留最近一次可用图。" : ""}
+                  {tr("mermaidCard.renderErrorPrefix")}{error}
+                  {lastSuccessfulSvg ? tr("mermaidCard.renderErrorRetained") : ""}
                 </div>
               ) : null}
               {!svg && !canvasEmpty ? (
@@ -1686,8 +1691,8 @@ function MermaidCardBody({
                     embedded ? "left-2 right-2 top-12" : "left-3 right-3 top-3"
                   }`}
                 >
-                  渲染错误：{error || "渲染失败"}
-                  {lastSuccessfulSvg ? " 已保留最近一次可用图。" : ""}
+                  {tr("mermaidCard.renderErrorPrefix")}{error || tr("mermaidCard.renderError")}
+                  {lastSuccessfulSvg ? tr("mermaidCard.renderErrorRetained") : ""}
                 </div>
               ) : null}
               {svg ? (
@@ -1728,7 +1733,7 @@ function MermaidCardBody({
                   </Tooltip.Trigger>
                   <Tooltip.Portal>
                     <Tooltip.Content sideOffset={8} className="rounded-xl border border-theme-default bg-surface-1 px-3 py-2 text-xs text-theme-3 shadow-lg">
-                      服务端已检测到 Mermaid 编译失败，并保留了最近一次可用图。
+                      {tr("mermaidCard.serverCompileWarning")}
                       <Tooltip.Arrow className="fill-[var(--surface-1)]" />
                     </Tooltip.Content>
                   </Tooltip.Portal>
@@ -1801,7 +1806,7 @@ function MermaidCardBody({
         body
       ) : (
         <div className="border-b border-theme-default px-5 py-3 text-xs leading-snug text-theme-4">
-          图预览已收起，点击标题栏可展开查看（画布内仍可平移与缩放）。
+          {tr("mermaidCard.collapsedHint")}
         </div>
       )}
     </Card>
@@ -1855,7 +1860,7 @@ export function MermaidCard(props: {
     <ErrorBoundary
       fallbackRender={({ error }: FallbackProps) => (
         <Card className="rounded-[26px] border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-          Mermaid 面板异常：{error.message}
+          {error.message}
         </Card>
       )}
     >

@@ -2,6 +2,7 @@
 
 import * as Popover from "@radix-ui/react-popover";
 import { useCallback, useId, useState } from "react";
+import { translate, useLanguagePreference, type I18nKey } from "@/lib/language";
 
 /** 使用 Canvas 规范化颜色字符串；无效时返回 null */
 function tryParseCssColor(input: string): string | null {
@@ -38,6 +39,8 @@ export type AnnotationColorPopoverProps = {
 };
 
 export function AnnotationColorPopover({ swatches, value, onChange }: AnnotationColorPopoverProps) {
+  const [language] = useLanguagePreference();
+  const tr = (key: I18nKey, params?: Record<string, string | number>) => translate(language, key, params);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const lid = useId();
@@ -63,7 +66,7 @@ export function AnnotationColorPopover({ swatches, value, onChange }: Annotation
         <button
           type="button"
           className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm p-0 outline-none ring-offset-2 hover:bg-surface-muted/30 focus-visible:ring-2 focus-visible:ring-[color:var(--ring-focus)]"
-          aria-label="调色"
+          aria-label={tr("annotationColor.pick")}
         >
           <span
             className="h-3.5 w-3.5 rounded-[3px] border border-theme-default/70"
@@ -90,7 +93,7 @@ export function AnnotationColorPopover({ swatches, value, onChange }: Annotation
                 }`}
                 style={{ background: c }}
                 title={c}
-                aria-label={`颜色 ${c}`}
+                aria-label={tr("annotationColor.colorLabel", { color: c })}
                 onClick={() => {
                   onChange(c);
                   setDraft(c);
@@ -104,7 +107,7 @@ export function AnnotationColorPopover({ swatches, value, onChange }: Annotation
             type="color"
             value={hexPick}
             className="mt-2 h-7 w-full min-w-0 cursor-pointer rounded border border-theme-default bg-surface-1 p-px"
-            aria-label="拾色器"
+            aria-label={tr("annotationColor.colorPicker")}
             onChange={(e) => {
               onChange(e.target.value);
               setDraft(e.target.value);
@@ -117,7 +120,7 @@ export function AnnotationColorPopover({ swatches, value, onChange }: Annotation
             className="mt-1.5 h-7 w-full rounded border border-theme-default bg-surface-1 px-2 text-[11px] text-theme-1 outline-none focus-visible:border-theme-strong"
             spellCheck={false}
             autoComplete="off"
-            aria-label="颜色值"
+            aria-label={tr("annotationColor.colorValue")}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={applyDraft}
             onKeyDown={(e) => {

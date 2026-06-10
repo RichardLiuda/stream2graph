@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { translate, useLanguagePreference, type I18nKey } from "@/lib/language";
 
 type Point = { x: number; y: number };
 
@@ -152,6 +153,8 @@ export function AnnotationLayer({
   textColor?: string;
   textSize?: number;
 }) {
+  const [language] = useLanguagePreference();
+  const tr = (key: I18nKey) => translate(language, key);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const draftingRef = useRef<{ pointerId: number; start: Point; kind: AnnotationTool } | null>(null);
   const draftPenPointsRef = useRef<Point[] | null>(null);
@@ -742,7 +745,7 @@ export function AnnotationLayer({
                         userSelect: "none",
                       }}
                     >
-                      <span>拖动文本</span>
+                      <span>{tr("annotation.dragText")}</span>
                       <button
                         type="button"
                         onPointerDown={(e) => e.stopPropagation()}
@@ -759,13 +762,13 @@ export function AnnotationLayer({
                           cursor: "pointer",
                         }}
                       >
-                        删除
+                        {tr("annotation.delete")}
                       </button>
                     </div>
                     <textarea
                       value={it.text}
                       onPointerDown={(e) => e.stopPropagation()}
-                      placeholder="输入批注…"
+                      placeholder={tr("annotation.placeholder")}
                       onChange={(e) => updateTextItem(it.id, (cur) => ({ ...cur, text: e.target.value }))}
                       style={{
                         width: "300px",
@@ -826,7 +829,7 @@ export function AnnotationLayer({
                 }}
               />
               <div style={{ marginTop: "6px", fontSize: "10px", color: "rgba(120,53,15,0.72)" }}>
-                Ctrl/⌘ + Enter 保存，Esc 取消
+                {tr("annotation.saveHint")}
               </div>
             </div>
           </foreignObject>

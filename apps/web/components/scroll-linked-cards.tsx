@@ -186,9 +186,9 @@ function LinkedCardView({
   const tone = cardToneClasses(card.tone);
   const statusLabel = index % 3 === 0 ? "Flow" : index % 3 === 1 ? "Sync" : "Trace";
   const frameVariant: "windows" | "mac" | "workspace" =
-    card.id.includes("clean") || card.title.includes("整理")
+    card.id.includes("clean")
       ? "mac"
-      : card.id.includes("graph") || card.title.includes("微调")
+      : card.id.includes("graph")
         ? "workspace"
         : "windows";
   const sizeBaseClass =

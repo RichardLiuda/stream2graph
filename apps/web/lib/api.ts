@@ -604,6 +604,12 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  summarizeReport: async (reportId: string) =>
+    request(
+      `/api/v1/reports/${reportId}/summarize`,
+      z.object({ ok: z.boolean(), summary: z.string() }),
+      { method: "POST" },
+    ),
 };
 
 export function subscribeRun(runId: string, onMessage: (payload: z.infer<typeof runJobSchema>) => void) {

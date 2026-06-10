@@ -3164,6 +3164,7 @@ export function RealtimeStudio() {
       sttProfileId,
       sttModel,
       diagramMode: diagramMode === "dual_view" ? "dual_view" : "mermaid_primary",
+      enableReportAiSummary: loadRuntimePreferences()?.enableReportAiSummary ?? false,
     });
   }, [diagramMode, gateModel, gateProfileId, plannerModel, plannerProfileId, sttModel, sttProfileId]);
 

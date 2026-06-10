@@ -14,6 +14,7 @@ import {
   Save,
   Search,
   Settings2,
+  Sparkles,
 } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import type { RealtimeTimelineNode } from "@stream2graph/contracts";
@@ -21,6 +22,8 @@ import type { RealtimeTimelineNode } from "@stream2graph/contracts";
 import { Badge, Button, Card, Input, Textarea } from "@stream2graph/ui";
 
 import { api, apiUrl } from "@/lib/api";
+import { translate, useLanguagePreference, type I18nKey } from "@/lib/language";
+import { loadRuntimePreferences } from "@/lib/runtime-preferences";
 
 type DashboardTab = "overview" | "builder" | "exports";
 type ReportDetail = Awaited<ReturnType<typeof api.getReport>>;
@@ -50,40 +53,46 @@ type ReportPreset = {
 };
 
 const DEBRIEF_REPORT_TYPES = new Set(["realtime_session", "realtime_graph"]);
-const DASHBOARD_TABS: Array<[DashboardTab, string]> = [
-  ["overview", "复盘中心"],
-  ["builder", "报告自定义"],
-  ["exports", "导出归档"],
-];
-const REPORT_SECTIONS: Array<{ key: ReportSectionKey; label: string; description: string }> = [
-  { key: "summary", label: "工作摘要", description: "会话摘要与背景。" },
-  { key: "decisions", label: "关键决策", description: "从报告字段和图谱版本中提取。" },
-  { key: "actions", label: "行动项", description: "待跟进事项与负责人。" },
-  { key: "risks", label: "风险关注", description: "阻塞和不确定事项。" },
-  { key: "graph", label: "图谱指标", description: "节点、关系、分组数量。" },
-  { key: "timeline", label: "版本时间轴", description: "可回放的图谱快照列表。" },
-  { key: "evidence", label: "发言证据", description: "发言占比与片段。" },
-];
-const EXPORT_FORMATS = ["json", "csv", "markdown"] as const;
+function getDashboardTabs(tr: (key: I18nKey) => string): Array<[DashboardTab, string]> {
+  return [
+    ["overview", tr("reportsDashboard.tab.overview")],
+    ["builder", tr("reportsDashboard.tab.builder")],
+    ["exports", tr("reportsDashboard.tab.exports")],
+  ];
+}
+function getReportSections(tr: (key: I18nKey) => string) {
+  return [
+    { key: "summary" as ReportSectionKey, label: tr("reportsDashboard.section.summary"), description: tr("reportsDashboard.section.summaryDesc") },
+    { key: "decisions" as ReportSectionKey, label: tr("reportsDashboard.section.decisions"), description: tr("reportsDashboard.section.decisionsDesc") },
+    { key: "actions" as ReportSectionKey, label: tr("reportsDashboard.section.actions"), description: tr("reportsDashboard.section.actionsDesc") },
+    { key: "risks" as ReportSectionKey, label: tr("reportsDashboard.section.risks"), description: tr("reportsDashboard.section.risksDesc") },
+    { key: "graph" as ReportSectionKey, label: tr("reportsDashboard.section.graph"), description: tr("reportsDashboard.section.graphDesc") },
+    { key: "timeline" as ReportSectionKey, label: tr("reportsDashboard.section.timeline"), description: tr("reportsDashboard.section.timelineDesc") },
+    { key: "evidence" as ReportSectionKey, label: tr("reportsDashboard.section.evidence"), description: tr("reportsDashboard.section.evidenceDesc") },
+  ];
+}
+const EXPORT_FORMATS = ["markdown", "json", "csv"] as const;
 // 合并为两个实用模板：内部复盘（含全部章节）、对外摘要（隐藏时间轴和发言证据）
-const REPORT_PRESETS: ReportPreset[] = [
-  {
-    id: "internal",
-    label: "内部复盘",
-    audience: "业务复盘",
-    tone: "行动导向",
-    intro: "",
-    sections: { summary: true, decisions: true, actions: true, risks: true, graph: true, timeline: true, evidence: true },
-  },
-  {
-    id: "external",
-    label: "对外摘要",
-    audience: "客户汇报",
-    tone: "管理层摘要",
-    intro: "",
-    sections: { summary: true, decisions: true, actions: true, risks: true, graph: false, timeline: false, evidence: false },
-  },
-];
+function getReportPresets(tr: (key: I18nKey) => string): ReportPreset[] {
+  return [
+    {
+      id: "internal",
+      label: tr("reportsDashboard.builder.internal"),
+      audience: tr("reportsDashboard.audience.business"),
+      tone: tr("reportsDashboard.tone.action"),
+      intro: "",
+      sections: { summary: true, decisions: true, actions: true, risks: true, graph: true, timeline: true, evidence: true },
+    },
+    {
+      id: "external",
+      label: tr("reportsDashboard.builder.external"),
+      audience: tr("reportsDashboard.audience.client"),
+      tone: tr("reportsDashboard.tone.executive"),
+      intro: "",
+      sections: { summary: true, decisions: true, actions: true, risks: true, graph: false, timeline: false, evidence: false },
+    },
+  ];
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -227,8 +236,8 @@ function reportSessionId(report: ReportDetail | undefined) {
   return asString(report?.payload?.session_id) || asString(report?.summary?.session_id);
 }
 
-function reportSummaryText(report: ReportDetail | undefined, turns: TranscriptTurn[], versions: number) {
-  if (!report) return "请选择一份实时工作报告，系统会在这里生成会后复盘视图。";
+function reportSummaryText(report: ReportDetail | undefined, turns: TranscriptTurn[], versions: number, tr: (key: I18nKey, params?: Record<string, string | number>) => string) {
+  if (!report) return tr("reportsDashboard.overview.selectReportHint");
   const summary = report.summary ?? {};
   const direct =
     asString(summary.meeting_summary) ||
@@ -238,10 +247,10 @@ function reportSummaryText(report: ReportDetail | undefined, turns: TranscriptTu
   if (direct) return direct;
   const metrics = graphMetrics(report);
   const speakers = new Set(turns.map((turn) => turn.speaker)).size;
-  return `本次实时工作沉淀了 ${turns.length} 条可追踪发言、${speakers} 位参与者、${metrics.nodes} 个图谱节点和 ${metrics.edges} 条关系，并保留了 ${versions} 个可回放版本。`;
+  return tr("reportsDashboard.overview.defaultSummary", { turns: turns.length, speakers, nodes: metrics.nodes, edges: metrics.edges, versions });
 }
 
-function deriveDecisionItems(report: ReportDetail | undefined, timelineNodes: RealtimeTimelineNode[]) {
+function deriveDecisionItems(report: ReportDetail | undefined, timelineNodes: RealtimeTimelineNode[], tr: (key: I18nKey, params?: Record<string, string | number>) => string) {
   // 只从报告结构化字段中提取，不用 transcript 文本猜测
   const collected = collectStringList(
     report?.payload,
@@ -252,11 +261,11 @@ function deriveDecisionItems(report: ReportDetail | undefined, timelineNodes: Re
   const metrics = graphMetrics(report);
   return [
     metrics.nodes || metrics.edges
-      ? `当前图谱：${metrics.nodes} 个节点、${metrics.edges} 条关系、${metrics.groups} 个分组。`
-      : "暂无结构化决策字段。",
+      ? tr("reportsDashboard.section.currentGraph", { nodes: metrics.nodes, edges: metrics.edges, groups: metrics.groups })
+      : tr("reportsDashboard.section.noDecisions"),
     timelineNodes.length
-      ? `保留 ${timelineNodes.length} 个时间节点。`
-      : "暂无时间轴快照。",
+      ? tr("reportsDashboard.section.timelineVersions", { count: timelineNodes.length })
+      : tr("reportsDashboard.section.noTimeline"),
   ];
 }
 
@@ -280,8 +289,8 @@ function deriveRiskItems(report: ReportDetail | undefined) {
   return collected.length ? collected : [];
 }
 
-function manualActionText(item: ManualActionItem) {
-  const meta = [item.owner ? `负责人：${item.owner}` : "", item.due ? `截止：${item.due}` : ""]
+function manualActionText(item: ManualActionItem, tr: (key: I18nKey) => string) {
+  const meta = [item.owner ? `${tr("reportsDashboard.builder.actionOwner")}：${item.owner}` : "", item.due ? `${tr("reportsDashboard.builder.actionDue")}：${item.due}` : ""]
     .filter(Boolean)
     .join("；");
   return meta ? `${item.text}（${meta}）` : item.text;
@@ -311,6 +320,8 @@ function buildMarkdownDraft({
   metrics,
   timelineNodes,
   transcriptTurns,
+  tr,
+  aiSummary,
 }: {
   title: string;
   audience: string;
@@ -327,78 +338,88 @@ function buildMarkdownDraft({
   metrics: ReturnType<typeof graphMetrics>;
   timelineNodes: RealtimeTimelineNode[];
   transcriptTurns: TranscriptTurn[];
+  tr: (key: I18nKey, params?: Record<string, string | number>) => string;
+  aiSummary?: string;
 }) {
   const lines = [
     `# ${title}`,
     "",
-    `- 目标读者：${audience}`,
-    `- 表达风格：${tone}`,
-    `- 报告来源：${report?.title || "未选择实时工作报告"}`,
-    `- 负责人：${owner || "待补充"}`,
-    `- 下次复盘：${reviewDate || "待确认"}`,
+    `- ${tr("reportsDashboard.builder.audience")}：${audience}`,
+    `- ${tr("reportsDashboard.builder.tone")}：${tone}`,
+    `- ${tr("reportsDashboard.builder.reportTitle")}：${report?.title || tr("reportsDashboard.overview.noReportSelected")}`,
+    `- ${tr("reportsDashboard.builder.owner")}：${owner || "—"}`,
+    `- ${tr("reportsDashboard.builder.reviewDate")}：${reviewDate || "—"}`,
     "",
   ];
 
   if (intro.trim()) {
-    lines.push("## 编者说明", "", intro.trim(), "");
+    lines.push(`## ${tr("reportsDashboard.builder.intro")}`, "", intro.trim(), "");
   }
   if (sections.summary) {
-    lines.push("## 工作摘要", "", summaryText, "");
+    lines.push(`## ${tr("reportsDashboard.section.summary")}`, "", summaryText, "");
   }
   if (sections.decisions) {
-    lines.push("## 关键决策", "", ...decisions.map((item, index) => `${index + 1}. ${item}`), "");
+    lines.push(`## ${tr("reportsDashboard.section.decisions")}`, "", ...decisions.map((item, index) => `${index + 1}. ${item}`), "");
   }
   if (sections.actions) {
-    lines.push("## 行动项", "", ...actionItems.map((item, index) => `${index + 1}. ${item}`), "");
+    lines.push(`## ${tr("reportsDashboard.section.actions")}`, "", ...actionItems.map((item, index) => `${index + 1}. ${item}`), "");
   }
   if (sections.risks) {
-    lines.push("## 风险关注", "", ...riskItems.map((item, index) => `${index + 1}. ${item}`), "");
+    lines.push(`## ${tr("reportsDashboard.section.risks")}`, "", ...riskItems.map((item, index) => `${index + 1}. ${item}`), "");
   }
   if (sections.graph) {
     lines.push(
-      "## 图谱指标",
+      `## ${tr("reportsDashboard.section.graph")}`,
       "",
-      `- 节点：${metrics.nodes}`,
-      `- 关系：${metrics.edges}`,
-      `- 分组：${metrics.groups}`,
+      `- ${tr("reportsDashboard.overview.nodes")}：${metrics.nodes}`,
+      `- ${tr("reportsDashboard.overview.edges")}：${metrics.edges}`,
+      `- ${tr("reportsDashboard.overview.groups")}：${metrics.groups}`,
       "",
     );
   }
   if (sections.timeline) {
     lines.push(
-      "## 版本时间轴",
+      `## ${tr("reportsDashboard.section.timeline")}`,
       "",
       ...(timelineNodes.length
         ? timelineNodes
             .slice(0, 8)
-            .map((node, index) => `${index + 1}. ${node.label || "自动快照"} · ${formatDateTime(node.created_at)}`)
-        : ["暂无可回放时间轴。"]),
+            .map((node, index) => `${index + 1}. ${node.label || "—"} · ${formatDateTime(node.created_at)}`)
+        : [tr("reportsDashboard.section.noTimelineData")]),
       "",
     );
   }
   if (sections.evidence) {
     lines.push(
-      "## 发言证据",
+      `## ${tr("reportsDashboard.section.evidence")}`,
       "",
       ...(transcriptTurns.length
         ? transcriptTurns.slice(0, 8).map((turn) => `- ${turn.speaker}：${turn.text}`)
-        : ["暂无可提取的发言证据。"]),
+        : [tr("reportsDashboard.section.noEvidence")]),
       "",
     );
+  }
+  if (aiSummary) {
+    lines.push(`## ${tr("reportsDashboard.aiSummary.title")}`, "", aiSummary, "");
   }
   return lines.join("\n");
 }
 
 export function ReportsDashboard() {
   const queryClient = useQueryClient();
+  const [language] = useLanguagePreference();
+  const tr = (key: I18nKey, params?: Record<string, string | number>) => translate(language, key, params);
+  const dashboardTabs = getDashboardTabs(tr);
+  const reportSections = getReportSections(tr);
+  const reportPresets = getReportPresets(tr);
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>("overview");
   const [selectedReportId, setSelectedReportId] = useState("");
   const [selectedTimelineSnapshotId, setSelectedTimelineSnapshotId] = useState("");
   const [reportSearch, setReportSearch] = useState("");
   const [reportStatusFilter, setReportStatusFilter] = useState("all");
-  const [reportTitle, setReportTitle] = useState("实时工作复盘报告");
-  const [reportAudience, setReportAudience] = useState("业务复盘");
-  const [reportTone, setReportTone] = useState("专业简洁");
+  const [reportTitle, setReportTitle] = useState(() => translate(language, "reportsDashboard.title"));
+  const [reportAudience, setReportAudience] = useState(() => translate(language, "reportsDashboard.audience.business"));
+  const [reportTone, setReportTone] = useState(() => translate(language, "reportsDashboard.tone.professional"));
   const [reportOwner, setReportOwner] = useState("");
   const [reviewDate, setReviewDate] = useState("");
   const [customIntro, setCustomIntro] = useState("");
@@ -407,6 +428,17 @@ export function ReportsDashboard() {
   const [manualActionDueDraft, setManualActionDueDraft] = useState("");
   const [manualActions, setManualActions] = useState<ManualActionItem[]>([]);
   const [copyNotice, setCopyNotice] = useState("");
+  const [aiSummaryText, setAiSummaryText] = useState("");
+  const enableReportAiSummary = loadRuntimePreferences()?.enableReportAiSummary ?? false;
+
+  const aiSummaryMutation = useMutation({
+    mutationFn: () => api.summarizeReport(selectedReportId),
+    onSuccess: (data) => {
+      setAiSummaryText(data.summary);
+      queryClient.invalidateQueries({ queryKey: ["reports", selectedReportId] });
+    },
+  });
+
   // notes 编辑状态
   const [notesDraft, setNotesDraft] = useState("");
   const [notesSaved, setNotesSaved] = useState(false);
@@ -447,6 +479,16 @@ export function ReportsDashboard() {
     enabled: Boolean(selectedReportId),
   });
   const selectedSessionId = reportSessionId(selectedReport.data);
+
+  // Load existing AI summary from report data
+  useEffect(() => {
+    const existing = selectedReport.data?.summary?.ai_summary;
+    if (typeof existing === "string" && existing.trim()) {
+      setAiSummaryText(existing);
+    } else {
+      setAiSummaryText("");
+    }
+  }, [selectedReport.data?.summary, selectedReport.data?.report_id]);
   const timeline = useQuery({
     queryKey: ["realtime-timeline", selectedSessionId],
     queryFn: () => api.listRealtimeTimeline(selectedSessionId),
@@ -471,9 +513,9 @@ export function ReportsDashboard() {
 
   useEffect(() => {
     if (selectedReport.data?.title) {
-      setReportTitle(`${selectedReport.data.title} · 工作复盘`);
+      setReportTitle(`${selectedReport.data.title} · ${tr("reportsDashboard.overview.debriefSummary")}`);
     }
-  }, [selectedReport.data?.title]);
+  }, [selectedReport.data?.title, tr]);
 
   // 报告切换时同步 notes 草稿
   useEffect(() => {
@@ -492,8 +534,8 @@ export function ReportsDashboard() {
   const transcriptTurns = useMemo(() => collectTranscriptTurns(selectedReport.data?.payload), [selectedReport.data?.payload]);
   const metrics = useMemo(() => graphMetrics(selectedReport.data), [selectedReport.data]);
   const decisions = useMemo(
-    () => deriveDecisionItems(selectedReport.data, timelineNodes),
-    [selectedReport.data, timelineNodes],
+    () => deriveDecisionItems(selectedReport.data, timelineNodes, tr),
+    [selectedReport.data, timelineNodes, tr],
   );
   const actionItems = useMemo(
     () => deriveActionItems(selectedReport.data),
@@ -503,13 +545,13 @@ export function ReportsDashboard() {
     () => deriveRiskItems(selectedReport.data),
     [selectedReport.data],
   );
-  const summaryText = reportSummaryText(selectedReport.data, transcriptTurns, timelineNodes.length);
+  const summaryText = reportSummaryText(selectedReport.data, transcriptTurns, timelineNodes.length, tr);
   const selectedTimelineNode = timelineNodes.find((node) => node.snapshot_id === selectedTimelineSnapshotId) ?? null;
   const combinedActionItems = useMemo(
-    () => [...actionItems, ...manualActions.map((item) => manualActionText(item))],
-    [actionItems, manualActions],
+    () => [...actionItems, ...manualActions.map((item) => manualActionText(item, tr))],
+    [actionItems, manualActions, tr],
   );
-  const enabledSections = REPORT_SECTIONS.filter((section) => sections[section.key]);
+  const enabledSections = reportSections.filter((section) => sections[section.key]);
   const markdownDraft = useMemo(
     () =>
       buildMarkdownDraft({
@@ -528,6 +570,8 @@ export function ReportsDashboard() {
         metrics,
         timelineNodes: orderedTimelineNodes,
         transcriptTurns,
+        tr,
+        aiSummary: aiSummaryText || undefined,
       }),
     [
       combinedActionItems,
@@ -545,6 +589,8 @@ export function ReportsDashboard() {
       summaryText,
       transcriptTurns,
       riskItems,
+      tr,
+      aiSummaryText,
     ],
   );
   const draftStats = useMemo(() => {
@@ -573,9 +619,9 @@ export function ReportsDashboard() {
   async function copyMarkdownDraft() {
     try {
       await navigator.clipboard.writeText(markdownDraft);
-      setCopyNotice("已复制 Markdown 初稿");
+      setCopyNotice(tr("reportsDashboard.builder.copied"));
     } catch {
-      setCopyNotice("复制失败，请直接下载初稿");
+      setCopyNotice(tr("reportsDashboard.builder.copyFailed"));
     }
   }
 
@@ -606,15 +652,15 @@ export function ReportsDashboard() {
     <div className="space-y-5">
       <div className="page-title--menu-clearance flex flex-wrap items-end justify-between gap-3 pr-14">
         <div>
-          <h1 className="page-title">实时工作报告</h1>
+          <h1 className="page-title">{tr("reportsDashboard.title")}</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-theme-4">
-            查看实时会话报告，记录复盘备注，自定义并导出 Markdown 初稿。
+            {tr("reportsDashboard.subtitle")}
           </p>
         </div>
         <a href="/app/realtime">
           <Button variant="secondary" className="gap-2">
             <Activity className="h-4 w-4" />
-            返回实时工作
+            {tr("reportsDashboard.backToRealtime")}
           </Button>
         </a>
       </div>
@@ -633,11 +679,11 @@ export function ReportsDashboard() {
               width: "calc((100% - 0.5rem) / 3)",
               transform: `translateX(calc(${Math.max(
                 0,
-                DASHBOARD_TABS.findIndex(([value]) => value === dashboardTab),
+                dashboardTabs.findIndex(([value]) => value === dashboardTab),
               )} * 100%))`,
             }}
           />
-          {DASHBOARD_TABS.map(([value, label]) => (
+          {dashboardTabs.map(([value, label]) => (
             <Tabs.Trigger key={value} value={value} className="workspace-tab-trigger px-4 py-2">
               {label}
             </Tabs.Trigger>
@@ -649,8 +695,8 @@ export function ReportsDashboard() {
             <Card className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-theme-1">工作报告</div>
-                  <div className="mt-1 text-xs text-theme-4">选择一份实时会话报告进入复盘视图</div>
+                  <div className="text-sm font-semibold text-theme-1">{tr("reportsDashboard.overview.reports")}</div>
+                  <div className="mt-1 text-xs text-theme-4">{tr("reportsDashboard.overview.selectHint")}</div>
                 </div>
                 <Badge>{filteredDebriefReports.length} / {debriefReports.length}</Badge>
               </div>
@@ -661,7 +707,7 @@ export function ReportsDashboard() {
                     className="pl-9"
                     value={reportSearch}
                     onChange={(event: ChangeEvent<HTMLInputElement>) => setReportSearch(event.target.value)}
-                    placeholder="搜索标题、类型或状态"
+                    placeholder={tr("reportsDashboard.overview.search")}
                   />
                 </label>
                 <select
@@ -669,7 +715,7 @@ export function ReportsDashboard() {
                   value={reportStatusFilter}
                   onChange={(event: ChangeEvent<HTMLSelectElement>) => setReportStatusFilter(event.target.value)}
                 >
-                  <option value="all">全部状态</option>
+                  <option value="all">{tr("reportsDashboard.overview.allStatus")}</option>
                   {reportStatuses.map((status) => (
                     <option key={status} value={status}>
                       {status}
@@ -680,11 +726,11 @@ export function ReportsDashboard() {
               <div className="space-y-2">
                 {reports.isLoading ? (
                   <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-6 text-sm text-theme-4">
-                    加载中…
+                    {tr("reportsDashboard.overview.loading")}
                   </div>
                 ) : reports.isError ? (
                   <div className="rounded-lg border border-red-300/40 bg-red-500/5 px-4 py-6 text-sm text-red-400">
-                    加载报告失败：{reports.error instanceof Error ? reports.error.message : "未知错误"}
+                    {tr("reportsDashboard.overview.loadError", { message: reports.error instanceof Error ? reports.error.message : "—" })}
                   </div>
                 ) : filteredDebriefReports.length ? (
                   filteredDebriefReports.slice(0, 14).map((item) => {
@@ -713,7 +759,7 @@ export function ReportsDashboard() {
                   })
                 ) : (
                   <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-6 text-sm text-theme-4">
-                    没有匹配的实时工作报告。可调整搜索条件，或先在实时工作台生成并保存报告。
+                    {tr("reportsDashboard.overview.noMatch")}
                   </div>
                 )}
               </div>
@@ -722,7 +768,7 @@ export function ReportsDashboard() {
             <div className="space-y-5">
               {selectedReport.isError ? (
                 <Card className="px-4 py-6 text-sm text-red-400">
-                  加载报告详情失败：{selectedReport.error instanceof Error ? selectedReport.error.message : "未知错误"}
+                  {tr("reportsDashboard.overview.loadError", { message: selectedReport.error instanceof Error ? selectedReport.error.message : "—" })}
                 </Card>
               ) : null}
               <Card className="space-y-5">
@@ -730,10 +776,10 @@ export function ReportsDashboard() {
                   <div>
                     <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
                       <FileText className="h-5 w-5" />
-                      复盘摘要
+                      {tr("reportsDashboard.overview.debriefSummary")}
                     </div>
                     <div className="mt-1 text-sm text-theme-4">
-                      {selectedReport.data?.title || "实时工作报告会在这里转成可复盘的工作面板"}
+                      {selectedReport.data?.title || tr("reportsDashboard.overview.defaultHint")}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -744,9 +790,34 @@ export function ReportsDashboard() {
                 <div className="rounded-xl border border-theme-default bg-surface-muted px-4 py-4">
                   <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-theme-1">
                     <Activity className="h-4 w-4" />
-                    工作摘要
+                    {tr("reportsDashboard.overview.workSummary")}
                   </div>
                   <p className="text-sm leading-7 text-theme-3">{summaryText}</p>
+                  {enableReportAiSummary && selectedReportId ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => aiSummaryMutation.mutate()}
+                        disabled={aiSummaryMutation.isPending || !selectedReport.data}
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        {aiSummaryMutation.isPending ? tr("reportsDashboard.aiSummary.summarizing") : tr("reportsDashboard.aiSummary.button")}
+                      </Button>
+                      {aiSummaryMutation.isError ? (
+                        <span className="text-xs text-red-500">{tr("reportsDashboard.aiSummary.error")}</span>
+                      ) : null}
+                      {aiSummaryMutation.isSuccess && !aiSummaryText ? (
+                        <span className="text-xs text-theme-4">{tr("reportsDashboard.aiSummary.success")}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {aiSummaryText ? (
+                    <div className="mt-3 rounded-lg border border-[color:var(--accent-muted)] bg-[color:var(--accent)]/5 px-3 py-3">
+                      <div className="mb-1 text-xs font-semibold text-[color:var(--accent-strong)]">{tr("reportsDashboard.aiSummary.title")}</div>
+                      <p className="text-sm leading-7 text-theme-3 whitespace-pre-wrap">{aiSummaryText}</p>
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* 复盘备注：可编辑并保存到后端 */}
@@ -754,7 +825,7 @@ export function ReportsDashboard() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
                       <FileText className="h-4 w-4" />
-                      复盘备注
+                      {tr("reportsDashboard.overview.notes")}
                     </div>
                     <Button
                       type="button"
@@ -763,7 +834,7 @@ export function ReportsDashboard() {
                       disabled={!selectedReportId || saveNotesMutation.isPending}
                     >
                       <Save className="h-4 w-4" />
-                      {saveNotesMutation.isPending ? "保存中…" : notesSaved ? "已保存" : "保存"}
+                      {saveNotesMutation.isPending ? tr("reportsDashboard.overview.saving") : notesSaved ? tr("reportsDashboard.overview.saved") : tr("reportsDashboard.overview.save")}
                     </Button>
                   </div>
                   <Textarea
@@ -773,10 +844,10 @@ export function ReportsDashboard() {
                       setNotesSaved(false);
                     }}
                     rows={4}
-                    placeholder="在这里记录补充结论、复盘要点或待跟进事项，保存后持久化到报告。"
+                    placeholder={tr("reportsDashboard.overview.notesPlaceholder")}
                   />
                   {saveNotesMutation.isError ? (
-                    <div className="text-xs text-red-500">保存失败，请重试。</div>
+                    <div className="text-xs text-red-500">{tr("reportsDashboard.overview.saveFailed")}</div>
                   ) : null}
                 </div>
               </Card>
@@ -785,7 +856,7 @@ export function ReportsDashboard() {
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
                     <GitBranch className="h-4 w-4" />
-                    图谱版本变化
+                    {tr("reportsDashboard.overview.graphChanges")}
                   </div>
                   <Badge>
                     {metrics.nodes} nodes / {metrics.edges} edges
@@ -793,9 +864,9 @@ export function ReportsDashboard() {
                 </div>
                 <div className="grid gap-3 md:grid-cols-3">
                   {[
-                    ["节点", metrics.nodes],
-                    ["关系", metrics.edges],
-                    ["分组", metrics.groups],
+                    [tr("reportsDashboard.overview.nodes"), metrics.nodes],
+                    [tr("reportsDashboard.overview.edges"), metrics.edges],
+                    [tr("reportsDashboard.overview.groups"), metrics.groups],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
                       <div className="text-xs text-theme-4">{label}</div>
@@ -817,7 +888,7 @@ export function ReportsDashboard() {
                     >
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-theme-2">
-                          v{index + 1} · {node.label || "自动快照"}
+                          v{index + 1} · {node.label || "—"}
                         </div>
                         <div className="mt-1 text-xs text-theme-4">{formatDateTime(node.created_at)}</div>
                       </div>
@@ -826,7 +897,7 @@ export function ReportsDashboard() {
                   ))}
                   {!orderedTimelineNodes.length ? (
                     <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
-                      暂无可回放时间轴。
+                      {tr("reportsDashboard.overview.noTimeline")}
                     </div>
                   ) : null}
                 </div>
@@ -840,12 +911,12 @@ export function ReportsDashboard() {
             <Card className="space-y-5">
               <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
                 <Settings2 className="h-5 w-5" />
-                报告模板
+                {tr("reportsDashboard.builder.template")}
               </div>
               <div className="space-y-3">
-                <div className="text-sm font-semibold text-theme-1">快捷模板</div>
+                <div className="text-sm font-semibold text-theme-1">{tr("reportsDashboard.builder.quickTemplate")}</div>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {REPORT_PRESETS.map((preset) => (
+                  {reportPresets.map((preset) => (
                     <button
                       key={preset.id}
                       type="button"
@@ -862,20 +933,20 @@ export function ReportsDashboard() {
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="space-y-2 md:col-span-2">
-                  <span className="text-sm font-medium text-theme-2">报告标题</span>
+                  <span className="text-sm font-medium text-theme-2">{tr("reportsDashboard.builder.reportTitle")}</span>
                   <Input
                     value={reportTitle}
                     onChange={(event: ChangeEvent<HTMLInputElement>) => setReportTitle(event.target.value)}
                   />
                 </label>
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-theme-2">目标读者</span>
+                  <span className="text-sm font-medium text-theme-2">{tr("reportsDashboard.builder.audience")}</span>
                   <select
                     className="select-control"
                     value={reportAudience}
                     onChange={(event: ChangeEvent<HTMLSelectElement>) => setReportAudience(event.target.value)}
                   >
-                    {["业务复盘", "产品评审", "技术交接", "上线验收", "客户汇报"].map((item) => (
+                    {[tr("reportsDashboard.audience.business"), tr("reportsDashboard.audience.product"), tr("reportsDashboard.audience.tech"), tr("reportsDashboard.audience.acceptance"), tr("reportsDashboard.audience.client")].map((item) => (
                       <option key={item} value={item}>
                         {item}
                       </option>
@@ -883,13 +954,13 @@ export function ReportsDashboard() {
                   </select>
                 </label>
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-theme-2">表达风格</span>
+                  <span className="text-sm font-medium text-theme-2">{tr("reportsDashboard.builder.tone")}</span>
                   <select
                     className="select-control"
                     value={reportTone}
                     onChange={(event: ChangeEvent<HTMLSelectElement>) => setReportTone(event.target.value)}
                   >
-                    {["专业简洁", "管理层摘要", "交付验收", "问题复盘", "行动导向"].map((item) => (
+                    {[tr("reportsDashboard.tone.professional"), tr("reportsDashboard.tone.executive"), tr("reportsDashboard.tone.delivery"), tr("reportsDashboard.tone.review"), tr("reportsDashboard.tone.action")].map((item) => (
                       <option key={item} value={item}>
                         {item}
                       </option>
@@ -897,23 +968,23 @@ export function ReportsDashboard() {
                   </select>
                 </label>
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-theme-2">负责人</span>
+                  <span className="text-sm font-medium text-theme-2">{tr("reportsDashboard.builder.owner")}</span>
                   <Input
                     value={reportOwner}
                     onChange={(event: ChangeEvent<HTMLInputElement>) => setReportOwner(event.target.value)}
-                    placeholder="例如：产品负责人 / 项目经理"
+                    placeholder={tr("reportsDashboard.builder.ownerPlaceholder")}
                   />
                 </label>
                 <label className="space-y-2">
-                  <span className="text-sm font-medium text-theme-2">下次复盘时间</span>
+                  <span className="text-sm font-medium text-theme-2">{tr("reportsDashboard.builder.reviewDate")}</span>
                   <Input
                     value={reviewDate}
                     onChange={(event: ChangeEvent<HTMLInputElement>) => setReviewDate(event.target.value)}
-                    placeholder="例如：2026-06-10 10:00"
+                    placeholder={tr("reportsDashboard.builder.reviewDatePlaceholder")}
                   />
                 </label>
                 <label className="space-y-2 md:col-span-2">
-                  <span className="text-sm font-medium text-theme-2">编者说明</span>
+                  <span className="text-sm font-medium text-theme-2">{tr("reportsDashboard.builder.intro")}</span>
                   <Textarea
                     value={customIntro}
                     onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setCustomIntro(event.target.value)}
@@ -923,9 +994,9 @@ export function ReportsDashboard() {
               </div>
 
               <div className="space-y-3">
-                <div className="text-sm font-semibold text-theme-1">报告章节</div>
+                <div className="text-sm font-semibold text-theme-1">{tr("reportsDashboard.builder.sections")}</div>
                 <div className="grid gap-2 md:grid-cols-2">
-                  {REPORT_SECTIONS.map((section) => (
+                  {reportSections.map((section) => (
                     <label
                       key={section.key}
                       className="flex items-start gap-3 rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3"
@@ -951,44 +1022,44 @@ export function ReportsDashboard() {
               </div>
 
               <div className="space-y-3 rounded-xl border border-theme-default bg-surface-muted px-4 py-4">
-                <div className="text-sm font-semibold text-theme-1">补充行动项</div>
+                <div className="text-sm font-semibold text-theme-1">{tr("reportsDashboard.builder.actionItems")}</div>
                 <div className="grid gap-2 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
                   <Input
                     value={manualActionTextDraft}
                     onChange={(event: ChangeEvent<HTMLInputElement>) => setManualActionTextDraft(event.target.value)}
-                    placeholder="行动项内容"
+                    placeholder={tr("reportsDashboard.builder.actionContent")}
                   />
                   <Input
                     value={manualActionOwnerDraft}
                     onChange={(event: ChangeEvent<HTMLInputElement>) => setManualActionOwnerDraft(event.target.value)}
-                    placeholder="负责人"
+                    placeholder={tr("reportsDashboard.builder.actionOwner")}
                   />
                   <Input
                     value={manualActionDueDraft}
                     onChange={(event: ChangeEvent<HTMLInputElement>) => setManualActionDueDraft(event.target.value)}
-                    placeholder="截止时间"
+                    placeholder={tr("reportsDashboard.builder.actionDue")}
                   />
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-xs text-theme-4">
-                    已补充 {manualActions.length} 条，会合并进入行动项和 Markdown 初稿。
+                    {tr("reportsDashboard.builder.addedCount", { count: manualActions.length })}
                   </div>
                   <Button type="button" variant="secondary" onClick={addManualAction} disabled={!manualActionTextDraft.trim()}>
                     <ListChecks className="h-4 w-4" />
-                    加入行动项
+                    {tr("reportsDashboard.builder.addAction")}
                   </Button>
                 </div>
                 {manualActions.length ? (
                   <div className="space-y-2">
                     {manualActions.map((item, index) => (
                       <div key={`${item.text}-${index}`} className="flex items-start justify-between gap-3 rounded-lg border border-theme-subtle bg-surface-1 px-3 py-2">
-                        <div className="text-sm leading-6 text-theme-2">{manualActionText(item)}</div>
+                        <div className="text-sm leading-6 text-theme-2">{manualActionText(item, tr)}</div>
                         <button
                           type="button"
                           className="shrink-0 text-xs font-medium text-theme-4 hover:text-theme-2"
                           onClick={() => setManualActions((current) => current.filter((_, itemIndex) => itemIndex !== index))}
                         >
-                          移除
+                          {tr("reportsDashboard.builder.remove")}
                         </button>
                       </div>
                     ))}
@@ -1003,18 +1074,18 @@ export function ReportsDashboard() {
                   <div>
                     <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
                       <Layers className="h-5 w-5" />
-                      报告预览
+                      {tr("reportsDashboard.builder.preview")}
                     </div>
-                    <div className="mt-1 text-sm text-theme-4">根据当前报告和模板配置生成 Markdown 初稿。</div>
+                    <div className="mt-1 text-sm text-theme-4">{tr("reportsDashboard.builder.previewHint")}</div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="secondary" onClick={copyMarkdownDraft} disabled={!selectedReport.data}>
                       <Copy className="h-4 w-4" />
-                      复制
+                      {tr("reportsDashboard.builder.copy")}
                     </Button>
                     <Button type="button" onClick={downloadMarkdownDraft} disabled={!selectedReport.data}>
                       <FileDown className="h-4 w-4" />
-                      下载初稿
+                      {tr("reportsDashboard.builder.downloadDraft")}
                     </Button>
                   </div>
                 </div>
@@ -1028,8 +1099,8 @@ export function ReportsDashboard() {
                   <div className="mt-2 text-xl font-semibold text-theme-1">{reportTitle}</div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Badge>{reportTone}</Badge>
-                    <Badge>{reportOwner || "负责人待补充"}</Badge>
-                    <Badge>{reviewDate || "复盘时间待确认"}</Badge>
+                    <Badge>{reportOwner || "—"}</Badge>
+                    <Badge>{reviewDate || "—"}</Badge>
                   </div>
                   {customIntro.trim() ? (
                     <p className="mt-4 text-sm leading-7 text-theme-3">{customIntro}</p>
@@ -1037,19 +1108,19 @@ export function ReportsDashboard() {
                 </div>
                 <div className="grid gap-3 md:grid-cols-4">
                   <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
-                    <div className="text-xs text-theme-4">初稿字数</div>
+                    <div className="text-xs text-theme-4">{tr("reportsDashboard.builder.draftChars")}</div>
                     <div className="mt-1 text-lg font-semibold text-theme-1">{draftStats.chars}</div>
                   </div>
                   <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
-                    <div className="text-xs text-theme-4">预计阅读</div>
-                    <div className="mt-1 text-lg font-semibold text-theme-1">{draftStats.readMinutes} 分钟</div>
+                    <div className="text-xs text-theme-4">{tr("reportsDashboard.builder.readTime")}</div>
+                    <div className="mt-1 text-lg font-semibold text-theme-1">{tr("reportsDashboard.builder.readTimeUnit", { minutes: draftStats.readMinutes })}</div>
                   </div>
                   <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
-                    <div className="text-xs text-theme-4">启用章节</div>
+                    <div className="text-xs text-theme-4">{tr("reportsDashboard.builder.enabledSections")}</div>
                     <div className="mt-1 text-lg font-semibold text-theme-1">{draftStats.sections}</div>
                   </div>
                   <div className="rounded-lg border border-theme-subtle bg-surface-muted px-3 py-3">
-                    <div className="text-xs text-theme-4">非空行数</div>
+                    <div className="text-xs text-theme-4">{tr("reportsDashboard.builder.nonEmptyLines")}</div>
                     <div className="mt-1 text-lg font-semibold text-theme-1">{draftStats.lines}</div>
                   </div>
                 </div>
@@ -1066,7 +1137,7 @@ export function ReportsDashboard() {
               <Card className="space-y-4">
                 <div className="flex items-center gap-2 text-sm font-semibold text-theme-1">
                   <FileText className="h-4 w-4" />
-                  Markdown 初稿
+                  {tr("reportsDashboard.builder.markdownDraft")}
                 </div>
                 <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-lg border border-theme-subtle bg-surface-muted px-4 py-3 text-xs leading-6 text-theme-3">
                   {markdownDraft}
@@ -1080,15 +1151,15 @@ export function ReportsDashboard() {
           <Card className="space-y-5">
             <div className="flex items-center gap-2 text-lg font-semibold text-theme-1">
               <Download className="h-5 w-5" />
-              实时数据导出
+              {tr("reportsDashboard.exports.title")}
             </div>
             <p className="text-sm leading-6 text-theme-3">
-              导出实时会话归档数据，用于审计、归档和二次分析。
+              {tr("reportsDashboard.exports.description")}
             </p>
             <div className="flex flex-wrap gap-2">
               {EXPORT_FORMATS.map((fmt) => (
                 <a key={fmt} href={apiUrl(`/api/v1/reports/exports/download?target=realtime&fmt=${fmt}`)}>
-                  <Button variant="secondary">
+                  <Button variant={fmt === "markdown" ? "primary" : "secondary"}>
                     <Download className="h-4 w-4" />
                     {fmt.toUpperCase()}
                   </Button>

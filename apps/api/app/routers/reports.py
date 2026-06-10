@@ -9,7 +9,14 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.schemas import ReportDetail, ReportSummary, ReportUpdate
-from app.services.reports import create_report, export_rows_for_target, get_report_or_404, list_reports, update_report
+from app.services.reports import (
+    create_report,
+    export_rows_for_target,
+    get_report_or_404,
+    list_reports,
+    summarize_report_transcript,
+    update_report,
+)
 
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -81,7 +88,7 @@ def patch_report(report_id: str, body: ReportUpdate, db: Session = Depends(get_d
 @router.get("/exports/download")
 def export_reports(
     target: str = Query(..., pattern="^(runs|studies|realtime)$"),
-    fmt: str = Query(..., pattern="^(json|csv|markdown)$"),
+    fmt: str = Query("markdown", pattern="^(json|csv|markdown)$"),
     db: Session = Depends(get_db),
 ) -> FileResponse:
     title, rows = export_rows_for_target(db, target)
@@ -105,3 +112,15 @@ def export_reports(
     if not path.exists():
         raise HTTPException(status_code=500, detail="export artifact missing")
     return FileResponse(path)
+
+
+@router.post("/{report_id}/summarize")
+def summarize_report(report_id: str, db: Session = Depends(get_db)) -> dict:
+    try:
+        summary = summarize_report_transcript(db, report_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    db.commit()
+    return {"ok": True, "summary": summary}
