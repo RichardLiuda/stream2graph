@@ -811,11 +811,13 @@ export function MermaidCompileStatusBadge({
   compileOk?: boolean | null;
   updatedAt?: string | null;
 }) {
+  const [language] = useLanguagePreference();
+  const tr = (key: I18nKey) => translate(language, key);
   if (compileOk === false) {
     return (
       <Badge className="border-amber-900/60 bg-amber-950/45 text-amber-200/95 normal-case tracking-normal">
         <AlertTriangle className="mr-1 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-        编译失败
+        {tr("mermaidCard.compileFailed")}
       </Badge>
     );
   }
@@ -1629,8 +1631,8 @@ function MermaidCardBody({
               embedded ? "mx-1 mb-2 shrink-0 sm:mx-2" : "mb-3"
             }`}
           >
-            渲染错误：{error}
-            {lastSuccessfulSvg ? " 已保留最近一次可用图。" : ""}
+            {tr("mermaidCard.renderErrorPrefix")}{error}
+            {lastSuccessfulSvg ? tr("mermaidCard.renderErrorRetained") : ""}
           </div>
         ) : null}
         <div
@@ -1679,8 +1681,8 @@ function MermaidCardBody({
               />
               {embedded && error ? (
                 <div className="absolute left-2 right-2 top-2 z-[3] rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
-                  渲染错误：{error}
-                  {lastSuccessfulSvg ? " 已保留最近一次可用图。" : ""}
+                  {tr("mermaidCard.renderErrorPrefix")}{error}
+                  {lastSuccessfulSvg ? tr("mermaidCard.renderErrorRetained") : ""}
                 </div>
               ) : null}
               {!svg && !canvasEmpty ? (
@@ -1731,7 +1733,7 @@ function MermaidCardBody({
                   </Tooltip.Trigger>
                   <Tooltip.Portal>
                     <Tooltip.Content sideOffset={8} className="rounded-xl border border-theme-default bg-surface-1 px-3 py-2 text-xs text-theme-3 shadow-lg">
-                      服务端已检测到 Mermaid 编译失败，并保留了最近一次可用图。
+                      {tr("mermaidCard.serverCompileWarning")}
                       <Tooltip.Arrow className="fill-[var(--surface-1)]" />
                     </Tooltip.Content>
                   </Tooltip.Portal>
@@ -1804,7 +1806,7 @@ function MermaidCardBody({
         body
       ) : (
         <div className="border-b border-theme-default px-5 py-3 text-xs leading-snug text-theme-4">
-          图预览已收起，点击标题栏可展开查看（画布内仍可平移与缩放）。
+          {tr("mermaidCard.collapsedHint")}
         </div>
       )}
     </Card>

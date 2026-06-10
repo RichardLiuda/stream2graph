@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 
 import { cn } from "@/lib/utils";
+import { translate, useLanguagePreference, type I18nKey } from "@/lib/language";
 
 type Props = {
   min: number;
@@ -30,6 +31,8 @@ export function AnnotationWidthSlider({
   className,
   "aria-label": ariaLabel,
 }: Props) {
+  const [language] = useLanguagePreference();
+  const tr = (key: I18nKey) => translate(language, key);
   const range = max - min;
   const t = range > 0 ? (value - min) / range : 0;
   const thumbPx = thumbMinPx + t * (thumbMaxPx - thumbMinPx);
@@ -77,7 +80,7 @@ export function AnnotationWidthSlider({
           max={max}
           step={1}
           value={value}
-          aria-label={ariaLabel ?? "宽度"}
+          aria-label={ariaLabel ?? tr("annotationWidth.label")}
           aria-valuemin={min}
           aria-valuemax={max}
           aria-valuenow={value}

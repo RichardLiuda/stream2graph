@@ -6,6 +6,7 @@ import { Card } from "@stream2graph/ui";
 import { PanZoomCanvas } from "@/components/pan-zoom-canvas";
 import { AnnotationLayer, type AnnotationDoc, type AnnotationTool } from "@/components/annotation-layer";
 import { cn } from "@/lib/utils";
+import { translate, useLanguagePreference, type I18nKey } from "@/lib/language";
 
 type RendererNode = {
   id: string;
@@ -82,6 +83,8 @@ export function GraphStage({
   activeIncrementalStageIndex?: number | null;
   panZoomControlsOffsetTop?: number;
 }) {
+  const [language] = useLanguagePreference();
+  const tr = (key: I18nKey, params?: Record<string, string | number>) => translate(language, key, params);
   const [zoomRebuildNonce, setZoomRebuildNonce] = useState(0);
   const isEmpty = nodes.length === 0;
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
@@ -169,7 +172,7 @@ export function GraphStage({
           {isEmpty ? (
             <div className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center px-8 text-center">
               <p className="max-w-[560px] text-[12px] leading-relaxed text-theme-4 opacity-80">
-                暂无结构节点，发送 Transcript 或开始录音后会自动更新。
+                {tr("graphStage.emptyHint")}
               </p>
             </div>
           ) : null}
@@ -280,10 +283,10 @@ export function GraphStage({
             <div className="pointer-events-none absolute bottom-3 left-3 z-[3] max-w-[min(520px,calc(100%-1.5rem))] rounded-lg border border-theme-default bg-surface-1/90 px-3 py-2 text-xs shadow-lg backdrop-blur">
               <div className="flex items-center gap-2 font-semibold text-theme-1">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: activeStage.color }} aria-hidden />
-                阶段 {activeStage.stageIndex}
+                {tr("graphStage.stageLabel", { stageIndex: activeStage.stageIndex })}
               </div>
               <div className="mt-1 truncate text-[11px] text-theme-3">
-                {activeStage.concepts.length ? activeStage.concepts.join(" / ") : `${activeStage.deltaOpCount} 项增量`}
+                {activeStage.concepts.length ? activeStage.concepts.join(" / ") : tr("graphStage.deltaOps", { count: activeStage.deltaOpCount })}
               </div>
             </div>
           ) : null}

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { QueryProvider } from "@/components/query-provider";
 import { Button } from "@stream2graph/ui";
+import { translate, useLanguagePreference, type I18nKey } from "@/lib/language";
 
 type ThemeMode = "dark" | "light";
 
@@ -15,6 +16,8 @@ function readThemePreference(): ThemeMode {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const [language] = useLanguagePreference();
+  const tr = (key: I18nKey) => translate(language, key);
   const [theme, setTheme] = useState<ThemeMode>("light");
   const [ready, setReady] = useState(false);
 
@@ -37,8 +40,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
           type="button"
           variant={theme === "dark" ? "secondary" : "secondaryLight"}
           className="pointer-events-auto h-10 w-10 rounded-lg p-0"
-          title={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
-          aria-label={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+          title={theme === "dark" ? tr("themeToggle.toLight") : tr("themeToggle.toDark")}
+          aria-label={theme === "dark" ? tr("themeToggle.toLight") : tr("themeToggle.toDark")}
           onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
         >
           {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

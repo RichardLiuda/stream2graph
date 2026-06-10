@@ -421,7 +421,7 @@ export function HomePage() {
               <div className="font-display mt-1 text-lg font-semibold tracking-tight text-theme-1">{tr("homePage.platform")}</div>
               <div className="mt-3 rounded-lg border border-theme-subtle bg-surface-1 px-3 py-2 text-xs text-theme-3">{tr("homePage.currentHome")}</div>
             </div>
-            <nav className="mt-3 rounded-xl border border-theme-default bg-surface-muted p-1.5" aria-label="导航">
+            <nav className="mt-3 rounded-xl border border-theme-default bg-surface-muted p-1.5" aria-label={tr("homePage.navAriaLabel")}>
               <div className="drawer-nav-animate flex flex-col gap-0.5">
                 {navItems.map((item) => {
                   const Icon = item.icon;
