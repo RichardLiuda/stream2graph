@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from threading import Lock
+import json
+import threading
 from typing import Any
 
 from sqlalchemy import delete, func, select
@@ -12,7 +13,7 @@ from app.services.realtime_coordination import CoordinationRuntimeSession, norma
 from app.services.realtime_transcript import attach_transcript_state
 
 
-_RUNTIME_LOCK = Lock()
+_RUNTIME_LOCK = threading.Lock()
 _RUNTIMES: dict[str, CoordinationRuntimeSession] = {}
 
 
