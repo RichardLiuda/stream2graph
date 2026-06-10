@@ -914,6 +914,13 @@ def transcribe_audio(session_id: str, payload: RealtimeAudioTranscriptionRequest
     )
 
 
+@router.post("/{session_id}/audio/transcriptions/stream/close")
+def close_audio_transcription_stream(session_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    _get_session_or_404(db, session_id)
+    close_rtasr_session_stream(session_id)
+    return {"ok": True, "session_id": session_id}
+
+
 @router.get("/{session_id}/timeline", response_model=RealtimeTimelineResponse)
 def get_timeline(session_id: str, db: Session = Depends(get_db)) -> RealtimeTimelineResponse:
     _get_session_or_404(db, session_id)

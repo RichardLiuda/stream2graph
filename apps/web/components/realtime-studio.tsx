@@ -1408,9 +1408,10 @@ export function RealtimeStudio() {
   }, [inputOptions, selectedInputSource, studioSend]);
 
   useEffect(() => {
+    if (!backendOptions.length) return;
     if (!backendOptions.some((item) => item.value === selectedRecognitionBackend && !item.disabled)) {
       const fallback = backendOptions.find((item) => !item.disabled) || backendOptions[0];
-      studioSend({ type: "backend.select", backend: fallback.value });
+      if (fallback) studioSend({ type: "backend.select", backend: fallback.value });
     }
   }, [backendOptions, selectedRecognitionBackend, studioSend]);
 
