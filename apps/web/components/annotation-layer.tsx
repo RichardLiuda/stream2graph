@@ -644,7 +644,7 @@ export function AnnotationLayer({
   };
 
   return (
-    <div id={exportHostId} className="absolute inset-0 z-[4]">
+    <div id={exportHostId} className="pointer-events-none absolute inset-0 z-[4]">
       <svg
         ref={svgRef}
         className={`absolute inset-0 h-full w-full ${
@@ -835,4 +835,3 @@ export function AnnotationLayer({
     </div>
   );
 }
-

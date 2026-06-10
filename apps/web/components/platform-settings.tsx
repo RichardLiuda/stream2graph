@@ -1,16 +1,23 @@
 "use client";
 
-// AI辅助生成：豆包（IDE智能编程辅助），2026-04-02
+// 平台设置组件：管理API密钥、模型配置、语音识别等系统设置
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowRight, Plus, RefreshCcw, Save, Settings2, Trash2 } from "lucide-react";
+import { ArrowRight, Globe2, Plus, RefreshCcw, Save, Settings2, Trash2 } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge, Button, Card, Input, Textarea } from "@stream2graph/ui";
 
-import { ApiError, api } from "@/lib/api";
+import { api } from "@/lib/api";
 import { decodeAudioFileToVoiceprintPayload } from "@/lib/audio";
+import {
+  LANGUAGE_OPTIONS,
+  translate,
+  useLanguagePreference,
+  type I18nKey,
+  type LanguagePreference,
+} from "@/lib/language";
 import { loadRuntimePreferences, resolveRuntimePreferences, saveRuntimePreferences } from "@/lib/runtime-preferences";
 import { RealtimeDefaultConfig } from "@/components/realtime-default-config";
 
@@ -48,30 +55,34 @@ type ProfileDraft = {
 const DEFAULT_COMPAT_BASE = "";
 const DEFAULT_XFYUN_ASR_ENDPOINT = "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1";
 const DEFAULT_XFYUN_ASR_MODELS = ["rtasr_llm"];
-const MODEL_PROVIDER_KIND_OPTIONS: Array<{ value: ProviderKind; label: string }> = [
-  { value: "openai_compatible", label: "兼容接口（国内网关/厂商）" },
-  { value: "xfyun_asr", label: "讯飞 RTASR LLM" },
+const MODEL_PROVIDER_KIND_OPTIONS: Array<{ value: ProviderKind; labelKey: I18nKey }> = [
+  { value: "openai_compatible", labelKey: "platformSettings.modelProvider.openaiCompatible" },
+  { value: "xfyun_asr", labelKey: "platformSettings.modelProvider.xfyunRtasrLlm" },
 ];
 const DEFAULT_VOICEPRINT_BASE = "https://office-api-personal-dx.iflyaisol.com";
 const ENDPOINT_ROUTE_OPTIONS: Record<
   "gate" | "planner" | "stt",
-  Array<{ value: EndpointRouteMode; label: string; path: string }>
+  Array<{ value: EndpointRouteMode; label?: string; labelKey?: I18nKey; path: string }>
 > = {
   gate: [
     { value: "chat_completions", label: "/v1/chat/completions", path: "/v1/chat/completions" },
-    { value: "custom", label: "自定义路径", path: "" },
+    { value: "custom", labelKey: "platformSettings.endpointRoute.customPath", path: "" },
   ],
   planner: [
     { value: "chat_completions", label: "/v1/chat/completions", path: "/v1/chat/completions" },
-    { value: "custom", label: "自定义路径", path: "" },
+    { value: "custom", labelKey: "platformSettings.endpointRoute.customPath", path: "" },
   ],
   stt: [
-    { value: "custom", label: "讯飞固定地址", path: "" },
+    { value: "custom", labelKey: "platformSettings.endpointRoute.xfyunFixedAddress", path: "" },
   ],
 };
 
 function selectClassName(disabled = false) {
   return `select-control ${disabled ? "cursor-not-allowed opacity-55" : ""}`;
+}
+
+function t(language: LanguagePreference, key: I18nKey, params?: Record<string, string | number>) {
+  return translate(language, key, params);
 }
 
 function blankProfile(prefix: "gate" | "planner" | "stt", index: number): ProfileDraft {
@@ -259,23 +270,28 @@ function summarizeDefaults(
   sttLabel: string | null,
   sttModel: string,
   diagramMode: "mermaid_primary" | "dual_view",
+  language: LanguagePreference,
 ) {
+  const notConfigured = t(language, "realtimeDefaultConfig.text012");
+  const noModel = t(language, "realtimeDefaultConfig.text011");
   return [
-    { label: "Gate", value: gateLabel ? `${gateLabel} / ${gateModel || "未选择模型"}` : "未配置" },
-    { label: "Planner", value: plannerLabel ? `${plannerLabel} / ${plannerModel || "未选择模型"}` : "未配置" },
-    { label: "STT", value: sttLabel ? `${sttLabel} / ${sttModel || "未选择模型"}` : "未配置" },
-    { label: "视图", value: diagramMode === "dual_view" ? "Mermaid + 结构视图" : "Mermaid 主视图" },
+    { label: "Gate", value: gateLabel ? `${gateLabel} / ${gateModel || noModel}` : notConfigured },
+    { label: "Planner", value: plannerLabel ? `${plannerLabel} / ${plannerModel || noModel}` : notConfigured },
+    { label: "STT", value: sttLabel ? `${sttLabel} / ${sttModel || noModel}` : notConfigured },
+    {
+      label: t(language, "platformSettings.text001"),
+      value:
+        diagramMode === "dual_view"
+          ? t(language, "platformSettings.text002")
+          : t(language, "platformSettings.text003"),
+    },
   ];
 }
 
 export function PlatformSettings() {
   const queryClient = useQueryClient();
-  const authQuery = useQuery({
-    queryKey: ["auth", "me"],
-    queryFn: api.me,
-    retry: false,
-    refetchOnMount: "always",
-  });
+  const [language, setLanguage] = useLanguagePreference();
+  const tr = (key: I18nKey, params?: Record<string, string | number>) => t(language, key, params);
   const runtimeOptions = useQuery({
     queryKey: ["runtime-options"],
     queryFn: api.listRuntimeOptions,
@@ -290,7 +306,6 @@ export function PlatformSettings() {
     queryKey: ["admin-runtime-options"],
     queryFn: api.getAdminRuntimeOptions,
     retry: false,
-    enabled: authQuery.isSuccess && authQuery.isFetchedAfterMount,
   });
 
   const preferenceInitRef = useRef(false);
@@ -369,9 +384,7 @@ export function PlatformSettings() {
   const hasGateProfiles = Boolean(runtimeOptions.data?.gate_profiles.length);
   const hasPlannerProfiles = Boolean(runtimeOptions.data?.planner_profiles.length);
   const hasSttProfiles = Boolean(runtimeOptions.data?.stt_profiles.length);
-  const adminReady = authQuery.isSuccess && authQuery.isFetchedAfterMount;
-  const authError = authQuery.error instanceof ApiError ? authQuery.error : null;
-  const adminLoggedOut = authError?.status === 401;
+  const adminReady = Boolean(adminRuntimeOptions.data) && !adminRuntimeOptions.isError;
 
   useEffect(() => {
     if (!selectedGateProfile) return;
@@ -463,7 +476,12 @@ export function PlatformSettings() {
         modelsText,
         defaultModel: result.models.includes(current.defaultModel) ? current.defaultModel : result.models[0] || "",
       }));
-      setProbeFeedback(`已探测到 ${result.models.length} 个模型，来源：${result.models_endpoint}`);
+      setProbeFeedback(
+        tr("platformSettings.feedback.modelsProbed", {
+          count: result.models.length,
+          endpoint: result.models_endpoint,
+        }),
+      );
     },
     onError: (error) => {
       setProbeFeedback((error as Error).message);
@@ -524,7 +542,12 @@ export function PlatformSettings() {
         group_info: managedVoiceprintProfile?.label || voiceprintProfileId,
       }),
     onSuccess: (payload) => {
-      setVoiceprintFeedback(`已同步声纹组 ${payload.group.group_id}，远端特征数 ${payload.remote_features.length}。`);
+      setVoiceprintFeedback(
+        tr("platformSettings.voiceprint.groupSynced", {
+          groupId: payload.group.group_id,
+          count: payload.remote_features.length,
+        }),
+      );
       queryClient.invalidateQueries({ queryKey: ["voiceprint-features", voiceprintProfileId] });
     },
     onError: (error) => setVoiceprintFeedback((error as Error).message),
@@ -533,10 +556,10 @@ export function PlatformSettings() {
   const createVoiceprintFeatureMutation = useMutation({
     mutationFn: async () => {
       if (!enrollmentFile) {
-        throw new Error("请先选择一段说话人样本音频。");
+        throw new Error(tr("platformSettings.voiceprint.selectSampleError"));
       }
       if (!speakerLabel.trim()) {
-        throw new Error("请填写说话人标签。");
+        throw new Error(tr("platformSettings.voiceprint.speakerRequiredError"));
       }
       const audioPayload = await decodeAudioFileToVoiceprintPayload(enrollmentFile);
       return api.createVoiceprintFeature(voiceprintProfileId, {
@@ -546,7 +569,7 @@ export function PlatformSettings() {
       });
     },
     onSuccess: () => {
-      setVoiceprintFeedback(`已为 ${speakerLabel.trim()} 注册声纹特征。`);
+      setVoiceprintFeedback(tr("platformSettings.voiceprint.featureRegistered", { speaker: speakerLabel.trim() }));
       setSpeakerLabel("");
       setFeatureInfo("");
       setEnrollmentFile(null);
@@ -558,7 +581,7 @@ export function PlatformSettings() {
   const deleteVoiceprintFeatureMutation = useMutation({
     mutationFn: (featureId: string) => api.deleteVoiceprintFeature(voiceprintProfileId, featureId),
     onSuccess: () => {
-      setVoiceprintFeedback("已删除声纹特征。");
+      setVoiceprintFeedback(tr("platformSettings.voiceprint.featureDeleted"));
       queryClient.invalidateQueries({ queryKey: ["voiceprint-features", voiceprintProfileId] });
     },
     onError: (error) => setVoiceprintFeedback((error as Error).message),
@@ -574,8 +597,9 @@ export function PlatformSettings() {
         selectedSttProfile?.label || null,
         sttModel,
         diagramMode,
+        language,
       ),
-    [diagramMode, gateModel, plannerModel, selectedGateProfile, selectedPlannerProfile, selectedSttProfile, sttModel],
+    [diagramMode, gateModel, language, plannerModel, selectedGateProfile, selectedPlannerProfile, selectedSttProfile, sttModel],
   );
 
   function updateDraft(
@@ -608,62 +632,99 @@ export function PlatformSettings() {
     <div className="space-y-6">
       {/* pr：与实时页「历史会话」同档，并为固定主题按钮留空 */}
       <div className="flex flex-wrap items-center justify-between gap-3 pr-12 sm:pr-14">
-        <h1 className="page-title page-title--menu-clearance">设置</h1>
+        <h1 className="page-title page-title--menu-clearance">
+          {tr("platformSettings.text004")}
+        </h1>
         <Link href="/app/realtime" className="shrink-0">
           <Button variant="secondary">
-            返回实时工作
+            {tr("platformSettings.text005")}
             <ArrowRight className="h-4 w-4" />
           </Button>
         </Link>
       </div>
 
+      <Card className="soft-enter space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-theme-subtle bg-surface-muted text-theme-2">
+              <Globe2 className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="text-base font-semibold text-theme-1">
+                {tr("platformSettings.text006")}
+              </div>
+              <p className="mt-2 text-sm leading-6 text-theme-4">
+                {tr("platformSettings.text007")}
+              </p>
+            </div>
+          </div>
+          <div className="w-full max-w-xs">
+            <label className="sr-only" htmlFor="s2g-language-select">
+              {tr("platformSettings.text006")}
+            </label>
+            <select
+              id="s2g-language-select"
+              className={selectClassName(false)}
+              value={language}
+              onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                setLanguage(event.target.value as LanguagePreference)
+              }
+            >
+              {LANGUAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.nativeLabel}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Card>
+
       <Card className="soft-enter space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-base font-semibold text-theme-1">服务端模型配置</div>
+            <div className="text-base font-semibold text-theme-1">
+              {tr("platformSettings.text008")}
+            </div>
             <p className="mt-2 text-sm leading-6 text-theme-4">
-              保存后直接写入服务端。实时工作与样本页都会用这里的 Gate、Planner 和听写服务。
+              {tr("platformSettings.text009")}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <Badge>
-              {!adminReady ? "身份确认中" : adminRuntimeOptions.isFetching ? "读取中" : "服务端持久化"}
+              {adminRuntimeOptions.isLoading
+                ? tr("platformSettings.text010")
+                : adminRuntimeOptions.isFetching
+                  ? tr("platformSettings.text011")
+                  : adminReady
+                    ? tr("platformSettings.text012")
+                    : tr("platformSettings.text011")}
             </Badge>
             <Button
               onClick={() => saveProfilesMutation.mutate()}
               disabled={!adminReady || saveProfilesMutation.isPending}
             >
               <Save className="h-4 w-4" />
-              {saveProfilesMutation.isPending ? "保存中..." : "保存服务端配置"}
+              {saveProfilesMutation.isPending
+                ? tr("platformSettings.text013")
+                : tr("platformSettings.text014")}
             </Button>
           </div>
         </div>
 
-        {authQuery.isLoading ? (
+        {adminRuntimeOptions.isLoading ? (
           <div className="rounded-lg border border-theme-subtle bg-surface-muted px-4 py-3 text-sm text-theme-4">
-            正在确认管理员登录状态…
+            {tr("platformSettings.text015")}
           </div>
         ) : null}
-        {adminLoggedOut ? (
-          <div className="rounded-lg border border-amber-800/60 bg-amber-950/35 px-4 py-3 text-sm leading-relaxed text-amber-100">
-            <p>当前还没有管理员登录，无法读写服务端模型配置。</p>
-            <Link
-              href="/login"
-              className="mt-2 inline-flex items-center gap-1 font-medium text-amber-200 underline underline-offset-4 theme-light:text-amber-900 hover:text-theme-1"
-            >
-              前往管理员登录
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-        ) : null}
-        {!adminReady && authQuery.isError && !adminLoggedOut ? (
+        {adminRuntimeOptions.isError ? (
           <div className="rounded-lg border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm text-red-200">
-            {(authQuery.error as Error).message}
+            {(adminRuntimeOptions.error as Error).message}
           </div>
         ) : null}
-        {!adminReady && authQuery.isSuccess && !adminLoggedOut ? (
+        {!adminReady && adminRuntimeOptions.isSuccess ? (
           <div className="rounded-lg border border-theme-subtle bg-surface-muted px-4 py-3 text-sm text-theme-4">
-            正在启用服务端配置…
+            {tr("platformSettings.text018")}
           </div>
         ) : null}
 
@@ -680,16 +741,28 @@ export function PlatformSettings() {
 
         <div className="grid gap-6 xl:grid-cols-2">
           {[
-            { kind: "gate" as const, title: "Gate 配置", drafts: gateDrafts },
-            { kind: "planner" as const, title: "Planner 配置", drafts: plannerDrafts },
-            { kind: "stt" as const, title: "听写服务配置", drafts: sttDrafts },
+            {
+              kind: "gate" as const,
+              title: tr("platformSettings.text019"),
+              drafts: gateDrafts,
+            },
+            {
+              kind: "planner" as const,
+              title: tr("platformSettings.text020"),
+              drafts: plannerDrafts,
+            },
+            {
+              kind: "stt" as const,
+              title: tr("platformSettings.text021"),
+              drafts: sttDrafts,
+            },
           ].map((group) => (
             <div key={group.kind} className="space-y-4 rounded-xl border border-theme-default bg-surface-muted p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-sm font-semibold text-theme-2">{group.title}</div>
                 <Button variant="secondary" onClick={() => addDraft(group.kind)}>
                   <Plus className="h-4 w-4" />
-                  添加
+                  {tr("platformSettings.text022")}
                 </Button>
               </div>
 
@@ -731,7 +804,11 @@ export function PlatformSettings() {
                           }
                         >
                           <RefreshCcw className="h-4 w-4" />
-                          {probeModelsMutation.isPending ? "处理中..." : isXfyunStt ? "填充预设" : "探测模型"}
+                          {probeModelsMutation.isPending
+                            ? tr("platformSettings.text023")
+                            : isXfyunStt
+                              ? tr("platformSettings.text024")
+                              : tr("platformSettings.text025")}
                         </Button>
                         <Button
                           variant="secondary"
@@ -750,11 +827,13 @@ export function PlatformSettings() {
                           }
                         >
                           <RefreshCcw className="h-4 w-4" />
-                          {isTestingConnection ? "测试中..." : "测试连接"}
+                          {isTestingConnection
+                            ? tr("platformSettings.text026")
+                            : tr("platformSettings.text027")}
                         </Button>
                         <Button variant="ghost" onClick={() => removeDraft(group.kind, index)}>
                           <Trash2 className="h-4 w-4" />
-                          删除
+                          {tr("platformSettings.text028")}
                         </Button>
                       </div>
                     </div>
@@ -772,13 +851,15 @@ export function PlatformSettings() {
                             connectionResult.ok ? "text-emerald-100" : "text-red-100"
                           }`}
                         >
-                          {connectionResult.ok ? "连接测试成功" : "连接测试失败"}
+                          {connectionResult.ok
+                            ? tr("platformSettings.text029")
+                            : tr("platformSettings.text030")}
                         </div>
                         <div className="mt-1 text-sm leading-6 text-zinc-200">{connectionResult.summary}</div>
                         {connectionResult.logs.length ? (
                           <div className="mt-3 rounded-lg border border-zinc-800/80 bg-zinc-950/80 p-3">
                             <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
-                              详细日志
+                              {tr("platformSettings.text031")}
                             </div>
                             <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-6 text-zinc-300">
                               {connectionResult.logs.join("\n")}
@@ -800,13 +881,15 @@ export function PlatformSettings() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-theme-2">显示名称</label>
+                        <label className="text-sm font-medium text-theme-2">
+                          {tr("platformSettings.text032")}
+                        </label>
                         <Input variant="dark"
                           value={draft.label}
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateDraft(group.kind, index, { label: event.target.value })
                           }
-                          placeholder="例如 Domestic Primary"
+                          placeholder={tr("platformSettings.text033")}
                         />
                       </div>
                       {isXfyunStt ? (
@@ -822,7 +905,7 @@ export function PlatformSettings() {
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                 updateDraft(group.kind, index, { appId: event.target.value })
                               }
-                              placeholder="讯飞应用 App ID"
+                              placeholder={tr("platformSettings.voiceprint.xfyunAppIdPlaceholder")}
                             />
                           </div>
                         </>
@@ -838,7 +921,7 @@ export function PlatformSettings() {
                               placeholder={DEFAULT_COMPAT_BASE || "http://127.0.0.1:9000"}
                             />
                             <p className="text-xs leading-6 text-theme-4">
-                              填写兼容接口的基座地址（不含 `/v1`），`/v1` 之后的路径由下方选项自动补全。
+                              {tr("platformSettings.endpointBaseHelp")}
                             </p>
                           </div>
                           <div className="space-y-2">
@@ -854,13 +937,15 @@ export function PlatformSettings() {
                             >
                               {MODEL_PROVIDER_KIND_OPTIONS.filter((option) => option.value !== "xfyun_asr").map((option) => (
                                 <option key={option.value} value={option.value}>
-                                  {option.label}
+                                  {tr(option.labelKey)}
                                 </option>
                               ))}
                             </select>
                           </div>
                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-theme-2">Endpoint 路径</label>
+                            <label className="text-sm font-medium text-theme-2">
+                              {tr("platformSettings.text034")}
+                            </label>
                             <select
                               className={selectClassName(false)}
                               value={draft.endpointRouteMode}
@@ -872,19 +957,21 @@ export function PlatformSettings() {
                             >
                               {ENDPOINT_ROUTE_OPTIONS[group.kind].map((option) => (
                                 <option key={option.value} value={option.value}>
-                                  {option.label}
+                                  {option.labelKey ? tr(option.labelKey) : option.label}
                                 </option>
                               ))}
                             </select>
                             <p className="text-xs leading-6 text-theme-4">
                               {selectedRoute?.path
-                                ? `当前会自动补全为 ${selectedRoute.path}`
-                                : "当前使用自定义路径。"}
+                                ? `${tr("platformSettings.text035")}${selectedRoute.path}`
+                                : tr("platformSettings.text036")}
                             </p>
                           </div>
                           {draft.endpointRouteMode === "custom" ? (
                             <div className="space-y-2 md:col-span-2">
-                              <label className="text-sm font-medium text-theme-2">自定义路径</label>
+                              <label className="text-sm font-medium text-theme-2">
+                                {tr("platformSettings.text037")}
+                              </label>
                               <Input variant="dark"
                                 value={draft.customEndpointPath}
                                 onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -897,7 +984,9 @@ export function PlatformSettings() {
                         </>
                       )}
                       <div className="space-y-2 md:col-span-2">
-                        <label className="text-sm font-medium text-theme-2">最终 Endpoint</label>
+                        <label className="text-sm font-medium text-theme-2">
+                          {tr("platformSettings.text038")}
+                        </label>
                         <Input variant="dark" value={resolvedEndpoint} readOnly />
                       </div>
                       {!isXfyunStt ? (
@@ -913,7 +1002,7 @@ export function PlatformSettings() {
                                   updateDraft(group.kind, index, { disableThinking: event.target.checked })
                                 }
                               />
-                              <span>更快返回</span>
+                              <span>{tr("platformSettings.text039")}</span>
                             </label>
                           </div>
                         </div>
@@ -926,7 +1015,7 @@ export function PlatformSettings() {
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateDraft(group.kind, index, { apiKey: event.target.value })
                           }
-                          placeholder="直接保存到服务端"
+                          placeholder={tr("platformSettings.text040")}
                         />
                       </div>
                       <div className="space-y-2">
@@ -936,7 +1025,11 @@ export function PlatformSettings() {
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateDraft(group.kind, index, { apiKeyEnv: event.target.value })
                           }
-                          placeholder={isXfyunStt ? "可选，例如 XFYUN_API_KEY" : "可选，例如 S2G_DOMESTIC_LLM_API_KEY"}
+                          placeholder={
+                            isXfyunStt
+                              ? tr("platformSettings.text041")
+                              : tr("platformSettings.text042")
+                          }
                         />
                       </div>
                       {isXfyunStt ? (
@@ -949,7 +1042,7 @@ export function PlatformSettings() {
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                 updateDraft(group.kind, index, { apiSecret: event.target.value })
                               }
-                              placeholder="讯飞 API Secret"
+                              placeholder={tr("platformSettings.text043")}
                             />
                           </div>
                           <div className="space-y-2">
@@ -959,14 +1052,16 @@ export function PlatformSettings() {
                               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                                 updateDraft(group.kind, index, { apiSecretEnv: event.target.value })
                               }
-                              placeholder="可选，例如 XFYUN_API_SECRET"
+                              placeholder={tr("platformSettings.text044")}
                             />
                           </div>
                         </>
                       ) : null}
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-theme-2">
-                          {isXfyunStt ? "默认识别域" : "Default Model"}
+                          {isXfyunStt
+                            ? tr("platformSettings.text045")
+                            : "Default Model"}
                         </label>
                         <select
                           className={selectClassName(!draftModelOptions.length)}
@@ -983,13 +1078,17 @@ export function PlatformSettings() {
                               </option>
                             ))
                           ) : (
-                            <option value="">先填写或探测模型列表</option>
+                            <option value="">
+                              {tr("platformSettings.text046")}
+                            </option>
                           )}
                         </select>
                       </div>
                       <div className="space-y-2 md:col-span-2">
                         <label className="text-sm font-medium text-theme-2">
-                          {isXfyunStt ? "识别域列表" : "模型列表"}
+                          {isXfyunStt
+                            ? tr("platformSettings.text047")
+                            : tr("platformSettings.text048")}
                         </label>
                         <Textarea variant="dark"
                           rows={4}
@@ -997,21 +1096,23 @@ export function PlatformSettings() {
                           onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
                             updateDraft(group.kind, index, { modelsText: event.target.value })
                           }
-                          placeholder="每行一个模型，或用逗号分隔"
+                          placeholder={tr("platformSettings.text049")}
                         />
                         <p className="text-xs leading-6 text-theme-4">
                           {isXfyunStt
-                            ? "默认内置讯飞听写识别域，可直接保存，也可以点“填充预设”恢复默认列表。"
-                            : "可以手动填写，也可以先填好 Endpoint 和 API Key，再点“探测模型”自动回填。"}
+                            ? tr("platformSettings.text050")
+                            : tr("platformSettings.text051")}
                         </p>
                       </div>
                       {group.kind === "stt" ? (
                         <div className="space-y-4 md:col-span-2 rounded-[20px] border border-emerald-900/45 bg-emerald-950/20 p-4">
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <div className="text-sm font-semibold text-theme-1">角色分离 / 声纹增强</div>
+                              <div className="text-sm font-semibold text-theme-1">
+                                {tr("platformSettings.text052")}
+                              </div>
                               <p className="mt-1 text-xs leading-6 text-theme-4">
-                                RTASR 会优先开启角色分离；若已注册声纹特征，会自动写入 `feature_ids` 做声纹分离。
+                                {tr("platformSettings.text053")}
                               </p>
                             </div>
                             <label className="flex items-center gap-2 text-sm font-medium text-theme-2">
@@ -1024,15 +1125,14 @@ export function PlatformSettings() {
                                   })
                                 }
                               />
-                              启用
+                              {tr("platformSettings.text054")}
                             </label>
                           </div>
                           <div className="rounded-[18px] border border-theme-default bg-surface-muted px-4 py-3 text-sm leading-6 text-theme-3">
-                            开启后会自动复用当前 STT Profile 的讯飞凭证；若声纹库已有特征，实时转写会自动带上 `feature_ids`。
+                            {tr("platformSettings.text055")}
                           </div>
                           <p className="text-[11px] leading-snug text-theme-4">
-                            与「实时工作台」侧栏<strong className="font-medium text-theme-3">同一条</strong>配置：在实时页把输入来源选成麦克风/系统音等（不要用纯文本
-                            Transcript）时，左侧会显示一行「声纹分离 / 盲分模式」相关状态，保存后立即生效。
+                            {tr("platformSettings.text056")}
                           </p>
                         </div>
                       ) : null}
@@ -1067,8 +1167,12 @@ export function PlatformSettings() {
             <Settings2 className="h-5 w-5" />
           </div>
           <div>
-            <div className="text-base font-semibold text-theme-1">默认运行参数</div>
-            <div className="mt-1 text-sm text-theme-4">这些默认值会保存在当前浏览器，用于新建实时会话。</div>
+            <div className="text-base font-semibold text-theme-1">
+              {tr("platformSettings.text057")}
+            </div>
+            <div className="mt-1 text-sm text-theme-4">
+              {tr("platformSettings.text058")}
+            </div>
           </div>
         </div>
 
@@ -1088,7 +1192,9 @@ export function PlatformSettings() {
                   </option>
                 ))
               ) : (
-                <option value="">未配置 Gate profile</option>
+                <option value="">
+                  {tr("platformSettings.text059")}
+                </option>
               )}
             </select>
           </div>
@@ -1108,7 +1214,11 @@ export function PlatformSettings() {
                   </option>
                 ))
               ) : (
-                <option value="">{hasGateProfiles ? "当前 profile 无模型" : "等待 Gate profile"}</option>
+                <option value="">
+                  {hasGateProfiles
+                    ? tr("platformSettings.text060")
+                    : tr("platformSettings.text061")}
+                </option>
               )}
             </select>
           </div>
@@ -1128,7 +1238,9 @@ export function PlatformSettings() {
                   </option>
                 ))
               ) : (
-                <option value="">未配置 Planner profile</option>
+                <option value="">
+                  {tr("platformSettings.text062")}
+                </option>
               )}
             </select>
           </div>
@@ -1148,7 +1260,11 @@ export function PlatformSettings() {
                   </option>
                 ))
               ) : (
-                <option value="">{hasPlannerProfiles ? "当前 profile 无模型" : "等待 Planner profile"}</option>
+                <option value="">
+                  {hasPlannerProfiles
+                    ? tr("platformSettings.text060")
+                    : tr("platformSettings.text063")}
+                </option>
               )}
             </select>
           </div>
@@ -1168,7 +1284,9 @@ export function PlatformSettings() {
                   </option>
                 ))
               ) : (
-                <option value="">未配置 STT profile</option>
+                <option value="">
+                  {tr("platformSettings.text064")}
+                </option>
               )}
             </select>
           </div>
@@ -1188,13 +1306,19 @@ export function PlatformSettings() {
                   </option>
                 ))
               ) : (
-                <option value="">{hasSttProfiles ? "当前 profile 无模型" : "等待 STT profile"}</option>
+                <option value="">
+                  {hasSttProfiles
+                    ? tr("platformSettings.text060")
+                    : tr("platformSettings.text065")}
+                </option>
               )}
             </select>
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-theme-2">视图模式</label>
+            <label className="text-sm font-medium text-theme-2">
+              {tr("platformSettings.text066")}
+            </label>
             <select
               className={selectClassName(false)}
               value={diagramMode}
@@ -1202,8 +1326,12 @@ export function PlatformSettings() {
                 setDiagramMode(event.target.value === "dual_view" ? "dual_view" : "mermaid_primary")
               }
             >
-              <option value="mermaid_primary">Mermaid 主视图</option>
-              <option value="dual_view">Mermaid + 结构视图</option>
+              <option value="mermaid_primary">
+                {tr("platformSettings.text003")}
+              </option>
+              <option value="dual_view">
+                {tr("platformSettings.text002")}
+              </option>
             </select>
           </div>
         </div>
@@ -1221,9 +1349,11 @@ export function PlatformSettings() {
       <Card className="soft-enter soft-enter-delay-2 space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-base font-semibold text-theme-1">声纹库管理</div>
+            <div className="text-base font-semibold text-theme-1">
+              {tr("platformSettings.text067")}
+            </div>
             <p className="mt-2 text-sm leading-6 text-theme-4">
-              为某个 STT profile 注册多位说话人的声纹特征。实时 API STT 上传时，RTASR 会优先做角色分离，并尽量把角色映射到已注册声纹。
+              {tr("platformSettings.text068")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1252,7 +1382,9 @@ export function PlatformSettings() {
               }
             >
               <RefreshCcw className="h-4 w-4" />
-              {syncVoiceprintGroupMutation.isPending ? "同步中..." : "同步 / 创建远端组"}
+              {syncVoiceprintGroupMutation.isPending
+                ? tr("platformSettings.text069")
+                : tr("platformSettings.text070")}
             </Button>
           </div>
         </div>
@@ -1265,7 +1397,7 @@ export function PlatformSettings() {
 
         {!managedVoiceprintProfile?.voiceprint?.enabled ? (
           <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
-            当前选中的 STT profile 还没有启用声纹增强。先在上方 STT Profile 里打开“角色分离 / 声纹增强”，填好讯飞配置并保存。
+            {tr("platformSettings.text071")}
           </div>
         ) : (
           <>
@@ -1289,7 +1421,9 @@ export function PlatformSettings() {
                 </div>
               </div>
               <div className="rounded-lg border border-theme-default bg-surface-muted px-4 py-4">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">已注册特征</div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-4">
+                  {tr("platformSettings.text072")}
+                </div>
                 <div className="mt-2 text-sm font-semibold text-theme-1">
                   {voiceprintFeaturesQuery.data?.length ?? 0}
                 </div>
@@ -1297,18 +1431,32 @@ export function PlatformSettings() {
             </div>
 
             <div className="rounded-xl border border-theme-default bg-surface-muted p-4">
-              <div className="text-sm font-semibold text-theme-1">注册新说话人特征</div>
+              <div className="text-sm font-semibold text-theme-1">
+                {tr("platformSettings.text073")}
+              </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-theme-2">Speaker Label</label>
-                  <Input variant="dark" value={speakerLabel} onChange={(event: ChangeEvent<HTMLInputElement>) => setSpeakerLabel(event.target.value)} placeholder="例如 张三" />
+                  <Input
+                    variant="dark"
+                    value={speakerLabel}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setSpeakerLabel(event.target.value)}
+                    placeholder={tr("platformSettings.voiceprint.speakerPlaceholder")}
+                  />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-theme-2">Feature Info</label>
-                  <Input variant="dark" value={featureInfo} onChange={(event: ChangeEvent<HTMLInputElement>) => setFeatureInfo(event.target.value)} placeholder="可选，默认同 speaker label" />
+                  <Input
+                    variant="dark"
+                    value={featureInfo}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setFeatureInfo(event.target.value)}
+                    placeholder={tr("platformSettings.voiceprint.featureInfoPlaceholder")}
+                  />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-medium text-theme-2">样本音频</label>
+                  <label className="text-sm font-medium text-theme-2">
+                    {tr("platformSettings.voiceprint.sampleAudio")}
+                  </label>
                   <Input variant="dark"
                     type="file"
                     accept="audio/*"
@@ -1316,7 +1464,9 @@ export function PlatformSettings() {
                       setEnrollmentFile(event.target.files?.[0] || null)
                     }
                   />
-                  <p className="text-xs leading-6 text-theme-4">浏览器会先把上传音频转成 16k 单声道 PCM，再由后端转成讯飞要求的 mp3 进行注册。</p>
+                  <p className="text-xs leading-6 text-theme-4">
+                    {tr("platformSettings.voiceprint.uploadHelp")}
+                  </p>
                 </div>
               </div>
               <div className="mt-4 flex justify-end">
@@ -1332,7 +1482,9 @@ export function PlatformSettings() {
                     !voiceprintProfileId
                   }
                 >
-                  {createVoiceprintFeatureMutation.isPending ? "注册中..." : "注册声纹特征"}
+                  {createVoiceprintFeatureMutation.isPending
+                    ? tr("platformSettings.voiceprint.registering")
+                    : tr("platformSettings.voiceprint.registerFeature")}
                 </Button>
               </div>
             </div>
@@ -1340,8 +1492,12 @@ export function PlatformSettings() {
             <div className="rounded-xl border border-theme-default bg-surface-muted p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-theme-1">已注册说话人</div>
-                  <div className="mt-1 text-xs leading-6 text-theme-4">删除后不会影响普通 STT，只会停止该说话人的声纹命中。</div>
+                  <div className="text-sm font-semibold text-theme-1">
+                    {tr("platformSettings.voiceprint.registeredSpeakers")}
+                  </div>
+                  <div className="mt-1 text-xs leading-6 text-theme-4">
+                    {tr("platformSettings.voiceprint.deleteHelp")}
+                  </div>
                 </div>
                 <Badge>{voiceprintFeaturesQuery.data?.length ?? 0} features</Badge>
               </div>
@@ -1355,7 +1511,9 @@ export function PlatformSettings() {
                         <div className="mt-1 text-xs leading-6 text-theme-4">
                           feature_id: {item.feature_id} · status: {item.status}
                         </div>
-                        <div className="text-xs leading-6 text-theme-4">{item.feature_info || "无额外描述"}</div>
+                        <div className="text-xs leading-6 text-theme-4">
+                          {item.feature_info || tr("platformSettings.voiceprint.noExtraDescription")}
+                        </div>
                       </div>
                       <Button
                         variant="ghost"
@@ -1366,13 +1524,13 @@ export function PlatformSettings() {
                         disabled={deleteVoiceprintFeatureMutation.isPending}
                       >
                         <Trash2 className="h-4 w-4" />
-                        删除
+                        {tr("platformSettings.text028")}
                       </Button>
                     </div>
                   ))
                 ) : (
                   <div className="rounded-lg border border-dashed border-theme-subtle px-4 py-5 text-sm text-theme-4">
-                    还没有注册任何声纹特征。先同步远端组，再上传几段说话人样本音频。
+                    {tr("platformSettings.voiceprint.emptyFeatures")}
                   </div>
                 )}
               </div>

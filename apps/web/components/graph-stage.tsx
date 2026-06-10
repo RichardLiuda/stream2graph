@@ -307,7 +307,7 @@ export function GraphStage({
   );
 
   if (embedded) {
-    return <div className="min-h-0 overflow-hidden">{inner}</div>;
+    return <div className="min-h-0 flex-1 overflow-hidden">{inner}</div>;
   }
 
   return (

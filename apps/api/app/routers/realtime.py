@@ -31,10 +31,13 @@ from app.schemas import (
     RealtimeSnapshot,
     RealtimeSessionAnnotations as RealtimeSessionAnnotationsSchema,
     RealtimeSessionAnnotationsUpdateRequest,
+    RealtimeTimelineNameRequest,
+    RealtimeTimelineNameResponse,
     RealtimeTimelineNode,
     RealtimeTimelineResponse,
 )
 from app.services.realtime_ai import detect_diagram_type_from_transcript, transcribe_audio_chunk
+from app.services.realtime_coordination import generate_timeline_labels_concurrent
 from app.services.reports import create_report
 from app.services.runtime_options import resolve_profile
 from app.services.runtime_sessions import (
@@ -936,6 +939,17 @@ def get_timeline(session_id: str, db: Session = Depends(get_db)) -> RealtimeTime
     )
 
 
+@router.post("/{session_id}/timeline/name", response_model=RealtimeTimelineNameResponse)
+def name_timeline_nodes(
+    session_id: str,
+    req: RealtimeTimelineNameRequest,
+    db: Session = Depends(get_db),
+) -> RealtimeTimelineNameResponse:
+    session_obj = _get_session_or_404(db, session_id)
+    labels = generate_timeline_labels_concurrent(db, session_obj, req.snapshot_ids)
+    return RealtimeTimelineNameResponse(session_id=session_id, labels=labels)
+
+
 @router.post("/{session_id}/rollback/preview", response_model=RealtimeRollbackPreviewResponse)
 def rollback_preview(
     session_id: str,
@@ -1169,6 +1183,18 @@ def snapshot(session_id: str, db: Session = Depends(get_db)) -> RealtimeSnapshot
 def flush(session_id: str, db: Session = Depends(get_db)) -> RealtimeSnapshot:
     obj = _get_session_or_404(db, session_id)
     runtime = restore_runtime_if_needed(db, obj)
+    runtime.flush(db, obj)
+    pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
+    db.commit()
+    return RealtimeSnapshot(session_id=session_id, pipeline=pipeline, evaluation=evaluation)
+
+
+@router.post("/{session_id}/canvas/switch", response_model=RealtimeSnapshot)
+def switch_canvas(session_id: str, db: Session = Depends(get_db)) -> RealtimeSnapshot:
+    """强制切换到新画布：通过 flush 并标记 force_switch_canvas 触发 SWITCH_CANVAS 决策。"""
+    obj = _get_session_or_404(db, session_id)
+    runtime = restore_runtime_if_needed(db, obj)
+    runtime.force_next_switch_canvas = True
     runtime.flush(db, obj)
     pipeline, evaluation = _rebuild_snapshot(db, obj, runtime)
     db.commit()

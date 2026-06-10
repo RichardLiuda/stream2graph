@@ -1,5 +1,7 @@
 "use client";
 
+import { translate, type I18nKey, type LanguagePreference } from "@/lib/language";
+
 export type InputSource =
   | "demo_mode"
   | "transcript"
@@ -27,6 +29,10 @@ export interface InputSourceOption {
   capture_mode: CaptureMode;
   capability_status: CapabilityStatus;
   capability_reason: string;
+}
+
+function t(language: LanguagePreference, key: I18nKey) {
+  return translate(language, key);
 }
 
 function detectPlatform(ua: string): PlatformFamily {
@@ -58,10 +64,17 @@ export function detectClientAudioContext(): ClientAudioContext {
   };
 }
 
-export function getSystemAudioExperimentalLabel(context: ClientAudioContext | null) {
-  if (!context) return "系统声音（实验性）";
-  if (context.platform === "macos") return "共享标签页/共享屏幕音频（实验性）";
-  return "系统声音（实验性）";
+export function getSystemAudioExperimentalLabel(
+  context: ClientAudioContext | null,
+  language: LanguagePreference = "zh-CN",
+) {
+  if (!context) {
+    return t(language, "audioInput.text001");
+  }
+  if (context.platform === "macos") {
+    return t(language, "audioInput.text002");
+  }
+  return t(language, "audioInput.text001");
 }
 
 /** 实验性「共享屏幕 / 标签页音频」采集入口，仅在桌面 Chrome / Edge 展示。 */
@@ -80,60 +93,70 @@ export function supportsHelperSystemAudioUi(context: ClientAudioContext | null) 
   return Boolean(context?.is_desktop);
 }
 
-export function getSystemAudioUnavailableReason(context: ClientAudioContext | null) {
-  if (!context) return "正在检测浏览器与平台能力。";
-  if (!context.is_desktop) return "移动端不支持系统声音采集。";
+export function getSystemAudioUnavailableReason(
+  context: ClientAudioContext | null,
+  language: LanguagePreference = "zh-CN",
+) {
+  if (!context) {
+    return t(language, "audioInput.text003");
+  }
+  if (!context.is_desktop) {
+    return t(language, "audioInput.text004");
+  }
   if (context.browser_family === "safari" || context.browser_family === "firefox") {
-    return "当前仅计划在桌面 Chrome/Edge 上支持系统声音采集。";
+    return t(language, "audioInput.text005");
   }
   if (context.browser_family === "other") {
-    return "当前浏览器不在正式支持范围内。";
+    return t(language, "audioInput.text006");
   }
-  return "当前浏览器环境未开放系统声音能力。";
+  return t(language, "audioInput.text007");
 }
 
-export function getInputSourceOptions(context: ClientAudioContext | null): InputSourceOption[] {
+export function getInputSourceOptions(
+  context: ClientAudioContext | null,
+  language: LanguagePreference = "zh-CN",
+): InputSourceOption[] {
   const demoOption: InputSourceOption = {
     source: "demo_mode",
-    label: "演示模式",
-    description: "默认载入 6 组基于公开访谈、办事指南和活动通知整理的中文演示脚本，直接用文本完成成图演示。",
+    label: t(language, "audioInput.text008"),
+    description: t(language, "audioInput.text009"),
     capture_mode: "manual_text",
     capability_status: "supported",
-    capability_reason: "始终可用。",
+    capability_reason: t(language, "audioInput.text010"),
   };
 
   const transcriptOption: InputSourceOption = {
     source: "transcript",
-    label: "打字输入",
-    description: "自己打字，最稳定，适合演示和慢慢试。",
+    label: t(language, "audioInput.text011"),
+    description: t(language, "audioInput.text012"),
     capture_mode: "manual_text",
     capability_status: "supported",
-    capability_reason: "始终可用。",
+    capability_reason: t(language, "audioInput.text010"),
   };
 
   const microphoneOption: InputSourceOption = {
     source: "microphone_browser",
-    label: "浏览器麦克风",
-    description: "用麦克风，由浏览器听写，适合快速试一下。",
+    label: t(language, "audioInput.text013"),
+    description: t(language, "audioInput.text014"),
     capture_mode: "browser_speech",
     capability_status: context?.supports_speech_recognition ? "supported" : "limited",
     capability_reason: context?.supports_speech_recognition
-      ? "当前浏览器支持 Web Speech API。"
-      : "当前浏览器不支持或不稳定支持 Web Speech API。",
+      ? t(language, "audioInput.text015")
+      : t(language, "audioInput.text016"),
   };
 
-  const options: InputSourceOption[] = [demoOption, transcriptOption, microphoneOption];
+  const options: InputSourceOption[] = [microphoneOption, demoOption, transcriptOption];
 
   if (supportsSystemAudioExperimentalUi(context)) {
     options.push({
       source: "system_audio_browser_experimental",
-      label: getSystemAudioExperimentalLabel(context),
-      description: "只检查能不能抓到共享声音，不保证能稳定转成文字。",
+      label: getSystemAudioExperimentalLabel(context, language),
+      description: t(language, "audioInput.text017"),
       capture_mode: "browser_display_audio",
       capability_status: context?.supports_display_audio ? "limited" : "unsupported",
       capability_reason: context?.supports_display_audio
-        ? "浏览器支持共享音频流，但当前版本仅用于验证可达性。"
-        : "当前浏览器不支持共享音频采集。",
+        ? t(language, "audioInput.text018")
+        : t(language, "audioInput.text019"),
     });
   }
 
@@ -145,52 +168,51 @@ export function getInputSourceOptions(context: ClientAudioContext | null): Input
         context.browser_family === "other");
     options.push({
       source: "system_audio_helper",
-      label: "本机内录转写",
-      description:
-        "在电脑上跑小助手，抓取系统里播放的声音（内录），在本地分段转文字；需先启动 audio helper，适合会议、网课、视频等。",
+      label: t(language, "audioInput.text020"),
+      description: t(language, "audioInput.text021"),
       capture_mode: "helper_native_capture",
       capability_status: "limited",
       capability_reason: nonChromeEdgeDesktop
-        ? "需要本机启动 audio helper。实验性共享音频验证入口仅在 Chrome / Edge 提供。"
-        : "需要本机启动 audio helper，并准备好本地转写依赖。",
+        ? t(language, "audioInput.text022")
+        : t(language, "audioInput.text023"),
     });
   }
 
   return options;
 }
 
-export function getSpeechRecognitionErrorMessage(errorCode?: string) {
+export function getSpeechRecognitionErrorMessage(errorCode?: string, language: LanguagePreference = "zh-CN") {
   switch (errorCode) {
     case "network":
-      return "浏览器语音识别服务当前不可用。通常是网络、浏览器服务连接或地区环境导致。你可以先改用 Transcript 输入。";
+      return t(language, "audioInput.text024");
     case "not-allowed":
     case "service-not-allowed":
-      return "麦克风权限未开启，或浏览器禁止了语音识别服务。请检查站点权限后重试。";
+      return t(language, "audioInput.text025");
     case "audio-capture":
-      return "没有检测到可用麦克风设备。请确认系统输入设备和浏览器权限。";
+      return t(language, "audioInput.text026");
     case "no-speech":
-      return "没有检测到有效语音输入。请靠近麦克风后重试。";
+      return t(language, "audioInput.text027");
     case "aborted":
-      return "语音识别已中断。";
+      return t(language, "audioInput.text028");
     case "language-not-supported":
-      return "当前浏览器不支持所选语音识别语言。";
+      return t(language, "audioInput.text029");
     default:
-      return "语音识别失败。你可以先改用 Transcript 输入。";
+      return t(language, "audioInput.text030");
   }
 }
 
-export function getDisplayAudioErrorMessage(errorName?: string) {
+export function getDisplayAudioErrorMessage(errorName?: string, language: LanguagePreference = "zh-CN") {
   switch (errorName) {
     case "NotAllowedError":
-      return "你取消了共享音频，或浏览器没有获得共享权限。";
+      return t(language, "audioInput.text031");
     case "NotFoundError":
-      return "当前浏览器没有提供可共享的音频来源。";
+      return t(language, "audioInput.text032");
     case "AbortError":
-      return "共享音频流程被中断。";
+      return t(language, "audioInput.text033");
     case "NotReadableError":
-      return "浏览器无法读取共享音频。请检查系统权限和浏览器状态。";
+      return t(language, "audioInput.text034");
     default:
-      return "无法开始共享音频验证。你可以先改用打字输入，或尝试本机内录转写。";
+      return t(language, "audioInput.text035");
   }
 }
 

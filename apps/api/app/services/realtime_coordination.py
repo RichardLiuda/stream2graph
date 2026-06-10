@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-# AI辅助生成：豆包（IDE智能编程辅助），2026-04-05
-
 import json
 import logging
 import os
 import ssl
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from types import SimpleNamespace
 from typing import Any, TypeVar
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -23,7 +23,7 @@ from tools.eval.common import strip_think_traces
 from tools.eval.metrics import canonical_diagram_type
 from tools.incremental_dataset.schema import GraphEdge, GraphGroup, GraphIR, GraphNode
 from tools.incremental_dataset.staging import prepare_graph_for_mermaid_display, render_preview_mermaid
-from tools.incremental_system.chat_clients import LocalHFChatClient, OpenAICompatibleChatClient as CompatibleChatClient
+from tools.incremental_system.chat_clients import LocalHFChatClient, OpenAICompatibleChatClient
 from tools.incremental_system.loader import _graph_ir_from_payload
 from tools.incremental_system.models import (
     _build_recent_dialogue_snapshot,
@@ -1102,7 +1102,7 @@ def build_chat_client(profile: dict[str, Any], model: str, *, timeout_sec: int =
         "endpoint": str(profile.get("endpoint", "")),
         "model": model,
         "api_key": api_key,
-        "api_key_env": api_key_env or "S2G_DOMESTIC_LLM_API_KEY",
+        "api_key_env": api_key_env or "OPENAI_API_KEY",
         "timeout_sec": timeout_sec,
         "max_retries": REALTIME_LLM_MAX_RETRIES,
         "retry_backoff_sec": REALTIME_LLM_RETRY_BACKOFF_SEC,
@@ -1114,7 +1114,7 @@ def build_chat_client(profile: dict[str, Any], model: str, *, timeout_sec: int =
         return LocalHFChatClient(**common_kwargs)
     if provider_kind != "openai_compatible":
         raise RuntimeError(f"unsupported provider_kind: {provider_kind}")
-    return CompatibleChatClient(
+    return OpenAICompatibleChatClient(
         **common_kwargs,
         ssl_context=_build_ssl_context(),
         disable_proxy=True,
@@ -1423,6 +1423,7 @@ class CoordinationRuntimeSession:
     read_only: bool = False
     stored_pipeline: dict[str, Any] | None = None
     stored_evaluation: dict[str, Any] | None = None
+    force_next_switch_canvas: bool = False
 
     @classmethod
     def create(cls, session_id: str, *, diagram_type: str = "flowchart") -> CoordinationRuntimeSession:
@@ -1665,6 +1666,36 @@ class CoordinationRuntimeSession:
             or self.current_graph_ir.groups
         )
 
+    # 当前画布节点数超过此阈值时，下一次更新强制切换到新画布
+    CANVAS_NODE_SWITCH_THRESHOLD = 50
+
+    def _maybe_override_for_canvas_size(self, decision: GateDecision) -> GateDecision:
+        """当当前画布节点数超过阈值时，强制将 gate 决策改为 SWITCH_CANVAS。"""
+        node_count = len(self.current_graph_ir.nodes)
+        if node_count > self.CANVAS_NODE_SWITCH_THRESHOLD and decision.action != "SWITCH_CANVAS":
+            _log_coordination_event(
+                "Auto canvas switch triggered by node count",
+                {
+                    "session_id": self.session_id,
+                    "node_count": node_count,
+                    "threshold": self.CANVAS_NODE_SWITCH_THRESHOLD,
+                    "original_action": decision.action,
+                },
+            )
+            return GateDecision(
+                action="SWITCH_CANVAS",
+                reason=f"当前画布节点数 ({node_count}) 已超过阈值 ({self.CANVAS_NODE_SWITCH_THRESHOLD})，自动切换到新画布。",
+                confidence=1.0,
+                metadata={
+                    **dict(decision.metadata),
+                    "provider": "node_count_threshold",
+                    "model_name": "node_count_threshold",
+                    "node_count": node_count,
+                    "threshold": self.CANVAS_NODE_SWITCH_THRESHOLD,
+                },
+            )
+        return decision
+
     def _switch_to_new_canvas(
         self,
         pending_turns: list[DialogueTurn],
@@ -1845,6 +1876,8 @@ class CoordinationRuntimeSession:
                     ),
                     metadata=dict(post_repair_gate_payload.get("metadata") or {}),
                 )
+            # 节点数超过阈值时，即使 planner repair 改回了 WAIT，也要强制切换
+            gate_decision = self._maybe_override_for_canvas_size(gate_decision)
         except PlannerRepairGateWait as exc:
             gate_decision = exc.gate_decision
             self.gate_action_counts[gate_decision.action] += 1
@@ -2111,6 +2144,23 @@ class CoordinationRuntimeSession:
         *,
         force_emit: bool,
     ) -> GateDecision:
+        # 前端强制切换画布请求
+        if self.force_next_switch_canvas:
+            self.force_next_switch_canvas = False
+            _log_coordination_event(
+                "Force canvas switch requested by frontend",
+                {"session_id": self.session_id},
+            )
+            return GateDecision(
+                action="SWITCH_CANVAS",
+                reason="前端用户手动请求切换到新画布。",
+                confidence=1.0,
+                metadata={
+                    "provider": "frontend_force_switch",
+                    "model_name": "frontend_force_switch",
+                    "latency_ms": 0.0,
+                },
+            )
         input_runtime = _current_input_runtime(session_obj)
         input_source = str(input_runtime.get("input_source") or "").strip()
         capture_mode = str(input_runtime.get("capture_mode") or "").strip()
@@ -2166,6 +2216,8 @@ class CoordinationRuntimeSession:
                     "switch_intent": should_switch,
                 },
             )
+            # 节点数超过阈值时强制切换到新画布
+            decision = self._maybe_override_for_canvas_size(decision)
             return decision
         runtime_options = _current_runtime_options(session_obj)
         profile = resolve_profile(db, "gate", runtime_options.get("gate_profile_id"))
@@ -2207,6 +2259,8 @@ class CoordinationRuntimeSession:
                     "action": decision.action,
                 },
             )
+            # 节点数超过阈值时强制切换到新画布
+            decision = self._maybe_override_for_canvas_size(decision)
             return decision
 
         try:
@@ -2294,6 +2348,8 @@ class CoordinationRuntimeSession:
                     "llm_response_text": _llm_log_text(last_result_text),
                 },
             )
+            # 节点数超过阈值时强制切换到新画布
+            decision = self._maybe_override_for_canvas_size(decision)
             return decision
         except Exception as exc:
             if force_emit:
@@ -2330,6 +2386,8 @@ class CoordinationRuntimeSession:
                         "llm_response_text": _llm_log_text(locals().get("last_result_text", "")),
                     },
                 )
+                # 节点数超过阈值时强制切换到新画布
+                fallback = self._maybe_override_for_canvas_size(fallback)
                 return fallback
             self.gate_state = {
                 "status": "error",
@@ -3219,3 +3277,150 @@ def _current_input_runtime(session_obj: RealtimeSession) -> dict[str, Any]:
     snapshot = session_obj.config_snapshot if isinstance(session_obj.config_snapshot, dict) else {}
     payload = snapshot.get("input_runtime", {})
     return payload if isinstance(payload, dict) else {}
+
+
+# ---------------------------------------------------------------------------
+# Timeline node AI naming
+# ---------------------------------------------------------------------------
+
+TIMELINE_LABEL_SYSTEM_PROMPT = (
+    "You are a concise title generator for timeline snapshots in a realtime diagram system. "
+    "Given the recent dialogue transcript and the current graph structure, generate a very short title "
+    "that captures the main topic or action of this snapshot. "
+    "The title must be at most 10 words, like a headline. No quotes, no punctuation at the end. "
+    "Use the same language as the dialogue. "
+    "Return ONLY the title text, nothing else."
+)
+
+
+def _extract_snapshot_naming_context(snapshot) -> dict[str, str]:
+    """Extract transcript text and graph labels from a snapshot for naming."""
+    summary = snapshot.summary_json if isinstance(snapshot.summary_json, dict) else {}
+    checkpoint = summary.get("timeline_checkpoint", {})
+    if not isinstance(checkpoint, dict):
+        checkpoint = {}
+
+    # Extract recent transcript text
+    chunks = checkpoint.get("chunks", [])
+    transcript_lines: list[str] = []
+    if isinstance(chunks, list):
+        for chunk in chunks[-20:]:
+            text = str(chunk.get("text") or "").strip()
+            speaker = str(chunk.get("speaker") or "").strip()
+            if text:
+                transcript_lines.append(f"{speaker}: {text}" if speaker else text)
+    transcript_text = "\n".join(transcript_lines)
+
+    # Extract graph node/edge labels from pipeline
+    pipeline = snapshot.pipeline_payload if isinstance(snapshot.pipeline_payload, dict) else {}
+    graph_ir = pipeline.get("graph_ir")
+    node_labels: list[str] = []
+    edge_labels: list[str] = []
+    if isinstance(graph_ir, dict):
+        for node in graph_ir.get("nodes", []):
+            label = str(node.get("label") or "").strip()
+            if label:
+                node_labels.append(label)
+        for edge in graph_ir.get("edges", []):
+            label = str(edge.get("label") or "").strip()
+            if label:
+                edge_labels.append(label)
+
+    graph_text = ""
+    if node_labels:
+        graph_text += "Nodes: " + ", ".join(node_labels[:30])
+    if edge_labels:
+        graph_text += "\nEdges: " + ", ".join(edge_labels[:20])
+
+    return {"transcript": transcript_text, "graph": graph_text}
+
+
+def generate_timeline_node_label(
+    profile: dict[str, Any],
+    model: str,
+    snapshot,
+) -> str | None:
+    """Generate a short label for a single timeline snapshot using the gate model."""
+    ctx = _extract_snapshot_naming_context(snapshot)
+    if not ctx["transcript"] and not ctx["graph"]:
+        return None
+
+    user_content = json.dumps(
+        {"transcript": ctx["transcript"], "graph_structure": ctx["graph"]},
+        ensure_ascii=False,
+    )
+    messages = [
+        {"role": "system", "content": TIMELINE_LABEL_SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+
+    try:
+        client = build_chat_client(profile, model, timeout_sec=15)
+        result = client.chat(messages)
+        label = (result.text or "").strip().strip('"').strip("'").strip()
+        # Validate: 2-50 chars, at most ~10 words, no JSON, no markdown
+        if label and 2 <= len(label) <= 50 and len(label.split()) <= 12 and not label.startswith("{") and not label.startswith("```"):
+            return label
+    except Exception:
+        logger.debug("timeline label generation failed for snapshot", exc_info=True)
+    return None
+
+
+def generate_timeline_labels_concurrent(
+    db: Session,
+    session_obj: RealtimeSession,
+    snapshot_ids: list[str],
+) -> dict[str, str]:
+    """Generate labels for multiple snapshots concurrently using the gate model.
+
+    Returns a dict mapping snapshot_id -> label for successfully named snapshots.
+    """
+    from app.models import RealtimeSnapshot as RealtimeSnapshotModel
+
+    runtime_options = _current_runtime_options(session_obj)
+    profile = resolve_profile(db, "gate", runtime_options.get("gate_profile_id"))
+    model = runtime_options.get("gate_model") or str(
+        (profile.get("models") or ["gpt-4o-mini"])[0]
+        if isinstance(profile.get("models"), list) and profile.get("models")
+        else "gpt-4o-mini"
+    )
+
+    snapshots = db.scalars(
+        select(RealtimeSnapshotModel).where(
+            RealtimeSnapshotModel.session_id == session_obj.id,
+            RealtimeSnapshotModel.id.in_(snapshot_ids),
+        )
+    ).all()
+    snapshot_map = {s.id: s for s in snapshots}
+
+    results: dict[str, str] = {}
+    max_workers = min(len(snapshot_ids), 5)
+
+    def _name_one(sid: str) -> tuple[str, str | None]:
+        snap = snapshot_map.get(sid)
+        if snap is None:
+            return sid, None
+        label = generate_timeline_node_label(profile, model, snap)
+        return sid, label
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_name_one, sid): sid for sid in snapshot_ids}
+        for future in as_completed(futures):
+            try:
+                sid, label = future.result()
+                if label:
+                    results[sid] = label
+            except Exception:
+                logger.debug("timeline naming task failed", exc_info=True)
+
+    # Persist labels to snapshot summary_json
+    for sid, label in results.items():
+        snap = snapshot_map.get(sid)
+        if snap is None:
+            continue
+        summary = snap.summary_json if isinstance(snap.summary_json, dict) else {}
+        summary["timeline_label"] = label
+        snap.summary_json = summary
+    db.flush()
+
+    return results

@@ -104,6 +104,15 @@ def get_report_or_404(db: Session, report_id: str) -> Report:
     return report
 
 
+def update_report(db: Session, report: Report, *, title: str | None, notes: str | None) -> Report:
+    if title is not None:
+        report.title = title.strip() or report.title
+    if notes is not None:
+        report.notes = notes.strip() or None
+    db.flush()
+    return report
+
+
 def export_rows_for_target(db: Session, target: str) -> tuple[str, list[dict[str, Any]]]:
     if target == "runs":
         rows = [

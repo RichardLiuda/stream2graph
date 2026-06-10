@@ -48,9 +48,9 @@ export function LoginForm() {
     >
       <div className="mb-8">
         <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-theme-4">管理员登录</div>
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-theme-1">进入正式研究平台</h1>
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-theme-1">进入实时工作平台</h1>
         <p className="mt-2 text-sm leading-snug text-theme-4">
-          管理实时实验、样本对照、研究与报告导出。
+          管理实时工作、结构图谱、复盘报告与服务端配置。
         </p>
       </div>
 
@@ -114,7 +114,7 @@ export function LoginForm() {
           跳过登录，先试用
         </Button>
         <p className="mt-3 text-center text-[11px] leading-snug text-theme-4">
-          跳过登录可体验实时工作台；样本对照、实验报告与平台设置需管理员账号。
+          当前支持匿名访问，可直接进入实时工作台、工作报告与平台设置。
         </p>
       </div>
     </Card>

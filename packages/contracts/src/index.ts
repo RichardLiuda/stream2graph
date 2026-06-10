@@ -82,6 +82,15 @@ export const realtimeTimelineSchema = z.object({
   nodes: z.array(realtimeTimelineNodeSchema),
 });
 
+export const realtimeTimelineNameRequestSchema = z.object({
+  snapshot_ids: z.array(z.string()).min(1).max(120),
+});
+
+export const realtimeTimelineNameResponseSchema = z.object({
+  session_id: z.string(),
+  labels: z.record(z.string()),
+});
+
 export const realtimeRollbackRequestSchema = z.object({
   snapshot_id: z.string(),
 });
@@ -382,6 +391,7 @@ export const reportSummarySchema = z.object({
 
 export const reportDetailSchema = reportSummarySchema.extend({
   payload: z.record(z.any()),
+  notes: z.string().nullable().optional(),
   json_path: z.string().nullable().optional(),
   csv_path: z.string().nullable().optional(),
   markdown_path: z.string().nullable().optional(),
@@ -397,6 +407,8 @@ export type RealtimeSession = z.infer<typeof realtimeSessionSchema>;
 export type RealtimeSnapshot = z.infer<typeof realtimeSnapshotSchema>;
 export type RealtimeTimelineNode = z.infer<typeof realtimeTimelineNodeSchema>;
 export type RealtimeTimeline = z.infer<typeof realtimeTimelineSchema>;
+export type RealtimeTimelineNameRequest = z.infer<typeof realtimeTimelineNameRequestSchema>;
+export type RealtimeTimelineNameResponse = z.infer<typeof realtimeTimelineNameResponseSchema>;
 export type RealtimeRollbackRequest = z.infer<typeof realtimeRollbackRequestSchema>;
 export type RealtimeRollbackPreview = z.infer<typeof realtimeRollbackPreviewSchema>;
 export type RealtimeRollbackApply = z.infer<typeof realtimeRollbackApplySchema>;

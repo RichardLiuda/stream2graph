@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Plus, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw } from "lucide-react";
 import {
   type CSSProperties,
   type PropsWithChildren,
@@ -32,6 +32,9 @@ export function PanZoomCanvas({
   initialScale = 1,
   initialOffset = { x: 0, y: 0 },
   controlsOffsetTop = 12,
+  onCanvasPrev,
+  onCanvasNext,
+  hasMultipleCanvases = false,
   children,
 }: PropsWithChildren<{
   className?: string;
@@ -52,6 +55,12 @@ export function PanZoomCanvas({
   initialOffset?: Point;
   /** 顶部缩放工具条距离画布上边缘像素值 */
   controlsOffsetTop?: number;
+  /** @description 切换到前一张画布（仅当存在多张画布时可用） */
+  onCanvasPrev?: () => void;
+  /** @description 切换到后一张画布（仅当存在多张画布时可用） */
+  onCanvasNext?: () => void;
+  /** @description 是否存在多张画布，用于控制左右切换按钮的显示和禁用状态 */
+  hasMultipleCanvases?: boolean;
 }>) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(() => clamp(initialScale, minScale, maxScale));
@@ -179,13 +188,14 @@ export function PanZoomCanvas({
   return (
     <div
       ref={containerRef}
-      className={`relative min-h-0 overflow-hidden ${className}`}
+      className={`relative min-h-0 select-none overflow-hidden ${className}`}
       onPointerDown={(event) => {
         if (interactionMode === "annotate") return;
         // 鼠标只允许左键拖拽；触摸/笔则忽略 button
         if (event.pointerType === "mouse" && event.button !== 0) return;
         const target = event.target as HTMLElement | null;
         if (target?.closest?.("[data-panzoom-controls], [data-panzoom-no-pan]")) return;
+        event.preventDefault();
         (event.currentTarget as HTMLDivElement).setPointerCapture(event.pointerId);
         dragRef.current = {
           pointerId: event.pointerId,
@@ -218,6 +228,29 @@ export function PanZoomCanvas({
         style={{ top: `${controlsOffsetTop}px` }}
         data-panzoom-controls
       >
+        {hasMultipleCanvases ? (
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-8 w-8 rounded-md px-0 py-0"
+              aria-label="前一张画布"
+              onClick={onCanvasPrev}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-8 w-8 rounded-md px-0 py-0"
+              aria-label="后一张画布"
+              onClick={onCanvasNext}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <div className="mx-0.5 h-6 w-px bg-[var(--panzoom-chrome-divider)]" aria-hidden />
+          </>
+        ) : null}
         <Button
           type="button"
           variant="ghost"
@@ -275,4 +308,3 @@ export function PanZoomCanvas({
     </div>
   );
 }
-

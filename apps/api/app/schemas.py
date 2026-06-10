@@ -206,6 +206,15 @@ class RealtimeTimelineResponse(BaseModel):
     nodes: list[RealtimeTimelineNode] = Field(default_factory=list)
 
 
+class RealtimeTimelineNameRequest(BaseModel):
+    snapshot_ids: list[str] = Field(min_length=1, max_length=120)
+
+
+class RealtimeTimelineNameResponse(BaseModel):
+    session_id: str
+    labels: dict[str, str] = Field(default_factory=dict)
+
+
 class RealtimeRollbackRequest(BaseModel):
     snapshot_id: str
 
@@ -530,8 +539,14 @@ class ReportDetail(BaseModel):
     status: str
     summary: dict[str, Any]
     payload: dict[str, Any]
+    notes: str | None = None
     json_path: str | None = None
     csv_path: str | None = None
     markdown_path: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class ReportUpdate(BaseModel):
+    title: str | None = None
+    notes: str | None = None

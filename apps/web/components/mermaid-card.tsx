@@ -136,6 +136,30 @@ export type MermaidNodeRelayoutPayload = {
   spatial_summary: string;
 };
 
+export type MermaidEvidenceSelection =
+  | {
+      kind: "node";
+      id: string;
+      label: string;
+      metadata?: Record<string, unknown>;
+    }
+  | {
+      kind: "edge";
+      id: string;
+      label: string;
+      source: string;
+      target: string;
+      sourceLabel: string;
+      targetLabel: string;
+      metadata?: Record<string, unknown>;
+      source_index?: number;
+    };
+
+export type MermaidEvidenceTarget = {
+  kind: "node" | "edge";
+  id: string;
+};
+
 type MermaidInteractiveEntity = MermaidDiagramEntityPosition & {
   element: SVGGElement;
 };
@@ -323,6 +347,58 @@ function queryMermaidNodeElements(svg: SVGSVGElement) {
   return elements;
 }
 
+const SELECTABLE_NODE_LABEL_SELECTOR = "[data-s2g-node-label-select='true']";
+
+function isNodeLabelSelectionTarget(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest(SELECTABLE_NODE_LABEL_SELECTOR));
+}
+
+function queryGroupFrameShapes(element: SVGGElement) {
+  const shapeTags = new Set(["rect", "polygon", "path", "circle", "ellipse"]);
+  return Array.from(element.children).filter(
+    (child): child is SVGElement =>
+      child instanceof SVGElement && shapeTags.has(child.tagName.toLowerCase()),
+  );
+}
+
+type SvgShapeStyleSnapshot = {
+  fill: string;
+  fillOpacity: string;
+  stroke: string;
+  strokeWidth: string;
+};
+
+function captureShapeStyle(shape: SVGElement): SvgShapeStyleSnapshot {
+  const computed = window.getComputedStyle(shape);
+  return {
+    fill: shape.style.fill || shape.getAttribute("fill") || computed.fill || "",
+    fillOpacity: shape.style.fillOpacity || shape.getAttribute("fill-opacity") || computed.fillOpacity || "",
+    stroke: shape.style.stroke || shape.getAttribute("stroke") || computed.stroke || "",
+    strokeWidth: shape.style.strokeWidth || shape.getAttribute("stroke-width") || computed.strokeWidth || "",
+  };
+}
+
+function applyShapeStyle(shape: SVGElement, style: SvgShapeStyleSnapshot) {
+  shape.style.fill = style.fill;
+  shape.style.fillOpacity = style.fillOpacity;
+  shape.style.stroke = style.stroke;
+  shape.style.strokeWidth = style.strokeWidth;
+}
+
+function selectNodeLabelText(nodeElement: SVGGElement) {
+  const selection = window.getSelection();
+  if (!selection) return;
+  const labelElement =
+    nodeElement.querySelector<SVGElement>("text") ||
+    nodeElement.querySelector<SVGElement>("foreignObject") ||
+    nodeElement.querySelector<SVGElement>("tspan");
+  if (!labelElement) return;
+  const range = document.createRange();
+  range.selectNodeContents(labelElement);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 function collectInteractiveEntities(
   svg: SVGSVGElement,
   graphPayload: MermaidGraphPayload,
@@ -411,13 +487,14 @@ function collectRenderedEdges(svg: SVGSVGElement, graphPayload: MermaidGraphPayl
           crossLane: metadataBoolean(metadata, "cross_lane"),
         };
       }
+      // Sequence diagram arrows are rendered as <line> elements
       const seqLine = sequenceLines[index] ?? null;
       if (seqLine instanceof SVGLineElement) {
         const container = seqLine.closest("g") ?? seqLine;
         return {
           edge,
           path: seqLine as unknown as SVGElement,
-          container: container instanceof SVGGElement ? container : (seqLine as unknown as SVGElement),
+          container: container instanceof SVGGElement ? container : seqLine as unknown as SVGElement,
           relationType: metadataString(metadata, "relation_type", edge.kind || "reply"),
           crossLane: metadataBoolean(metadata, "cross_lane"),
         };
@@ -775,9 +852,15 @@ function MermaidCardBody({
   annotationsDoc,
   onAnnotationsChange,
   annotationExportHostId = "s2g-annotation-host-mermaid",
+  onEvidenceSelect,
+  activeEvidenceTarget = null,
+  hoverFocusEnabled = true,
   /** @description Realtime 嵌入时固定浅色画布 token */
   fixedLightCanvas = false,
   panZoomControlsOffsetTop = 12,
+  onCanvasPrev,
+  onCanvasNext,
+  hasMultipleCanvases = false,
 }: {
   title: string;
   code: string;
@@ -797,7 +880,7 @@ function MermaidCardBody({
   collapsible?: boolean;
   defaultDiagramExpanded?: boolean;
   graphPayload?: MermaidGraphPayload;
-  onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
+  onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => boolean | void) | null;
   relayoutBusy?: boolean;
   activeIncrementalStageIndex?: number | null;
   exportRootId?: string | null;
@@ -812,8 +895,17 @@ function MermaidCardBody({
   annotationsDoc?: AnnotationDoc;
   onAnnotationsChange?: (next: AnnotationDoc) => void;
   annotationExportHostId?: string;
+  onEvidenceSelect?: ((selection: MermaidEvidenceSelection) => void) | null;
+  activeEvidenceTarget?: MermaidEvidenceTarget | null;
+  hoverFocusEnabled?: boolean;
   fixedLightCanvas?: boolean;
   panZoomControlsOffsetTop?: number;
+  /** @description 切换到前一张画布 */
+  onCanvasPrev?: () => void;
+  /** @description 切换到后一张画布 */
+  onCanvasNext?: () => void;
+  /** @description 是否存在多张画布 */
+  hasMultipleCanvases?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
   const [diagramExpanded, setDiagramExpanded] = useState(defaultDiagramExpanded);
@@ -910,6 +1002,12 @@ function MermaidCardBody({
       const payload = groupPayloadById.get(group.id);
       return metadataString(payload?.metadata, "group_type") === "speaker_lane";
     });
+    const laneGroupIds = new Set(laneGroups.map((group) => group.id));
+    const groupFrameStyleById = new Map<string, SvgShapeStyleSnapshot>();
+    for (const group of collected.groups) {
+      const frameShape = queryGroupFrameShapes(group.element)[0];
+      if (frameShape) groupFrameStyleById.set(group.id, captureShapeStyle(frameShape));
+    }
 
     const svgNs = "http://www.w3.org/2000/svg";
     const overlayRoot = document.createElementNS(svgNs, "g");
@@ -955,14 +1053,28 @@ function MermaidCardBody({
       for (const entity of collected.nodes) {
         entity.element.style.opacity = "";
         entity.element.style.filter = "";
+        for (const shape of Array.from(entity.element.querySelectorAll<SVGElement>("rect,polygon,path,circle,ellipse"))) {
+          shape.style.fill = "";
+          shape.style.fillOpacity = "";
+          shape.style.stroke = "";
+          shape.style.strokeWidth = "";
+        }
       }
       for (const entity of collected.groups) {
         entity.element.style.opacity = "";
         entity.element.style.filter = "";
+        for (const shape of queryGroupFrameShapes(entity.element)) {
+          shape.style.fill = "";
+          shape.style.fillOpacity = "";
+          shape.style.stroke = "";
+          shape.style.strokeWidth = "";
+        }
       }
       for (const renderedEdge of renderedEdges) {
         renderedEdge.path.style.opacity = "";
         renderedEdge.path.style.filter = "";
+        renderedEdge.path.style.stroke = "";
+        renderedEdge.path.style.strokeWidth = "";
         renderedEdge.path.style.strokeLinecap = "round";
         renderedEdge.path.style.transition = "opacity 120ms ease, filter 120ms ease, stroke-width 120ms ease";
         renderedEdge.container.style.opacity = "";
@@ -974,7 +1086,7 @@ function MermaidCardBody({
       laneGroups.forEach((group, index) => {
         const payload = groupPayloadById.get(group.id);
         const laneColor = metadataString(payload?.metadata, "lane_color", fallbackLaneColor(index));
-        for (const shape of Array.from(group.element.querySelectorAll<SVGElement>("rect,polygon,path"))) {
+        for (const shape of queryGroupFrameShapes(group.element)) {
           shape.style.stroke = "#334155";
           shape.style.strokeWidth = "2.2px";
           shape.style.fill = laneColor;
@@ -984,6 +1096,12 @@ function MermaidCardBody({
           label.style.fontWeight = "700";
           label.style.fill = "#0f172a";
         }
+      });
+      collected.groups.forEach((group) => {
+        if (laneGroupIds.has(group.id)) return;
+        const baseStyle = groupFrameStyleById.get(group.id);
+        if (!baseStyle) return;
+        queryGroupFrameShapes(group.element).forEach((shape) => applyShapeStyle(shape, baseStyle));
       });
       renderedEdges.forEach((renderedEdge) => {
         if (renderedEdge.relationType === "attack") {
@@ -1032,7 +1150,7 @@ function MermaidCardBody({
         entity.element.style.opacity = active ? "1" : "0.18";
         entity.element.style.filter = active ? `drop-shadow(0 0 14px ${stageColor}33)` : "";
         if (!active) continue;
-        for (const shape of Array.from(entity.element.querySelectorAll<SVGElement>("rect,polygon,path"))) {
+        for (const shape of queryGroupFrameShapes(entity.element)) {
           shape.style.fill = stageColor;
           shape.style.fillOpacity = "0.18";
           shape.style.stroke = stageColor;
@@ -1052,9 +1170,42 @@ function MermaidCardBody({
       });
     };
 
+    const applyEvidenceSelectionHighlight = () => {
+      if (!activeEvidenceTarget) return;
+      const selectionColor = "#d97706";
+      if (activeEvidenceTarget.kind === "node") {
+        const selectedNode = nodeElementById.get(activeEvidenceTarget.id);
+        if (!selectedNode) return;
+        selectedNode.element.style.opacity = "1";
+        selectedNode.element.style.filter = "drop-shadow(0 0 14px rgba(217,119,6,0.24))";
+        for (const shape of Array.from(
+          selectedNode.element.querySelectorAll<SVGElement>("rect,polygon,path,circle,ellipse"),
+        )) {
+          shape.style.stroke = selectionColor;
+          shape.style.strokeWidth = "3.4px";
+        }
+        return;
+      }
+
+      const selectedEdge = renderedEdges.find((item) => item.edge.id === activeEvidenceTarget.id);
+      if (!selectedEdge) return;
+      selectedEdge.container.style.opacity = "1";
+      selectedEdge.path.style.opacity = "1";
+      selectedEdge.path.style.stroke = selectionColor;
+      selectedEdge.path.style.strokeWidth = "3.8px";
+      selectedEdge.path.style.filter = "drop-shadow(0 0 12px rgba(217,119,6,0.24))";
+      for (const nodeId of [selectedEdge.edge.source, selectedEdge.edge.target]) {
+        const node = nodeElementById.get(nodeId);
+        if (!node) continue;
+        node.element.style.opacity = "1";
+        node.element.style.filter = "drop-shadow(0 0 12px rgba(217,119,6,0.18))";
+      }
+    };
+
     const resetVisualState = () => {
       applyBaseStyles();
       applyStageHighlight();
+      applyEvidenceSelectionHighlight();
     };
 
     const dimEverything = () => {
@@ -1135,23 +1286,71 @@ function MermaidCardBody({
     for (const entity of collected.nodes) {
       const handleEnter = () => activateNodePath(entity.id);
       const handleLeave = () => resetVisualState();
-      entity.element.addEventListener("pointerenter", handleEnter);
-      entity.element.addEventListener("pointerleave", handleLeave);
+      const handleClick = (event: Event) => {
+        if (!onEvidenceSelect) return;
+        event.stopPropagation();
+        const payload = nodePayloadById.get(entity.id);
+        onEvidenceSelect({
+          kind: "node",
+          id: entity.id,
+          label: payload?.label || entity.label || entity.id,
+          metadata: payload?.metadata,
+        });
+      };
+      entity.element.setAttribute("data-s2g-evidence-target", "node");
+      if (onEvidenceSelect || interactiveRelayoutEnabled) {
+        entity.element.style.cursor = interactiveRelayoutEnabled ? (relayoutBusy ? "wait" : "grab") : "pointer";
+      }
+      if (hoverFocusEnabled) {
+        entity.element.addEventListener("pointerenter", handleEnter);
+        entity.element.addEventListener("pointerleave", handleLeave);
+      }
+      entity.element.addEventListener("click", handleClick);
       cleanupFns.push(() => {
-        entity.element.removeEventListener("pointerenter", handleEnter);
-        entity.element.removeEventListener("pointerleave", handleLeave);
+        if (hoverFocusEnabled) {
+          entity.element.removeEventListener("pointerenter", handleEnter);
+          entity.element.removeEventListener("pointerleave", handleLeave);
+        }
+        entity.element.removeEventListener("click", handleClick);
       });
     }
 
     for (const renderedEdge of renderedEdges) {
-      if (!["attack", "support"].includes(renderedEdge.relationType)) continue;
       const handleEnter = () => activateEdgeFocus(renderedEdge);
       const handleLeave = () => resetVisualState();
-      renderedEdge.container.addEventListener("pointerenter", handleEnter);
-      renderedEdge.container.addEventListener("pointerleave", handleLeave);
+      const handleClick = (event: Event) => {
+        if (!onEvidenceSelect) return;
+        event.stopPropagation();
+        const sourceLabel = nodePayloadById.get(renderedEdge.edge.source)?.label || renderedEdge.edge.source;
+        const targetLabel = nodePayloadById.get(renderedEdge.edge.target)?.label || renderedEdge.edge.target;
+        onEvidenceSelect({
+          kind: "edge",
+          id: renderedEdge.edge.id,
+          label: renderedEdge.edge.label || `${sourceLabel} -> ${targetLabel}`,
+          source: renderedEdge.edge.source,
+          target: renderedEdge.edge.target,
+          sourceLabel,
+          targetLabel,
+          metadata: renderedEdge.edge.metadata,
+          source_index: renderedEdge.edge.source_index,
+        });
+      };
+      if (onEvidenceSelect) {
+        renderedEdge.container.setAttribute("data-s2g-evidence-target", "edge");
+        renderedEdge.container.style.cursor = "pointer";
+        renderedEdge.path.style.pointerEvents = "stroke";
+      }
+      if (hoverFocusEnabled) {
+        renderedEdge.container.addEventListener("pointerenter", handleEnter);
+        renderedEdge.container.addEventListener("pointerleave", handleLeave);
+      }
+      renderedEdge.container.addEventListener("click", handleClick);
       cleanupFns.push(() => {
-        renderedEdge.container.removeEventListener("pointerenter", handleEnter);
-        renderedEdge.container.removeEventListener("pointerleave", handleLeave);
+        if (hoverFocusEnabled) {
+          renderedEdge.container.removeEventListener("pointerenter", handleEnter);
+          renderedEdge.container.removeEventListener("pointerleave", handleLeave);
+        }
+        renderedEdge.container.removeEventListener("click", handleClick);
       });
     }
 
@@ -1162,13 +1361,33 @@ function MermaidCardBody({
         overlayRoot.parentNode.removeChild(overlayRoot);
       }
     };
-  }, [activeIncrementalStageIndex, graphPayload, svg, zoomRebuildNonce]);
+  }, [
+    activeEvidenceTarget,
+    activeIncrementalStageIndex,
+    graphPayload,
+    hoverFocusEnabled,
+    interactiveRelayoutEnabled,
+    onEvidenceSelect,
+    relayoutBusy,
+    svg,
+    zoomRebuildNonce,
+  ]);
 
   useEffect(() => {
     const host = renderSurfaceRef.current;
     if (!host || !svg || !interactiveRelayoutEnabled || !onNodeRelayout) return;
     const svgElement = host.querySelector("svg");
     if (!(svgElement instanceof SVGSVGElement)) return;
+    svgElement.setAttribute("draggable", "false");
+    svgElement.style.userSelect = "none";
+    svgElement.style.webkitUserSelect = "none";
+    for (const selectable of Array.from(svgElement.querySelectorAll<SVGElement>("text,tspan,foreignObject"))) {
+      selectable.removeAttribute("data-s2g-node-label-select");
+      selectable.removeAttribute("data-panzoom-no-pan");
+      selectable.style.userSelect = "none";
+      selectable.style.webkitUserSelect = "none";
+      selectable.style.cursor = "";
+    }
 
     const collected = collectInteractiveEntities(svgElement, graphPayload);
     if (!collected.nodes.length) return;
@@ -1176,11 +1395,28 @@ function MermaidCardBody({
     const nodeEntities = collected.nodes.map(({ element, ...entity }) => entity);
     const groupEntities = collected.groups.map(({ element, ...entity }) => entity);
     const entityByElement = new Map<SVGGElement, MermaidInteractiveEntity>();
+    const draggableNodeElements = collected.nodes.map((entity) => entity.element);
+    const labelCleanupFns: Array<() => void> = [];
 
     for (const entity of collected.nodes) {
       entity.element.setAttribute("data-panzoom-no-pan", "true");
       entity.element.style.cursor = relayoutBusy ? "wait" : "grab";
       entityByElement.set(entity.element, entity);
+      for (const labelElement of Array.from(entity.element.querySelectorAll<SVGElement>("text,tspan,foreignObject"))) {
+        labelElement.setAttribute("data-s2g-node-label-select", "true");
+        labelElement.setAttribute("data-panzoom-no-pan", "true");
+        labelElement.style.userSelect = "text";
+        labelElement.style.webkitUserSelect = "text";
+        labelElement.style.cursor = "text";
+      }
+      const handleLabelDoubleClick = (event: Event) => {
+        if (!isNodeLabelSelectionTarget(event.target)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        selectNodeLabelText(entity.element);
+      };
+      entity.element.addEventListener("dblclick", handleLabelDoubleClick);
+      labelCleanupFns.push(() => entity.element.removeEventListener("dblclick", handleLabelDoubleClick));
     }
 
     type DragState = {
@@ -1205,7 +1441,7 @@ function MermaidCardBody({
 
     const commitDrag = (state: DragState) => {
       const movedDistance = Math.hypot(state.currentDelta.x, state.currentDelta.y);
-      if (movedDistance < 18) return;
+      if (movedDistance < 18) return false;
 
       const movedNodes = nodeEntities.map((entity) =>
         entity.id === state.entity.id
@@ -1217,7 +1453,7 @@ function MermaidCardBody({
           : entity,
       );
       const movedNode = movedNodes.find((entity) => entity.id === state.entity.id);
-      if (!movedNode) return;
+      if (!movedNode) return false;
 
       const nearestAnchor =
         movedNodes
@@ -1236,7 +1472,7 @@ function MermaidCardBody({
         nearestAnchor ? { x: nearestAnchor.x, y: nearestAnchor.y } : null,
       );
 
-      onNodeRelayout({
+      const result = onNodeRelayout({
         node_id: movedNode.id,
         node_label: movedNode.label,
         from_position: {
@@ -1266,6 +1502,7 @@ function MermaidCardBody({
           targetGroup ? `Dropped inside group "${targetGroup.label}" (${targetGroup.id}).` : "Dropped outside any group.",
         ].join(" "),
       });
+      return result === true;
     };
 
     const finishDrag = (pointerId: number, commit: boolean) => {
@@ -1279,16 +1516,20 @@ function MermaidCardBody({
       } catch {
         // Ignore stale capture cleanup.
       }
-      resetTransform(completedDrag);
-      if (commit) {
-        commitDrag(completedDrag);
+      const keepLocalTransform = commit ? commitDrag(completedDrag) : false;
+      if (keepLocalTransform) {
+        completedDrag.element.style.cursor = relayoutBusy ? "wait" : "grab";
+      } else {
+        resetTransform(completedDrag);
       }
     };
 
     const handlePointerDown = (event: PointerEvent) => {
       if (relayoutBusy || (event.pointerType === "mouse" && event.button !== 0)) return;
       const target = event.target as Element | null;
-      const nodeElement = target?.closest?.("g.node");
+      const nodeElement =
+        draggableNodeElements.find((element) => target === element || (target instanceof Node && element.contains(target))) ||
+        null;
       if (!(nodeElement instanceof SVGGElement)) return;
       const entity = entityByElement.get(nodeElement);
       if (!entity) return;
@@ -1299,6 +1540,7 @@ function MermaidCardBody({
       event.stopPropagation();
       host.setPointerCapture(event.pointerId);
       nodeElement.style.cursor = "grabbing";
+      window.getSelection()?.removeAllRanges();
       dragState = {
         pointerId: event.pointerId,
         element: nodeElement,
@@ -1332,17 +1574,28 @@ function MermaidCardBody({
     const handlePointerCancel = (event: PointerEvent) => {
       finishDrag(event.pointerId, false);
     };
+    const suppressNativeDrag = (event: Event) => {
+      event.preventDefault();
+    };
+    const suppressNonNodeSelection = (event: Event) => {
+      event.preventDefault();
+    };
 
     host.addEventListener("pointerdown", handlePointerDown);
     host.addEventListener("pointermove", handlePointerMove);
     host.addEventListener("pointerup", handlePointerUp);
     host.addEventListener("pointercancel", handlePointerCancel);
+    svgElement.addEventListener("dragstart", suppressNativeDrag);
+    svgElement.addEventListener("selectstart", suppressNonNodeSelection);
 
     return () => {
       host.removeEventListener("pointerdown", handlePointerDown);
       host.removeEventListener("pointermove", handlePointerMove);
       host.removeEventListener("pointerup", handlePointerUp);
       host.removeEventListener("pointercancel", handlePointerCancel);
+      svgElement.removeEventListener("dragstart", suppressNativeDrag);
+      svgElement.removeEventListener("selectstart", suppressNonNodeSelection);
+      labelCleanupFns.forEach((cleanup) => cleanup());
       if (dragState) {
         resetTransform(dragState);
         dragState = null;
@@ -1397,6 +1650,9 @@ function MermaidCardBody({
               initialScale={1}
               initialOffset={{ x: 0, y: 0 }}
               controlsOffsetTop={panZoomControlsOffsetTop}
+              onCanvasPrev={onCanvasPrev}
+              onCanvasNext={onCanvasNext}
+              hasMultipleCanvases={hasMultipleCanvases}
               overlay={
                 interactiveRelayoutEnabled ? (
                   <div className="rounded-md border border-theme-default bg-surface-muted px-2.5 py-1.5 text-[11px] leading-snug text-theme-3 shadow-lg backdrop-blur-[2px]">
@@ -1439,7 +1695,7 @@ function MermaidCardBody({
                   key={zoomRebuildNonce}
                   ref={renderSurfaceRef}
                   data-mermaid-export-root={exportRootId || undefined}
-                  className="relative z-[1] min-h-0 flex-1 [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
+                  className="relative z-[1] min-h-0 flex-1 select-none [&_svg]:block [&_svg]:max-w-none [&_svg]:rounded-md [&_svg]:bg-white/90 [&_svg]:shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
                   dangerouslySetInnerHTML={{ __html: svg }}
                 />
               ) : null}
@@ -1568,7 +1824,7 @@ export function MermaidCard(props: {
   collapsible?: boolean;
   defaultDiagramExpanded?: boolean;
   graphPayload?: MermaidGraphPayload;
-  onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => void) | null;
+  onNodeRelayout?: ((payload: MermaidNodeRelayoutPayload) => boolean | void) | null;
   relayoutBusy?: boolean;
   activeIncrementalStageIndex?: number | null;
   exportRootId?: string | null;
@@ -1583,8 +1839,17 @@ export function MermaidCard(props: {
   annotationsDoc?: AnnotationDoc;
   onAnnotationsChange?: (next: AnnotationDoc) => void;
   annotationExportHostId?: string;
+  onEvidenceSelect?: ((selection: MermaidEvidenceSelection) => void) | null;
+  activeEvidenceTarget?: MermaidEvidenceTarget | null;
+  hoverFocusEnabled?: boolean;
   fixedLightCanvas?: boolean;
   panZoomControlsOffsetTop?: number;
+  /** @description 切换到前一张画布 */
+  onCanvasPrev?: () => void;
+  /** @description 切换到后一张画布 */
+  onCanvasNext?: () => void;
+  /** @description 是否存在多张画布 */
+  hasMultipleCanvases?: boolean;
 }) {
   return (
     <ErrorBoundary

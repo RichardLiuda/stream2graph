@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -9,39 +8,53 @@ import {
   ChevronLeft,
   Menu,
   RadioTower,
-  Rows4,
   Settings2,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button, Card } from "@stream2graph/ui";
 
-import { ApiError, api } from "@/lib/api";
+import { translate, useLanguagePreference, type I18nKey, type LanguagePreference } from "@/lib/language";
 
 const allNavItems = [
-  { href: "/app/realtime", label: "实时工作", icon: RadioTower, guest: true },
-  { href: "/app/samples", label: "样本对照", icon: Rows4, guest: false },
-  { href: "/app/reports", label: "实验报告", icon: BarChart3, guest: false },
-  { href: "/app/settings", label: "设置", icon: Settings2, guest: false },
-  { href: "/", label: "首页", icon: BookOpenText, guest: true },
-] as const;
+  {
+    href: "/app/realtime",
+    label: "adminShell.nav.realtime",
+    icon: RadioTower,
+    guest: true,
+  },
+  {
+    href: "/app/reports",
+    label: "adminShell.nav.reports",
+    icon: BarChart3,
+    guest: false,
+  },
+  {
+    href: "/app/settings",
+    label: "adminShell.nav.settings",
+    icon: Settings2,
+    guest: false,
+  },
+  {
+    href: "/",
+    label: "adminShell.nav.home",
+    icon: BookOpenText,
+    guest: true,
+  },
+] satisfies Array<{ href: string; label: I18nKey; icon: LucideIcon; guest: boolean }>;
+
+function text(language: LanguagePreference, key: I18nKey) {
+  return translate(language, key);
+}
 
 /** @description /app 区：统一内容宽度 + 侧滑导航（浮层保留轻微 blur） */
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const authQuery = useQuery({
-    queryKey: ["auth", "me"],
-    queryFn: api.me,
-    retry: false,
-    staleTime: 60_000,
-  });
-  const isGuest =
-    authQuery.isFetched &&
-    authQuery.isError &&
-    authQuery.error instanceof ApiError &&
-    authQuery.error.status === 401;
-  const navItems = isGuest ? allNavItems.filter((item) => item.guest) : [...allNavItems];
+  const [language] = useLanguagePreference();
+  const navItems = [...allNavItems];
   const currentItem = navItems.find((item) => pathname === item.href);
+  const realtimeCompact = pathname === "/app/realtime";
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
@@ -63,7 +76,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         type="button"
         aria-expanded={drawerOpen}
         aria-controls="workspace-nav-drawer"
-        aria-label="打开工作区导航"
+        aria-label={text(language, "adminShell.text001")}
         className={`fixed left-4 top-4 z-[105] flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-[color:var(--shell-control-border)] bg-[var(--shell-control-bg)] text-[color:var(--shell-control-fg)] shadow-md transition hover:border-[color:var(--shell-control-border-hover)] hover:bg-[var(--shell-control-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--shell-focus-ring)] ${
           drawerOpen ? "pointer-events-none opacity-0" : "opacity-100"
         }`}
@@ -75,7 +88,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       {drawerOpen ? (
         <button
           type="button"
-          aria-label="关闭工作区导航"
+          aria-label={text(language, "adminShell.text002")}
           className="fixed inset-0 z-[100] bg-[var(--shell-backdrop)] backdrop-blur-[2px] transition-opacity"
           onClick={() => setDrawerOpen(false)}
         />
@@ -97,20 +110,26 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               onClick={() => setDrawerOpen(false)}
             >
               <ChevronLeft className="h-4 w-4 shrink-0" />
-              收起导航
+              {text(language, "adminShell.text003")}
             </Button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="rounded-xl border border-theme-default bg-surface-2 px-4 py-4">
               <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-theme-4">Stream2Graph</div>
-              <div className="font-display mt-1 text-lg font-semibold tracking-tight text-theme-1">正式平台</div>
+              <div className="font-display mt-1 text-lg font-semibold tracking-tight text-theme-1">
+                {text(language, "adminShell.text004")}
+              </div>
               {currentItem ? (
                 <div className="mt-3 rounded-lg border border-theme-subtle bg-surface-1 px-3 py-2 text-xs text-theme-3">
-                  当前：{currentItem.label}
+                  {text(language, "adminShell.text005")}
+                  {translate(language, currentItem.label)}
                 </div>
               ) : null}
             </div>
-            <nav className="mt-3 rounded-xl border border-theme-default bg-surface-muted p-1.5" aria-label="工作区">
+            <nav
+              className="mt-3 rounded-xl border border-theme-default bg-surface-muted p-1.5"
+              aria-label={text(language, "adminShell.text006")}
+            >
               <div className="drawer-nav-animate flex flex-col gap-0.5">
                 {navItems.map((item) => {
                   const Icon = item.icon;
@@ -135,35 +154,29 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                       >
                         <Icon className="h-4 w-4" strokeWidth={2} />
                       </span>
-                      {item.label}
+                      {translate(language, item.label)}
                     </Link>
                   );
                 })}
               </div>
             </nav>
             <p className="mt-4 px-1 text-[11px] leading-relaxed text-theme-5">
-              {isGuest ? (
-                <>
-                  访客模式仅开放实时工作台；样本、报告与平台设置需
-                  <Link href="/login" className="link-accent mx-1 font-medium">
-                    管理员登录
-                  </Link>
-                  。
-                </>
-              ) : (
-                <>
-                  已登录管理员，可使用全部工作区功能。
-                  <Link href="/" className="link-accent ml-1 font-medium">
-                    返回首页
-                  </Link>
-                </>
-              )}
+              {text(language, "adminShell.text010")}
+              <Link href="/" className="link-accent ml-1 font-medium">
+                {text(language, "adminShell.text011")}
+              </Link>
             </p>
           </div>
         </Card>
       </aside>
 
-      <div className="soft-enter soft-enter-delay-1 relative z-[1] min-w-0 px-4 py-5 pl-[calc(1rem+2.75rem+1.25rem)] pt-4 md:px-8 md:py-7 md:pl-[calc(1rem+2.75rem+2.25rem)] md:pt-6 lg:px-10 xl:px-12">
+      <div
+        className={
+          realtimeCompact
+            ? "soft-enter soft-enter-delay-1 relative z-[1] min-w-0 px-3 py-2 pl-[calc(0.75rem+2.75rem+1rem)] pt-2 md:px-5 md:py-3 md:pl-[calc(1rem+2.75rem+1.5rem)] md:pt-3 lg:px-7 xl:px-8"
+            : "soft-enter soft-enter-delay-1 relative z-[1] min-w-0 px-4 py-5 pl-[calc(1rem+2.75rem+1.25rem)] pt-4 md:px-8 md:py-7 md:pl-[calc(1rem+2.75rem+2.25rem)] md:pt-6 lg:px-10 xl:px-12"
+        }
+      >
         <div className="workspace-content">{children}</div>
       </div>
     </div>
