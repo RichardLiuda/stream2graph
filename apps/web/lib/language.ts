@@ -69,7 +69,9 @@ export function saveLanguagePreference(language: LanguagePreference) {
 }
 
 export function useLanguagePreference() {
-  const [language, setLanguageState] = useState<LanguagePreference>(DEFAULT_LANGUAGE);
+  const [language, setLanguageState] = useState<LanguagePreference>(() =>
+    typeof window === "undefined" ? DEFAULT_LANGUAGE : normalizeLanguage(window.localStorage.getItem(STORAGE_KEY)),
+  );
 
   useEffect(() => {
     setLanguageState(loadLanguagePreference());
